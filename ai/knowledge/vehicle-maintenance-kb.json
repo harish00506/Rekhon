@@ -1,0 +1,77 @@
+{
+  "_meta": {
+    "file": "vehicle-maintenance-kb.json",
+    "why": "AI-VEH predicts service due-dates and costs and injects them into the cash-flow forecast as scheduled outflows. It needs a bundled knowledge base of intervals and typical Indian cost ranges per vehicle class so predictions work from the first odometer reading.",
+    "what": "Per vehicle class: service intervals (km and months), typical Indian cost ranges (minor units, INR paise), and consumable replacement intervals.",
+    "result": "'Service due ~Aug 20, expect INR 3,000-4,500' style alerts, adjusted by the user's own service-cost history (personal index).",
+    "source_section": "§12",
+    "version": "1.0",
+    "changelog": [
+      "2026-07-17 — Created from SRS v1.7 §12. Cost ranges are starter estimates in INR minor units; refined by the user's personal cost index."
+    ],
+    "prediction_note": "kmPerMonth = robustSlope(odometer readings, last 12 months). nextService.dueAt = min(lastService.odo + interval_km via kmPerMonth, lastService.date + interval_months). predictedCost adjusted by user's personal cost index.",
+    "alerts": {
+      "service_due": "30 days / 500 km before due",
+      "mileage_drop": "mileage drop > 15% vs 3-month baseline -> 'possible maintenance issue'",
+      "renewal": "insurance / PUC expiry at -30 and -7 days"
+    }
+  },
+
+  "vehicle_classes": [
+    {
+      "class": "2W",
+      "label": "Two-wheeler",
+      "service": { "interval_km": 3000, "interval_months": 3, "cost_range_minor": [50000, 120000] },
+      "consumables": [
+        { "item": "tyres", "interval_km": 25000 },
+        { "item": "battery", "interval_months": 36 },
+        { "item": "brake_pads", "interval_km": 15000 }
+      ]
+    },
+    {
+      "class": "hatch",
+      "label": "Hatchback",
+      "service": { "interval_km": 10000, "interval_months": 12, "cost_range_minor": [400000, 700000] },
+      "consumables": [
+        { "item": "tyres", "interval_km": 40000 },
+        { "item": "battery", "interval_months": 48 },
+        { "item": "brake_pads", "interval_km": 30000 }
+      ]
+    },
+    {
+      "class": "sedan",
+      "label": "Sedan",
+      "service": { "interval_km": 10000, "interval_months": 12, "cost_range_minor": [600000, 1000000] },
+      "consumables": [
+        { "item": "tyres", "interval_km": 40000 },
+        { "item": "battery", "interval_months": 48 },
+        { "item": "brake_pads", "interval_km": 30000 }
+      ]
+    },
+    {
+      "class": "SUV",
+      "label": "SUV",
+      "service": { "interval_km": 10000, "interval_months": 12, "cost_range_minor": [800000, 1500000] },
+      "consumables": [
+        { "item": "tyres", "interval_km": 45000 },
+        { "item": "battery", "interval_months": 48 },
+        { "item": "brake_pads", "interval_km": 30000 }
+      ]
+    },
+    {
+      "class": "EV",
+      "label": "Electric vehicle",
+      "service": { "interval_km": 15000, "interval_months": 12, "cost_range_minor": [300000, 700000] },
+      "consumables": [
+        { "item": "tyres", "interval_km": 40000 },
+        { "item": "cabin_filter", "interval_months": 12 },
+        { "item": "brake_pads", "interval_km": 50000, "note": "regen braking extends life" }
+      ]
+    }
+  ],
+
+  "renewals": [
+    { "item": "insurance", "cadence_months": 12, "reminder_days": [30, 7] },
+    { "item": "PUC", "cadence_months": 6, "reminder_days": [30, 7] }
+  ]
+}

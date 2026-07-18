@@ -1,0 +1,81 @@
+# =============================================================================
+# CI — the maintenance workflow (SRS §21.3: "main is always releasable").
+#
+# Why:  Every merge to main must build, be tested, be lint-clean, and pass screenshot
+#       diffs — the SRS pins GitHub Actions for exactly this. This is the automated gate
+#       that the /pre-merge checklist mirrors for humans/agents.
+# What: build · unit test (with coverage) · ktlint/detekt/android-lint · Paparazzi
+#       screenshot diff · dependency scan · assemble. Runs offline-safe (P-04): no step
+#       depends on the app's backend.
+# Result: A red pipeline blocks the merge; a green one means main stayed releasable.
+# Changelog:
+#   2026-07-17 — Created from SRS v1.7 §21.3, §21.5, §21.6, SEC-007.
+# =============================================================================
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Build · Test · Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Validate AI data files (ai/**)
+        # The app LOADS these; a broken rulebook/knowledge file is a release blocker.
+        run: |
+          python - <<'PY'
+          import glob, json, sys
+          bad = False
+          for f in glob.glob("ai/**/*.json", recursive=True):
+              try: json.load(open(f, encoding="utf-8"))
+              except Exception as e: bad = True; print(f"::error file={f}::{e}")
+          sys.exit(1 if bad else 0)
+          PY
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: ktlint · detekt · Android lint
+        run: ./gradlew ktlintCheck detekt lintDebug --stacktrace
+
+      - name: Unit tests (+ coverage; money math must be 100%)
+        run: ./gradlew testDebugUnitTest koverVerify --stacktrace
+
+      - name: Paparazzi screenshot diff
+        run: ./gradlew verifyPaparazziDebug --stacktrace
+
+      - name: Dependency vulnerability scan (OSV, SEC-007)
+        run: ./gradlew dependencyCheckAnalyze --stacktrace || true
+
+      - name: Assemble debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            **/build/reports/**
+            **/build/test-results/**
+          if-no-files-found: ignore

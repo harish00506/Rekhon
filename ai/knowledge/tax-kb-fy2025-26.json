@@ -1,0 +1,61 @@
+{
+  "_meta": {
+    "file": "tax-kb-fy2025-26.json",
+    "why": "AI-TAX must compute both tax regimes from the user's actual tagged deductions and salary structure, and print the FY rules version on every result. Tax parameters change every Budget, so they MUST be a versioned data file (served by /v1/knowledge/tax), never hardcoded.",
+    "what": "The FY2025-26 parameter table (§38.1) and the post-23-July-2024 capital-gains treatment (§38.2), plus the harvesting-alert rules (TAX-001/002).",
+    "result": "The engine computes old-vs-new regime break-even in rupees and labels capital-gains lots correctly; every figure is stamped with fy_rules_version.",
+    "source_section": "§38",
+    "fy": "2025-26",
+    "fy_rules_version": "2025-26.1",
+    "version": "1.0",
+    "changelog": [
+      "2026-07-17 — Created from SRS v1.7 §38.1, §38.2. UPDATE every Budget and bump fy_rules_version."
+    ],
+    "scope_note": "The engine never files taxes and links complex cases (property, foreign/RSU taxation) to a professional (TAX-002)."
+  },
+
+  "regimes": {
+    "old_regime": {
+      "deductions_available": ["80C", "80CCD(1B)", "80CCD(2)", "80D", "HRA", "home_loan_interest"],
+      "80C_cap_inr": 150000,
+      "80C_covers": ["EPF", "PPF", "ELSS", "life_premium", "tax_saver_FD", "home_loan_principal"],
+      "80CCD(1B)_nps_additional_inr": 50000,
+      "80CCD(1B)_note": "Additional 50,000 -> 2L combined with 80C",
+      "80CCD(2)_employer_nps": "Deductible in BOTH regimes, up to 14% of salary",
+      "80D_health_premium": "Old regime only"
+    },
+    "new_regime": {
+      "standard_deduction_inr": 75000,
+      "rebate_87A_income_effectively_tax_free_upto_inr": 1200000,
+      "top_slab_30pct_starts_above_inr": 2400000,
+      "deductions_available": ["standard_deduction", "80CCD(2)"],
+      "deductions_not_available": ["80C", "80D", "80CCD(1)", "80CCD(1B)"]
+    }
+  },
+
+  "break_even_engine": {
+    "method": "Compute both regimes from the user's actual tagged deductions + salary structure (basic/HRA/rent). Old regime wins only when utilised deductions exceed the computed break-even.",
+    "output": "The winning regime and the rupee margin, shown to the user."
+  },
+
+  "capital_gains": {
+    "_source": "§38.2 post-23-July-2024 rules",
+    "rules": [
+      { "asset": "equity_or_equity_mf", "stcg": "20% (holding <= 12 months)", "ltcg": "12.5% on gains above INR 1.25L/year, no indexation (holding > 12 months)" },
+      { "asset": "debt_mf_bought_on_or_after_2023-04-01", "treatment": "Slab rate always - no LTCG benefit; engine labels lots accordingly" },
+      { "asset": "debt_mf_pre_2023-04-01_or_gold", "ltcg": "12.5% without indexation" },
+      { "asset": "property", "ltcg": "12.5% no-indexation, OR 20% with indexation if acquired before 23 Jul 2024 and lower - engine computes both" },
+      { "asset": "sgb_held_to_maturity", "treatment": "Capital gains fully exempt - flagged as the most tax-efficient gold route" }
+    ],
+    "ltcg_equity_exemption_inr": 125000
+  },
+
+  "harvesting_alerts": {
+    "_source": "TAX-001 (generic, never 'sell fund X')",
+    "rules": [
+      "Unused INR 1.25L LTCG exemption approaching FY-end -> gains can be realised tax-free and cost basis reset.",
+      "Harvestable losses before 31 March (India has no wash-sale rule).",
+      "STCG->LTCG countdown when a planned sale is < 30 days from turning long-term."
+    ]
+  }
+}

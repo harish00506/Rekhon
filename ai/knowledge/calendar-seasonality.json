@@ -1,0 +1,27 @@
+{
+  "_meta": {
+    "file": "calendar-seasonality.json",
+    "why": "The seasonality engine (§9.3) needs labelled expectations for Indian calendar events even in year 1, before it has 2+ years of the user's own data to learn from. Without priors, festival and tax-season spending surprises the forecast.",
+    "what": "Indian calendar events with the categories they inflate and a prior multiplier, plus the shrinkage rule that blends these priors with the user's observed history.",
+    "result": "'October festival spending typically +38% for you - plan INR 6,500 extra' style insights and inputs to the cash-flow forecast and budget suggestions.",
+    "source_section": "§9.3",
+    "version": "1.0",
+    "changelog": [
+      "2026-07-17 — Created from SRS v1.7 §9.3. Priors are starter multipliers, superseded by the user's own seasonal index as data accrues."
+    ],
+    "shrinkage_rule": "seasonal_index = 1 + k*(raw-1), k = months_observed/24. Priors below are the 'raw' expectation used until the user's own median-based index dominates.",
+    "note": "Dates are approximate windows (many festivals follow the lunar calendar); the app resolves exact dates from the /v1/knowledge/calendar feed per year."
+  },
+
+  "events": [
+    { "id": "diwali",            "window": "Oct-Nov",  "inflates": ["Shopping", "Dining", "Travel", "Gifts"], "prior_multiplier": 1.38, "note": "Largest discretionary spike; also gold-buying season." },
+    { "id": "dussehra_navratri", "window": "Sep-Oct",  "inflates": ["Shopping", "Dining"],                    "prior_multiplier": 1.20 },
+    { "id": "wedding_season",    "window": "Nov-Feb",  "inflates": ["Gifts", "Travel", "Shopping", "Gold"],   "prior_multiplier": 1.25, "note": "Gifting and travel; gold demand." },
+    { "id": "tax_saving_rush",   "window": "Jan-Mar",  "inflates": ["Investment", "Insurance"],               "prior_multiplier": 1.40, "note": "80C/ELSS/insurance premium rush before FY-end (old regime users)." },
+    { "id": "school_admission",  "window": "Mar-Jun",  "inflates": ["Education"],                              "prior_multiplier": 1.50, "note": "Admission + fees + uniforms + books." },
+    { "id": "monsoon",           "window": "Jun-Sep",  "inflates": ["Health", "Transport", "Vehicle"],        "prior_multiplier": 1.15, "note": "Seasonal illness; higher commute and vehicle upkeep costs." },
+    { "id": "summer",            "window": "Apr-Jun",  "inflates": ["Utilities", "Travel"],                   "prior_multiplier": 1.20, "note": "AC-driven electricity; vacation travel." },
+    { "id": "onam_pongal",       "window": "Aug-Jan",  "inflates": ["Shopping", "Dining"],                    "prior_multiplier": 1.20, "note": "Regional festivals (South India)." },
+    { "id": "akshaya_tritiya",   "window": "Apr-May",  "inflates": ["Gold"],                                  "prior_multiplier": 1.30, "note": "Auspicious gold-buying day." }
+  ]
+}

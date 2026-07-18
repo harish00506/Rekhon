@@ -1,0 +1,94 @@
+{
+  "_meta": {
+    "file": "market-signals.json",
+    "why": "AI-MKT removes the daily burden of watching markets by computing OBJECTIVE, BACKTESTABLE signals and issuing a direct buy-day verdict. The signal library and weights must be data (editable, evidence-weighted), not code, so users can personalise on evidence and every verdict is reproducible.",
+    "what": "The scored signal library (§30.2), the context-only (never-scored) signals, the OpportunityScore formula, the honesty/backtesting policy (§30.3), and the tranche deployment policy (§30.4).",
+    "result": "OpportunityScore(instrument, day) is a sum of signal points (0-100, capped) reproducible from cached OHLC; every verdict ships with its measured historical hit rate.",
+    "source_section": "§30",
+    "version": "1.0",
+    "changelog": [
+      "2026-07-17 — Created from SRS v1.7 §30.2, §30.3, §30.4."
+    ],
+    "principle": "Valuation + fear (VIX) carry the highest weights because they have the strongest published evidence for medium-term forward returns; pure price-pattern signals are capped low. The rule editor shows each signal's own backtest so weights can be personalised on evidence.",
+    "personal_mode": "PERSONAL_MODE=true enables direct verdict language ('Strong buy day') and drops disclaimers, but transparency rules still apply: every verdict reproducible from data, always shown with its backtest hit rate."
+  },
+
+  "opportunity_score": {
+    "formula": "OpportunityScore(instrument, day) = sum(signal points)",
+    "range": "0-100+, capped at 100",
+    "verdict_bands": {
+      "STRONG_BUY_DAY": ">= 70",
+      "GOOD_DAY": "50-69",
+      "NEUTRAL": "30-49",
+      "NO_EDGE": "< 30"
+    },
+    "note": "Bands are defaults; editable. A verdict is only shown alongside its measured hit rate (§30.3)."
+  },
+
+  "scored_signals": [
+    {
+      "id": "SIG-VALUATION",
+      "definition": "Index P/E (and P/B) percentile vs its own 10-year history; bottom quartile scores, bottom decile maxes.",
+      "max_points": 25,
+      "evidence": "Strongest research support (valuation mean-reversion / CAPE literature): low starting valuations -> better 3-5y forward returns.",
+      "params_json": { "lookback_years": 10, "score_at_percentile": 25, "max_at_percentile": 10 }
+    },
+    {
+      "id": "SIG-DRAWDOWN",
+      "definition": "% below 52-week high; tiers at -5 / -8 / -12 / -20%.",
+      "max_points": 20,
+      "params_json": { "tiers_pct": [-5, -8, -12, -20] }
+    },
+    {
+      "id": "SIG-VIX",
+      "definition": "India VIX percentile vs 5y history; top quartile scores, top decile (panic/capitulation) maxes.",
+      "max_points": 15,
+      "evidence": "Implied-vol spikes historically coincide with above-average forward returns.",
+      "params_json": { "lookback_years": 5, "score_at_percentile": 75, "max_at_percentile": 90 }
+    },
+    {
+      "id": "SIG-MA200",
+      "definition": "% deviation below the 200-day moving average; tiers at -2 / -5 / -10%.",
+      "max_points": 15,
+      "params_json": { "tiers_pct": [-2, -5, -10] }
+    },
+    {
+      "id": "SIG-RSI",
+      "definition": "RSI(14) < 30 oversold (=10 pts), < 25 deeply oversold (=15).",
+      "max_points": 15,
+      "params_json": { "period": 14, "oversold": { "30": 10, "25": 15 } }
+    },
+    {
+      "id": "SIG-RARITY",
+      "definition": "Percentile of today's price vs trailing 12 months (bottom decile = max).",
+      "max_points": 5,
+      "params_json": { "lookback_months": 12, "max_at_percentile": 10 }
+    },
+    {
+      "id": "SIG-STREAK",
+      "definition": "N consecutive down days (>= 4 = 3 pts, >= 6 = 5).",
+      "max_points": 5,
+      "params_json": { "down_days": { "4": 3, "6": 5 } }
+    }
+  ],
+
+  "context_signals_never_scored": [
+    { "id": "SIG-SUPPORT", "note": "Proximity to recent held lows - descriptive, levels shift." },
+    { "id": "SIG-YIELD-GAP", "note": "Index earnings yield vs 10-yr G-Sec - contested 'Fed model' evidence, useful colour only." },
+    { "id": "SIG-OI-PCR", "note": "Open interest / put-call ratio (MKT-006) - shown as context, not an input to the score." }
+  ],
+
+  "honesty_backtesting": {
+    "_source": "§30.3 - the core differentiator",
+    "rule": "Every verdict is accompanied by the measured historical hit rate of the same signal configuration on this instrument's cached history. The app persuades with evidence, never with certainty it does not have.",
+    "backtest_history_years": 5,
+    "reproducibility": "A verdict must be reproducible from cached OHLC (P-02, AI-ARC-004)."
+  },
+
+  "tranche_policy": {
+    "_source": "§30.4 - tranches, not all-in",
+    "rule": "Deployment suggestions are staged tranches, never all-in, and are gated by user capacity.",
+    "capacity_gates": ["RULE-IDLE-CASH", "RULE-RUNWAY-M", "AI-FCT 30-day crunch-day forecast"],
+    "example_ladder": { "GOOD_DAY": "1 tranche", "STRONG_BUY_DAY": "up to 2 tranches", "cap": "user tranche policy" }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "$comment": "Shared project settings for AI agents on AI Personal CFO. Checked into git so every contributor's agent shares the same safe defaults. Personal overrides go in settings.local.json (git-ignored). Permissions allowlist common read-only + build commands so agents aren't prompted for routine work; anything not listed still prompts. See CLAUDE.md for the binding rules.",
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew test:*)",
+      "Bash(./gradlew ktlintCheck:*)",
+      "Bash(./gradlew detekt:*)",
+      "Bash(./gradlew lint:*)",
+      "Bash(./gradlew koverVerify:*)",
+      "Bash(./gradlew verifyPaparazzi:*)",
+      "Bash(./gradlew assembleDebug:*)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git branch:*)",
+      "Bash(python:*)"
+    ],
+    "ask": [
+      "Bash(git push:*)",
+      "Bash(git commit:*)"
+    ],
+    "deny": [
+      "Read(./**/*.keystore)",
+      "Read(./**/keystore.properties)",
+      "Read(./**/*.jks)",
+      "Read(./**/google-services.json)",
+      "Read(./**/local.properties)"
+    ]
+  },
+  "$notes": "deny reads target signing/secret material (SEC-001/007): agents should never load keystores or service credentials into context. If a real secret path differs, extend the deny list rather than relaxing it."
+}

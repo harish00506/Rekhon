@@ -1,0 +1,138 @@
+# =============================================================================
+# Engine Registry — the catalogue of AI engines the orchestrator can run.
+#
+# Why:  AI-ARC-006 requires every stored result to name the engine + version that
+#       produced it. That is only possible if there is one authoritative list of
+#       engines, their versions, layers, and contracts. This is that list.
+# What: One row per engine (module :domain:engines:*), with its layer, one-line
+#       input→output contract, the rulebook/KB files it reads, and its version.
+# Result: The orchestrator and provenance stamping resolve engine metadata from here;
+#         reviewers see every AI capability and where its logic/data lives.
+# Changelog:
+#   2026-07-17 — Created from SRS v1.7 §7, §21.2 (module list) and the engine sections.
+# =============================================================================
+
+version: "1.0"
+source_section: "§7, §21.2"
+
+# Provenance every engine result MUST carry (AI-ARC-003):
+provenance_contract:
+  fields: [engineId, engineVersion, inputWindow, computedAt, confidence, evidence]
+
+engines:
+  - id: AI-CLS
+    name: Fixed/Variable + Nature Classification
+    layer: L2
+    module: ":domain:engines:classification"
+    version: "1.0"
+    contract: "transactions + corrections -> {classification, nature} per txn/stream"
+    reads: [../knowledge/classification-kb.json]
+    srs: "§8"
+
+  - id: AI-FCT
+    name: Cash-Flow Forecasting
+    layer: L4
+    module: ":domain:engines:forecast"
+    version: "1.0"
+    contract: "FeatureSnapshot -> Forecast{P10,P50,P90 per day, crunch days}"
+    reads: [../knowledge/calendar-seasonality.json]
+    srs: "§9"
+
+  - id: AI-SEAS
+    name: Seasonality Prediction
+    layer: L4
+    module: ":domain:engines:seasonality"
+    version: "1.0"
+    contract: "category history + calendar -> seasonal index per category/month"
+    reads: [../knowledge/calendar-seasonality.json]
+    srs: "§9.3"
+
+  - id: AI-EMF
+    name: Emergency Fund
+    layer: L4
+    module: ":domain:engines:emergencyfund"
+    version: "1.0"
+    contract: "essentials + income volatility -> {target, runwayMonths, multiplier M}"
+    reads: [../rules/rules-kb.json]      # RULE-RUNWAY-M
+    srs: "§10"
+
+  - id: AI-INV
+    name: Investment Intelligence
+    layer: L3/L4
+    module: ":domain:engines:investment"
+    version: "1.0"
+    contract: "holdings -> {allocation, diversification, XIRR, rebalancing signal}"
+    reads: [../rules/rules-kb.json]      # RULE-AGE-EQUITY, RULE-5-25, caps
+    srs: "§11"
+
+  - id: AI-VEH
+    name: Vehicle & Appliance Maintenance Prediction
+    layer: L4
+    module: ":domain:engines:vehicle"
+    version: "1.0"
+    contract: "odometer + service history -> {nextService.dueAt, predictedCost, alerts}"
+    reads: [../knowledge/vehicle-maintenance-kb.json]
+    srs: "§12"
+
+  - id: AI-PA
+    name: Purchase Advisor Decision Engine
+    layer: L5
+    module: ":domain:engines:purchase"
+    version: "1.0"
+    contract: "item+price+method -> Verdict{COMFORTABLE|STRETCH|NOT_NOW} + gate trace"
+    reads: [../rules/rules-kb.json]      # RULE-EMI-40, RULE-COOL-OFF, RULE-20-4-10 ...
+    srs: "§13"
+
+  - id: AI-FHS
+    name: Financial Health Score
+    layer: L3
+    module: ":domain:engines:healthscore"
+    version: "1.0"
+    contract: "FeatureSnapshot -> {total 0..1000, five weighted pillars, deltas}"
+    reads: [../rules/rules-kb.json]
+    srs: "§14"
+
+  - id: AI-GOAL
+    name: Goal Planning
+    layer: L4/L5
+    module: ":domain:engines:goals"
+    version: "1.0"
+    contract: "goals + surplus -> {requiredMonthly, feasibility, ETA per goal}"
+    reads: [../rules/rules-kb.json, ../rules/financial-order-of-operations.json]
+    srs: "§15"
+
+  - id: AI-FOO
+    name: Financial Order of Operations (Priority Waterfall)
+    layer: L5
+    module: ":domain:engines:orchestrator"
+    version: "1.0"
+    contract: "surplus -> ranked next-best-rupee cards with stage + evidence"
+    reads: [../rules/financial-order-of-operations.json]
+    srs: "§36"
+
+  - id: AI-MKT
+    name: Market Signal Engine (Opportunity Detection)
+    layer: L4/L5
+    module: ":domain:engines:marketsignal"
+    version: "1.0"
+    contract: "OHLC history + capacity -> OpportunityScore + verdict + backtest line"
+    reads: [../knowledge/market-signals.json, ../rules/rules-kb.json]
+    srs: "§30"
+
+  - id: AI-TAX
+    name: Tax Engine v2
+    layer: L3/L5
+    module: ":domain:engines:growth"
+    version: "fy2025-26"
+    contract: "salary + deductions + lots -> {regime comparison, harvesting alerts}"
+    reads: [../knowledge/tax-kb-fy2025-26.json]
+    srs: "§38"
+
+  - id: AI-CHAT
+    name: Chat Assistant (verbaliser)
+    layer: L6
+    module: ":feature:chat + :ml:llm"
+    version: "1.0"
+    contract: "NL intent -> tool calls -> structured results -> guardrailed reply"
+    reads: [../skills/tool-registry.json, ../chat/system-prompt.md, ../chat/guardrail.md]
+    srs: "§19"

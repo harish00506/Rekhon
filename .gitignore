@@ -1,0 +1,17 @@
+# Python (issue-doc generator tooling)
+__pycache__/
+*.py[cod]
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+
+# Android / Gradle / IDE (populated when issue 1.1 scaffolds the build)
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.cxx/
+captures/

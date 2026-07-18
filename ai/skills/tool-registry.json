@@ -1,0 +1,177 @@
+{
+  "_meta": {
+    "file": "tool-registry.json",
+    "why": "The chat assistant is a narrow copilot over the user's own data, not a general chatbot. Tools are the ONLY way chat touches data (§19.2): the LLM never sees raw full transaction history; tools return aggregates and top-k relevant records only.",
+    "what": "The registry of callable 'skills' the L6 chat layer may invoke. Each tool maps a natural-language intent to a deterministic engine/query and returns a STRUCTURED result the LLM then verbalises (never computes).",
+    "result": "Every numeric statement in a reply originates from a tool result here; the guardrail (../chat/guardrail.md) cross-checks and blocks any figure not traceable to one of these tools.",
+    "source_section": "§19.2, §19.3",
+    "version": "1.0",
+    "changelog": [
+      "2026-07-17 — Created from SRS v1.7 §19.2 tool registry."
+    ],
+    "behaviour_rules": {
+      "CHT-001": "Every numeric statement in a reply MUST originate from a tool result; the guardrail blocks fabricated figures.",
+      "CHT-002": "Out-of-scope requests (stock tips, tax filing, legal) get a friendly refusal + what the assistant CAN do.",
+      "CHT-003": "Suggested chips drive discovery; free text also supported.",
+      "CHT-004": "Conversations stored locally, deletable, excluded from backup by default.",
+      "CHT-005": "On-device model is the default engine; cloud assist lists exactly which structured fields are sent and logs every call."
+    },
+    "write_policy": "Chat NEVER writes directly. The only mutating tool is create_txn_draft / add_to_buylist, which produce a draft or a list entry the user must confirm."
+  },
+
+  "tools": [
+    {
+      "name": "query_spend",
+      "access": "read",
+      "engine": "AI-CLS / analytics (L2)",
+      "description": "Aggregated spend totals, counts, and top merchants for a period.",
+      "parameters": {
+        "period": { "type": "string", "required": true, "example": "this_month | 2026-06 | last_90d" },
+        "category": { "type": "string", "required": false },
+        "merchant": { "type": "string", "required": false }
+      },
+      "returns": { "total_minor": "int", "txn_count": "int", "top_merchants": "array", "nature_split": "{need,want,investment,asset,liability}" },
+      "srs": "§19.2"
+    },
+    {
+      "name": "get_balance",
+      "access": "read",
+      "engine": "repository (L1)",
+      "description": "Current balances and liquid runway.",
+      "parameters": {
+        "accountId": { "type": "string", "required": false },
+        "liquid": { "type": "boolean", "required": false, "note": "true = liquid funds only" }
+      },
+      "returns": { "balance_minor": "int", "liquid_minor": "int", "runway_months": "number" },
+      "srs": "§19.2"
+    },
+    {
+      "name": "get_forecast",
+      "access": "read",
+      "engine": "AI-FCT (L4)",
+      "description": "Cash-flow forecast summary and any crunch days in the window.",
+      "parameters": { "days": { "type": "int", "required": true, "default": 90 } },
+      "returns": { "p10_minor": "int", "p50_minor": "int", "p90_minor": "int", "crunch_days": "array<date>" },
+      "srs": "§19.2, §9"
+    },
+    {
+      "name": "get_budget_status",
+      "access": "read",
+      "engine": "budget engine (L3)",
+      "description": "Per-budget spent / remaining / projection for a month.",
+      "parameters": { "month": { "type": "string", "required": true, "example": "2026-07" } },
+      "returns": { "budgets": "array<{category, spent_minor, remaining_minor, projected_minor}>" },
+      "srs": "§19.2"
+    },
+    {
+      "name": "get_goals",
+      "access": "read",
+      "engine": "AI-GOAL (L4/L5)",
+      "description": "Goal list with ETA and on-track state.",
+      "parameters": {},
+      "returns": { "goals": "array<{name, target_minor, current_minor, eta_date, on_track}>" },
+      "srs": "§19.2, §15"
+    },
+    {
+      "name": "purchase_check",
+      "access": "read",
+      "engine": "AI-PA (L5)",
+      "description": "Full Purchase Advisor verdict with the gate-by-gate reasoning trace.",
+      "parameters": {
+        "item": { "type": "string", "required": true },
+        "price": { "type": "int", "required": true, "note": "minor units (paise)" },
+        "method": { "type": "string", "required": true, "example": "cash | emi | card" }
+      },
+      "returns": { "verdict": "COMFORTABLE|STRETCH|NOT_NOW", "gates": "array", "impact_strip": "object", "alternatives": "object" },
+      "srs": "§19.2, §13"
+    },
+    {
+      "name": "get_health_score",
+      "access": "read",
+      "engine": "AI-FHS (L3)",
+      "description": "Financial Health Score with the five-pillar breakdown.",
+      "parameters": {},
+      "returns": { "total": "int 0..1000", "band": "string", "pillars": "array<{name, score, weight, top_action}>" },
+      "srs": "§19.2, §14"
+    },
+    {
+      "name": "explain_insight",
+      "access": "read",
+      "engine": "orchestrator (L3)",
+      "description": "The evidence pack behind an insight already shown to the user.",
+      "parameters": { "insightId": { "type": "string", "required": true } },
+      "returns": { "engine_id": "string", "engine_version": "string", "evidence": "array", "rules_cited": "array<ruleId@version>" },
+      "srs": "§19.2, AI-ARC-003"
+    },
+    {
+      "name": "simulate",
+      "access": "read",
+      "engine": "decision engine (L5)",
+      "description": "What-if: income change, new EMI, rate change, or expense cut.",
+      "parameters": { "scenario": { "type": "object", "required": true, "example": "{income_delta_pct:-20} | {new_emi_minor:1500000}" } },
+      "returns": { "forecast_delta": "object", "goal_delta": "object", "health_delta": "int" },
+      "srs": "§19.2"
+    },
+    {
+      "name": "create_txn_draft",
+      "access": "write_draft",
+      "engine": "repository (L1)",
+      "description": "Prefills the add-transaction screen. Chat never writes directly; the user must confirm.",
+      "parameters": { "fields": { "type": "object", "required": true } },
+      "returns": { "draft_id": "string", "requires_user_confirmation": true },
+      "srs": "§19.2"
+    },
+    {
+      "name": "market_status",
+      "access": "read",
+      "engine": "AI-MKT (L4/L5)",
+      "description": "AI-MKT verdict for an instrument with signal trace and backtest line.",
+      "parameters": { "instrument": { "type": "string", "required": true } },
+      "returns": { "opportunity_score": "int 0..100", "verdict": "string", "signal_trace": "array", "backtest_hit_rate": "number" },
+      "srs": "§19.2, §30"
+    },
+    {
+      "name": "opportunity_check",
+      "access": "read",
+      "engine": "AI-MKT (L4/L5)",
+      "description": "Whether today is a strong day to deploy into a watched instrument, capacity-gated.",
+      "parameters": { "instrument": { "type": "string", "required": true } },
+      "returns": { "is_opportunity": "boolean", "tranche_suggestion": "object", "capacity_gate": "object" },
+      "srs": "§19.2, §30"
+    },
+    {
+      "name": "add_to_buylist",
+      "access": "write_draft",
+      "engine": "AI-PA-INT (L5)",
+      "description": "Adds a wish to the Buy List and enters the adaptive purchase interview.",
+      "parameters": {
+        "item": { "type": "string", "required": true },
+        "price": { "type": "int", "required": true, "note": "minor units" }
+      },
+      "returns": { "buylist_item_id": "string", "interview_session_id": "string" },
+      "srs": "§19.2, §13.3"
+    },
+    {
+      "name": "review_buylist",
+      "access": "read",
+      "engine": "AI-PA-INT (L5)",
+      "description": "Reviews Buy List items with the adaptive interview state.",
+      "parameters": {},
+      "returns": { "items": "array<{item, price_minor, verdict, interview_progress}>" },
+      "srs": "§19.2, §13.3"
+    },
+    {
+      "name": "convert_currency",
+      "access": "read",
+      "engine": "FX (§34.2)",
+      "description": "FX conversion using cached daily reference rates.",
+      "parameters": {
+        "amount": { "type": "int", "required": true, "note": "minor units" },
+        "from": { "type": "string", "required": true, "example": "USD" },
+        "to": { "type": "string", "required": true, "example": "INR" }
+      },
+      "returns": { "amount_minor": "int", "rate": "number", "as_of": "date", "stale": "boolean" },
+      "srs": "§19.2, §34.2"
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+# =============================================================================
+# .editorconfig — shared code-style baseline for AI Personal CFO.
+# Why:  ktlint official style is binding (§21.6). Encoding this here means every editor
+#       and agent formats identically, so ktlintCheck in CI is never a surprise.
+# Result: consistent Kotlin/Compose formatting; CI ktlint stays green.
+# Changelog: 2026-07-17 — Created from SRS v1.7 §21.6 (ktlint official, no wildcard imports).
+# =============================================================================
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+max_line_length = 120
+
+[*.{kt,kts}]
+# ktlint official code style
+ktlint_code_style = ktlint_official
+ktlint_standard_no-wildcard-imports = enabled
+ktlint_standard_filename = enabled
+ij_kotlin_allow_trailing_comma = true
+ij_kotlin_allow_trailing_comma_on_call_site = true
+
+[*.{yml,yaml,json}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[{Makefile,*.mk}]
+indent_style = tab

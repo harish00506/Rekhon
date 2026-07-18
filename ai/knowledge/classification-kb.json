@@ -1,0 +1,85 @@
+{
+  "_meta": {
+    "file": "classification-kb.json",
+    "why": "Every downstream engine (Safe-to-Spend, emergency fund, forecasting, purchase advisor) depends on knowing which outflows are obligations and what each rupee became. AI-CLS needs seed knowledge to classify from day one, before it has learned from user corrections.",
+    "what": "Seed knowledge for AI-CLS: (a) merchant->category rules for Indian merchants, (b) category defaults incl. default_nature, (c) stream-classification thresholds (§8.2), (d) the nature auto-classification order (§8.3.1). Precedence at runtime: user rule > learned model (>=0.85) > this knowledge base > 'Uncategorised' prompt.",
+    "result": "A fresh install classifies Swiggy as Dining/WANT and BESCOM as Utilities/NEED with clearly-labelled 'estimate - improves with data' confidence.",
+    "source_section": "§8",
+    "version": "1.0",
+    "changelog": [
+      "2026-07-17 — Created from SRS v1.7 §8.1, §8.2, §8.3; merchant list is a starter set, extended by user corrections."
+    ],
+    "precedence": ["user_rule", "learned_model>=0.85", "knowledge_base", "uncategorised_prompt"]
+  },
+
+  "merchant_rules": [
+    { "match": "swiggy", "type": "contains", "category": "Dining", "default_nature": "WANT" },
+    { "match": "zomato", "type": "contains", "category": "Dining", "default_nature": "WANT" },
+    { "match": "irctc", "type": "contains", "category": "Travel", "default_nature": "NEED" },
+    { "match": "bescom|mseb|tneb|kseb|adani electricity", "type": "regex", "category": "Utilities", "default_nature": "NEED" },
+    { "match": "bigbasket|blinkit|zepto|dmart|jiomart", "type": "regex", "category": "Groceries", "default_nature": "NEED" },
+    { "match": "amazon|flipkart|myntra|ajio", "type": "regex", "category": "Shopping", "default_nature": "WANT" },
+    { "match": "uber|ola|rapido", "type": "regex", "category": "Transport", "default_nature": "NEED" },
+    { "match": "indianoil|iocl|bharat petroleum|bpcl|hpcl|hp petrol", "type": "regex", "category": "Fuel", "default_nature": "NEED" },
+    { "match": "netflix|hotstar|spotify|prime video|jio cinema", "type": "regex", "category": "Subscriptions", "default_nature": "WANT" },
+    { "match": "lic|hdfc life|sbi life|max life|icici pru", "type": "regex", "category": "Insurance", "default_nature": "NEED" },
+    { "match": "groww|zerodha|coin|kuvera|et money|indmoney", "type": "regex", "category": "Investment", "default_nature": "INVESTMENT" },
+    { "match": "apollo|pharmeasy|1mg|netmeds|medplus", "type": "regex", "category": "Health", "default_nature": "NEED" },
+    { "match": "byju|unacademy|vedantu|school fee", "type": "regex", "category": "Education", "default_nature": "NEED" }
+  ],
+
+  "category_defaults": [
+    { "category": "Rent", "default_nature": "NEED", "typical_stream": "FIXED" },
+    { "category": "Groceries", "default_nature": "NEED", "typical_stream": "SEMI_FIXED" },
+    { "category": "Utilities", "default_nature": "NEED", "typical_stream": "SEMI_FIXED" },
+    { "category": "Fuel", "default_nature": "NEED", "typical_stream": "SEMI_FIXED" },
+    { "category": "Transport", "default_nature": "NEED", "typical_stream": "SEMI_FIXED" },
+    { "category": "Health", "default_nature": "NEED", "typical_stream": "VARIABLE" },
+    { "category": "Insurance", "default_nature": "NEED", "typical_stream": "FIXED" },
+    { "category": "Education", "default_nature": "NEED", "typical_stream": "FIXED" },
+    { "category": "Dining", "default_nature": "WANT", "typical_stream": "VARIABLE" },
+    { "category": "Shopping", "default_nature": "WANT", "typical_stream": "VARIABLE" },
+    { "category": "Entertainment", "default_nature": "WANT", "typical_stream": "VARIABLE" },
+    { "category": "Travel", "default_nature": "WANT", "typical_stream": "VARIABLE" },
+    { "category": "Subscriptions", "default_nature": "WANT", "typical_stream": "FIXED" },
+    { "category": "Investment", "default_nature": "INVESTMENT", "typical_stream": "FIXED" },
+    { "category": "EMI", "default_nature": "LIABILITY", "typical_stream": "FIXED" }
+  ],
+
+  "stream_classification": {
+    "_algorithm": "score = 0.45*(1-min(cv,1)) + 0.35*(1-min(cadence,1)) + 0.20*dayLock, over last 6 months, n>=3 months activity",
+    "weights": { "cv": 0.45, "cadence": 0.35, "dayLock": 0.20 },
+    "thresholds": {
+      "FIXED":      { "min_score": 0.75, "min_months": 3, "examples": ["rent", "EMI", "subscriptions", "fees"] },
+      "SEMI_FIXED": { "min_score": 0.45, "max_score": 0.75, "examples": ["electricity", "fuel", "groceries"] },
+      "VARIABLE":   { "max_score": 0.45, "examples": ["dining", "shopping", "travel"] }
+    },
+    "overrides": {
+      "known_obligation_is_fixed": "txns linked to loan EMIs, recurring rules, or insurance premia are FIXED regardless of score",
+      "user_pin_beats_model": true,
+      "cold_start": "with < 2 months data, use category-level Indian priors labelled 'estimate - improves with data'"
+    },
+    "learned_model_confidence_gate": 0.85
+  },
+
+  "nature_classification": {
+    "_source": "§8.3.1 auto-classification decision order (first match wins)",
+    "order": [
+      { "step": 1, "rule": "txn on a loan account -> LIABILITY (principal = liability reduction; interest+fees = true cost)" },
+      { "step": 2, "rule": "transfer to an investment/goal-linked account -> INVESTMENT" },
+      { "step": 3, "rule": "creates/updates an asset record (gold, vehicle, property, holdings) -> ASSET" },
+      { "step": 4, "rule": "user rule from past corrections (merchant/category) -> learned nature" },
+      { "step": 5, "rule": "category default_nature from this knowledge base -> NEED or WANT" },
+      { "step": 6, "rule": "amount > 3x category median in a NEED category -> prompt once, remember" }
+    ],
+    "natures": {
+      "NEED":       "Essential living costs. Counts in true spend; feeds emergency-fund essentials and the 50% band.",
+      "WANT":       "Discretionary consumption. Counts in true spend; the 30% band; highest Purchase-Advisor scrutiny.",
+      "INVESTMENT": "Money that stays yours and grows. Excluded from spend; counts as saving rate; the 20% band.",
+      "ASSET":      "Consumption converted to a lasting asset. Excluded from true spend; MUST create/update a linked asset record.",
+      "LIABILITY":  "Debt service. Auto-split: principal = liability reduction; interest & fees = true cost, counted like NEED."
+    },
+    "true_spend_formula": "trueSpend = NEED + WANT + interest/fees (ASSET and INVESTMENT conversions shown separately)",
+    "low_confidence_handling": "flagged for one-tap review in the weekly digest, never blocking save"
+  }
+}

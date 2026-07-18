@@ -1,0 +1,111 @@
+# =============================================================================
+# Insight Orchestrator — the AI workflow (SRS §7.2, AI-ARC-005)
+#
+# Why:  Every engine must run off the UI thread, in the right order, within a strict
+#       time budget, and persist its results so screens never await computation.
+#       This file is the single declarative definition of that pipeline.
+# What: Triggers that start a run, the ordered pipeline stages (L2→L3→L4→L5→persist→
+#       notify), the compute budgets, and the deduplication policy for insights.
+# Result: A background run turns a raw event (e.g. "transaction committed") into a set
+#         of persisted, de-duplicated Insight rows and, if policy allows, a notification.
+# Changelog:
+#   2026-07-17 — Created from SRS v1.7 §7.2, §17.2, §7.1.
+# =============================================================================
+
+version: "1.0"
+source_section: "§7.2"
+engine_id: "AI-ORCH"
+
+# ------------------------------------------------------------------------------
+# TRIGGERS — what starts an orchestration run. All run on background dispatchers.
+# ------------------------------------------------------------------------------
+triggers:
+  - id: txn_committed
+    description: A transaction was written to the DB.
+    debounce_seconds: 5           # coalesce bursts (imports, splits) into one run
+    scope: incremental            # recompute only what the new txn touches
+  - id: day_rollover
+    description: Local calendar day changed (computed in the profile time zone).
+    scope: daily
+  - id: external_data_refresh
+    description: Market / macro / fuel / FX / tax KB refreshed (§16, §22).
+    scope: affected_engines
+  - id: manual_refresh
+    description: User pull-to-refresh on a dashboard.
+    scope: full
+  - id: weekly_deep_analysis
+    description: Scheduled WorkManager deep job (seasonality, stream classification).
+    scope: full
+
+# ------------------------------------------------------------------------------
+# PIPELINE — strict order; each stage consumes only the stages below it (AI-ARC-001).
+# ------------------------------------------------------------------------------
+pipeline:
+  - stage: 1_build_feature_snapshot
+    layer: L2
+    reads: [transactions, accounts, recurring_rules, category_stats, monthly_profiles]
+    produces: FeatureSnapshot        # the immutable input every rule/model evaluates against
+    notes: >
+      Aggregations, recurring detection, fixed-vs-variable + nature classification
+      (uses knowledge/classification-kb.json).
+
+  - stage: 2_run_rules
+    layer: L3
+    input: FeatureSnapshot
+    reads: [../rules/rules-kb.json]
+    call: "RuleEngine.evaluate(ruleId, FeatureSnapshot) -> RuleResult"
+    produces: [RuleResult]           # pass | warn | fail, each citing ruleId + version
+
+  - stage: 3_run_due_predictions
+    layer: L4
+    input: FeatureSnapshot
+    engines: [forecast, seasonality, emergencyfund, vehicle]
+    reads: [../knowledge/calendar-seasonality.json, ../knowledge/vehicle-maintenance-kb.json]
+    produces: [Forecast, SeasonalIndex, EmergencyTarget, MaintenanceDue]
+    policy: run_only_if_due          # skip predictions whose inputs are unchanged
+
+  - stage: 4_decision_ranking
+    layer: L5
+    input: [RuleResult, Forecast, EmergencyTarget]
+    engines: [orchestrator_foo, purchase, healthscore, goals]
+    reads: [../rules/financial-order-of-operations.json]
+    produces: [NextBestRupeeCard, HealthScore, Verdict]
+
+  - stage: 5_persist_insights
+    layer: L3
+    writes: [insights, forecasts, health_scores, decisions]
+    rule: >
+      Every persisted result carries provenance (AI-ARC-003) and the engine/file
+      version that produced it (AI-ARC-006).
+
+  - stage: 6_notify
+    layer: L3
+    handoff: AI-NTF                  # notification engine applies §17.2 policy
+    rule: subject_to_notification_policy
+
+# ------------------------------------------------------------------------------
+# COMPUTE BUDGETS — never block the UI (NFR-003).
+# ------------------------------------------------------------------------------
+budgets:
+  incremental_after_txn: "< 200 ms"
+  weekly_deep_job: "< 3 s for 50k transactions"
+  ui_wait: "0 ms — UI reads persisted results only (AI-ARC-005)"
+
+# ------------------------------------------------------------------------------
+# DEDUPLICATION — one insight per (type + subject + period), never spammed.
+# ------------------------------------------------------------------------------
+deduplication:
+  fingerprint: "type + subject + period"
+  on_match: update_existing          # do not create a duplicate row
+  dismissed_fingerprints: suppress_for_snooze_window
+  reference: "insights.fingerprint UNIQUE (§20.2)"
+
+# ------------------------------------------------------------------------------
+# GUARDRAIL — the L6 output gate. Applies to any LLM verbalisation downstream.
+# ------------------------------------------------------------------------------
+guardrail:
+  rule: AI-ARC-004
+  spec: ../chat/guardrail.md
+  effect: >
+    LLM text is verified against engine results before display; unverifiable numbers
+    are stripped and the response regenerated or refused.

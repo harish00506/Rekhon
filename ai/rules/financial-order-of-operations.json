@@ -1,0 +1,86 @@
+{
+  "_meta": {
+    "file": "financial-order-of-operations.json",
+    "why": "AI-FOO is the deterministic answer to 'what should my next rupee do?'. It supersedes the simple waterfall in §15 and operationalises RULE-EMERG-FIRST as a stage gate.",
+    "what": "The India-adapted priority waterfall (Stages 0-7). The engine consumes the forecast surplus and outputs a ranked action list with rupee amounts; every skipped stage shows why.",
+    "result": "The Home dashboard surfaces the single top action; the Advisor hub shows the full ranked list. Strict-order by default; user reorder allowed but shows the cost of deviation.",
+    "source_section": "§36",
+    "version": "1.0",
+    "changelog": [
+      "2026-07-17 — Created from SRS v1.7 §36; thresholds are rulebook rows (editable, versioned, cited per FOO-003)."
+    ],
+    "rules": {
+      "FOO-001": "Strict-order by default; user reordering allowed (Control pillar) but shows the cost of deviation (e.g. 'funding Goa before the card costs ~INR 2,900/quarter in interest').",
+      "FOO-002": "Home dashboard and monthly ritual MUST surface the single top waterfall action; the Advisor hub shows the full ranked list.",
+      "FOO-003": "Stage thresholds are rulebook rows (§29 schema) — editable, versioned, cited."
+    },
+    "output": "Ranked 'next best rupee' cards, each with amount, stage, evidence, and one-tap goal/contribution creation; recomputed monthly and on any surplus change."
+  },
+
+  "stages": [
+    {
+      "stage": 0,
+      "id": "STARTER_BUFFER",
+      "name": "Starter buffer",
+      "target": "min(INR 50,000, 1 month essentials)",
+      "params_json": { "cap_inr": 50000, "or_months_essentials": 1, "access": "instant" },
+      "rationale": "A tiny instant-access buffer stops the first shock from becoming card debt."
+    },
+    {
+      "stage": 1,
+      "id": "CAPTURE_EPF_VPF",
+      "name": "Capture EPF/VPF",
+      "target": "Verify employer EPF captured; show VPF headroom",
+      "params_json": { "note": "employer EPF is a guaranteed-match analogue" },
+      "rationale": "A guaranteed match / guaranteed return is the highest risk-adjusted rupee available."
+    },
+    {
+      "stage": 2,
+      "id": "KILL_FIRE_DEBT",
+      "name": "Kill fire debt",
+      "target": "Clear any APR >= 13-14% (cards 36-42%, costly personal loans)",
+      "params_json": { "apr_threshold_pct": 13.5 },
+      "rationale": "Paying a 42% card = a guaranteed 42% return — nothing else competes."
+    },
+    {
+      "stage": 3,
+      "id": "FULL_EMERGENCY",
+      "name": "Full emergency fund",
+      "target": "Reach M months of essentials (§10, stability-scaled)",
+      "params_json": { "multiplier_source": "AI-EMF", "gate_rule": "RULE-EMERG-FIRST" },
+      "rationale": "The buffer that protects every later goal from being liquidated in a crisis."
+    },
+    {
+      "stage": 4,
+      "id": "TAX_ADVANTAGED",
+      "name": "Tax-advantaged",
+      "target": "80C headroom (EPF/PPF/ELSS), NPS 80CCD(1B) INR 50k",
+      "params_json": { "only_if": "old_regime_wins_per_§38", "nps_1b_inr": 50000 },
+      "rationale": "Deductions are a return only when the regime comparator says old regime wins for this user."
+    },
+    {
+      "stage": 5,
+      "id": "GOAL_INVESTING",
+      "name": "Goal investing",
+      "target": "> 5-year goals to equity-eligible buckets; shorter goals to debt/FD",
+      "params_json": { "bucket_rule": "RULE-HORIZON" },
+      "rationale": "Long-horizon money compounds; short-horizon money must not risk the goal."
+    },
+    {
+      "stage": 6,
+      "id": "GREY_ZONE_DEBT",
+      "name": "Grey-zone debt",
+      "target": "APR ~10-12%: aggressive payoff generally beats expected equity after tax & risk",
+      "params_json": { "apr_range_pct": [10, 12], "equity_nominal_pct": 12 },
+      "rationale": "A close call — user chooses with the math shown."
+    },
+    {
+      "stage": 7,
+      "id": "LOW_RATE_DEBT",
+      "name": "Low-rate debt",
+      "target": "Home-loan prepay vs invest -> simulator (RULE-PREPAY-VS-INVEST)",
+      "params_json": { "use": "current_effective_rate" },
+      "rationale": "At low rates, invest-vs-prepay is a genuine toss-up; defer to the user's simulator."
+    }
+  ]
+}
