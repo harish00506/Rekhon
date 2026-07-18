@@ -1,0 +1,28 @@
+# Normalize all text files to LF in the repo and working tree (deterministic
+# across Windows/macOS/Linux; matches ktlint/detekt and Linux CI). Silences the
+# "LF will be replaced by CRLF" warnings.
+* text=auto eol=lf
+
+# Windows-only scripts must stay CRLF
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+
+# Gradle wrapper script must stay LF (executable on *nix / CI)
+gradlew text eol=lf
+
+# Binaries — never apply EOL conversion or text diffing
+*.pdf      binary
+*.png      binary
+*.jpg      binary
+*.jpeg     binary
+*.gif      binary
+*.webp     binary
+*.ico      binary
+*.ttf      binary
+*.otf      binary
+*.jar      binary
+*.aar      binary
+*.so       binary
+*.keystore binary
+*.jks      binary
+*.pyc      binary
