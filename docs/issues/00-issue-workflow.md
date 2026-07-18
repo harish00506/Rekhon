@@ -38,7 +38,7 @@ When working on any task, issue, or epic:
    **Privacy & isolation on every path**: per-profile/household scoping, soft-delete
    (`deleted_at`), provenance on every engine result (AI-ARC-003), no new off-device data
    flow without explicit, revocable consent (P-01).
-8. **Branch while working**: `feature/<id-with-dashes>-<short-slug>`.
+8. **Branch while working** (off `dev`): `feature/<id-with-dashes>-<short-slug>`.
 9. **Run + verify (required before Done)** — the app must be **run and observed working**; a
    green build or green `./gradlew test` does **not** close an issue.
    - **Static analysis:** `./gradlew ktlintCheck detekt lintDebug` — no new warnings (§21.6).
@@ -58,11 +58,12 @@ When working on any task, issue, or epic:
      convenience. If the issue touches the thin backend (§22), run it locally too and confirm
      the app still passes **with the backend absent** (P-04).
    - Log every command + result in the tracker **Verification Log** (step 11).
-10. **When task is complete**: commit and push to the **integration trunk (`main`) only** —
-    `main` is always releasable (§21.6, trunk-based). Merge/cherry-pick the feature work onto
-    the trunk, update the tracker + any `ENGINE.md`/ADR docs, bump `VERSION` + `CHANGELOG.md`
-    (see Versioning below), then push. Do not leave finished work only on a feature branch.
-    *(If the team runs a separate `dev` integration branch, substitute it for `main` here.)*
+10. **When task is complete**: open a PR from your `feature/<id>-<slug>` branch into **`dev`**
+    (the integration branch) — **never push straight to `main`/`stage`** (both protected,
+    PR-only, §21.6). In the PR, update the tracker + any `ENGINE.md`/ADR docs and bump
+    `VERSION` + `CHANGELOG.md` (see Versioning below). After it merges to `dev`, **promote by PR**:
+    `dev → stage` for live testing, then `stage → main` for release. Do not leave finished work
+    only on a feature branch.
 11. **Tracker + Verification Log (required when Done)** — create/update
     `docs/issues/<id>-<slug>-tracker.md` from [`_TRACKER_TEMPLATE.md`](_TRACKER_TEMPLATE.md).
     Must include:

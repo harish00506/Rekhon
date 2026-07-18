@@ -47,6 +47,10 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
   `memory.md` is the living progress tracker.
 
 ### Changed
+- **Branch model → GitFlow-lite.** `CLAUDE.md` §7, `docs/issues/00-issue-workflow.md` (steps 8/10),
+  and the design spec §9 now specify `feature/* → dev → stage → main` (was trunk-based), with
+  `main` (releases) and `stage` (live testing) as **protected**, PR-only, CI-gated branches and
+  `dev` as the integration branch.
 - **`docs/features/`** repositioned as the deeper **sub-task** layer the issues link down into
   (kept; the 13-epic CSV is now the canonical epic/issue index). `00-issue-workflow.md` and
   `docs/features/README.md` point at the new spec + CSV.

@@ -120,11 +120,16 @@ engine. Every row is versioned and cited by ID in evidence (AI-ARC-006). See `ai
 
 ## 7. Git & workflow
 
-- Trunk-based; **conventional commits** (`feat:`, `fix:`, `refactor:`…). **Each commit
-  references its requirement ID(s).** Feature-flag incomplete work — no long-lived branches.
-- `main` is always releasable. Do not commit or push unless asked; if asked while on `main`,
-  branch first.
-- Before opening a PR, run the **Definition of Done** (`/pre-merge`, and the PR template).
+- **Branch model (GitFlow-lite):** `feature/<id-dashes>-<slug>` → **`dev`** (integration) →
+  **`stage`** (live testing) → **`main`** (releases). **`main` and `stage` are protected** — no
+  direct pushes or force-pushes; changes land only via reviewed, CI-passing PRs. Day-to-day work
+  is committed on `dev` or a feature branch — **never commit directly to `main`/`stage`.**
+- **Conventional commits** (`feat:`, `fix:`, `refactor:`…); **each commit references its
+  requirement ID(s).** Feature-flag incomplete work — keep feature branches short-lived.
+- `main` and `stage` are always releasable/deployable. Do not commit or push unless asked; if
+  asked while on `main` or `stage`, branch to `dev`/a feature branch first.
+- **Promote by PR:** `feature → dev` (per issue) → `dev → stage` (live testing) → `stage → main`
+  (release). Before opening a PR, run the **Definition of Done** (`/pre-merge`, and the PR template).
 
 ## 8. Definition of Done (§4.2 — applies to every feature)
 
