@@ -9,6 +9,19 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 ## [Unreleased]
 
 ### Added
+- **Gradle multi-module skeleton** (issue 1.1; SRS §21.2/§21.3, ARC-001/ARC-002): the module graph
+  made real and building green — `:app`; `:core:{model,common,database,datastore,network,crypto,
+  designsystem}`; `:domain:engines:forecast` + `:domain:usecase`; `:data:repository`;
+  `:ml:{ocr,llm}`; `:feature:{dashboard,onboarding,transactions}`; `:sync:backup`; `:widget`.
+  Dependencies are one-way `feature → domain → data/core` (ARC-001); `:core:model`/`:domain:*` are
+  pure Kotlin/JVM with a **Gradle-enforced ARC-002 guard** that fails the build (with a clear
+  message) if an Android plugin is applied — proved by a Gradle TestKit test. A single version
+  catalog (`gradle/libs.versions.toml`) pins the §21.3 stack (AGP 8.11 / Kotlin 2.1 / Gradle 8.13,
+  compileSdk 36); `build-logic/` convention plugins (`cfo.kotlin.library`,
+  `cfo.android.{library,application,compose,feature}`, `cfo.hilt`) keep module scripts tiny with
+  shared JVM-17 + ktlint/detekt/Kover config. CI (`.github/workflows/ci.yml`) now runs the real
+  tasks (convention/ARC-002 tests · ktlint/detekt/lint · unit + coverage · assemble) on
+  `dev`/`stage`/`main`.
 - **Reference-style backlog** (`docs/superpowers/specs/`): a planning-grade design spec
   (`2026-07-17-ai-personal-cfo-design.md`, 14 §-sections distilling the SRS) and its
   machine-readable index (`2026-07-17-issues.csv`) — **13 epics, 85 issues** mapped to the SRS

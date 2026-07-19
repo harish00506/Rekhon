@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- User-visible strings are externalised here (§5, ICU plurals as needed). -->
+<resources>
+    <string name="app_name">AI Personal CFO</string>
+</resources>
