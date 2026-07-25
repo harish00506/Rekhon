@@ -13,6 +13,8 @@
                  recommendation corrected after testing disproved it (see §3.1).
     2026-07-25 — G-01 closed with issue 1.2: the coverage gate is wired against the real Money
                  code and proved to fail twice before merging (see §3.1).
+    2026-07-25 — G-03 closed for real with issue 1.5: five custom lint detectors now fail the
+                 build; ADR-0001 written, partly closing G-12.
 -->
 
 # Governance & Standards Audit — AI Personal CFO
@@ -380,7 +382,7 @@ Status column: **DONE** = applied 2026-07-25 · **DEFERRED** = tested, cannot be
 |----|:---:|---------|-----|:------:|:------:|----------------|
 | G-01 | P0 | `koverVerify` has no rules — the coverage gate is a no-op | Wired with issue 1.2 in `configureCoverage()`: 85% on pure-Kotlin modules, 100% on `:core:model`. Proved to fail twice (bound 101 → red; test deleted → 77.5%, red) before merging | S | **DONE** | 1.2 |
 | G-02 | P0 | `/pre-merge` and `settings.json` invoke `verifyPaparazzi*`, which does not exist | Removed both references until 1.8 lands | XS | **DONE** | 1.8 |
-| G-03 | P0 | Lint bans documented in present tense as enforced | `CLAUDE.md` now marks the `GlobalScope`, `System.currentTimeMillis()` and PII-logging bans as review-blocking with the lint rule landing in 1.1.5 | S | **DONE** | 1.1.5 |
+| G-03 | P0 | Lint bans documented in present tense as enforced | **Closed for real by issue 1.5**: the `:lint` module ships five detectors (`CfoMoneyAsFloatingPoint`, `CfoWallClockInDomain`, `CfoGlobalScope`, `CfoHardcodedUiString`, `CfoPiiInLogs`), wired to every module at severity ERROR with no baseline, each proved by seeding a real violation and watching the build fail. `CLAUDE.md` now says lint-enforced because it is | S | **DONE** | 1.5 |
 | G-04 | P0 | detekt has no length rule; documented 40-line limit unenforced (default 60) | Added `complexity.LongMethod.threshold: 40` to `config/detekt/detekt.yml`; `./gradlew detekt` green | XS | **DONE** | — |
 | G-05 | P1 | No dependency update automation | Add `.github/dependabot.yml` for gradle + github-actions | S | — |
 | G-06 | P1 | Actions pinned by mutable tag, not SHA | Pin all five actions to full commit SHAs with a version comment | S | — |
@@ -389,7 +391,7 @@ Status column: **DONE** = applied 2026-07-25 · **DEFERRED** = tested, cannot be
 | G-09 | P1 | Zero local enforcement; Conventional Commits unvalidated | Add lefthook or pre-commit: ktlint on staged Kotlin + commit-msg regex | M | — |
 | G-10 | P1 | No agent-side automated checks | Add `PostToolUse` hooks in `.claude/settings.json` for `*.kt` writes | S | — |
 | G-11 | P1 | `FR-*`/`SEC-*`/`DB-*`/`NFR-*` exist only in a binary PDF; DoD cites unverifiable IDs | Extract `docs/traceability/requirements.csv`; add a CI validator for cited IDs | M | — |
-| G-12 | P1 | Zero ADRs despite ADR-required rules | Write ADR-0001..0005 for the decisions listed in §7 | M | — |
+| G-12 | P1 | Zero ADRs despite ADR-required rules | **Partly closed:** ADR-0001 written with issue 1.5 (the `:lint` module outside the §21.2 graph, plus the money/PII heuristics). The four decisions in §7 — `build-logic` over `buildSrc`, the pinned stack, GitFlow-lite, `Money` as `Long` — remain unrecorded | M | — |
 | G-13 | P2 | CI never parses `ai/**/*.yaml` | Extend the existing validator step to YAML | XS | — |
 | G-14 | P2 | `ai/` validation is parse-only; duplicate/renamed `rule_id` passes CI | Add JSON Schema under `ai/schema/` + schema validation in CI | M | — |
 | G-15 | P2 | No cross-file ID integrity between `rules-kb.json` and `engine-registry.yaml` | Add a referential-integrity check to the CI validator | S | — |

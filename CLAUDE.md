@@ -44,7 +44,7 @@ depend on each other; cross-feature navigation goes through the nav graph with t
 - UI state = one immutable data class per screen as `StateFlow`; events flow up via a sealed
   interface. No LiveData, no leaking mutable state (ARC-004).
 - All async work uses structured concurrency (injected scopes). `GlobalScope` is banned (ARC-006)
-  — review-enforced today; the custom lint rule lands with task 1.1.5.
+  — **lint-enforced**: `CfoGlobalScope` fails the build (`:lint`, issue 1.5).
 
 **The AI is a layered pipeline, not one model (§7).** Layer N depends only on layers below.
 `L1 data → L2 analytics → L3 rules → L4 predictions → L5 decisions → L6 LLM`.
@@ -57,12 +57,16 @@ insights stay reproducible (AI-ARC-006). See `ai/architecture/ai-architecture.md
 ## 3. Money & time — the two classic bug factories (§21.4, review-blocking)
 
 - **MNY-001:** Money is `Long` minor units (paise) end-to-end (DB → engine → UI). Use the
-  `Money` value class. **Any `Double`/`Float` touching a monetary value fails review.**
+  `Money` value class. **Any `Double`/`Float` touching a monetary value fails the build** —
+  `CfoMoneyAsFloatingPoint` (`:lint`, issue 1.5) flags a floating-point declaration with a
+  monetary name; the word list lives in [ADR-0001](docs/adr/0001-custom-lint-module-and-money-heuristic.md).
   Division uses explicit `HALF_EVEN` rounding + remainder distribution for splits.
 - **MNY-002:** Percentages/rates are integer **basis points (bps)** in engines.
 - **TIM-001:** Timestamps are UTC epoch millis. All calendar logic (day rollover, month
   boundaries, due dates) uses the profile time zone via an **injected `Clock`** — never
-  `System.currentTimeMillis()` in domain code (review-blocking; custom lint rule lands with 1.1.5).
+  `System.currentTimeMillis()` in domain code — **lint-enforced**: `CfoWallClockInDomain` fails the
+  build for `:domain:*` and `:core:model` (`SystemClock` in `:core:common` is the one sanctioned
+  wall-clock read).
 - **TIM-002:** Date-only fields are ISO `LocalDate` strings, never midnight timestamps.
 
 ---
@@ -95,10 +99,12 @@ This aligns with test-driven-development: write the failing test first, then the
 - **Immutability:** `data class` with `val` everywhere; collections exposed read-only.
 - **Concurrency:** dispatchers injected (`DispatcherProvider`); DAOs are `suspend`/`Flow`;
   no `runBlocking` outside tests.
-- **Logging:** structured logger; **PII/amount logging is banned in release** (review-blocking;
-  the lint rule that strips it lands with 1.1.5); security events go to `audit_log`.
-- **Strings & resources:** every user-visible string in `strings.xml` with ICU plurals; every
-  colour/dimension from theme tokens. Indian digit grouping (₹1,23,456.78).
+- **Logging:** structured logger; **PII/amount logging is banned** — **lint-enforced**:
+  `CfoPiiInLogs` fails the build on a `Log.*`/`println` whose arguments name money or personal
+  data. Security events go to `audit_log`.
+- **Strings & resources:** every user-visible string in `strings.xml` with ICU plurals — in
+  `:feature:*`, **lint-enforced** by `CfoHardcodedUiString` (`@Preview` sample data exempt); every
+  colour/dimension from theme tokens. Indian digit grouping (₹1,23,456.78) via `MoneyFormatter`.
 - **Docs:** every engine module has an `ENGINE.md` (contract, formula, assumptions, version
   log) — template in `docs/templates/ENGINE.md`. Any deviation from the SRS needs an **ADR**
   (`docs/adr/`).
