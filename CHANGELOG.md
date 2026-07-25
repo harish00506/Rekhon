@@ -8,7 +8,36 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 
 ## [Unreleased]
 
+> **Epic 1 (Foundation & Core Platform) is complete** — issues 1.1–1.10. The app builds, has a
+> themed shell with typed navigation, an encrypted database, a consent ledger, and five custom lint
+> rules plus a coverage gate and screenshot tests that all fail when they should. What it has never
+> had is a **CI run** (no git remote) or a **device run** (no emulator).
+
 ### Added
+- **App shell, typed navigation and the Hilt object graph** (issue 1.10; ARC-001, ARC-003, ARC-004,
+  ARC-006). `MainActivity` now hosts a real `NavHost` inside `CfoTheme` and edge-to-edge insets,
+  instead of a placeholder `Text`. Routes are `@Serializable` objects in `:app` — the only module
+  that knows more than one feature exists — so a destination cannot be reached with a mistyped
+  string and features never import each other. `CoreModule` binds dispatchers, an application
+  `CoroutineScope` (the injectable alternative that makes `GlobalScope` unnecessary), the `Clock`,
+  and the stores from issues 1.6 and 1.9; a missing binding now fails at compile time.
+- **The dashboard as the ARC-004 reference screen** — `DashboardUiState` (immutable),
+  `DashboardEvent` (sealed), `DashboardViewModel` (one `StateFlow` out, one `onEvent` in), with
+  Turbine tests asserting the whole state sequence including loading. Figures are placeholders until
+  issues 5.1/5.2, but the shape is what every later screen copies. Plus a minimal transactions
+  destination, so cross-feature navigation is exercised rather than asserted.
+- **The `Clock` finally reads the user's time zone.** `ProfileZoneProvider` bridges the synchronous
+  `Clock.zone()` that every engine depends on to the `Flow` the setting arrives on, closing the seam
+  issue 1.3 deliberately left open. Every failure — unset, unreadable, or an unparseable zone id —
+  falls back to the device zone, because an exception out of `Clock.zone()` would crash every engine
+  at once.
+
+### Fixed
+- A test weakness found by deliberately breaking the zone fallback: three tests stayed green because
+  a *crashed collector* leaves the same value they assert. Added a case that distinguishes "fell
+  back" from "died", which now fails alongside them.
+- `RoomDatabase` moved from `implementation` to `api` in `:core:database` — `CfoDatabase` extends
+  it, so it is part of that module's public surface.
 - **Settings and the per-feature consent ledger** (issue 1.9; SRS §21.3, P-01, TIM-001).
   `:core:datastore` now holds a real **Proto DataStore** — protobuf schema, generated types, no
   SharedPreferences anywhere. `ConsentStore` gates the four opt-in features (SMS parsing, market
