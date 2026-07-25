@@ -44,7 +44,9 @@ dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:common"))
 
-    implementation(libs.room.runtime)
+    // api, not implementation: CfoDatabase extends RoomDatabase, so the type is part of this
+    // module's public surface and consumers (the DI graph) must be able to see it.
+    api(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
 

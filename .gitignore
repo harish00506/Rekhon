@@ -15,3 +15,6 @@ local.properties
 *.iml
 .cxx/
 captures/
+
+# Kotlin compiler working directory and crash logs (governance audit G-23).
+.kotlin/
