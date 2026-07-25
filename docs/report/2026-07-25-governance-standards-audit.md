@@ -11,6 +11,8 @@
     2026-07-25 — Created. Audit of commit 5a39e1f (branch feature/1-1-1-gradle-skeleton).
     2026-07-25 — Remediation pass: G-02/G-03/G-04 applied. G-01 attempted, reverted, and the
                  recommendation corrected after testing disproved it (see §3.1).
+    2026-07-25 — G-01 closed with issue 1.2: the coverage gate is wired against the real Money
+                 code and proved to fail twice before merging (see §3.1).
 -->
 
 # Governance & Standards Audit — AI Personal CFO
@@ -146,6 +148,14 @@ fail is not a gate.
 **Corrected guidance:** wire the coverage bound **as part of issue 1.2**, against the real `Money`
 code, and in the same change prove it bites by temporarily setting an impossible bound and watching
 the build go red. Until coverable code exists, no threshold is meaningful.
+
+**Resolved 2026-07-25 (issue 1.2).** Cause 2 above was the real one. With `Money` in place,
+`configureCoverage()` measured `:core:model` at 100.000000% and a forced bound of 101 failed the
+build — so the DSL path was never broken, there was simply nothing to measure. A second proof
+(deleting `MoneyFormatterTest`, watching coverage fall to 77.5% and the build go red) confirms the
+gate tracks real tests rather than reporting a constant. Bounds now in force: **85%** on pure-Kotlin
+modules, **100%** on `:core:model`. The 85% floor is wired everywhere but still only *proved* on
+`:core:model`; the other pure-Kotlin modules remain vacuous until they hold real code.
 
 Worth noting independently: the placeholder tests across all 19 modules assert a `const val` and so
 may be exercising nothing. That is harmless for a skeleton, but they should not be mistaken for
@@ -368,7 +378,7 @@ Status column: **DONE** = applied 2026-07-25 · **DEFERRED** = tested, cannot be
 
 | ID | Sev | Finding | Fix | Effort | Status | Existing issue |
 |----|:---:|---------|-----|:------:|:------:|----------------|
-| G-01 | P0 | `koverVerify` has no rules — the coverage gate is a no-op | Wire the bound **with issue 1.2**, against real `Money` code, and prove it fails at an impossible threshold. Cannot be verified on the current skeleton (§3.1) | S | **DEFERRED** | 1.2 |
+| G-01 | P0 | `koverVerify` has no rules — the coverage gate is a no-op | Wired with issue 1.2 in `configureCoverage()`: 85% on pure-Kotlin modules, 100% on `:core:model`. Proved to fail twice (bound 101 → red; test deleted → 77.5%, red) before merging | S | **DONE** | 1.2 |
 | G-02 | P0 | `/pre-merge` and `settings.json` invoke `verifyPaparazzi*`, which does not exist | Removed both references until 1.8 lands | XS | **DONE** | 1.8 |
 | G-03 | P0 | Lint bans documented in present tense as enforced | `CLAUDE.md` now marks the `GlobalScope`, `System.currentTimeMillis()` and PII-logging bans as review-blocking with the lint rule landing in 1.1.5 | S | **DONE** | 1.1.5 |
 | G-04 | P0 | detekt has no length rule; documented 40-line limit unenforced (default 60) | Added `complexity.LongMethod.threshold: 40` to `config/detekt/detekt.yml`; `./gradlew detekt` green | XS | **DONE** | — |
