@@ -37,6 +37,8 @@ androidxHilt = "1.2.0"
 # --- Persistence ---
 room = "2.7.1"
 datastore = "1.1.7"
+protobuf = "4.31.1"
+protobufPlugin = "0.9.5"
 sqlcipher = "4.6.1"
 sqlite = "2.5.1"
 
@@ -132,6 +134,11 @@ androidx-sqlite = { module = "androidx.sqlite:sqlite", version.ref = "sqlite" }
 
 # --- DataStore ---
 datastore = { module = "androidx.datastore:datastore", version.ref = "datastore" }
+# Okio-backed storage: its atomicMove works on every host OS, unlike the default File rename
+# path, which cannot replace an existing file on Windows (issue 1.9).
+datastore-core-okio = { module = "androidx.datastore:datastore-core-okio", version.ref = "datastore" }
+protobuf-javalite = { module = "com.google.protobuf:protobuf-javalite", version.ref = "protobuf" }
+protobuf-protoc = { module = "com.google.protobuf:protoc", version.ref = "protobuf" }
 
 # --- Async / serialization ---
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
@@ -181,6 +188,7 @@ ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlintPlugin" }
 detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
 kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }
 paparazzi = { id = "app.cash.paparazzi", version.ref = "paparazzi" }
+protobuf = { id = "com.google.protobuf", version.ref = "protobufPlugin" }
 
 # --- Convention plugins (defined in build-logic/) ---
 cfo-kotlin-library = { id = "cfo.kotlin.library" }

@@ -9,6 +9,31 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 ## [Unreleased]
 
 ### Added
+- **Settings and the per-feature consent ledger** (issue 1.9; SRS §21.3, P-01, TIM-001).
+  `:core:datastore` now holds a real **Proto DataStore** — protobuf schema, generated types, no
+  SharedPreferences anywhere. `ConsentStore` gates the four opt-in features (SMS parsing, market
+  data, cloud LLM, cloud backup): each consent is **default off**, revocable, and carries the
+  grant/revoke timestamps P-01 needs to answer "since when?" — a bare boolean cannot. Consents are
+  keyed by a stable feature id, so adding one later is not a schema migration. `SettingsStore`
+  carries the profile time zone (the seam `SystemClock` was built for in issue 1.3), currency,
+  privacy blur and theme. Reads are `Flow` — a consent read once at startup could not be revoked —
+  and everything runs on injected dispatchers, returning `Result<_, AppError>` rather than throwing.
+  A corrupt file is `Err(Storage)`, never a silent reset to defaults, because resetting a consent
+  ledger discards decisions the user made without telling them. 13 JVM tests.
+
+### Fixed
+- **Six tests were passing over writes that were failing.** The stores return
+  `Result<Unit, AppError>` instead of throwing (§21.6), so a test that ignores the return value
+  cannot fail — and the first version of these tests ignored all of them. Every write is now
+  asserted with `assertWritten()`, which surfaced the real problem: DataStore's default storage
+  cannot replace an existing file on Windows (`Unable to rename …tmp`), so every second write
+  errored. Storage switched to `OkioStorage`, whose `atomicMove` works on every host, keeping test
+  and production on the same code path. Android was never affected; the silent-green tests were the
+  actual defect.
+
+### Changed
+- Version catalog gains `protobuf`/`protobuf-javalite`/`protoc`, the `com.google.protobuf` Gradle
+  plugin, and `datastore-core-okio`.
 - **Design system: M3 theme, tokens, components and chart primitives** (issue 1.8; SRS §24, §21.6,
   ACC-*). `:core:designsystem` now holds the colour/type/dimension tokens from `docs/Design.md`
   (seed `#00696E`, plus the `positive`/`negative`/`warning` roles Material has no slot for),
