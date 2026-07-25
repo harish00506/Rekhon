@@ -67,10 +67,17 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 - **`docs/features/`** repositioned as the deeper **sub-task** layer the issues link down into
   (kept; the 13-epic CSV is now the canonical epic/issue index). `00-issue-workflow.md` and
   `docs/features/README.md` point at the new spec + CSV.
+- **Documentation no longer asserts gates that are not wired** (governance audit G-02/G-03/G-04;
+  §21.6). `CLAUDE.md` now marks the `GlobalScope` (ARC-006), `System.currentTimeMillis()` (TIM-001)
+  and PII/amount-logging bans as **review-blocking today, lint-enforced with task 1.1.5** instead of
+  claiming an existing lint rule; detekt now sets `complexity.LongMethod.threshold: 40` so the
+  documented 40-line limit is real (detekt's default 60 left it unenforced).
 
 ### Removed
 - Superseded feature-level `docs/issues/1.1-project-skeleton.md` + tracker (replaced by issues
   1.1–1.5, which link down to the existing `docs/features/1.1-project-skeleton/tasks/` files).
+- Dead `verifyPaparazzi*` invocations from `/pre-merge` and `.claude/settings.json` (audit G-02) —
+  the task does not exist until Paparazzi lands with issue 1.8, so the DoD command was unrunnable.
 
 ## [0.1.0] — Epic 0: Foundations & AI blueprint  (2026-07-17)
 

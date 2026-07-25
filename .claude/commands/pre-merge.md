@@ -18,8 +18,9 @@ file:line), then give a one-line **MERGE / DO NOT MERGE** verdict.
    `!git log --oneline origin/main..HEAD`
 2. **Tests exist and pass** — domain logic covered; **≥ 85% engine coverage, 100% money math**.
    `!./gradlew test`  (report coverage from the JaCoCo/Kover summary if present)
-3. **UI covered** — ≥ 1 Compose UI test or Paparazzi screenshot test for changed UI state.
-   `!./gradlew verifyPaparazziDebug` (if UI changed)
+3. **UI covered** — ≥ 1 Compose UI test for changed UI state.
+   (Paparazzi screenshot tests are *not wired yet* — issue 1.8. Do not run `verifyPaparazzi*`;
+   the task does not exist.)
 4. **Offline** — a changed core flow has an airplane-mode / backend-absent test case (P-04).
 5. **Accessibility & i18n** — strings externalised (no new hardcoded user-facing strings),
    dark mode verified, accessibility scan clean.
