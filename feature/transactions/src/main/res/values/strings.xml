@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Transactions copy (§21.6). See the dashboard strings for why literals never live in composables.
+-->
+<resources>
+    <string name="transactions_title">Transactions</string>
+    <string name="transactions_empty">No transactions yet.</string>
+</resources>

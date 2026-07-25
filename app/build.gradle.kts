@@ -4,6 +4,9 @@ plugins {
     alias(libs.plugins.cfo.android.application)
     alias(libs.plugins.cfo.android.compose)
     alias(libs.plugins.cfo.hilt)
+    // Type-safe navigation routes are @Serializable objects (issue 1.10), so a destination cannot
+    // be reached with a mistyped string.
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -34,4 +37,13 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.navigation.compose)
+    implementation(libs.kotlinx.serialization.json)
+
+    // The DI graph wires the stores from issues 1.6 and 1.9.
+    implementation(project(":core:common"))
+    implementation(project(":core:database"))
+    implementation(project(":core:datastore"))
+
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.turbine)
 }
