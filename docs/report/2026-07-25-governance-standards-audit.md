@@ -404,7 +404,7 @@ Status column: **DONE** = applied 2026-07-25 · **DEFERRED** = tested, cannot be
 | G-20 | P2 | `docs/ProjectStructure.md` untracked | Commit it | XS | — |
 | G-21 | P2 | No root `README.md` / `LICENSE` / `CONTRIBUTING.md` | Add them | S | — |
 | G-22 | P2 | Issue status fields carry no information (all `Todo`) | Make the tracker the single status source; drop the field from issue files | S | — |
-| G-23 | P2 | `.kotlin/` not git-ignored | Add to `.gitignore` | XS | — |
+| G-23 | P2 | `.kotlin/` not git-ignored | **DONE** (issue 1.10) — noticed when a Kotlin backend crash wrote two logs there and they were staged by `git add -A` | XS | **DONE** | — |
 | G-24 | P2 | No automated accessibility check despite the DoD requiring one | **Partly closed by 1.8**: WCAG AA contrast is now computed over every token pair in a unit test, the 200%-font case is a committed screenshot (which caught a real amount-wrapping bug), and the 48dp touch target is a token every clickable uses. Still open: an automated a11y *scan* on a real screen, which needs a device | M | 1.8 |
 
 ---
