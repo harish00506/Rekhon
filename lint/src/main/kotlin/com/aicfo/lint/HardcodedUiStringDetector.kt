@@ -29,7 +29,8 @@ import org.jetbrains.uast.getParentOfType
  *
  * Two deliberate exemptions, both to keep the rule followable rather than resented:
  * `@Preview` functions (sample data that ships to no user) and empty literals (a placeholder, not
- * copy). Scope is `:feature:*` only for now; `:core:designsystem` joins when it exists (issue 1.8).
+ * copy). Scope is `:feature:*` and `:core:designsystem` — both are UI, and the design system is
+ * where a stray literal would be copied into every screen that uses the component.
  * `contentDescription` is not covered yet — it needs parameter resolution against Compose, which
  * is not on the analysis classpath until the design system lands. See ADR-0001.
  */
@@ -73,16 +74,16 @@ class HardcodedUiStringDetector :
         /** Composables whose argument is read out to the user. */
         private val TEXT_CALLS = setOf("Text")
 
-        /** Only feature UI is in scope; `:core:designsystem` joins with issue 1.8. */
-        private const val FEATURE_PATH = "/feature/"
-        private const val FEATURE_PACKAGE = "com.aicfo.feature"
+        /** UI modules in scope: feature screens and the design system (joined at issue 1.8). */
+        private val UI_PATHS = listOf("/feature/", "/designsystem/")
+        private val UI_PACKAGES = listOf("com.aicfo.feature", "com.aicfo.core.designsystem")
 
         /**
          * Whether the file belongs to a feature module.
          * Why:    checks the path **or** the package, for the same reason as
          *         [DomainClockDetector.isDomainScope] — path alone stops matching the moment a
          *         source root moves or a test harness relocates the file.
-         * Result: true under `:feature:*`.
+         * Result: true under `:feature:*` or `:core:designsystem`.
          * Input:  [path] — the file's path; [packageName] — its declared package. Output: [Boolean].
          */
         internal fun isFeatureScope(
@@ -90,9 +91,9 @@ class HardcodedUiStringDetector :
             packageName: String?,
         ): Boolean {
             val normalisedPath = "/" + path.replace('\\', '/').trimStart('/')
-            if (normalisedPath.contains(FEATURE_PATH)) return true
+            if (UI_PATHS.any { normalisedPath.contains(it) }) return true
             val pkg = packageName.orEmpty()
-            return pkg == FEATURE_PACKAGE || pkg.startsWith("$FEATURE_PACKAGE.")
+            return UI_PACKAGES.any { pkg == it || pkg.startsWith("$it.") }
         }
 
         /**

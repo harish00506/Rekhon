@@ -15,6 +15,8 @@
                  code and proved to fail twice before merging (see §3.1).
     2026-07-25 — G-03 closed for real with issue 1.5: five custom lint detectors now fail the
                  build; ADR-0001 written, partly closing G-12.
+    2026-07-25 — G-02 closed with issue 1.8 (Paparazzi renders on the JVM, no emulator needed);
+                 G-24 partly closed (contrast + 200%-font now checked).
 -->
 
 # Governance & Standards Audit — AI Personal CFO
@@ -381,7 +383,7 @@ Status column: **DONE** = applied 2026-07-25 · **DEFERRED** = tested, cannot be
 | ID | Sev | Finding | Fix | Effort | Status | Existing issue |
 |----|:---:|---------|-----|:------:|:------:|----------------|
 | G-01 | P0 | `koverVerify` has no rules — the coverage gate is a no-op | Wired with issue 1.2 in `configureCoverage()`: 85% on pure-Kotlin modules, 100% on `:core:model`. Proved to fail twice (bound 101 → red; test deleted → 77.5%, red) before merging | S | **DONE** | 1.2 |
-| G-02 | P0 | `/pre-merge` and `settings.json` invoke `verifyPaparazzi*`, which does not exist | Removed both references until 1.8 lands | XS | **DONE** | 1.8 |
+| G-02 | P0 | `/pre-merge` and `settings.json` invoke `verifyPaparazzi*`, which does not exist | **Closed by issue 1.8**: Paparazzi 2.0.0-alpha02 wired to `:core:designsystem` (1.3.5 is incompatible with Gradle 8.13), three baselines committed, CI step re-enabled, `/pre-merge` and `settings.json` references restored. Proved by corrupting a baseline and watching `verifyPaparazziDebug` go red | XS | **DONE** | 1.8 |
 | G-03 | P0 | Lint bans documented in present tense as enforced | **Closed for real by issue 1.5**: the `:lint` module ships five detectors (`CfoMoneyAsFloatingPoint`, `CfoWallClockInDomain`, `CfoGlobalScope`, `CfoHardcodedUiString`, `CfoPiiInLogs`), wired to every module at severity ERROR with no baseline, each proved by seeding a real violation and watching the build fail. `CLAUDE.md` now says lint-enforced because it is | S | **DONE** | 1.5 |
 | G-04 | P0 | detekt has no length rule; documented 40-line limit unenforced (default 60) | Added `complexity.LongMethod.threshold: 40` to `config/detekt/detekt.yml`; `./gradlew detekt` green | XS | **DONE** | — |
 | G-05 | P1 | No dependency update automation | Add `.github/dependabot.yml` for gradle + github-actions | S | — |
@@ -403,7 +405,7 @@ Status column: **DONE** = applied 2026-07-25 · **DEFERRED** = tested, cannot be
 | G-21 | P2 | No root `README.md` / `LICENSE` / `CONTRIBUTING.md` | Add them | S | — |
 | G-22 | P2 | Issue status fields carry no information (all `Todo`) | Make the tracker the single status source; drop the field from issue files | S | — |
 | G-23 | P2 | `.kotlin/` not git-ignored | Add to `.gitignore` | XS | — |
-| G-24 | P2 | No automated accessibility check despite the DoD requiring one | Add Espresso/Compose a11y checks when the first screen lands | M | 1.8 |
+| G-24 | P2 | No automated accessibility check despite the DoD requiring one | **Partly closed by 1.8**: WCAG AA contrast is now computed over every token pair in a unit test, the 200%-font case is a committed screenshot (which caught a real amount-wrapping bug), and the 48dp touch target is a token every clickable uses. Still open: an automated a11y *scan* on a real screen, which needs a device | M | 1.8 |
 
 ---
 

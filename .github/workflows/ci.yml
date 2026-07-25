@@ -11,7 +11,8 @@
 #   2026-07-17 — Created from SRS v1.7 §21.3, §21.5, §21.6, SEC-007.
 #   2026-07-19 — Issue 1.1: wired to the real Gradle tasks (skeleton now exists). Added
 #                dev/stage triggers, Android SDK setup, and the ARC-002 convention tests.
-#                Paparazzi (issue 1.8) and OSV scan (issue 11.6) land with their issues.
+#                OSV scan (issue 11.6) lands with its issue.
+#   2026-07-25 — Issue 1.8: Paparazzi screenshot diff enabled (JVM, no emulator required).
 # =============================================================================
 name: CI
 
@@ -75,8 +76,10 @@ jobs:
       - name: Unit tests (+ coverage; money math must be 100%)
         run: ./gradlew testDebugUnitTest koverVerify --stacktrace
 
-      # - name: Paparazzi screenshot diff        # wired by issue 1.8 (design system)
-      #   run: ./gradlew verifyPaparazziDebug --stacktrace
+      - name: Paparazzi screenshot diff
+        # Wired by issue 1.8. Renders on the JVM, so no emulator is needed — which is the only
+        # reason this project has any visual coverage at all.
+        run: ./gradlew verifyPaparazziDebug --stacktrace
       # - name: Dependency vulnerability scan     # wired by issue 11.6 (OSV, SEC-007)
       #   run: ./gradlew dependencyCheckAnalyze --stacktrace || true
 

@@ -2,8 +2,14 @@
 plugins {
     alias(libs.plugins.cfo.android.library)
     alias(libs.plugins.cfo.android.compose)
+    alias(libs.plugins.paparazzi)
 }
 
 android {
     namespace = "com.aicfo.core.designsystem"
+}
+
+dependencies {
+    // Money + MoneyFormatter (issue 1.2): amounts are formatted in one place, never re-implemented.
+    implementation(project(":core:model"))
 }
