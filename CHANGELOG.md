@@ -9,6 +9,27 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 ## [Unreleased]
 
 ### Added
+- **Encrypted persistence core** (issue 1.6; SRS §20/§23, SEC-003, DB-003, P-01/P-04): `:core:database`
+  now holds `CfoDatabase` (Room v1) over **SQLCipher**, with the passphrase wrapped by a
+  Keystore-backed Tink AEAD — a random passphrase is generated once and only its ciphertext touches
+  disk, so the key that unwraps it never leaves the TEE. Base schema is the four tables the issue
+  names — `profile`, `account`, `transactions`, `category` — each carrying the invariants that apply
+  to every table: amounts as `Long` paise (MNY-001), instants as UTC epoch millis with user-picked
+  dates as ISO strings (TIM-001/002), soft delete via `deleted_at_utc_millis`, and per-profile
+  scoping on every row and every query. Schema exported to `core/database/schemas/` so issue 1.7's
+  migration tests have a fixture. No `fallbackToDestructiveMigration` (DB-003) — with no server
+  copy, a missing migration must fail loudly rather than drop tables. 12 unit tests cover the key
+  path, including that an unwrap failure surfaces as an error rather than silently minting a new
+  passphrase, which would present an unopenable database as an empty one.
+
+### Known gaps
+- **The encrypted round-trip is unproven.** SQLCipher and the Keystore exist only on a device, and
+  this machine has none (`adb devices` empty, no AVD installed). `EncryptedDatabaseTest` — the
+  ciphertext-on-disk check, the read-back and the reopen-with-the-same-key check — is written and
+  compiles but **has never executed**. One `connectedDebugAndroidTest` run settles it.
+- Database re-key (`PRAGMA rekey`) is intentionally not implemented: `rotateWithPrevious()` supplies
+  both keys and is tested, but shipping an untested path that rewrites the whole encrypted file
+  would be worse than the gap. It belongs with issue 11.1.
 - **Custom lint: five rules that now fail the build** (issue 1.5 / task 1.1.5; SRS §21.3/§21.4/§21.6,
   MNY-001, TIM-001, ARC-006, P-01 — closes governance audit G-03). A new `:lint` module ships
   `CfoMoneyAsFloatingPoint` (a floating-point declaration with a monetary name), `CfoWallClockInDomain`
