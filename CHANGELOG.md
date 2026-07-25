@@ -9,6 +9,25 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 ## [Unreleased]
 
 ### Added
+- **Migration test harness — DB-003 enforced on every build, with no device** (issue 1.7; §21.5).
+  Room's `MigrationTestHelper` needs hardware this project does not have, which would have left
+  "destructive migrations are forbidden" enforced by nobody. But the exported schema JSON is data,
+  and `androidx.room:room-migration` parses it in plain Kotlin — so `MigrationSafetyTest` now checks
+  the structural half of DB-003 in ordinary unit tests: no table or column may be removed, no column
+  may change SQL affinity, and no nullable column may become `NOT NULL` (which passes on an empty
+  database and fails on real data). Additive changes stay allowed. It also asserts the schema-level
+  money/time invariants where the data actually lives — `*_minor` and `*_utc_millis` are INTEGER,
+  `*_iso_date` is TEXT, every table has soft delete and profile scoping — and that fixtures are
+  contiguous from v1 and include the declared version, so a bump cannot skip its schema silently.
+  The row-level half (`MigrationRoundTripTest`, device-only) and the per-version procedure are in
+  `core/database/MIGRATIONS.md`.
+
+  Proved by dropping a real column from `AccountEntity` and letting KSP export a genuine v2: the
+  guard failed with *"migrating 1 -> 2 would destroy data: account: column 'current_balance_minor'
+  was removed"*. Two things surfaced while doing that — a hand-edited schema JSON cannot fake a
+  destructive change (KSP regenerates it), and the test task stayed `UP-TO-DATE` when only a schema
+  file changed, so `schemas/` is now a declared test input; without that the guard could have
+  reported a stale pass.
 - **Encrypted persistence core** (issue 1.6; SRS §20/§23, SEC-003, DB-003, P-01/P-04): `:core:database`
   now holds `CfoDatabase` (Room v1) over **SQLCipher**, with the passphrase wrapped by a
   Keystore-backed Tink AEAD — a random passphrase is generated once and only its ciphertext touches

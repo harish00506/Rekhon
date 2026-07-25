@@ -30,6 +30,16 @@ ksp {
     arg("room.schemaLocation", layout.projectDirectory.dir("schemas").asFile.absolutePath)
 }
 
+// Issue 1.7: the exported schemas are *inputs* to the unit tests, not just build output. Without
+// this, editing a schema JSON leaves the test task UP-TO-DATE and the migration guard reports a
+// stale pass — found the hard way while proving the guard could fail.
+tasks.withType<Test>().configureEach {
+    inputs
+        .dir(layout.projectDirectory.dir("schemas"))
+        .withPropertyName("roomExportedSchemas")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+}
+
 dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:common"))
@@ -47,6 +57,10 @@ dependencies {
     implementation(libs.tink.android)
 
     testImplementation(libs.kotlinx.coroutines.test)
+    // Issue 1.7: parses the exported schema JSON so DB-003 is checked on the JVM, not only on a
+    // device. Both are JVM artifacts, which is what makes the migration guard runnable in CI.
+    testImplementation(libs.room.migration)
+    testImplementation(libs.kotlinx.serialization.json)
 
     androidTestImplementation(libs.androidx.test.junit)
     androidTestImplementation(libs.room.testing)
