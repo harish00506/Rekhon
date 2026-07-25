@@ -64,6 +64,7 @@ glance = "1.1.1"
 ktlintPlugin = "12.1.2"
 detekt = "1.23.8"
 kover = "0.9.1"
+paparazzi = "2.0.0-alpha02"
 # Android Lint ships on its own track: lint version = AGP version + 23. Must track `agp` above
 # or the custom detectors in :lint compile against a different API than the one running them.
 lintVersion = "31.11.1"
@@ -179,6 +180,7 @@ hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlintPlugin" }
 detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
 kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }
+paparazzi = { id = "app.cash.paparazzi", version.ref = "paparazzi" }
 
 # --- Convention plugins (defined in build-logic/) ---
 cfo-kotlin-library = { id = "cfo.kotlin.library" }

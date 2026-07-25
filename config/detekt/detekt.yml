@@ -4,6 +4,13 @@
 # Changelog: 2026-07-19 — Created for issue 1.1.
 # =============================================================================
 style:
+  MagicNumber:
+    # A design-token file is the one place literals are correct — that is the whole point of
+    # §21.6's "every colour and dimension from theme tokens": the values live here so they live
+    # nowhere else. Flagging them here would push contributors to suppress the rule locally, which
+    # is worse. Tests are excluded for the usual reason: fixture values are the test's input.
+    excludes: ['**/theme/**', '**/test/**', '**/androidTest/**']
+
   ReturnCount:
     # Guard clauses are the idiomatic Kotlin way to express "this case is not ours" — the lint
     # detectors (issue 1.5) are a stack of them, and nesting those into a single exit would make
