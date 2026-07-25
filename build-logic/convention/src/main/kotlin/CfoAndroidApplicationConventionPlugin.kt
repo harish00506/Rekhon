@@ -29,6 +29,7 @@ class CfoAndroidApplicationConventionPlugin : Plugin<Project> {
                 defaultConfig.targetSdk = intVersion("targetSdk")
             }
             configureQuality()
+            configureCustomLint()
             dependencies {
                 add("testImplementation", libs.findLibrary("junit4").get())
             }

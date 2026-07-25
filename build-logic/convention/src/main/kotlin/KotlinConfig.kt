@@ -36,6 +36,14 @@ internal fun Project.configureKotlinAndroid(
             sourceCompatibility = JavaVersion.VERSION_17
             targetCompatibility = JavaVersion.VERSION_17
         }
+        lint {
+            // Issue 1.5: the custom checks are errors, and an error stops the build. No baseline
+            // is configured on purpose — task 1.1.5 §4 forbids grandfathering violations, and a
+            // baseline is how a "blocking" rule quietly becomes advisory.
+            abortOnError = true
+            warningsAsErrors = false
+            checkDependencies = true
+        }
     }
     configureKotlinJvmTarget()
 }

@@ -3,6 +3,14 @@
 # Only project-specific deltas live here (§21.6); everything else uses detekt defaults.
 # Changelog: 2026-07-19 — Created for issue 1.1.
 # =============================================================================
+style:
+  ReturnCount:
+    # Guard clauses are the idiomatic Kotlin way to express "this case is not ours" — the lint
+    # detectors (issue 1.5) are a stack of them, and nesting those into a single exit would make
+    # them materially harder to read. The rule's real target, tangled mid-function returns, still
+    # counts against the limit.
+    excludeGuardClauses: true
+
 complexity:
   LongMethod:
     # CLAUDE.md §21.6: "functions ≈ ≤ 40 lines". Detekt's default is 60, which left the
