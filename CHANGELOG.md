@@ -9,6 +9,19 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 ## [Unreleased]
 
 ### Added
+- **`Result<T, AppError>` error model** (issue 1.4 / task 1.1.4; SRS §21.6): the typed return every
+  engine and repository will use, so no exception crosses a layer boundary and absence is modelled
+  rather than nulled. `sealed interface Result` with `Ok`/`Err` and short-circuiting `map`,
+  `flatMap`, `mapError`, `fold`, `getOrElse`, `getOrNull`, `errorOrNull`, `onOk`, `onErr` — a `when`
+  over it is exhaustive with no `else`. `AppError` is a sealed hierarchy (`Validation`, `NotFound`,
+  `Storage`, `Network(retryable)`, `Crypto`, `Unexpected`) carrying a stable `code` for the UI to
+  map to `strings.xml` plus a non-localised fallback message. `runCatchingToResult { }` is the
+  single sanctioned catch site: it converts I/O and crypto failures to `Err`, and deliberately
+  rethrows `CancellationException` (swallowing it breaks structured concurrency, ARC-006),
+  `IllegalState`/`IllegalArgumentException` (a failed `require`/`check` is a bug and §21.6 reserves
+  crashes for those), and JVM `Error`s. **No PII by construction (P-01):** the only path from a
+  `Throwable` to an `AppError` keeps the exception's class name and discards its message, which
+  routinely carries paths, tokens or row data. 29 new tests; `:core:common` holds at 100% coverage.
 - **Injected `Clock` + `DispatcherProvider`** (issue 1.3 / task 1.1.3; SRS §21.4 TIM-001/TIM-002,
   §21.2 ARC-006): `:core:common` now owns the time and concurrency seams every engine will inject.
   `Clock` answers `nowUtcMillis()` / `zone()` / `today()` in the **profile time zone** — so a spend
