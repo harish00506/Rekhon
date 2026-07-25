@@ -9,6 +9,25 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 ## [Unreleased]
 
 ### Added
+- **Injected `Clock` + `DispatcherProvider`** (issue 1.3 / task 1.1.3; SRS §21.4 TIM-001/TIM-002,
+  §21.2 ARC-006): `:core:common` now owns the time and concurrency seams every engine will inject.
+  `Clock` answers `nowUtcMillis()` / `zone()` / `today()` in the **profile time zone** — so a spend
+  at 23:30 IST belongs to that day's budget even though UTC has rolled over — with `startOfDay`,
+  `endOfDay`, `isSameProfileDay` and `toProfileDate` as extensions, and `SystemClock` as the single
+  sanctioned `System.currentTimeMillis()` call site in the codebase (TIM-001). The profile zone is
+  read through a provider lambda on every call, which is the seam Proto DataStore settings (issue
+  1.9) will plug into. `DispatcherProvider` exposes Main/IO/Default so no call site names
+  `Dispatchers.IO` inline and `GlobalScope` is never needed (ARC-006). Uses `java.time` (native at
+  minSdk 26, NFR-008) rather than adding `kotlinx-datetime`. `FakeClock` and `TestDispatchers` ship
+  from a **`testFixtures`** artifact so later modules reuse one set of doubles. 20 tests covering the
+  IST day/month rollover, UTC-midnight straddling, a DST transition, and virtual-time coroutines;
+  `:core:common` measures **100%** line coverage.
+
+### Verified
+- The **85% coverage floor now bites a second module.** Issue 1.2 could only prove the gate on
+  `:core:model`; `:core:common` measured 89.66% before the gaps were closed, so the floor is
+  demonstrably measuring real code rather than passing vacuously. Also learned: Kover counts
+  `testFixtures` classes, so published fixtures need their own tests.
 - **`Money` value class** (issue 1.2 / task 1.1.2; SRS §21.4, MNY-001/MNY-002, NFR-012): the single
   monetary type, `Long` minor units (paise) end-to-end — `@JvmInline value class Money(val minor: Long)`
   in `:core:model` with overflow-checked `plus`/`minus`/`times` (`Math.*Exact`, so a wrong answer
