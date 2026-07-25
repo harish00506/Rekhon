@@ -121,6 +121,9 @@ room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
+# Schema-bundle parsing (issue 1.7). A JVM artifact, so DB-003 can be checked in unit tests
+# rather than only on a device.
+room-migration = { module = "androidx.room:room-migration", version.ref = "room" }
 
 # --- Encrypted store ---
 sqlcipher = { module = "net.zetetic:sqlcipher-android", version.ref = "sqlcipher" }
