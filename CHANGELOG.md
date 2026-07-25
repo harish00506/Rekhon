@@ -9,6 +9,39 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 ## [Unreleased]
 
 ### Added
+- **Design system: M3 theme, tokens, components and chart primitives** (issue 1.8; SRS §24, §21.6,
+  ACC-*). `:core:designsystem` now holds the colour/type/dimension tokens from `docs/Design.md`
+  (seed `#00696E`, plus the `positive`/`negative`/`warning` roles Material has no slot for),
+  `CfoTheme`, five components (`CfoCard`, `CfoButton`, `CfoSecondaryButton`, `CfoListRow`,
+  `CfoAmountText`) and two chart primitives (`CfoProportionBar`, `CfoSparkline`). Accessibility is
+  built in rather than reviewed in: 48dp is a token every clickable applies, charts **require** a
+  `contentDescription`, and `CfoAmountText` always renders the sign so debit/credit never depends on
+  colour alone (P-02). Copy stays out of the module — text and descriptions are parameters, because
+  the wording belongs in the calling feature's `strings.xml`.
+- **Screenshot tests that run without a device** (closes governance audit **G-02**). Paparazzi
+  renders light, dark and 200%-font baselines on the JVM — the first visual coverage this project
+  has had, and with no emulator the only way anyone sees what the UI looks like. The CI step,
+  `/pre-merge` step 3 and the `settings.json` allowlist entries removed in issue 1.5 are restored.
+  Proved by overwriting a baseline and watching `verifyPaparazziDebug` go red.
+- **WCAG AA contrast asserted in a unit test** (partly closes **G-24**). Every token pair in both
+  themes is computed against the 4.5:1 threshold, including amount colours on their own surfaces —
+  turning "accessibility scan passes" from a claim in the DoD into arithmetic that runs on every
+  build. The suite includes a deliberately failing pair so the formula itself is proved able to fail.
+
+### Fixed
+- **Amounts wrapped mid-number at 200% font** — `-₹2,450.00` broke with the final `0` on the next
+  line, which reads as a different number. Caught by the new 200%-font screenshot on its first run;
+  `CfoAmountText` is now `maxLines = 1, softWrap = false`, and `CfoListRow` lets the label wrap
+  instead of the figure.
+
+### Changed
+- Paparazzi is pinned to **2.0.0-alpha02**: the 1.3.5 stable hooks a Gradle internal that moved and
+  cannot run on Gradle 8.13. It is test-only tooling that ships in no APK; revisit when 2.0 is stable.
+- `CfoHardcodedUiString` (issue 1.5) now covers `:core:designsystem` as well as `:feature:*`,
+  closing the follow-up recorded in ADR-0001.
+- `config/detekt/detekt.yml`: `MagicNumber` is excluded for `**/theme/**` and test sources. A design
+  token file is the one place a literal is correct — that is what §21.6 means by "every colour from
+  theme tokens" — and flagging it there would only teach contributors to suppress the rule.
 - **Migration test harness — DB-003 enforced on every build, with no device** (issue 1.7; §21.5).
   Room's `MigrationTestHelper` needs hardware this project does not have, which would have left
   "destructive migrations are forbidden" enforced by nobody. But the exported schema JSON is data,
