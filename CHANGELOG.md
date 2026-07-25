@@ -9,6 +9,32 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 ## [Unreleased]
 
 ### Added
+- **Custom lint: five rules that now fail the build** (issue 1.5 / task 1.1.5; SRS §21.3/§21.4/§21.6,
+  MNY-001, TIM-001, ARC-006, P-01 — closes governance audit G-03). A new `:lint` module ships
+  `CfoMoneyAsFloatingPoint` (a floating-point declaration with a monetary name), `CfoWallClockInDomain`
+  (`System.currentTimeMillis()`/`now()` inside `:domain:*` or `:core:model`, with `:core:common`'s
+  `SystemClock` exempt as the one sanctioned wall-clock read), `CfoGlobalScope`, `CfoHardcodedUiString`
+  (a literal in a `:feature:*` `Text(...)`, `@Preview` exempt) and `CfoPiiInLogs` (a log line naming
+  money or personal data). All at severity **error**, wired to every module — Android *and*
+  pure-Kotlin, via the standalone `com.android.lint` plugin, because `Money` lives in a `java-library`
+  module that lint would otherwise never visit — with **no baseline**, so nothing is grandfathered.
+  Each rule was proved by seeding a real violation in a real module and watching the build go red,
+  not by the fixture suite alone. 14 fixture tests cover every rule in both directions.
+- **ADR-0001** — the repository's first architecture decision record: why `:lint` sits outside the
+  §21.2 module graph, and the exact money/PII identifier lists with the false-positive stance behind
+  them (partly closes audit G-12).
+
+### Changed
+- **`CLAUDE.md` now says "lint-enforced" because it is.** The `GlobalScope`, wall-clock,
+  PII-logging and hardcoded-string entries named the rules as review-blocking with enforcement
+  "landing in 1.1.5"; each now names the detector that blocks it.
+- `config/detekt/detekt.yml`: `style.ReturnCount.excludeGuardClauses: true` — guard clauses are
+  idiomatic Kotlin and the lint detectors are built from them; the rule's real target, tangled
+  mid-function returns, still counts.
+
+### Fixed
+- Four `ExperimentalCoroutinesApi` opt-in warnings in `DispatcherProviderTest` (from issue 1.3),
+  which earlier runs had missed because the compile task was up-to-date.
 - **`Result<T, AppError>` error model** (issue 1.4 / task 1.1.4; SRS §21.6): the typed return every
   engine and repository will use, so no exception crosses a layer boundary and absence is modelled
   rather than nulled. `sealed interface Result` with `Ok`/`Err` and short-circuiting `map`,

@@ -64,6 +64,9 @@ glance = "1.1.1"
 ktlintPlugin = "12.1.2"
 detekt = "1.23.8"
 kover = "0.9.1"
+# Android Lint ships on its own track: lint version = AGP version + 23. Must track `agp` above
+# or the custom detectors in :lint compile against a different API than the one running them.
+lintVersion = "31.11.1"
 
 # --- Testing ---
 junit4 = "4.13.2"
@@ -83,6 +86,11 @@ hilt-gradlePlugin = { module = "com.google.dagger:hilt-android-gradle-plugin", v
 ktlint-gradlePlugin = { module = "org.jlleitschuh.gradle:ktlint-gradle", version.ref = "ktlintPlugin" }
 detekt-gradlePlugin = { module = "io.gitlab.arturbosch.detekt:detekt-gradle-plugin", version.ref = "detekt" }
 kover-gradlePlugin = { module = "org.jetbrains.kotlinx:kover-gradle-plugin", version.ref = "kover" }
+
+# --- Custom lint checks (:lint, issue 1.5) — compileOnly; the running lint supplies them ---
+lint-api = { module = "com.android.tools.lint:lint-api", version.ref = "lintVersion" }
+lint-checks = { module = "com.android.tools.lint:lint-checks", version.ref = "lintVersion" }
+lint-tests = { module = "com.android.tools.lint:lint-tests", version.ref = "lintVersion" }
 
 # --- AndroidX core ---
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }

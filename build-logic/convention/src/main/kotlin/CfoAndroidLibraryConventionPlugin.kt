@@ -30,6 +30,7 @@ class CfoAndroidLibraryConventionPlugin : Plugin<Project> {
                 configureKotlinAndroid(this)
             }
             configureQuality()
+            configureCustomLint()
             dependencies {
                 add("testImplementation", libs.findLibrary("junit4").get())
             }

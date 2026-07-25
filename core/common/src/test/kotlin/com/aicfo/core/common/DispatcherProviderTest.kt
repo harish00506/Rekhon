@@ -1,6 +1,7 @@
 package com.aicfo.core.common
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -25,6 +26,7 @@ import org.junit.Test
  * Result: async work in this app is injectable and its tests are time-controlled, not wall-clocked.
  * Changelog: 2026-07-25 — Created for issue 1.3.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class DispatcherProviderTest {
     /**
      * `Dispatchers.Main` has no factory on a plain JVM, so it must be installed before the

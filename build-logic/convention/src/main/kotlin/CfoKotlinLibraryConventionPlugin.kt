@@ -1,6 +1,8 @@
+import com.android.build.api.dsl.Lint
 import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.kotlin.dsl.configure
 import org.gradle.kotlin.dsl.dependencies
 
 /**
@@ -34,10 +36,19 @@ class CfoKotlinLibraryConventionPlugin : Plugin<Project> {
             with(pluginManager) {
                 apply("java-library")
                 apply("org.jetbrains.kotlin.jvm")
+                // Standalone Android Lint on a pure-JVM module (issue 1.5). Without it lint never
+                // runs here at all — and :core:model is where Money lives, so MNY-001 would be
+                // unenforced in the one module it exists to protect.
+                apply("com.android.lint")
             }
             configureKotlinJvm()
             configureQuality()
             configureCoverage()
+            configureCustomLint()
+            extensions.configure<Lint> {
+                abortOnError = true
+                checkDependencies = true
+            }
             // Defense-in-depth for the reverse ordering (Android plugin applied later).
             enforceNoAndroidPlugins()
             dependencies {

@@ -75,3 +75,9 @@ include(":sync:backup")
 
 // :widget                  Glance home-screen widget
 include(":widget")
+
+// :lint                    custom Android Lint detectors that make MNY-001 / TIM-001 / ARC-006 and
+//                          the strings + PII-logging bans fail the build (issue 1.5). Build tooling,
+//                          not a product module — it ships in no APK. Outside the §21.2 graph, so
+//                          see docs/adr/0001-custom-lint-module-and-money-heuristic.md.
+include(":lint")

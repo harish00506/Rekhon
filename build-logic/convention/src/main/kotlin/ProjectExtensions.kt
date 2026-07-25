@@ -61,6 +61,21 @@ internal fun Project.configureQuality() {
 }
 
 /**
+ * Adds the project's custom lint checks to a module and makes them block the build.
+ * Why:    issue 1.5 / audit G-03 — MNY-001, TIM-001, ARC-006, the strings rule and the PII-logging
+ *         ban were all documented as enforced while nothing in the build checked them. Applying
+ *         `:lint` here rather than per-module means a new module cannot opt out by omission, which
+ *         is how enforcement quietly erodes.
+ * What:   depends on the `:lint` checks, turns warnings into build failures, and deliberately
+ *         configures **no baseline** — task 1.1.5 §4 forbids grandfathering existing violations.
+ * Result: `./gradlew lint` fails on a banned construct anywhere in the tree.
+ * Input:  the receiver [Project]. Output: none (adds the dependency + lint config).
+ */
+internal fun Project.configureCustomLint() {
+    dependencies.add("lintChecks", project(":lint"))
+}
+
+/**
  * Gives `koverVerify` actual teeth on a pure-Kotlin module.
  * Why:    CLAUDE.md §4 promises "coverage >= 85%; money math 100%", and until issue 1.2 that
  *         promise was a no-op — Kover was applied with **zero rules**, so `koverVerify` passed at
