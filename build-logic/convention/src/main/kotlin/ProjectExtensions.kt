@@ -3,6 +3,9 @@ import org.gradle.api.Project
 import org.gradle.api.artifacts.VersionCatalog
 import org.gradle.api.artifacts.VersionCatalogsExtension
 import io.gitlab.arturbosch.detekt.extensions.DetektExtension
+import kotlinx.kover.gradle.plugin.dsl.AggregationType
+import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
+import kotlinx.kover.gradle.plugin.dsl.KoverProjectExtension
 import org.gradle.kotlin.dsl.configure
 import org.gradle.kotlin.dsl.getByType
 
@@ -56,6 +59,49 @@ internal fun Project.configureQuality() {
         config.setFrom(rootProject.file("config/detekt/detekt.yml"))
     }
 }
+
+/**
+ * Gives `koverVerify` actual teeth on a pure-Kotlin module.
+ * Why:    CLAUDE.md §4 promises "coverage >= 85%; money math 100%", and until issue 1.2 that
+ *         promise was a no-op — Kover was applied with **zero rules**, so `koverVerify` passed at
+ *         any coverage including 0% (governance audit G-01). A gate that cannot fail is worse
+ *         than no gate: CI goes green and reviewers believe it checked something.
+ * What:   a line-coverage floor on the modules the rule actually targets (:core:model,
+ *         :core:common, :domain:*) — 85% normally, 100% for the money module ([MONEY_MODULE_PATH]).
+ * Result: deleting a money test, or adding an untested branch to Money, fails the build. Proved
+ *         by temporarily raising the bound to an impossible 101 and watching it go red.
+ * Input:  the receiver [Project]. Output: none (configures the kover extension).
+ */
+internal fun Project.configureCoverage() {
+    val minimum = if (path == MONEY_MODULE_PATH) FULL_COVERAGE else MIN_MODULE_COVERAGE
+    extensions.configure<KoverProjectExtension> {
+        reports {
+            verify {
+                rule("$path line coverage must be >= $minimum% (CLAUDE.md §4)") {
+                    minBound(minimum, CoverageUnit.LINE, AggregationType.COVERED_PERCENTAGE)
+                }
+            }
+        }
+    }
+}
+
+/** Engine/domain floor from CLAUDE.md §4. */
+private const val MIN_MODULE_COVERAGE = 85
+
+/** Money math is the one place the rule is absolute (MNY-001). */
+private const val FULL_COVERAGE = 100
+
+/**
+ * The module holding money math, which is held to 100% rather than 85%.
+ *
+ * Kover 0.9 has no per-rule class filter (verified against the plugin API: `KoverVerifyRule`
+ * exposes only bounds and `groupBy`; `filters` live on the whole report set), so "money math
+ * 100%" is expressed as "the money module is 100%". That is true today — `:core:model` contains
+ * only `Money` and `MoneyFormatter` — and it is the stricter reading, so it cannot under-enforce
+ * the rule. If non-money types land here (issue 1.4's `Result`/`AppError`), they inherit 100%
+ * too; move money to its own module before relaxing this.
+ */
+private const val MONEY_MODULE_PATH = ":core:model"
 
 /**
  * ARC-002 guard: fail the build if a pure-Kotlin module applies an Android plugin.
