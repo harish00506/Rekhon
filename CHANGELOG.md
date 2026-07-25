@@ -9,6 +9,22 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 ## [Unreleased]
 
 ### Added
+- **`Money` value class** (issue 1.2 / task 1.1.2; SRS §21.4, MNY-001/MNY-002, NFR-012): the single
+  monetary type, `Long` minor units (paise) end-to-end — `@JvmInline value class Money(val minor: Long)`
+  in `:core:model` with overflow-checked `plus`/`minus`/`times` (`Math.*Exact`, so a wrong answer
+  throws instead of wrapping), `percentOf(bps: Int)` using **HALF_EVEN** banker's rounding on integer
+  basis points (MNY-002 — no `Double` rate), and `split(n)`/`allocate(weights)` using the
+  largest-remainder method so parts **sum exactly** to the original, for refunds as well as payments.
+  Plus `MoneyFormatter` rendering Indian 2,2,3 digit grouping (₹1,23,456.78) with the grouping written
+  out rather than delegated, so output does not drift with JDK or Android locale data. 35 tests:
+  the T1–T8 table, a seeded property sweep (P-08) over ~41 000 split combinations, and the Long
+  extremes. No `Double`/`Float` touches a monetary value anywhere.
+- **A coverage gate that actually blocks** (governance audit G-01): `configureCoverage()` in the
+  `cfo.kotlin.library` convention plugin gives `koverVerify` its first real rules — line coverage
+  ≥ 85% on pure-Kotlin modules and **100% on `:core:model`** (money math). Previously Kover was
+  applied with zero rules and passed at any coverage, including 0%. Proved to bite twice before
+  merging: an impossible 101% bound failed the build, and deleting one test dropped the measurement
+  to 77.5% and failed it again.
 - **Gradle multi-module skeleton** (issue 1.1; SRS §21.2/§21.3, ARC-001/ARC-002): the module graph
   made real and building green — `:app`; `:core:{model,common,database,datastore,network,crypto,
   designsystem}`; `:domain:engines:forecast` + `:domain:usecase`; `:data:repository`;

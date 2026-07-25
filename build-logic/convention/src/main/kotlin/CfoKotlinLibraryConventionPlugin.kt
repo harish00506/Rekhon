@@ -9,11 +9,13 @@ import org.gradle.kotlin.dsl.dependencies
  * Why:  §21.2 / ARC-002 — :core:model, :core:common and :domain:* must be plain
  *       Kotlin with no Android dependency so engines stay portable (KMP-ready) and
  *       fast to unit-test. This plugin makes that the default and enforces it.
- * What: applies kotlin("jvm") + java-library, sets JVM 17, adds the quality gate,
- *       wires JUnit4, and installs the ARC-002 guard.
- * Result: a module that compiles as pure JVM and fails the build if it ever gains
- *         an Android plugin.
+ * What: applies kotlin("jvm") + java-library, sets JVM 17, adds the quality gate and the
+ *       coverage bounds, wires JUnit4, and installs the ARC-002 guard.
+ * Result: a module that compiles as pure JVM, fails the build if it ever gains an Android
+ *         plugin, and fails it again if coverage drops below the §4 bounds.
  * Changelog: 2026-07-19 — Created for issue 1.1.
+ *            2026-07-25 — Issue 1.2: added configureCoverage() so koverVerify has real rules
+ *            (governance audit G-01 — it previously passed at 0% coverage).
  */
 class CfoKotlinLibraryConventionPlugin : Plugin<Project> {
     /**
@@ -35,6 +37,7 @@ class CfoKotlinLibraryConventionPlugin : Plugin<Project> {
             }
             configureKotlinJvm()
             configureQuality()
+            configureCoverage()
             // Defense-in-depth for the reverse ordering (Android plugin applied later).
             enforceNoAndroidPlugins()
             dependencies {
