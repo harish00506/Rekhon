@@ -1,0 +1,17 @@
+# =============================================================================
+# Detekt overlay — applied on top of the default ruleset (buildUponDefaultConfig=true).
+# Only project-specific deltas live here (§21.6); everything else uses detekt defaults.
+# Changelog: 2026-07-19 — Created for issue 1.1.
+# =============================================================================
+complexity:
+  LongMethod:
+    # CLAUDE.md §21.6: "functions ≈ ≤ 40 lines". Detekt's default is 60, which left the
+    # documented limit unenforced (governance audit G-04).
+    threshold: 40
+
+naming:
+  FunctionNaming:
+    # @Composable functions are PascalCase by convention (matches ktlint exemption).
+    ignoreAnnotated: ['Composable']
+  TopLevelPropertyNaming:
+    ignoreAnnotated: ['Composable']

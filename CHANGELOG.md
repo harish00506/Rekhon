@@ -9,6 +9,19 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 ## [Unreleased]
 
 ### Added
+- **Gradle multi-module skeleton** (issue 1.1; SRS §21.2/§21.3, ARC-001/ARC-002): the module graph
+  made real and building green — `:app`; `:core:{model,common,database,datastore,network,crypto,
+  designsystem}`; `:domain:engines:forecast` + `:domain:usecase`; `:data:repository`;
+  `:ml:{ocr,llm}`; `:feature:{dashboard,onboarding,transactions}`; `:sync:backup`; `:widget`.
+  Dependencies are one-way `feature → domain → data/core` (ARC-001); `:core:model`/`:domain:*` are
+  pure Kotlin/JVM with a **Gradle-enforced ARC-002 guard** that fails the build (with a clear
+  message) if an Android plugin is applied — proved by a Gradle TestKit test. A single version
+  catalog (`gradle/libs.versions.toml`) pins the §21.3 stack (AGP 8.11 / Kotlin 2.1 / Gradle 8.13,
+  compileSdk 36); `build-logic/` convention plugins (`cfo.kotlin.library`,
+  `cfo.android.{library,application,compose,feature}`, `cfo.hilt`) keep module scripts tiny with
+  shared JVM-17 + ktlint/detekt/Kover config. CI (`.github/workflows/ci.yml`) now runs the real
+  tasks (convention/ARC-002 tests · ktlint/detekt/lint · unit + coverage · assemble) on
+  `dev`/`stage`/`main`.
 - **Reference-style backlog** (`docs/superpowers/specs/`): a planning-grade design spec
   (`2026-07-17-ai-personal-cfo-design.md`, 14 §-sections distilling the SRS) and its
   machine-readable index (`2026-07-17-issues.csv`) — **13 epics, 85 issues** mapped to the SRS
@@ -54,10 +67,17 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 - **`docs/features/`** repositioned as the deeper **sub-task** layer the issues link down into
   (kept; the 13-epic CSV is now the canonical epic/issue index). `00-issue-workflow.md` and
   `docs/features/README.md` point at the new spec + CSV.
+- **Documentation no longer asserts gates that are not wired** (governance audit G-02/G-03/G-04;
+  §21.6). `CLAUDE.md` now marks the `GlobalScope` (ARC-006), `System.currentTimeMillis()` (TIM-001)
+  and PII/amount-logging bans as **review-blocking today, lint-enforced with task 1.1.5** instead of
+  claiming an existing lint rule; detekt now sets `complexity.LongMethod.threshold: 40` so the
+  documented 40-line limit is real (detekt's default 60 left it unenforced).
 
 ### Removed
 - Superseded feature-level `docs/issues/1.1-project-skeleton.md` + tracker (replaced by issues
   1.1–1.5, which link down to the existing `docs/features/1.1-project-skeleton/tasks/` files).
+- Dead `verifyPaparazzi*` invocations from `/pre-merge` and `.claude/settings.json` (audit G-02) —
+  the task does not exist until Paparazzi lands with issue 1.8, so the DoD command was unrunnable.
 
 ## [0.1.0] — Epic 0: Foundations & AI blueprint  (2026-07-17)
 
