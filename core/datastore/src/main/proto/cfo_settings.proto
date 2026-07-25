@@ -1,0 +1,41 @@
+// The on-device settings and consent ledger (issue 1.9; SRS §21.3, P-01).
+//
+// Why:  P-01 makes every off-device path opt-in, per feature, and revocable. That is a schema, not
+//       a bag of booleans — which is why §21.3 pins Proto DataStore and bans SharedPreferences.
+// What: one message holding user settings plus a map of consent records keyed by feature id.
+// Note: field numbers are permanent. Add new fields with new numbers; never renumber or reuse, or
+//       an existing install will decode old bytes into the wrong field.
+syntax = "proto3";
+
+option java_package = "com.aicfo.core.datastore.proto";
+option java_multiple_files = true;
+
+// How the user wants the app themed. THEME_SYSTEM is 0 so it is the proto3 default.
+enum ThemePreferenceProto {
+  THEME_SYSTEM = 0;
+  THEME_LIGHT = 1;
+  THEME_DARK = 2;
+}
+
+// One consent decision, with the history P-01 requires.
+//
+// A bare bool cannot answer "when did I agree to this?" or "when did I withdraw it?", which is
+// exactly what a privacy-first app must be able to show. Timestamps are UTC epoch millis
+// (TIM-001), stamped from the injected Clock.
+message ConsentRecordProto {
+  bool granted = 1;
+  int64 granted_at_utc_millis = 2;
+  int64 revoked_at_utc_millis = 3;
+}
+
+message CfoSettingsProto {
+  // IANA zone id. Empty means "not set" — the Clock then falls back to the device zone.
+  string profile_time_zone_id = 1;
+  // ISO-4217. Empty means "not set".
+  string currency_code = 2;
+  // Issue 5.3: hides amounts on screen without deleting anything.
+  bool privacy_blur_enabled = 3;
+  ThemePreferenceProto theme = 4;
+  // Keyed by ConsentFeature.id. A missing entry means NOT granted — absence is never consent.
+  map<string, ConsentRecordProto> consents = 5;
+}
