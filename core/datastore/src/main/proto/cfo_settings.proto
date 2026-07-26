@@ -38,4 +38,20 @@ message CfoSettingsProto {
   ThemePreferenceProto theme = 4;
   // Keyed by ConsentFeature.id. A missing entry means NOT granted — absence is never consent.
   map<string, ConsentRecordProto> consents = 5;
+
+  // --- Onboarding (issue 2.1; FR-ONB-001, FR-ONB-002) ---
+
+  // When first-run onboarding finished, UTC epoch millis (TIM-001). 0 = never completed, which is
+  // what sends the app to the onboarding flow at launch. A timestamp rather than a bool so "when
+  // did this profile start?" stays answerable — the same reason ConsentRecordProto keeps its dates.
+  int64 onboarding_completed_at_utc_millis = 6;
+  // What the user calls themselves. Local only; never leaves the device (P-01). Empty = not set.
+  string profile_display_name = 7;
+
+  // Quick-setup seeds (FR-ONB-002) — MNY-001: minor units (paise) as int64, never a float.
+  // Issue 2.3 reads these to seed budgets and the emergency-fund target. All optional: the step is
+  // skippable, and 0 reads as "not answered" (a stated income of zero is not a useful seed).
+  int64 quick_setup_monthly_income_minor = 8;
+  int64 quick_setup_rent_emi_minor = 9;
+  int64 quick_setup_typical_savings_minor = 10;
 }

@@ -17,11 +17,19 @@
 
 ## Current state
 
-- **Version:** `0.1.0` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (starting).
-- **Currently working file:** _none — no Kotlin/Gradle code exists yet._
-- **In progress:** _nothing._
-- **Next up:** **Epic 1 · issue 1.1** — Gradle multi-module skeleton + version catalog + CI
-  ([1.1](issues/1.1-gradle-multi-module-skeleton-version-catalog-ci.md)).
+- **Version:** `0.2.1` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (Epic 2 under way).
+- **Currently working file:** `core/crypto/` + `app/` — issue 2.2, on branch
+  `feature/2-2-biometric-pin-app-lock-biometricprompt`.
+- **In progress:** **Epic 2 · issue 2.2** — biometric/PIN app lock
+  ([2.2](issues/2.2-biometric-pin-app-lock-biometricprompt.md) ·
+  [tracker](issues/2.2-biometric-pin-app-lock-biometricprompt-tracker.md)). It also takes the first
+  real schema version bump (`audit_log`, v2) and the first `:data:repository` class, which had been
+  pencilled in for 2.5.
+- **Next up:** **2.5** (accounts CRUD) and **2.3** (quick-setup seeds, which can now read the
+  figures 2.1 captures). 2.5 inserts the last deferred onboarding step; where, is fixed by
+  [ADR-0002](adr/0002-onboarding-step-order.md).
+- **Still the largest gap:** CI has never run — there is no git remote, so every green is a local
+  green on one Windows machine.
 
 ## Completed
 
@@ -36,6 +44,14 @@
   - `/run` and `/verify` commands; `VERSION` + `CHANGELOG.md`.
 - **Project docs (this set, 2026-07-18):** `PRD.md`, `Architecture.md`, `Rules.md`, `phase.md`,
   `Design.md`, `memory.md`.
+- **Epic 1 — Foundation & Core Platform (v0.1.0, 2026-07-25):** issues 1.1–1.10 — the multi-module
+  skeleton and its ARC-002 guard, `Money`/`Clock`/`Result`, five custom lint rules, encrypted Room
+  over SQLCipher plus the migration harness, the M3 design system, Proto DataStore settings and the
+  consent ledger, and the app shell with a typed nav graph. Full account of what is and is not
+  proven: [`handoff_epic_completed/epic-1-foundation-handoff.md`](handoff_epic_completed/epic-1-foundation-handoff.md).
+- **Epic 2 — issue 2.1 (v0.2.1, 2026-07-25):** the 4-step first-run onboarding. First screen that
+  writes; closes the "nothing sets the profile time zone" seam from Epic 1 and gives the consent
+  ledger its first caller.
 
 ## How to update
 

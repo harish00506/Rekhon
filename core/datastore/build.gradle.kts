@@ -18,7 +18,10 @@ protobuf {
 }
 
 dependencies {
-    implementation(project(":core:model"))
+    // api, not implementation: issue 2.1 puts Money in this module's public surface
+    // (QuickSetupSeeds), so consumers must be able to see the type — the same reason
+    // :core:database exposes RoomDatabase with api.
+    api(project(":core:model"))
     implementation(project(":core:common"))
     implementation(libs.datastore)
     implementation(libs.datastore.core.okio)

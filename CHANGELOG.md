@@ -6,6 +6,58 @@ Single source of truth for the version number is the repo-root [`VERSION`](VERSI
 `app/build.gradle.kts` `versionName` equal to it. Epics map to the SRS roadmap (§26); every
 entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`](docs/issues/00-issue-workflow.md).
 
+## [0.2.0] — Epic 2: Onboarding, Security & Accounts
+
+> First-run onboarding, the biometric app lock, and the accounts + net-worth core. Epic 1 built
+> foundations; this is the first epic a user can see.
+
+### [0.2.1] — Issue 2.1: 4-step onboarding flow  (2026-07-25)
+
+- **Implemented:** the first-run flow — welcome & privacy pledge → SMS-parsing opt-in → profile,
+  currency and time zone → optional quick setup (FR-ONB-001, FR-ONB-002, FR-ONB-003; P-01, P-04,
+  TIM-001, MNY-001, ARC-001, ARC-004). A new install now opens on onboarding and every launch after
+  it on the dashboard.
+  - **The profile time zone is finally written.** `ProfileZoneProvider` has been wired to `Clock`
+    since issue 1.10, but nothing ever set the setting it reads, so every day boundary and month
+    rollover in the app resolved in the *device* zone by fallback. Onboarding closes that seam.
+  - **The consent ledger has its first caller** (P-01). The SMS opt-in is its own step, default
+    **off**, with FR-ONB-003's required wording — what is read, that parsing is on-device only, and
+    that it can be skipped. Declining writes **nothing**: a revocation record for a consent never
+    granted would be a false entry in a ledger whose whole purpose is answering "since when?"
+    truthfully.
+  - **One atomic write.** `SettingsStore.completeOnboarding` writes the profile, the seeds and the
+    completion timestamp in a single `updateData`. Writing them separately could mark the app
+    onboarded with no time zone — after which every date resolves wrongly and nothing ever asks
+    again. Nothing reaches disk until Finish, so an abandoned onboarding leaves no partial profile.
+  - **`MoneyFormatter.parse`** (MNY-001) — the quick-setup amounts are the first the user types.
+    Exact via `BigInteger`, never `Double`: `"0.07".toDouble() * 100` is `7.000000000000001`.
+    Anything it cannot represent exactly — extra precision, out of `Long` range, a Devanagari digit
+    — returns `null` rather than an amount that is nearly right.
+- **Deviation on record:** the four steps are not FR-ONB-001's literal ordering — its steps 3
+  (security) and 4 (first account) belong to issues 2.2 and 2.5, which this issue does not depend
+  on. [ADR-0002](docs/adr/0002-onboarding-step-order.md) records it and fixes where those steps
+  insert. **FR-ONB-001 is not closed by this issue alone.**
+- **Tests:** 202 passed, 0 skipped (was 156). +31 JVM tests in `:feature:onboarding`, +10 money
+  parsing, +5 settings-store, +3 `MainViewModel`. Plus one instrumented test driving the flow
+  against real DataStore on a device, and an emulator pass covering fresh install, relaunch,
+  process death, airplane mode, dark mode and a 200% font setting.
+
+### Fixed
+- **Three defects the tests and the device found, not review.** A consent row whose *label* was not
+  tappable — only the switch was, which is the most common complaint about settings rows and costs a
+  user with a motor impairment several attempts; the row is now `toggleable` with `Role.Switch`, one
+  announced control with a full-width target. A duplicated Indian time zone: the emulator (and many
+  real devices) report the legacy alias `Asia/Calcutta`, so `distinct()` on ids left `Asia/Calcutta`
+  and `Asia/Kolkata` sitting in the list as two apparently different answers — in this app's primary
+  market, on the one screen where the choice must be unambiguous; de-duplication is now by
+  `ZoneId.rules`. And a device-only race where the instrumented test read the store before the write
+  landed: on a real I/O dispatcher the composition goes idle while the file is untouched, which the
+  JVM twin's unconfined dispatcher can never reveal.
+- `UnusedPrivateMember` now ignores `@Preview` in `detekt.yml` — a preview has no caller by design,
+  and the alternative was making it public, which would put it in the module's API.
+
+---
+
 ## [Unreleased]
 
 > **Epic 1 (Foundation & Core Platform) is complete** — issues 1.1–1.10. The app builds, has a

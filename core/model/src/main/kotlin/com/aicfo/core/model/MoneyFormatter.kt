@@ -22,9 +22,18 @@ import java.math.BigInteger
  */
 object MoneyFormatter {
     private const val RUPEE_SIGN = "₹"
+    private const val RUPEE_CHAR = '₹'
     private const val PAISE_DIGITS = 2
     private const val FIRST_GROUP = 3
     private const val LATER_GROUPS = 2
+
+    private const val PAISE_IN_A_RUPEE = 100L
+
+    /** Only `0`–`9`. `Char.isDigit()` is deliberately not used — see [parse]. */
+    private val ASCII_DIGITS = '0'..'9'
+    private val PAISE_PER_RUPEE = BigInteger.valueOf(PAISE_IN_A_RUPEE)
+    private val LONG_MIN = BigInteger.valueOf(Long.MIN_VALUE)
+    private val LONG_MAX = BigInteger.valueOf(Long.MAX_VALUE)
 
     /**
      * Formats an amount for display.
@@ -43,6 +52,63 @@ object MoneyFormatter {
         val sign = if (amount.minor < 0L) "-" else ""
         return "$sign$RUPEE_SIGN$rupees.$paise"
     }
+
+    /**
+     * Reads an amount a user typed.
+     *
+     * Why:    onboarding's quick-setup step (FR-ONB-002) is the first screen that takes a typed
+     *         amount, and every later one will reuse this. The obvious implementation —
+     *         `text.toDouble() * 100` — is exactly what MNY-001 forbids: `"0.07".toDouble() * 100`
+     *         is `7.000000000000001`. So the whole path stays on text and [BigInteger], the same
+     *         reason [format] uses it, and the two are proved to round-trip.
+     * What:   strips the decoration [format] adds (₹, grouping commas, spaces), splits on the
+     *         decimal point, pads the paise, and refuses anything it cannot represent exactly.
+     * Result: the amount, or `null` for input that is empty, malformed, more precise than paise, or
+     *         outside the [Long] range. Never a rounded or wrapped approximation — a parser that
+     *         guesses is worse than one that declines, because the user cannot see it guessing.
+     * Input:  [text] — anything the user typed, e.g. `45000`, `1.5`, `₹1,23,456.78`, `-100`.
+     * Output: [Money], or `null`.
+     * Changelog: 2026-07-25 — Created for issue 2.1.
+     */
+    fun parse(text: String): Money? {
+        val cleaned = text.filterNot { it == ',' || it.isWhitespace() || it == RUPEE_CHAR }
+        val negative = cleaned.startsWith('-')
+        val parts = cleaned.removePrefix("-").split('.')
+        val rupees = parts.first()
+        // padEnd, not padStart: a single fraction digit is tens of paise — "1.5" is ₹1.50.
+        val paise = parts.getOrElse(1) { "" }.padEnd(PAISE_DIGITS, '0')
+        if (!isExactlyRepresentable(parts.size, rupees, paise)) return null
+
+        val magnitude = BigInteger(rupees).multiply(PAISE_PER_RUPEE).add(BigInteger(paise))
+        val minor = if (negative) magnitude.negate() else magnitude
+        // Refuse rather than wrap: a wrapped amount turns a fortune into a debt, silently.
+        return if (minor in LONG_MIN..LONG_MAX) Money(minor.toLong()) else null
+    }
+
+    /**
+     * Decides whether cleaned input can become an exact paise amount.
+     * Why:    split out so [parse] has one rejection point rather than a ladder of returns, and so
+     *         each condition is named where it is easy to read against the tests.
+     * What:   at most one decimal point, a rupee part present, no more precision than paise, and
+     *         ASCII digits only — `Char.isDigit()` accepts Devanagari `१`, which then throws inside
+     *         [BigInteger]: a validation that reads as correct and crashes. This app is India-first,
+     *         so that input is plausible rather than exotic.
+     * Result: `true` when [parse] may safely convert, `false` when it must return `null`.
+     * Input:  [partCount] — how many pieces the decimal point produced; [rupees]; [paise] — already
+     *         padded to [PAISE_DIGITS].
+     * Output: `Boolean`.
+     * Changelog: 2026-07-25 — Created for issue 2.1.
+     */
+    private fun isExactlyRepresentable(
+        partCount: Int,
+        rupees: String,
+        paise: String,
+    ): Boolean =
+        partCount <= 2 &&
+            rupees.isNotEmpty() &&
+            paise.length <= PAISE_DIGITS &&
+            rupees.all { it in ASCII_DIGITS } &&
+            paise.all { it in ASCII_DIGITS }
 
     /**
      * Inserts Indian thousands separators into a run of digits.

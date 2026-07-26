@@ -2,9 +2,11 @@ package com.aicfo.core.datastore
 
 import androidx.datastore.core.DataStore
 import app.cash.turbine.test
+import com.aicfo.core.common.FakeClock
 import com.aicfo.core.common.TestDispatchers
 import com.aicfo.core.common.getOrNull
 import com.aicfo.core.datastore.proto.CfoSettingsProto
+import com.aicfo.core.model.Money
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
@@ -38,6 +40,7 @@ class SettingsStoreTest {
     val folder = TemporaryFolder()
 
     private val scope = TestScope(UnconfinedTestDispatcher())
+    private val clock = FakeClock()
     private lateinit var dataStore: DataStore<CfoSettingsProto>
     private lateinit var store: SettingsStore
 
@@ -45,7 +48,12 @@ class SettingsStoreTest {
         val file = folder.newFile("settings.pb").also { it.delete() }
         dataStore =
             CfoSettingsStorage.create(file.absolutePath, scope)
-        store = DataStoreSettingsStore(dataStore, TestDispatchers(UnconfinedTestDispatcher(scope.testScheduler)))
+        store =
+            DataStoreSettingsStore(
+                dataStore,
+                clock,
+                TestDispatchers(UnconfinedTestDispatcher(scope.testScheduler)),
+            )
     }
 
     /** Input: none. Output: releases the store's scope between tests. */
@@ -150,4 +158,107 @@ class SettingsStoreTest {
             assertEquals(ThemeSetting.LIGHT, store.observe().first().getOrNull()!!.theme)
             assertTrue(consents.observe(ConsentFeature.MARKET_DATA).first().getOrNull()!!.granted)
         }
+
+    /**
+     * Input:  a fresh store.
+     * Output: asserts nobody is onboarded by default — the flag is what sends a new install to the
+     *         onboarding flow, so defaulting it the other way would skip first-run setup entirely
+     *         and leave the app with no time zone.
+     */
+    @Test
+    fun `a fresh store has not been onboarded`() =
+        scope.runTest {
+            open()
+            val settings = store.observe().first().getOrNull()!!
+            assertFalse(settings.isOnboarded)
+            assertNull(settings.onboardingCompletedAtUtcMillis)
+            assertNull(settings.profileDisplayName)
+            assertNull(settings.quickSetup.monthlyIncome)
+        }
+
+    /**
+     * Input:  a completed onboarding carrying every field (issue 2.1, FR-ONB-001/002).
+     * Output: asserts the whole profile round-trips and the completion time comes from the injected
+     *         clock, not the wall clock (TIM-001) — which is what makes the timestamp assertable at
+     *         all.
+     */
+    @Test
+    fun `completing onboarding writes the whole profile`() =
+        scope.runTest {
+            open()
+            clock.setTo(FIXED_COMPLETION_MILLIS)
+
+            assertWritten(
+                store.completeOnboarding(
+                    OnboardingProfile(
+                        timeZoneId = "Asia/Kolkata",
+                        currencyCode = "INR",
+                        displayName = "Harish",
+                        quickSetup =
+                            QuickSetupSeeds(
+                                monthlyIncome = Money(85_000_00),
+                                rentOrEmi = Money(22_000_00),
+                                typicalSavings = Money(15_000_00),
+                            ),
+                    ),
+                ),
+            )
+
+            val settings = store.observe().first().getOrNull()!!
+            assertTrue(settings.isOnboarded)
+            assertEquals(FIXED_COMPLETION_MILLIS, settings.onboardingCompletedAtUtcMillis)
+            assertEquals("Asia/Kolkata", settings.profileTimeZoneId)
+            assertEquals("INR", settings.currencyCode)
+            assertEquals("Harish", settings.profileDisplayName)
+            assertEquals(Money(85_000_00), settings.quickSetup.monthlyIncome)
+            assertEquals(Money(22_000_00), settings.quickSetup.rentOrEmi)
+            assertEquals(Money(15_000_00), settings.quickSetup.typicalSavings)
+        }
+
+    /**
+     * Input:  onboarding completed with the optional step skipped.
+     * Output: asserts the seeds read back as `null`, not ₹0. Issue 2.3 seeds budgets from these, and
+     *         a skipped income stored as zero would seed a budget claiming the user earns nothing.
+     */
+    @Test
+    fun `skipping quick setup leaves the seeds unanswered rather than zero`() =
+        scope.runTest {
+            open()
+            assertWritten(store.completeOnboarding(OnboardingProfile("Asia/Kolkata", "INR")))
+
+            val settings = store.observe().first().getOrNull()!!
+            assertTrue(settings.isOnboarded)
+            assertNull(settings.quickSetup.monthlyIncome)
+            assertNull(settings.quickSetup.rentOrEmi)
+            assertNull(settings.quickSetup.typicalSavings)
+            assertNull("a skipped name is unset, not an empty name", settings.profileDisplayName)
+        }
+
+    /**
+     * Input:  a collector watching while onboarding completes.
+     * Output: asserts the change is emitted, which is what lets the app move off the onboarding
+     *         flow, and that the profile arrives **with** the flag rather than after it. A half
+     *         write would mark the app onboarded with no time zone, and every date in the app would
+     *         then silently resolve in the device zone with nothing left to ask again.
+     */
+    @Test
+    fun `onboarding lands as one atomic change`() =
+        scope.runTest {
+            open()
+            store.observe().test {
+                assertFalse(awaitItem().getOrNull()!!.isOnboarded)
+
+                assertWritten(store.completeOnboarding(OnboardingProfile("Europe/London", "INR")))
+
+                val completed = awaitItem().getOrNull()!!
+                assertTrue(completed.isOnboarded)
+                assertEquals("Europe/London", completed.profileTimeZoneId)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    private companion object {
+        /** An arbitrary fixed instant — the point is that it comes from [FakeClock], not the wall. */
+        const val FIXED_COMPLETION_MILLIS = 1_800_000_000_000L
+    }
 }

@@ -48,7 +48,7 @@ object CfoDataStoreFactory {
                 scope = scope,
             )
         return CfoDataStores(
-            settings = DataStoreSettingsStore(dataStore, dispatchers),
+            settings = DataStoreSettingsStore(dataStore, clock, dispatchers),
             consents = DataStoreConsentStore(dataStore, clock, dispatchers),
         )
     }
