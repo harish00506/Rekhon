@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import com.aicfo.core.database.entity.AccountEntity
+import com.aicfo.core.database.entity.AuditLogEntity
 import com.aicfo.core.database.entity.CategoryEntity
 import com.aicfo.core.database.entity.ProfileEntity
 import com.aicfo.core.database.entity.TransactionEntity
@@ -160,4 +161,50 @@ interface CategoryDao {
             "AND deleted_at_utc_millis IS NULL ORDER BY name",
     )
     fun observeForProfile(profileId: String): Flow<List<CategoryEntity>>
+}
+
+/**
+ * Appends and reads security events (issue 2.2; §21.6, ARC-005).
+ *
+ * Append-only by design: there is no update and no delete. A security log a caller can rewrite is
+ * not evidence of anything, and rows leave only when the whole database does (erase-all, SEC-006).
+ */
+@Dao
+interface AuditLogDao {
+    /**
+     * Appends one event.
+     * Why:    `@Insert` with no conflict strategy — every event is a new row. `REPLACE` would let a
+     *         supplied id overwrite an earlier event, which is the one thing an append-only log
+     *         must not permit.
+     * Result: the row is present afterwards. Input: [event]. Output: none (suspends).
+     */
+    @Insert
+    suspend fun append(event: AuditLogEntity)
+
+    /**
+     * Observes the most recent events, newest first.
+     * Why:    a Flow so a future security screen (issue 11.3) re-renders as events arrive. Bounded
+     *         by [limit] because this table only grows, and no screen wants every row.
+     * Result: emits on every append.
+     * Input:  [limit] — how many rows at most. Output: `Flow<List<AuditLogEntity>>`.
+     */
+    @Query("SELECT * FROM audit_log ORDER BY occurred_at_utc_millis DESC, id DESC LIMIT :limit")
+    fun observeRecent(limit: Int): Flow<List<AuditLogEntity>>
+
+    /**
+     * Counts events of one kind since an instant.
+     * Why:    the question a security review actually asks — "how many failed unlocks this week?" —
+     *         answered in SQL rather than by pulling every row into memory.
+     * Result: the count, 0 when there are none.
+     * Input:  [event] — an `AuditEvent` constant name; [sinceUtcMillis] — inclusive lower bound.
+     * Output: `Int`.
+     */
+    @Query(
+        "SELECT COUNT(*) FROM audit_log WHERE event = :event " +
+            "AND occurred_at_utc_millis >= :sinceUtcMillis",
+    )
+    suspend fun countSince(
+        event: String,
+        sinceUtcMillis: Long,
+    ): Int
 }

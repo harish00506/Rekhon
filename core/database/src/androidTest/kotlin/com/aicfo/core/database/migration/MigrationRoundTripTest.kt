@@ -4,6 +4,8 @@ import androidx.room.testing.MigrationTestHelper
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.aicfo.core.database.CfoDatabase
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -25,10 +27,10 @@ import org.junit.runner.RunWith
  * installed), so like `EncryptedDatabaseTest` this compiles but has never executed:
  * `./gradlew :core:database:connectedDebugAndroidTest`.
  *
- * **At version 1 there is no migration to test.** The single test below is the one meaningful
- * assertion available now — that the exported fixture really matches what Room creates — and the
- * commented template is the pattern to copy at the first bump. Writing an empty "migration test"
- * that asserts nothing would be the vacuous gate this project has already been bitten by once.
+ * **Version 2 (issue 2.2) is the first real bump**, so there is now a migration with data to carry
+ * across — see `migrate1To2_preservesTransactionsAndAddsAuditLog`. It is the template for every
+ * later bump: insert real rows at the old version, migrate, assert the exact values survived.
+ * Changelog: 2026-07-26 — Issue 2.2: added the 1 → 2 case.
  */
 @RunWith(AndroidJUnit4::class)
 class MigrationRoundTripTest {
@@ -57,31 +59,52 @@ class MigrationRoundTripTest {
         helper.runMigrationsAndValidate(TEST_DB, CfoDatabase.VERSION, true).close()
     }
 
-    /*
-     * TEMPLATE — copy this at the first version bump (v1 -> v2):
+    /**
+     * The first real bump: 1 → 2 adds `audit_log` (issue 2.2).
      *
-     * @Test
-     * fun migrate1To2_preservesTransactions() {
-     *     helper.createDatabase(TEST_DB, 1).use { db ->
-     *         db.execSQL(
-     *             "INSERT INTO transactions (id, profile_id, account_id, amount_minor, " +
-     *                 "currency_code, occurred_at_utc_millis, booked_on_iso_date, source, " +
-     *                 "created_at_utc_millis, updated_at_utc_millis) " +
-     *                 "VALUES ('t1','p1','a1',-12345678,'INR',1767312000000,'2026-01-02'," +
-     *                 "'manual',1767312000000,1767312000000)",
-     *         )
-     *     }
+     * Input:  a version-1 database holding a transaction with an exact paise amount.
+     * Output: asserts the amount survives the migration byte for byte, and that the new table
+     *         exists and is writable afterwards.
      *
-     *     val migrated = helper.runMigrationsAndValidate(TEST_DB, 2, true, MIGRATION_1_2)
+     * The amount is the assertion DB-003 exists for: `-12345678` paise is ₹1,23,456.78, and a
+     * migration that round-tripped it through a floating-point column would come back as
+     * `-12345677` or `-12345679`. Checking the row still exists would not catch that; checking the
+     * exact `Long` does (MNY-001).
      *
-     *     migrated.query("SELECT amount_minor FROM transactions WHERE id = 't1'").use { cursor ->
-     *         assertTrue(cursor.moveToFirst())
-     *         // The exact paise value must survive — this is the assertion DB-003 exists for.
-     *         assertEquals(-12345678L, cursor.getLong(0))
-     *     }
-     *     migrated.close()
-     * }
+     * `runMigrationsAndValidate` also re-checks the schema against `schemas/2.json`, so a migration
+     * whose hand-written DDL has drifted from what Room generates fails here rather than on a
+     * user's phone.
      */
+    @Test
+    fun migrate1To2_preservesTransactionsAndAddsAuditLog() {
+        helper.createDatabase(TEST_DB, 1).use { db ->
+            db.execSQL(
+                "INSERT INTO transactions (id, profile_id, account_id, amount_minor, " +
+                    "currency_code, occurred_at_utc_millis, booked_on_iso_date, source, " +
+                    "created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('t1','p1','a1',-12345678,'INR',1767312000000,'2026-01-02'," +
+                    "'manual',1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 2, true, Migrations.MIGRATION_1_2)
+
+        migrated.query("SELECT amount_minor FROM transactions WHERE id = 't1'").use { cursor ->
+            assertTrue("the pre-migration transaction must still be there", cursor.moveToFirst())
+            assertEquals(-12345678L, cursor.getLong(0))
+        }
+        // The new table must be usable, not merely present: a CREATE TABLE with a column Room did
+        // not expect would pass validation above and still reject every insert.
+        migrated.execSQL(
+            "INSERT INTO audit_log (event, occurred_at_utc_millis, method) " +
+                "VALUES ('APP_UNLOCK_SUCCESS', 1767312000000, 'PIN')",
+        )
+        migrated.query("SELECT COUNT(*) FROM audit_log").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(1, cursor.getInt(0))
+        }
+        migrated.close()
+    }
 
     private companion object {
         const val TEST_DB = "migration-test.db"

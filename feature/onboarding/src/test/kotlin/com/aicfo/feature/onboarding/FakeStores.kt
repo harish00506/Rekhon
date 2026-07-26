@@ -4,6 +4,9 @@ import com.aicfo.core.common.AppError
 import com.aicfo.core.common.Err
 import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
+import com.aicfo.core.crypto.PinVerifier
+import com.aicfo.core.datastore.AppLockSettings
+import com.aicfo.core.datastore.AppLockStore
 import com.aicfo.core.datastore.ConsentFeature
 import com.aicfo.core.datastore.ConsentState
 import com.aicfo.core.datastore.ConsentStore
@@ -111,4 +114,73 @@ internal class FakeConsentStore(
         val failure = failWith ?: return Ok(Unit).also { revoked += feature }
         return Err(failure)
     }
+}
+
+/**
+ * An [AppLockStore] that records whether onboarding switched the lock on (issue 2.2).
+ * Why:    the security step's whole job is turning the lock on with a usable PIN, so the assertion
+ *         is "was it enabled, and only after a PIN was set?" — which needs the call recorded, not
+ *         merely counted.
+ * Result: the recorded flag and an injectable failure.
+ * Input:  [failWith] — when non-null, every write returns `Err` with it. Output: a fake store.
+ * Changelog: 2026-07-26 — Created for issue 2.2.
+ */
+internal class FakeAppLockStore(
+    var failWith: AppError? = null,
+) : AppLockStore {
+    private val state = MutableStateFlow(AppLockSettings())
+
+    /** Whether the lock ended up enabled. */
+    val enabled: Boolean get() = state.value.enabled
+
+    override fun observe(): Flow<Result<AppLockSettings, AppError>> = state.map { Ok(it) }
+
+    override suspend fun setEnabled(enabled: Boolean): Result<Unit, AppError> =
+        write { state.value = state.value.copy(enabled = enabled) }
+
+    override suspend fun setBiometricEnabled(enabled: Boolean): Result<Unit, AppError> =
+        write { state.value = state.value.copy(biometricEnabled = enabled) }
+
+    override suspend fun setAutoLockTimeoutSeconds(seconds: Int): Result<Unit, AppError> =
+        write { state.value = state.value.copy(autoLockTimeoutSeconds = seconds) }
+
+    override suspend fun recordFailedUnlock(): Result<Unit, AppError> =
+        write { state.value = state.value.copy(failedAttempts = state.value.failedAttempts + 1) }
+
+    override suspend fun clearFailedUnlocks(): Result<Unit, AppError> =
+        write { state.value = state.value.copy(failedAttempts = 0) }
+
+    private fun write(apply: () -> Unit): Result<Unit, AppError> {
+        failWith?.let { return Err(it) }
+        apply()
+        return Ok(Unit)
+    }
+}
+
+/**
+ * A [PinVerifier] that records the PIN it was given (issue 2.2).
+ * Why:    the security step must store what the user typed and must **not** store anything when the
+ *         step was declined — both are assertions about the argument, so it has to be captured.
+ * Result: the recorded PIN and an injectable failure.
+ * Input:  [failWith] — when non-null, `setPin` returns `Err` with it. Output: a fake verifier.
+ * Changelog: 2026-07-26 — Created for issue 2.2.
+ */
+internal class FakePinVerifier(
+    var failWith: AppError? = null,
+) : PinVerifier {
+    /** The PIN that was set, or `null` if `setPin` was never called. */
+    var storedPin: String? = null
+        private set
+
+    override fun isPinSet(): Result<Boolean, AppError> = Ok(storedPin != null)
+
+    override fun setPin(pin: String): Result<Unit, AppError> {
+        failWith?.let { return Err(it) }
+        storedPin = pin
+        return Ok(Unit)
+    }
+
+    override fun verify(pin: String): Result<Boolean, AppError> = Ok(pin == storedPin)
+
+    override fun clearPin(): Result<Unit, AppError> = Ok(Unit).also { storedPin = null }
 }

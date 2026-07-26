@@ -17,19 +17,21 @@
 
 ## Current state
 
-- **Version:** `0.2.1` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (Epic 2 under way).
-- **Currently working file:** `core/crypto/` + `app/` — issue 2.2, on branch
-  `feature/2-2-biometric-pin-app-lock-biometricprompt`.
+- **Version:** `0.2.2` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (Epic 2 under way).
+- **Currently working file:** none — issue 2.2 is implemented on branch
+  `feature/2-2-biometric-pin-app-lock-biometricprompt`, not yet merged.
 - **In progress:** **Epic 2 · issue 2.2** — biometric/PIN app lock
   ([2.2](issues/2.2-biometric-pin-app-lock-biometricprompt.md) ·
-  [tracker](issues/2.2-biometric-pin-app-lock-biometricprompt-tracker.md)). It also takes the first
-  real schema version bump (`audit_log`, v2) and the first `:data:repository` class, which had been
-  pencilled in for 2.5.
+  [tracker](issues/2.2-biometric-pin-app-lock-biometricprompt-tracker.md)). Code and tests complete
+  (285 tests green); the **emulator gate is blocked, not skipped** — `BiometricPrompt` and the real
+  Keystore have never executed on this machine.
 - **Next up:** **2.5** (accounts CRUD) and **2.3** (quick-setup seeds, which can now read the
   figures 2.1 captures). 2.5 inserts the last deferred onboarding step; where, is fixed by
-  [ADR-0002](adr/0002-onboarding-step-order.md).
+  [ADR-0002](adr/0002-onboarding-step-order.md). Note 2.2 already took the first schema version bump
+  (`audit_log`, v2) and the first `:data:repository` class, which had been pencilled in for 2.5.
 - **Still the largest gap:** CI has never run — there is no git remote, so every green is a local
-  green on one Windows machine.
+  green on one Windows machine. **Second largest, new with 2.2:** the security-critical Keystore and
+  BiometricPrompt paths are the first code in the project that *cannot* be tested without a device.
 
 ## Completed
 
@@ -52,6 +54,11 @@
 - **Epic 2 — issue 2.1 (v0.2.1, 2026-07-25):** the 4-step first-run onboarding. First screen that
   writes; closes the "nothing sets the profile time zone" seam from Epic 1 and gives the consent
   ledger its first caller.
+- **Epic 2 — issue 2.2 (v0.2.2, 2026-07-26):** the biometric/PIN app lock (SEC-002). First security
+  perimeter in the app: a session gate the database provider asserts on, a Keystore-bound PIN, the
+  escalating lockout, and `audit_log` as schema **v2** — the project's first real migration and its
+  first `:data:repository` class. SEC-001's user-auth key clause is deliberately still open
+  ([ADR-0003](adr/0003-app-lock-gate-and-deferred-user-auth-key.md)).
 
 ## How to update
 

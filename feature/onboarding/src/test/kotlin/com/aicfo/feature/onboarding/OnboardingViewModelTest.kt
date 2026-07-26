@@ -37,6 +37,8 @@ import java.time.ZoneId
 class OnboardingViewModelTest {
     private val settings = FakeSettingsStore()
     private val consents = FakeConsentStore()
+    private val appLock = FakeAppLockStore()
+    private val pinVerifier = FakePinVerifier()
     private val clock = FakeClock(initialZone = ZoneId.of("Asia/Kolkata"))
     private var savedState = SavedStateHandle()
 
@@ -52,11 +54,23 @@ class OnboardingViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun viewModel() = OnboardingViewModel(settings, consents, clock, savedState)
+    private fun viewModel() = OnboardingViewModel(settings, consents, appLock, pinVerifier, clock, savedState)
 
-    /** Advances the flow to its last step by pressing Next three times. */
+    /** Advances the flow to its last step. Derived from the enum, so a new step needs no edit. */
     private fun OnboardingViewModel.goToLastStep() {
         repeat(OnboardingStep.entries.lastIndex) { onEvent(OnboardingEvent.Next) }
+    }
+
+    /**
+     * Advances to a named step.
+     * Why:    issue 2.2's tests care about the SECURITY step specifically, and counting Next presses
+     *         at each call site would break every one of them the next time a step is inserted —
+     *         which ADR-0002 says will happen again in issue 2.5.
+     * Result: the flow sits on [target]. Input: [target]. Output: none.
+     * Changelog: 2026-07-26 — Created for issue 2.2.
+     */
+    private fun OnboardingViewModel.goTo(target: OnboardingStep) {
+        repeat(target.ordinal) { onEvent(OnboardingEvent.Next) }
     }
 
     /**
@@ -72,7 +86,10 @@ class OnboardingViewModelTest {
         assertFalse("absence is never consent", state.smsConsentGranted)
         assertFalse(state.canGoBack)
         assertEquals(1, state.stepNumber)
-        assertEquals(4, state.stepCount)
+        // Five since issue 2.2 inserted SECURITY, exactly where ADR-0002 said it would go. The
+        // count is derived from the enum, so this asserts the indicator can never disagree with it.
+        assertEquals(OnboardingStep.entries.size, state.stepCount)
+        assertEquals(5, state.stepCount)
     }
 
     /**
@@ -317,4 +334,148 @@ class OnboardingViewModelTest {
                 cancelAndIgnoreRemainingEvents()
             }
         }
+
+    // --- the SECURITY step (issue 2.2, SEC-002, FR-ONB-001 step 3) -------------------------
+
+    /**
+     * Input:  a flow finished without touching the security step.
+     * Output: asserts **no** PIN is stored and the lock stays off. ADR-0002 requires the step to be
+     *         skippable, and a lock switched on by a user who simply pressed Next would be the
+     *         security equivalent of the consent bug P-01 exists to prevent.
+     */
+    @Test
+    fun `skipping the security step sets no PIN and leaves the lock off`() {
+        val viewModel = viewModel()
+        viewModel.goToLastStep()
+        viewModel.onEvent(OnboardingEvent.Next)
+
+        assertNull("a declined step must write no credential", pinVerifier.storedPin)
+        assertFalse(appLock.enabled)
+        assertTrue(settings.savedProfile != null)
+    }
+
+    /**
+     * Input:  the lock enabled with a matching PIN, then the flow finished.
+     * Output: asserts the PIN is stored and the lock is on — the step's whole purpose.
+     */
+    @Test
+    fun `enabling the lock stores the PIN and turns the lock on`() {
+        val viewModel = viewModel()
+        viewModel.goTo(OnboardingStep.SECURITY)
+        viewModel.onEvent(OnboardingEvent.AppLockToggled(true))
+        viewModel.onEvent(OnboardingEvent.PinChanged("135790"))
+        viewModel.onEvent(OnboardingEvent.PinConfirmChanged("135790"))
+        viewModel.onEvent(OnboardingEvent.Next)
+        viewModel.onEvent(OnboardingEvent.Next)
+
+        assertEquals("135790", pinVerifier.storedPin)
+        assertTrue(appLock.enabled)
+    }
+
+    /**
+     * Input:  the lock enabled with a PIN that is too short.
+     * Output: asserts the flow refuses to advance and says why. Letting it through would enable a
+     *         lock with a credential the verifier rejects — an app that cannot be opened at all.
+     */
+    @Test
+    fun `a too-short PIN blocks the step`() {
+        val viewModel = viewModel()
+        viewModel.goTo(OnboardingStep.SECURITY)
+        viewModel.onEvent(OnboardingEvent.AppLockToggled(true))
+        viewModel.onEvent(OnboardingEvent.PinChanged("12"))
+        viewModel.onEvent(OnboardingEvent.PinConfirmChanged("12"))
+        viewModel.onEvent(OnboardingEvent.Next)
+
+        val state = viewModel.uiState.value
+        assertEquals(OnboardingStep.SECURITY, state.step)
+        assertEquals(ERROR_PIN_TOO_SHORT, state.errorCode)
+        assertNull(pinVerifier.storedPin)
+    }
+
+    /**
+     * Input:  two PINs that differ.
+     * Output: asserts the flow refuses and names the mismatch. A mistyped PIN set here is not
+     *         recoverable — the next thing that asks for it is the lock screen.
+     */
+    @Test
+    fun `mismatched PINs block the step`() {
+        val viewModel = viewModel()
+        viewModel.goTo(OnboardingStep.SECURITY)
+        viewModel.onEvent(OnboardingEvent.AppLockToggled(true))
+        viewModel.onEvent(OnboardingEvent.PinChanged("1234"))
+        viewModel.onEvent(OnboardingEvent.PinConfirmChanged("4321"))
+        viewModel.onEvent(OnboardingEvent.Next)
+
+        assertEquals(OnboardingStep.SECURITY, viewModel.uiState.value.step)
+        assertEquals(ERROR_PIN_MISMATCH, viewModel.uiState.value.errorCode)
+        assertNull(pinVerifier.storedPin)
+    }
+
+    /**
+     * Input:  a PIN typed, then the lock toggled back off.
+     * Output: asserts both fields are cleared. A secret with no remaining purpose should not sit in
+     *         memory waiting for a later refactor to write it.
+     */
+    @Test
+    fun `turning the lock back off clears the typed PIN`() {
+        val viewModel = viewModel()
+        viewModel.goTo(OnboardingStep.SECURITY)
+        viewModel.onEvent(OnboardingEvent.AppLockToggled(true))
+        viewModel.onEvent(OnboardingEvent.PinChanged("1234"))
+        viewModel.onEvent(OnboardingEvent.PinConfirmChanged("1234"))
+
+        viewModel.onEvent(OnboardingEvent.AppLockToggled(false))
+
+        val state = viewModel.uiState.value
+        assertEquals("", state.pinText)
+        assertEquals("", state.pinConfirmText)
+        assertTrue("with the lock off the step must not block", state.canAdvance)
+    }
+
+    /**
+     * Input:  a PIN typed, then the state persisted and restored as process death would.
+     * Output: asserts the PIN did **not** survive. `SavedStateHandle` is written to disk by the
+     *         platform, so a PIN in it would be a plaintext credential sitting in a bundle —
+     *         defeating the point of verifying it against a Keystore-bound MAC. The toggle does
+     *         survive, so the user comes back to the step they were on.
+     */
+    @Test
+    fun `the typed PIN is never written to saved state`() {
+        val viewModel = viewModel()
+        viewModel.goTo(OnboardingStep.SECURITY)
+        viewModel.onEvent(OnboardingEvent.AppLockToggled(true))
+        viewModel.onEvent(OnboardingEvent.PinChanged("135790"))
+        viewModel.onEvent(OnboardingEvent.PinConfirmChanged("135790"))
+
+        assertTrue(
+            "no saved-state value may contain the PIN",
+            savedState.keys().none { key -> savedState.get<Any?>(key)?.toString() == "135790" },
+        )
+
+        val restored = viewModel().uiState.value
+        assertEquals("", restored.pinText)
+        assertTrue("the toggle itself is safe to restore", restored.appLockEnabled)
+    }
+
+    /**
+     * Input:  a PIN write that fails, e.g. an unavailable Keystore.
+     * Output: asserts onboarding does **not** complete and the lock is left **off**. Enabling a lock
+     *         whose PIN never stored would leave the user staring at a prompt nothing opens.
+     */
+    @Test
+    fun `a failed PIN write leaves the lock off and onboarding incomplete`() {
+        pinVerifier.failWith = AppError.Crypto("KeyStoreException")
+        val viewModel = viewModel()
+        viewModel.goTo(OnboardingStep.SECURITY)
+        viewModel.onEvent(OnboardingEvent.AppLockToggled(true))
+        viewModel.onEvent(OnboardingEvent.PinChanged("1234"))
+        viewModel.onEvent(OnboardingEvent.PinConfirmChanged("1234"))
+        viewModel.onEvent(OnboardingEvent.Next)
+        viewModel.onEvent(OnboardingEvent.Next)
+
+        assertFalse(appLock.enabled)
+        assertFalse(viewModel.uiState.value.isComplete)
+        assertNull("nothing may be marked onboarded after a failed step", settings.savedProfile)
+        assertEquals(AppError.Crypto("KeyStoreException").code, viewModel.uiState.value.errorCode)
+    }
 }

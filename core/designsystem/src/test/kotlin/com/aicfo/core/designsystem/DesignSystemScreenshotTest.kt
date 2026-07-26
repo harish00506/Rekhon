@@ -17,6 +17,7 @@ import com.aicfo.core.designsystem.component.CfoAmountText
 import com.aicfo.core.designsystem.component.CfoButton
 import com.aicfo.core.designsystem.component.CfoCard
 import com.aicfo.core.designsystem.component.CfoListRow
+import com.aicfo.core.designsystem.component.CfoPinField
 import com.aicfo.core.designsystem.component.CfoSecondaryButton
 import com.aicfo.core.designsystem.theme.CfoDimens
 import com.aicfo.core.designsystem.theme.CfoTheme
@@ -35,6 +36,7 @@ import org.junit.Test
  * What: every component and both charts, in three configurations each.
  * Result: a visual diff fails the build when a token or layout changes unintentionally.
  * Changelog: 2026-07-25 — Created for issue 1.8 (closes governance audit G-02).
+ *            2026-07-26 — Issue 2.2: CfoPinField joins the gallery.
  *
  * Record baselines with `./gradlew :core:designsystem:recordPaparazziDebug`; verify with
  * `verifyPaparazziDebug`. Baselines are committed — a screenshot test with no committed baseline
@@ -92,6 +94,9 @@ class DesignSystemScreenshotTest {
                 ) {
                     MoneySection()
                     ChartSection()
+                    // Issue 2.2: rendered with digits already typed, because what matters visually
+                    // is that they are **masked** — a baseline showing "135790" would be the bug.
+                    CfoPinField(value = "1357", onValueChange = {}, label = "PIN")
                     CfoButton(text = "Add transaction", onClick = {})
                     CfoSecondaryButton(text = "Skip", onClick = {})
                 }

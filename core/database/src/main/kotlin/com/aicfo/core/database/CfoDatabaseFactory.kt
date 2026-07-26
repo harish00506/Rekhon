@@ -8,6 +8,7 @@ import com.aicfo.core.common.map
 import com.aicfo.core.database.crypto.FileWrappedPassphraseStore
 import com.aicfo.core.database.crypto.KeystoreAeadFactory
 import com.aicfo.core.database.crypto.SqlCipherPassphraseManager
+import com.aicfo.core.database.migration.Migrations
 import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 import java.io.File
 import java.security.SecureRandom
@@ -71,9 +72,15 @@ object CfoDatabaseFactory {
         passphrase: ByteArray,
     ): CfoDatabase {
         System.loadLibrary("sqlcipher")
-        return Room
-            .databaseBuilder(context, CfoDatabase::class.java, CfoDatabase.FILE_NAME)
-            .openHelperFactory(SupportOpenHelperFactory(passphrase))
-            .build()
+        val builder =
+            Room
+                .databaseBuilder(context, CfoDatabase::class.java, CfoDatabase.FILE_NAME)
+                .openHelperFactory(SupportOpenHelperFactory(passphrase))
+        // Every hand-written migration, in order. Registered by iterating rather than spreading the
+        // array, so `Migrations.ALL` stays the single list and adding one is still a one-line edit.
+        // Without this an installation on an older schema throws at open — which is the correct
+        // failure, but only because there is no destructive fallback to swallow it (DB-003).
+        Migrations.ALL.forEach { builder.addMigrations(it) }
+        return builder.build()
     }
 }

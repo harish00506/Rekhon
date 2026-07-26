@@ -190,3 +190,41 @@ data class CategoryEntity(
     @ColumnInfo(name = "deleted_at_utc_millis")
     val deletedAtUtcMillis: Long? = null,
 )
+
+/**
+ * One security event. Never anything about the person it happened to.
+ *
+ * Why:    §21.6 bans PII and amounts from logs and routes security events here instead. That only
+ *         works if the table has nowhere to put PII, which is why there is no free-text column:
+ *         [event] and [method] hold `AuditEvent`/`AuditMethod` constant names, both closed sets.
+ *         A reviewer can confirm the rule by reading the four columns rather than by auditing every
+ *         call site.
+ * Result: a Room row in `audit_log`, added at schema version 2 by issue 2.2.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-07-26 — Created for issue 2.2 (SEC-002, §21.6).
+ *
+ * **Three deliberate absences.**
+ * - **No `profile_id`.** Unlike every other table this is not per-profile: the app lock gates the
+ *   whole app before any profile is selected, so at unlock time there is no profile to scope to.
+ * - **No soft delete.** A security log a caller can quietly retire is not a security log. Rows go
+ *   only when the whole database does (erase-all, SEC-006).
+ * - **No `updated_at`.** An event happened at an instant; it is never edited.
+ */
+@Entity(
+    tableName = "audit_log",
+    indices = [Index("occurred_at_utc_millis")],
+)
+data class AuditLogEntity(
+    @PrimaryKey(autoGenerate = true)
+    @ColumnInfo(name = "id")
+    val id: Long = 0L,
+    /** An `AuditEvent` constant name. A code from a closed set, never a sentence. */
+    @ColumnInfo(name = "event")
+    val event: String,
+    /** TIM-001: the exact instant, UTC epoch millis, from the injected `Clock`. */
+    @ColumnInfo(name = "occurred_at_utc_millis")
+    val occurredAtUtcMillis: Long,
+    /** An `AuditMethod` constant name, or null where the event had no factor. */
+    @ColumnInfo(name = "method")
+    val method: String? = null,
+)

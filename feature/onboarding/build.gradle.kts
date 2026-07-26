@@ -34,6 +34,9 @@ dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:common"))
     implementation(project(":core:datastore"))
+    // Issue 2.2: the SECURITY step sets the PIN through the same Keystore-bound verifier the lock
+    // screen checks against (SEC-002).
+    implementation(project(":core:crypto"))
 
     // Compose UI tests run on the JVM here (issue 2.1): the flow is checked on every `test` run,
     // not only when an emulator happens to be up.
@@ -54,5 +57,8 @@ dependencies {
     androidTestImplementation(project(":core:common"))
     androidTestImplementation(project(":core:datastore"))
     androidTestImplementation(project(":core:designsystem"))
+    // Issue 2.2: the device test sets a PIN through the real Keystore-backed verifier — the one
+    // path no JVM test can exercise, because a TEE does not exist off-device.
+    androidTestImplementation(project(":core:crypto"))
     androidTestImplementation(testFixtures(project(":core:common")))
 }

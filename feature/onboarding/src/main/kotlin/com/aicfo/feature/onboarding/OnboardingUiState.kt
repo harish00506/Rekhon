@@ -27,6 +27,15 @@ enum class OnboardingStep {
     /** Display name, currency and profile time zone (FR-ONB-001, TIM-001). */
     PROFILE,
 
+    /**
+     * The app lock: biometric/PIN (FR-ONB-001 step 3, SEC-002, issue 2.2).
+     *
+     * Placed after [PROFILE] exactly as ADR-0002 said it would be — the profile exists by then,
+     * which is what a PIN is protecting. Skippable: SEC-002 describes the lock, it does not require
+     * turning it on during first run.
+     */
+    SECURITY,
+
     /** The optional income / rent / savings seeds (FR-ONB-002). */
     QUICK_SETUP,
     ;
@@ -49,10 +58,17 @@ enum class OnboardingStep {
  * through typing: `"1."` is a legitimate thing to have on screen and not an amount yet. They are
  * converted once, at Finish, by `MoneyFormatter.parse` (MNY-001) — the screen never does money math.
  *
+ * **The typed PIN lives here and nowhere else (issue 2.2).** Unlike every other answer in this
+ * state, [pinText] and [pinConfirmText] are deliberately **not** written to `SavedStateHandle`:
+ * that bundle is persisted by the platform, and a PIN sitting in it would be a plaintext credential
+ * on disk — defeating the whole point of verifying it against a Keystore-bound MAC. Losing the
+ * half-typed PIN to process death is the correct trade.
+ *
  * Input:  [step]; [smsConsentGranted] — default **off**, because absence is never consent (P-01);
  *         [displayName], [currencyCode], [timeZoneId]; [deviceZoneId] — what the device reports,
  *         carried in state so the composable stays a pure function of it rather than reading the
- *         platform itself; [monthlyIncomeText], [rentOrEmiText], [typicalSavingsText]; [isSaving];
+ *         platform itself; [appLockEnabled], [pinText], [pinConfirmText] — the SEC-002 step;
+ *         [monthlyIncomeText], [rentOrEmiText], [typicalSavingsText]; [isSaving];
  *         [isComplete]; [errorCode] — an `AppError.code`, never a message, so the wording stays in
  *         `strings.xml` (§21.6).
  * Output: an immutable snapshot for the composable.
@@ -65,6 +81,9 @@ data class OnboardingUiState(
     val currencyCode: String = DEFAULT_CURRENCY_CODE,
     val timeZoneId: String = "",
     val deviceZoneId: String = "",
+    val appLockEnabled: Boolean = false,
+    val pinText: String = "",
+    val pinConfirmText: String = "",
     val monthlyIncomeText: String = "",
     val rentOrEmiText: String = "",
     val typicalSavingsText: String = "",
@@ -83,7 +102,41 @@ data class OnboardingUiState(
 
     /** The time zones to offer, the device's own first (see [OnboardingOptions]). */
     val timeZoneOptions: List<String> get() = OnboardingOptions.zoneIds(deviceZoneId)
+
+    /**
+     * Whether the typed PIN is one `TinkPinVerifier` would accept (issue 2.2, SEC-002).
+     *
+     * Only the length is checked here: `CfoPinField` has already filtered the input to ASCII digits,
+     * and duplicating the digit rule in a second place is how the two drift apart.
+     */
+    val isPinWellFormed: Boolean get() = pinText.length in MIN_PIN_LENGTH..MAX_PIN_LENGTH
+
+    /** Whether the confirmation matches — checked only once something has been typed into it. */
+    val pinsMatch: Boolean get() = pinText == pinConfirmText
+
+    /**
+     * Whether the primary action may proceed from the current step.
+     *
+     * Why: every step but [OnboardingStep.SECURITY] is always advanceable, and that one is only
+     *      blocked when the user has asked for a lock they have not yet given a usable PIN. Letting
+     *      them through anyway would enable a lock with no credential — an app that cannot be opened
+     *      at all, on the very first launch.
+     */
+    val canAdvance: Boolean
+        get() =
+            when {
+                isSaving -> false
+                step != OnboardingStep.SECURITY -> true
+                !appLockEnabled -> true
+                else -> isPinWellFormed && pinsMatch
+            }
 }
+
+/** `TinkPinVerifier`'s floor. Repeated as a UI constant so the field can disable Next before a write. */
+const val MIN_PIN_LENGTH: Int = 4
+
+/** `TinkPinVerifier`'s ceiling, matching `CfoPinField`'s own cap. */
+const val MAX_PIN_LENGTH: Int = 6
 
 /** ISO-4217 for the Indian rupee. v1 is India-only (P-06); `MoneyFormatter` renders ₹. */
 const val DEFAULT_CURRENCY_CODE: String = "INR"
@@ -98,6 +151,16 @@ const val DEFAULT_CURRENCY_CODE: String = "INR"
  * Changelog: 2026-07-25 — Created for issue 2.1.
  */
 sealed interface OnboardingEvent {
+    /**
+     * An edit to one of the user's answers, as opposed to a navigation or error action.
+     *
+     * Why: the two kinds behave completely differently — an answer is always just "copy the state
+     *      with this field replaced", while Next, Back, Skip and Dismiss each do something. Naming
+     *      that split in the type lets the ViewModel handle each kind in its own **exhaustive**
+     *      `when`, instead of one long one that a new event could quietly fall out of.
+     */
+    sealed interface Answer : OnboardingEvent
+
     /** Advance to the next step, or finish if this is the last one. */
     data object Next : OnboardingEvent
 
@@ -107,37 +170,52 @@ sealed interface OnboardingEvent {
     /** The user turned the SMS-parsing opt-in on or off (FR-ONB-003). */
     data class SmsConsentChanged(
         val granted: Boolean,
-    ) : OnboardingEvent
+    ) : Answer
 
     /** The user edited their display name. */
     data class DisplayNameChanged(
         val name: String,
-    ) : OnboardingEvent
+    ) : Answer
 
     /** The user chose a currency (ISO-4217). */
     data class CurrencyChanged(
         val currencyCode: String,
-    ) : OnboardingEvent
+    ) : Answer
 
     /** The user chose a profile time zone (IANA id) — TIM-001. */
     data class TimeZoneChanged(
         val zoneId: String,
-    ) : OnboardingEvent
+    ) : Answer
 
     /** The user edited their monthly income (FR-ONB-002). */
     data class MonthlyIncomeChanged(
         val text: String,
-    ) : OnboardingEvent
+    ) : Answer
 
     /** The user edited their rent or EMI (FR-ONB-002). */
     data class RentOrEmiChanged(
         val text: String,
-    ) : OnboardingEvent
+    ) : Answer
 
     /** The user edited their typical savings (FR-ONB-002). */
     data class TypicalSavingsChanged(
         val text: String,
-    ) : OnboardingEvent
+    ) : Answer
+
+    /** The user turned the app lock on or off (issue 2.2, SEC-002, FR-ONB-001 step 3). */
+    data class AppLockToggled(
+        val enabled: Boolean,
+    ) : Answer
+
+    /** The user typed a PIN. Already filtered to digits by `CfoPinField`. */
+    data class PinChanged(
+        val pin: String,
+    ) : Answer
+
+    /** The user typed the confirmation PIN. */
+    data class PinConfirmChanged(
+        val pin: String,
+    ) : Answer
 
     /** The user skipped the optional quick-setup step and finished without seeds. */
     data object SkipQuickSetup : OnboardingEvent

@@ -50,19 +50,23 @@ object CfoDataStoreFactory {
         return CfoDataStores(
             settings = DataStoreSettingsStore(dataStore, clock, dispatchers),
             consents = DataStoreConsentStore(dataStore, clock, dispatchers),
+            appLock = DataStoreAppLockStore(dataStore, clock, dispatchers),
         )
     }
 }
 
 /**
- * The two interfaces over the shared settings file.
- * Why:    returning both from one factory makes it obvious they are backed by the same atomic
- *         store, while keeping their surfaces separate.
- * Result: what the DI graph (issue 1.10) will bind.
- * Input:  [settings], [consents]. Output: a holder.
+ * The interfaces over the shared settings file.
+ * Why:    returning them from one factory makes it obvious they are backed by the same atomic
+ *         store, while keeping their surfaces separate — a screen that changes the theme has no
+ *         business granting a consent or resetting a lockout counter.
+ * Result: what the DI graph (issue 1.10) binds.
+ * Input:  [settings], [consents], [appLock]. Output: a holder.
  * Changelog: 2026-07-25 — Created for issue 1.9.
+ *            2026-07-26 — Issue 2.2: added [appLock].
  */
 data class CfoDataStores(
     val settings: SettingsStore,
     val consents: ConsentStore,
+    val appLock: AppLockStore,
 )
