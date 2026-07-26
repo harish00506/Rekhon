@@ -18,13 +18,12 @@
 ## Current state
 
 - **Version:** `0.2.2` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (Epic 2 under way).
-- **Currently working file:** none — issue 2.2 is implemented on branch
-  `feature/2-2-biometric-pin-app-lock-biometricprompt`, not yet merged.
-- **In progress:** **Epic 2 · issue 2.2** — biometric/PIN app lock
+- **Currently working file:** none — issue 2.2 is merged into `dev`; nothing in flight.
+- **In progress:** nothing. Last shipped: **Epic 2 · issue 2.2** — biometric/PIN app lock
   ([2.2](issues/2.2-biometric-pin-app-lock-biometricprompt.md) ·
-  [tracker](issues/2.2-biometric-pin-app-lock-biometricprompt-tracker.md)). Code and tests complete
-  (285 tests green); the **emulator gate is blocked, not skipped** — `BiometricPrompt` and the real
-  Keystore have never executed on this machine.
+  [tracker](issues/2.2-biometric-pin-app-lock-biometricprompt-tracker.md)). 285 tests green, but the
+  **emulator gate is blocked, not skipped** — `BiometricPrompt` and the real Keystore have never
+  executed on this machine, so the lock is unproven on a device.
 - **Next up:** **2.5** (accounts CRUD) and **2.3** (quick-setup seeds, which can now read the
   figures 2.1 captures). 2.5 inserts the last deferred onboarding step; where, is fixed by
   [ADR-0002](adr/0002-onboarding-step-order.md). Note 2.2 already took the first schema version bump
