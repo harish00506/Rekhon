@@ -18,6 +18,13 @@ style:
     # counts against the limit.
     excludeGuardClauses: true
 
+  UnusedPrivateMember:
+    # A @Preview composable has no caller by design — Android Studio's preview pane invokes it via
+    # the annotation. Without this, the only way to keep a preview is to make it public, which is
+    # worse: it would then be part of the module's API. Added for issue 2.1, the first screen with
+    # a preview.
+    ignoreAnnotated: ['Preview']
+
 complexity:
   LongMethod:
     # CLAUDE.md §21.6: "functions ≈ ≤ 40 lines". Detekt's default is 60, which left the

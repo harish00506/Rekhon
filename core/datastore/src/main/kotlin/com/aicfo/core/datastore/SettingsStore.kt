@@ -2,12 +2,14 @@ package com.aicfo.core.datastore
 
 import androidx.datastore.core.DataStore
 import com.aicfo.core.common.AppError
+import com.aicfo.core.common.Clock
 import com.aicfo.core.common.DispatcherProvider
 import com.aicfo.core.common.Err
 import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
 import com.aicfo.core.datastore.proto.CfoSettingsProto
 import com.aicfo.core.datastore.proto.ThemePreferenceProto
+import com.aicfo.core.model.Money
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flowOn
@@ -63,7 +65,43 @@ interface SettingsStore {
      * Result: `Ok(Unit)` or `Err(Storage)`. Input: [theme]. Output: `Result`.
      */
     suspend fun setTheme(theme: ThemeSetting): Result<Unit, AppError>
+
+    /**
+     * Records everything first-run onboarding captured, in one write (issue 2.1, FR-ONB-001/002).
+     *
+     * Why:    **one call, not five setters.** `updateData` is atomic per call, so writing the
+     *         fields separately could leave the app marked onboarded with no time zone — after
+     *         which every day boundary, month rollover and due date silently resolves in the wrong
+     *         zone (TIM-001) and nothing ever asks again. Either the whole profile lands or none of
+     *         it does.
+     * What:   writes the profile, the optional seeds, and the completion timestamp stamped from the
+     *         injected `Clock`.
+     * Result: `Ok(Unit)` — after which `SettingsSnapshot.isOnboarded` is `true` — or `Err(Storage)`
+     *         with nothing written. A caller that ignores this and navigates away anyway would
+     *         strand the user on a dashboard with no profile.
+     * Input:  [profile] — the captured answers. Output: `Result<Unit, AppError>`.
+     */
+    suspend fun completeOnboarding(profile: OnboardingProfile): Result<Unit, AppError>
 }
+
+/**
+ * What onboarding captured, as one value (issue 2.1).
+ *
+ * Why:    passing five loose parameters through the ViewModel and into the store is how a currency
+ *         ends up in a time-zone field — both are `String`, and the compiler would not object.
+ * Result: the argument to [SettingsStore.completeOnboarding].
+ * Changelog: 2026-07-25 — Created for issue 2.1.
+ *
+ * Input:  [timeZoneId] — IANA zone (TIM-001); [currencyCode] — ISO-4217; [displayName] — local
+ *         only, may be blank if the user skipped it; [quickSetup] — the optional FR-ONB-002 seeds.
+ * Output: an immutable value.
+ */
+data class OnboardingProfile(
+    val timeZoneId: String,
+    val currencyCode: String,
+    val displayName: String = "",
+    val quickSetup: QuickSetupSeeds = QuickSetupSeeds(),
+)
 
 /**
  * The DataStore-backed [SettingsStore].
@@ -72,11 +110,13 @@ interface SettingsStore {
  * Result: the implementation injected into the settings screen and the `Clock` wiring.
  * Changelog: 2026-07-25 — Created for issue 1.9.
  *
- * Input:  [dataStore]; [dispatchers] — I/O off the caller's thread (ARC-006).
+ * Input:  [dataStore]; [clock] — stamps the onboarding completion time, never the wall clock
+ *         (TIM-001); [dispatchers] — I/O off the caller's thread (ARC-006).
  * Output: a working settings store.
  */
 internal class DataStoreSettingsStore(
     private val dataStore: DataStore<CfoSettingsProto>,
+    private val clock: Clock,
     private val dispatchers: DispatcherProvider,
 ) : SettingsStore {
     override fun observe(): Flow<Result<SettingsSnapshot, AppError>> =
@@ -95,6 +135,19 @@ internal class DataStoreSettingsStore(
         update { it.setPrivacyBlurEnabled(enabled) }
 
     override suspend fun setTheme(theme: ThemeSetting): Result<Unit, AppError> = update { it.setTheme(theme.toProto()) }
+
+    override suspend fun completeOnboarding(profile: OnboardingProfile): Result<Unit, AppError> =
+        update { builder ->
+            builder
+                .setProfileTimeZoneId(profile.timeZoneId)
+                .setCurrencyCode(profile.currencyCode)
+                .setProfileDisplayName(profile.displayName)
+                .setQuickSetupMonthlyIncomeMinor(profile.quickSetup.monthlyIncome.orZero())
+                .setQuickSetupRentEmiMinor(profile.quickSetup.rentOrEmi.orZero())
+                .setQuickSetupTypicalSavingsMinor(profile.quickSetup.typicalSavings.orZero())
+                // Stamped last so the flag is only ever set alongside the profile it belongs to.
+                .setOnboardingCompletedAtUtcMillis(clock.nowUtcMillis())
+        }
 
     /**
      * Applies one field change atomically.
@@ -129,7 +182,37 @@ internal fun CfoSettingsProto.toSnapshot(): SettingsSnapshot =
         currencyCode = currencyCode.takeIf { it.isNotEmpty() },
         privacyBlurEnabled = privacyBlurEnabled,
         theme = theme.toSetting(),
+        profileDisplayName = profileDisplayName.takeIf { it.isNotEmpty() },
+        // An unset int64 reads as 0, which here means "onboarding never finished".
+        onboardingCompletedAtUtcMillis = onboardingCompletedAtUtcMillis.takeIf { it > 0L },
+        quickSetup =
+            QuickSetupSeeds(
+                monthlyIncome = quickSetupMonthlyIncomeMinor.toSeed(),
+                rentOrEmi = quickSetupRentEmiMinor.toSeed(),
+                typicalSavings = quickSetupTypicalSavingsMinor.toSeed(),
+            ),
     )
+
+/**
+ * Reads a stored quick-setup amount.
+ * Why:    proto3 cannot distinguish "not answered" from zero, and for a seed those mean different
+ *         things — a skipped income must not seed a ₹0 budget. Zero is therefore read as unset,
+ *         which is the safe direction: the worst case is asking the user again.
+ * Result: the [Money], or `null` when unanswered.
+ * Input:  the receiver — minor units (MNY-001). Output: `Money?`.
+ * Changelog: 2026-07-25 — Created for issue 2.1.
+ */
+private fun Long.toSeed(): Money? = takeIf { it != 0L }?.let(::Money)
+
+/**
+ * Writes an optional quick-setup amount.
+ * Why:    the inverse of [toSeed] — an unanswered field is stored as proto3's own default, so it
+ *         reads back as unanswered rather than as a claim of zero.
+ * Result: the minor units, or `0` when there is no answer.
+ * Input:  the receiver. Output: `Long`.
+ * Changelog: 2026-07-25 — Created for issue 2.1.
+ */
+private fun Money?.orZero(): Long = this?.minor ?: 0L
 
 /** Result: the proto enum for a [ThemeSetting]. Input: the receiver. Output: [ThemePreferenceProto]. */
 internal fun ThemeSetting.toProto(): ThemePreferenceProto =

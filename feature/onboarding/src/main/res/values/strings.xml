@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Onboarding copy (issue 2.1; §21.6, FR-ONB-001/002/003, ACC-*).
+
+  Why:  every user-visible string lives here, not in a composable — so it can be translated (Hindi
+        is issue 10.8), reviewed for tone, and read aloud by a screen reader. The
+        CfoHardcodedUiString lint rule from issue 1.5 fails the build on a literal in a
+        :feature:* Text(...).
+  Note: the consent copy is written to satisfy FR-ONB-003 literally — it must say what is read,
+        state that parsing happens on-device only, and make clear the step can be skipped. That is
+        a requirement about the words themselves, so changing them is a requirements change.
+-->
+<resources>
+    <!-- Chrome shared by every step -->
+    <string name="onboarding_step_of">Step %1$d of %2$d</string>
+    <string name="onboarding_back">Back</string>
+    <string name="onboarding_next">Next</string>
+    <string name="onboarding_finish">Finish</string>
+    <string name="onboarding_skip">Skip for now</string>
+    <string name="onboarding_saving">Saving your setup…</string>
+    <string name="onboarding_error">We could not save your setup. Please try again.</string>
+    <string name="onboarding_error_dismiss">Dismiss</string>
+
+    <!-- Step 1 — welcome and the privacy pledge (FR-ONB-001) -->
+    <string name="onboarding_welcome_title">Your money, on your phone</string>
+    <string name="onboarding_welcome_body">A full-time CFO for your finances — it tracks, forecasts, advises, and always shows its working.</string>
+    <string name="onboarding_welcome_pledge_title">Our privacy pledge</string>
+    <string name="onboarding_welcome_pledge">Everything is stored encrypted on this device. Nothing about your money is sent anywhere unless you turn a feature on yourself, and you can turn it back off at any time. The app works fully offline.</string>
+
+    <!-- Step 2 — SMS parsing opt-in (FR-ONB-003, P-01) -->
+    <string name="onboarding_consent_title">Read bank messages?</string>
+    <string name="onboarding_consent_body">If you turn this on, the app reads transaction alerts from banks and UPI apps to fill in your spending automatically.</string>
+    <string name="onboarding_consent_what_is_read">What it reads: the amount, the merchant, the date and the account — only from messages sent by banks and payment apps. It never reads personal messages.</string>
+    <string name="onboarding_consent_on_device">All of this happens on this device. No message ever leaves your phone.</string>
+    <string name="onboarding_consent_toggle">Read transaction messages</string>
+    <string name="onboarding_consent_optional">This is optional. You can skip it now and turn it on later in Settings — or turn it off again at any time.</string>
+
+    <!-- Step 3 — profile, currency and time zone (FR-ONB-001, TIM-001) -->
+    <string name="onboarding_profile_title">About you</string>
+    <string name="onboarding_profile_body">Kept on this device only.</string>
+    <string name="onboarding_profile_name_label">What should we call you?</string>
+    <string name="onboarding_profile_currency_label">Currency</string>
+    <string name="onboarding_profile_time_zone_label">Time zone</string>
+    <string name="onboarding_profile_time_zone_help">This decides when your day and month roll over, so budgets and due dates line up with your life rather than your phone.</string>
+    <string name="onboarding_profile_selected">Selected</string>
+
+    <!-- Step 4 — optional quick setup (FR-ONB-002) -->
+    <string name="onboarding_quick_setup_title">A head start (optional)</string>
+    <string name="onboarding_quick_setup_body">Three rough figures let the app suggest budgets and an emergency-fund target straight away. Estimates are fine, and you can skip this entirely.</string>
+    <string name="onboarding_quick_setup_income_label">Monthly income</string>
+    <string name="onboarding_quick_setup_rent_label">Rent or EMI each month</string>
+    <string name="onboarding_quick_setup_savings_label">Typical savings each month</string>
+    <string name="onboarding_quick_setup_amount_hint">₹</string>
+</resources>

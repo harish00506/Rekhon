@@ -4,6 +4,7 @@ import com.aicfo.core.common.AppError
 import com.aicfo.core.common.Err
 import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
+import com.aicfo.core.datastore.OnboardingProfile
 import com.aicfo.core.datastore.SettingsSnapshot
 import com.aicfo.core.datastore.SettingsStore
 import com.aicfo.core.datastore.ThemeSetting
@@ -164,8 +165,9 @@ class ProfileZoneProviderTest {
 
 /**
  * A [SettingsStore] driven by a flow the test controls.
- * Why:    only `observe()` matters here; the setters would be noise.
+ * Why:    only `observe()` matters here; the writers would be noise.
  * Changelog: 2026-07-25 — Created for issue 1.10.
+ *            2026-07-25 — Issue 2.1 added `completeOnboarding` to the interface.
  */
 private class FakeSettingsStore(
     private val flow: Flow<Result<SettingsSnapshot, AppError>>,
@@ -179,4 +181,6 @@ private class FakeSettingsStore(
     override suspend fun setPrivacyBlurEnabled(enabled: Boolean): Result<Unit, AppError> = Ok(Unit)
 
     override suspend fun setTheme(theme: ThemeSetting): Result<Unit, AppError> = Ok(Unit)
+
+    override suspend fun completeOnboarding(profile: OnboardingProfile): Result<Unit, AppError> = Ok(Unit)
 }

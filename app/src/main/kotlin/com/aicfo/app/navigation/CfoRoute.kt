@@ -17,6 +17,13 @@ import kotlinx.serialization.Serializable
  * A route with arguments becomes a `data class` with typed properties — never a string template.
  */
 sealed interface CfoRoute {
+    /**
+     * First-run onboarding (issue 2.1). The start destination until it has been completed, after
+     * which it is popped off the back stack so Back cannot return to it.
+     */
+    @Serializable
+    data object Onboarding : CfoRoute
+
     /** The home screen: Safe-to-Spend and net worth. The start destination (issue 5.1). */
     @Serializable
     data object Dashboard : CfoRoute

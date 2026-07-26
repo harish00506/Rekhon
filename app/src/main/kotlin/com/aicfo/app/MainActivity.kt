@@ -8,7 +8,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.aicfo.app.navigation.CfoNavHost
 import com.aicfo.core.designsystem.theme.CfoTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -24,6 +27,8 @@ import dagger.hilt.android.AndroidEntryPoint
  * Result: the app the user actually launches.
  * Changelog: 2026-07-19 — Created for issue 1.1 as a placeholder.
  *            2026-07-25 — Issue 1.10: real theme, edge-to-edge, and the typed nav graph.
+ *            2026-07-25 — Issue 2.1: waits for the start destination, so a new install opens on
+ *            onboarding rather than an empty dashboard.
  *
  * `enableEdgeToEdge()` before `setContent`, with the `Scaffold`'s insets applied to the content —
  * drawing under the system bars without consuming their insets is how content ends up hidden
@@ -42,7 +47,13 @@ class MainActivity : ComponentActivity() {
             CfoTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     Box(modifier = Modifier.padding(innerPadding)) {
-                        CfoNavHost()
+                        // The graph is only built once the stored onboarding flag has been read.
+                        // Until then the surface stays empty rather than guessing: a returning user
+                        // must never see the welcome screen appear and vanish. This is a disk read
+                        // of one small file, so it is a frame or two, not a splash screen.
+                        val viewModel: MainViewModel = hiltViewModel()
+                        val startDestination by viewModel.startDestination.collectAsStateWithLifecycle()
+                        startDestination?.let { CfoNavHost(startDestination = it) }
                     }
                 }
             }

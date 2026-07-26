@@ -1,5 +1,7 @@
 package com.aicfo.core.datastore
 
+import com.aicfo.core.model.Money
+
 /*
  * The domain shapes callers see (issue 1.9; P-01, TIM-001).
  *
@@ -61,11 +63,15 @@ enum class ThemeSetting {
  *         render a half-updated mix of old and new settings.
  * Result: what `SettingsStore.observe()` emits.
  * Changelog: 2026-07-25 — Created for issue 1.9.
+ *            2026-07-25 — Issue 2.1: carries what onboarding captured.
  *
  * Input:  [profileTimeZoneId] — IANA zone, `null` when unset; this is what `SystemClock`'s zone
  *         provider (issue 1.3) reads, so all calendar logic resolves in the user's zone.
  *         [currencyCode] — ISO-4217, `null` when unset. [privacyBlurEnabled] — issue 5.3.
- *         [theme].
+ *         [theme]. [profileDisplayName] — local only, `null` when unset.
+ *         [onboardingCompletedAtUtcMillis] — UTC epoch millis (TIM-001), `null` until first-run
+ *         onboarding finishes; this is what decides the app's start destination.
+ *         [quickSetup] — the optional FR-ONB-002 seeds.
  * Output: an immutable value.
  */
 data class SettingsSnapshot(
@@ -73,4 +79,37 @@ data class SettingsSnapshot(
     val currencyCode: String? = null,
     val privacyBlurEnabled: Boolean = false,
     val theme: ThemeSetting = ThemeSetting.SYSTEM,
+    val profileDisplayName: String? = null,
+    val onboardingCompletedAtUtcMillis: Long? = null,
+    val quickSetup: QuickSetupSeeds = QuickSetupSeeds(),
+) {
+    /**
+     * Whether first-run onboarding has been completed.
+     * Why:    every caller asking "should we onboard?" would otherwise re-derive the
+     *         null-means-never rule, and one of them would get it the wrong way round — which
+     *         would either strand a new user on an empty dashboard or re-onboard an existing one.
+     * Result: `true` once onboarding has finished.
+     * Input:  none. Output: `Boolean`.
+     */
+    val isOnboarded: Boolean get() = onboardingCompletedAtUtcMillis != null
+}
+
+/**
+ * The optional figures onboarding's quick-setup step collects (FR-ONB-002).
+ *
+ * Why:    issue 2.3 seeds budgets and the emergency-fund target from these, so they are captured
+ *         once at first run rather than asked for again later. Each is independently optional —
+ *         the whole step is skippable, and a user may answer one field and not the others.
+ * Result: what `SettingsSnapshot.quickSetup` carries.
+ * Changelog: 2026-07-25 — Created for issue 2.1.
+ *
+ * Input:  [monthlyIncome], [rentOrEmi], [typicalSavings] — [Money] (`Long` paise, MNY-001), `null`
+ *         when the user did not answer. `null` rather than [Money.ZERO] on purpose: "I did not say"
+ *         and "I earn nothing" would seed very different budgets.
+ * Output: an immutable value.
+ */
+data class QuickSetupSeeds(
+    val monthlyIncome: Money? = null,
+    val rentOrEmi: Money? = null,
+    val typicalSavings: Money? = null,
 )
