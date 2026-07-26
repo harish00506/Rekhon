@@ -18,15 +18,16 @@
 ## Current state
 
 - **Version:** `0.2.1` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (Epic 2 under way).
-- **Currently working file:** `feature/onboarding/` — issue 2.1, on branch
-  `feature/2-1-4-step-onboarding-flow`, implemented and verified but **not yet committed**.
-- **In progress:** **Epic 2 · issue 2.1** — 4-step onboarding
-  ([2.1](issues/2.1-4-step-onboarding-flow.md) ·
-  [tracker](issues/2.1-4-step-onboarding-flow-tracker.md)).
-- **Next up:** **2.2** (biometric/PIN lock) and **2.5** (accounts CRUD) — 2.5 is the first
-  `:data:repository` code and the first real schema version bump. 2.3 (quick-setup seeds) can now
-  read the figures 2.1 captures. Both 2.2 and 2.5 insert a step into the onboarding flow; where,
-  is fixed by [ADR-0002](adr/0002-onboarding-step-order.md).
+- **Currently working file:** `core/crypto/` + `app/` — issue 2.2, on branch
+  `feature/2-2-biometric-pin-app-lock-biometricprompt`.
+- **In progress:** **Epic 2 · issue 2.2** — biometric/PIN app lock
+  ([2.2](issues/2.2-biometric-pin-app-lock-biometricprompt.md) ·
+  [tracker](issues/2.2-biometric-pin-app-lock-biometricprompt-tracker.md)). It also takes the first
+  real schema version bump (`audit_log`, v2) and the first `:data:repository` class, which had been
+  pencilled in for 2.5.
+- **Next up:** **2.5** (accounts CRUD) and **2.3** (quick-setup seeds, which can now read the
+  figures 2.1 captures). 2.5 inserts the last deferred onboarding step; where, is fixed by
+  [ADR-0002](adr/0002-onboarding-step-order.md).
 - **Still the largest gap:** CI has never run — there is no git remote, so every green is a local
   green on one Windows machine.
 
