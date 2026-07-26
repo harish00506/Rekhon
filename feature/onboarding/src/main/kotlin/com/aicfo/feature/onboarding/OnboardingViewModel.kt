@@ -9,6 +9,8 @@ import com.aicfo.core.common.Err
 import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
 import com.aicfo.core.common.flatMap
+import com.aicfo.core.crypto.PinVerifier
+import com.aicfo.core.datastore.AppLockStore
 import com.aicfo.core.datastore.ConsentFeature
 import com.aicfo.core.datastore.ConsentStore
 import com.aicfo.core.datastore.OnboardingProfile
@@ -35,11 +37,13 @@ import javax.inject.Inject
  *       `SettingsStore.completeOnboarding` call plus the consent decision.
  * Result: a flow whose every state — including a failed save — is reachable in a unit test.
  * Changelog: 2026-07-25 — Created for issue 2.1.
+ *            2026-07-26 — Issue 2.2: the SECURITY step ADR-0002 reserved for it.
  *
  * Nothing here touches the network, and DataStore is local: the whole flow works in airplane mode
  * (P-04).
  *
  * Input:  [settingsStore] — where the profile lands; [consentStore] — the P-01 ledger;
+ *         [appLockStore] and [pinVerifier] — the SEC-002 security step (issue 2.2);
  *         [clock] — supplies the device's current zone as the default, so this never reads
  *         `ZoneId.systemDefault()` itself (TIM-001); [savedState] — survives process death.
  * Output: an observable flow state.
@@ -50,6 +54,8 @@ class OnboardingViewModel
     constructor(
         private val settingsStore: SettingsStore,
         private val consentStore: ConsentStore,
+        private val appLockStore: AppLockStore,
+        private val pinVerifier: PinVerifier,
         clock: Clock,
         private val savedState: SavedStateHandle,
     ) : ViewModel() {
@@ -81,17 +87,76 @@ class OnboardingViewModel
          */
         fun onEvent(event: OnboardingEvent) {
             when (event) {
-                OnboardingEvent.Next -> if (_uiState.value.step.isLast) finish(withSeeds = true) else moveBy(1)
+                OnboardingEvent.Next -> advance()
                 OnboardingEvent.Back -> moveBy(-1)
                 OnboardingEvent.SkipQuickSetup -> finish(withSeeds = false)
                 OnboardingEvent.DismissError -> updateState { it.copy(errorCode = null) }
+                is OnboardingEvent.Answer -> applyAnswer(event)
+            }
+        }
+
+        /**
+         * Records one edited answer.
+         * Why:    split out of [onEvent] when issue 2.2's three new events pushed that function past
+         *         detekt's complexity limit. The split is along a real seam rather than an arbitrary
+         *         one: these are all "replace one field", while the four events above each *do*
+         *         something. Both `when`s stay exhaustive over their own sealed type, so a new event
+         *         is still a compile error until it is handled.
+         * Result: updates [uiState] and the saved copy.
+         * Input:  [event] — the edit. Output: none.
+         * Changelog: 2026-07-26 — Extracted for issue 2.2.
+         */
+        private fun applyAnswer(event: OnboardingEvent.Answer) {
+            when (event) {
                 is OnboardingEvent.SmsConsentChanged -> updateState { it.copy(smsConsentGranted = event.granted) }
                 is OnboardingEvent.DisplayNameChanged -> updateState { it.copy(displayName = event.name) }
                 is OnboardingEvent.CurrencyChanged -> updateState { it.copy(currencyCode = event.currencyCode) }
                 is OnboardingEvent.TimeZoneChanged -> updateState { it.copy(timeZoneId = event.zoneId) }
+                is OnboardingEvent.AppLockToggled -> onAppLockToggled(event.enabled)
+                is OnboardingEvent.PinChanged -> updateState { it.copy(pinText = event.pin, errorCode = null) }
+                is OnboardingEvent.PinConfirmChanged ->
+                    updateState { it.copy(pinConfirmText = event.pin, errorCode = null) }
                 is OnboardingEvent.MonthlyIncomeChanged -> updateState { it.copy(monthlyIncomeText = event.text) }
                 is OnboardingEvent.RentOrEmiChanged -> updateState { it.copy(rentOrEmiText = event.text) }
                 is OnboardingEvent.TypicalSavingsChanged -> updateState { it.copy(typicalSavingsText = event.text) }
+            }
+        }
+
+        /**
+         * Moves on from the current step, or finishes if it is the last.
+         * Why:    the security step can refuse (issue 2.2): a lock switched on with no usable PIN
+         *         would leave the user with an app nothing opens, on their very first launch. Every
+         *         other step always advances, so the guard is expressed once here rather than being
+         *         re-derived per step.
+         * Result: advances, finishes, or sets the error explaining what is missing.
+         * Input:  none. Output: none.
+         * Changelog: 2026-07-26 — Extracted for issue 2.2.
+         */
+        private fun advance() {
+            val state = _uiState.value
+            if (!state.canAdvance) {
+                if (!state.isSaving) updateState { it.copy(errorCode = pinProblem(it)) }
+                return
+            }
+            if (state.step.isLast) finish(withSeeds = true) else moveBy(1)
+        }
+
+        /**
+         * Turns the app lock on or off during first run (SEC-002, FR-ONB-001 step 3).
+         * Why:    switching it back off clears what was typed. A PIN left in memory behind a
+         *         disabled toggle is a secret with no remaining purpose, and it would be written at
+         *         Finish by any later refactor that forgot to re-check the flag.
+         * Result: updates the toggle and, when turning off, blanks both PIN fields.
+         * Input:  [enabled]. Output: none.
+         * Changelog: 2026-07-26 — Created for issue 2.2.
+         */
+        private fun onAppLockToggled(enabled: Boolean) {
+            updateState { state ->
+                if (enabled) {
+                    state.copy(appLockEnabled = true, errorCode = null)
+                } else {
+                    state.copy(appLockEnabled = false, pinText = "", pinConfirmText = "", errorCode = null)
+                }
             }
         }
 
@@ -132,6 +197,7 @@ class OnboardingViewModel
             viewModelScope.launch {
                 val outcome =
                     applyConsentDecision(answers.smsConsentGranted)
+                        .flatMap { applyAppLockDecision(answers) }
                         .flatMap { settingsStore.completeOnboarding(answers.toProfile(withSeeds)) }
                 updateState { state ->
                     when (outcome) {
@@ -156,6 +222,25 @@ class OnboardingViewModel
                 granted -> consentStore.grant(ConsentFeature.SMS_PARSING).also { consentGrantWritten = it is Ok }
                 consentGrantWritten -> consentStore.revoke(ConsentFeature.SMS_PARSING)
                 else -> Ok(Unit)
+            }
+
+        /**
+         * Sets the PIN and enables the lock, if the user asked for one (SEC-002).
+         * Why:    **the PIN is written before the lock is enabled, never the other way round.** A
+         *         lock switched on whose `setPin` then failed would leave the user staring at a
+         *         prompt no PIN opens, on an app they have just finished setting up. This ordering
+         *         makes the worst case a lock that is off — which they can simply turn on again.
+         * What:   `setPin` then `setEnabled(true)`, or nothing at all when the step was declined.
+         * Result: `Ok(Unit)` when there was nothing to do or both writes succeeded; the first
+         *         failure otherwise, which stops `finish` before anything is marked complete.
+         * Input:  [answers] — the captured state. Output: `Result<Unit, AppError>`.
+         * Changelog: 2026-07-26 — Created for issue 2.2.
+         */
+        private suspend fun applyAppLockDecision(answers: OnboardingUiState): Result<Unit, AppError> =
+            if (!answers.appLockEnabled) {
+                Ok(Unit)
+            } else {
+                pinVerifier.setPin(answers.pinText).flatMap { appLockStore.setEnabled(true) }
             }
 
         /**
@@ -198,14 +283,43 @@ internal fun OnboardingUiState.toProfile(withSeeds: Boolean): OnboardingProfile 
     )
 
 /**
+ * Names why the security step will not advance (issue 2.2).
+ * Why:    the two cases need different wording — "that is too short" and "those do not match" are
+ *         not the same instruction — and the ViewModel deals only in codes so the wording stays in
+ *         `strings.xml` (§21.6).
+ * Result: an error code, or `null` when there is nothing wrong.
+ * Input:  [state] — the current answers. Output: `String?`.
+ * Changelog: 2026-07-26 — Created for issue 2.2.
+ */
+private fun pinProblem(state: OnboardingUiState): String? =
+    when {
+        !state.appLockEnabled -> null
+        !state.isPinWellFormed -> ERROR_PIN_TOO_SHORT
+        !state.pinsMatch -> ERROR_PIN_MISMATCH
+        else -> null
+    }
+
+/** The typed PIN is not 4–6 digits, so `TinkPinVerifier` would reject it. */
+const val ERROR_PIN_TOO_SHORT: String = "pin_too_short"
+
+/** The two PIN fields differ — almost always a typo, and worth catching before it is stored. */
+const val ERROR_PIN_MISMATCH: String = "pin_mismatch"
+
+/**
  * Saves the answers so far.
  * Why:    process death mid-onboarding must not cost the user their answers — they are several
  *         screens in and nothing has reached disk yet by design.
  * Result: writes each field to [SavedStateHandle]. Input: [state]. Output: none.
  * Changelog: 2026-07-25 — Created for issue 2.1.
+ *            2026-07-26 — Issue 2.2: the app-lock toggle is saved; the **PIN deliberately is not**.
+ *
+ * **The PIN is not written here, and that is the point.** This bundle is persisted by the platform,
+ * so a PIN in it would be a plaintext credential on disk — which is exactly what verifying against
+ * a Keystore-bound MAC exists to avoid. Losing a half-typed PIN to process death is the right trade.
  */
 private fun SavedStateHandle.persist(state: OnboardingUiState) {
     this[KEY_STEP] = state.step.name
+    this[KEY_APP_LOCK] = state.appLockEnabled
     this[KEY_SMS_CONSENT] = state.smsConsentGranted
     this[KEY_DISPLAY_NAME] = state.displayName
     this[KEY_CURRENCY] = state.currencyCode
@@ -231,6 +345,7 @@ private fun SavedStateHandle.restore(defaultZoneId: String): OnboardingUiState =
     OnboardingUiState(
         step = OnboardingStep.entries.firstOrNull { it.name == get<String>(KEY_STEP) } ?: OnboardingStep.WELCOME,
         smsConsentGranted = get<Boolean>(KEY_SMS_CONSENT) ?: false,
+        appLockEnabled = get<Boolean>(KEY_APP_LOCK) ?: false,
         displayName = get<String>(KEY_DISPLAY_NAME).orEmpty(),
         currencyCode = get<String>(KEY_CURRENCY) ?: DEFAULT_CURRENCY_CODE,
         timeZoneId = get<String>(KEY_TIME_ZONE) ?: defaultZoneId,
@@ -242,6 +357,7 @@ private fun SavedStateHandle.restore(defaultZoneId: String): OnboardingUiState =
 
 private const val KEY_STEP = "onboarding.step"
 private const val KEY_SMS_CONSENT = "onboarding.smsConsent"
+private const val KEY_APP_LOCK = "onboarding.appLockEnabled"
 private const val KEY_DISPLAY_NAME = "onboarding.displayName"
 private const val KEY_CURRENCY = "onboarding.currency"
 private const val KEY_TIME_ZONE = "onboarding.timeZone"

@@ -54,4 +54,24 @@ message CfoSettingsProto {
   int64 quick_setup_monthly_income_minor = 8;
   int64 quick_setup_rent_emi_minor = 9;
   int64 quick_setup_typical_savings_minor = 10;
+
+  // --- App lock (issue 2.2; SEC-002, FR-SET-001) ---
+
+  // Whether the lock screen gates the app at all. Default false, because a lock the user never
+  // chose would leave them with a PIN they never set — there would be nothing to unlock with.
+  bool app_lock_enabled = 11;
+  // Whether to offer BiometricPrompt. Independent of app_lock_enabled: a user may keep the lock on
+  // and biometrics off (SEC-002 makes the PIN the fallback, not the other way round).
+  bool biometric_unlock_enabled = 12;
+  // How long the app may sit in the background before it re-locks. 0 = unset, which reads as the
+  // §23.1 default of 60 s — a value the user can raise or lower in settings (FR-SET-001).
+  int32 auto_lock_timeout_seconds = 13;
+
+  // Consecutive failed unlocks, and when the last one happened (UTC epoch millis, TIM-001).
+  //
+  // These live on disk rather than in memory on purpose: SEC-002's lockout is worthless if
+  // force-stopping the app resets it, and force-stopping is the first thing an attacker with a
+  // stolen phone would try. They are cleared on every successful unlock.
+  int32 failed_unlock_attempts = 14;
+  int64 last_failed_unlock_at_utc_millis = 15;
 }

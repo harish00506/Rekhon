@@ -25,6 +25,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -54,6 +55,8 @@ class OnboardingFlowTest {
 
     private val settings = FakeSettingsStore()
     private val consents = FakeConsentStore()
+    private val appLock = FakeAppLockStore()
+    private val pinVerifier = FakePinVerifier()
     private val clock = FakeClock(initialZone = ZoneId.of("Asia/Kolkata"))
     private var finishedCount = 0
 
@@ -83,7 +86,7 @@ class OnboardingFlowTest {
         darkTheme: Boolean = false,
         fontScale: Float = 1f,
     ) {
-        val viewModel = OnboardingViewModel(settings, consents, clock, SavedStateHandle())
+        val viewModel = OnboardingViewModel(settings, consents, appLock, pinVerifier, clock, SavedStateHandle())
         setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(
@@ -113,12 +116,23 @@ class OnboardingFlowTest {
     private fun clickNext() = node(text(R.string.onboarding_next)).performClick()
 
     /**
-     * Input:  the flow, clicked through all four steps with answers along the way.
+     * Advances to the security step.
+     * Why:    derived from the enum's ordinal rather than a literal number of taps — issue 2.2
+     *         inserted a step here and ADR-0002 says issue 2.5 will insert another, so a hardcoded
+     *         count would break both of these tests again.
+     * Result: the flow sits on [OnboardingStep.SECURITY]. Input: none. Output: none.
+     */
+    private fun goToSecurityStep() = repeat(OnboardingStep.SECURITY.ordinal) { clickNext() }
+
+    /**
+     * Input:  the flow, clicked through all five steps with answers along the way.
      * Output: asserts each step renders, the profile is written exactly once with the amounts
      *         converted to paise, the consent is granted, and the caller is told to navigate on.
+     * Changelog: 2026-07-26 — Issue 2.2 added the SECURITY step, passed through here without
+     *            enabling the lock; `enables the app lock when the user sets a PIN` covers that.
      */
     @Test
-    fun `drives all four steps and saves the profile`() {
+    fun `drives all five steps and saves the profile`() {
         compose.showFlow()
 
         compose.onNodeWithText(text(R.string.onboarding_welcome_pledge_title)).assertIsDisplayed()
@@ -129,6 +143,10 @@ class OnboardingFlowTest {
 
         node(text(R.string.onboarding_profile_name_label)).performTextInput("Harish")
         node("Asia/Dubai").performClick()
+        clickNext()
+
+        // SECURITY (issue 2.2): left off, so the step must not block Next.
+        compose.onNodeWithText(text(R.string.onboarding_security_optional)).assertIsDisplayed()
         clickNext()
 
         node(text(R.string.onboarding_quick_setup_income_label)).performTextInput("85000")
@@ -162,6 +180,7 @@ class OnboardingFlowTest {
         compose.onNodeWithText(text(R.string.onboarding_consent_on_device)).assertIsDisplayed()
         compose.onNodeWithText(text(R.string.onboarding_consent_optional)).assertIsDisplayed()
 
+        clickNext()
         clickNext()
         clickNext()
         node(text(R.string.onboarding_skip)).performClick()
@@ -208,12 +227,63 @@ class OnboardingFlowTest {
     @Test
     fun `stays usable at a 200% font scale`() {
         compose.showFlow(fontScale = LARGE_FONT_SCALE)
-        clickNext()
-        clickNext()
-        clickNext()
+        // Derived from the enum rather than a literal count of taps: issue 2.2 inserted a step here
+        // and ADR-0002 says issue 2.5 will insert another, so a hardcoded three would keep breaking.
+        repeat(OnboardingStep.entries.lastIndex) { clickNext() }
         node(text(R.string.onboarding_finish)).performClick()
 
         assertEquals(1, settings.completeCallCount)
+    }
+
+    /**
+     * Input:  the security step, with the lock switched on and a PIN typed twice.
+     * Output: asserts the PIN fields only appear once the lock is on, that the flow completes, and
+     *         that the PIN reaches the verifier. The fields being hidden until asked for is the
+     *         point: a first-run screen that opens with two PIN boxes reads as a demand rather than
+     *         the offer ADR-0002 requires it to be.
+     */
+    @Test
+    fun `enables the app lock when the user sets a PIN`() {
+        compose.showFlow()
+        goToSecurityStep()
+
+        // On the security step, before the toggle: no PIN entry at all.
+        compose.onNodeWithText(text(R.string.onboarding_security_pin_label)).assertDoesNotExist()
+
+        node(text(R.string.onboarding_security_toggle)).performClick()
+        node(text(R.string.onboarding_security_pin_label)).performTextInput("135790")
+        node(text(R.string.onboarding_security_pin_confirm_label)).performTextInput("135790")
+        clickNext()
+
+        node(text(R.string.onboarding_skip)).performClick()
+        compose.waitForIdle()
+
+        assertEquals("135790", pinVerifier.storedPin)
+        assertTrue("the lock must be on after the step", appLock.enabled)
+        assertEquals(1, finishedCount)
+    }
+
+    /**
+     * Input:  the security step with the lock on but two different PINs.
+     * Output: asserts the flow refuses to move on and says why, and that nothing was stored. A
+     *         mistyped PIN set here is unrecoverable — the next thing that asks for it is the lock
+     *         screen, and the user has only their memory of what they meant to type.
+     */
+    @Test
+    fun `refuses to leave the security step when the PINs differ`() {
+        compose.showFlow()
+        goToSecurityStep()
+
+        node(text(R.string.onboarding_security_toggle)).performClick()
+        node(text(R.string.onboarding_security_pin_label)).performTextInput("1234")
+        node(text(R.string.onboarding_security_pin_confirm_label)).performTextInput("4321")
+        clickNext()
+
+        // node(), not onNodeWithText(): with two PIN fields on screen the step is taller than the
+        // viewport, so the banner at the top is composed but scrolled out of view.
+        node(text(R.string.onboarding_security_error_pin_mismatch)).assertIsDisplayed()
+        node(text(R.string.onboarding_security_toggle)).assertIsDisplayed()
+        assertNull("a mismatched PIN must never be stored", pinVerifier.storedPin)
     }
 
     private companion object {

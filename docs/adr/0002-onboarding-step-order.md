@@ -20,7 +20,7 @@ The two cannot both be satisfied now, because **the SRS's steps 3 and 4 are othe
 
 | SRS step | Belongs to | Status |
 |---|---|---|
-| 3 — security (biometric/PIN) | issue **2.2**, BiometricPrompt + PIN (SEC-002) | not built |
+| 3 — security (biometric/PIN) | issue **2.2**, BiometricPrompt + PIN (SEC-002) | **built 2026-07-26** — inserted as `SECURITY` after `PROFILE`, as planned below |
 | 4 — first account + opening balance | issue **2.5**, Accounts CRUD, which needs a repository and a schema version | not built |
 
 Issue 2.1's declared dependencies are **1.10 and 1.9 only** — not 2.2, not 2.5. The backlog is
@@ -70,6 +70,10 @@ something that writes it. FR-ONB-003's "separate" is honoured literally rather t
 as written — a reader comparing the SRS to the running app will find a discrepancy, which is
 precisely why this record exists. FR-ONB-001 is **not** satisfied until 2.2 and 2.5 have inserted
 their steps; issue 2.1 alone must not be cited as closing it.
+
+> **Update, 2026-07-26:** issue 2.2 has inserted its `SECURITY` step, exactly where this ADR said it
+> would go and skippable as required. **FR-ONB-001 remains unsatisfied** — step 4 (first account with
+> opening balance) still waits on issue 2.5.
 
 **Neutral.** Requirement traceability (§28) now maps FR-ONB-001 to three issues rather than one.
 The quick-setup step captures its figures here but does nothing with them; issue 2.3 reads them to

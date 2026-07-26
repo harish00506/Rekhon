@@ -14,7 +14,7 @@ android {
 
     defaultConfig {
         applicationId = "com.aicfo.personalcfo"
-        versionCode = 2
+        versionCode = 3
         versionName = rootProject.file("VERSION").readText().trim()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -48,6 +48,15 @@ dependencies {
     implementation(project(":core:database"))
     implementation(project(":core:datastore"))
 
+    // Issue 2.2: the app lock. :core:crypto is the PIN/lockout logic, :data:repository the audit
+    // log, and biometric-ktx is BiometricPrompt (class 3, SEC-002) — which is also what pulls in
+    // androidx.fragment, so MainActivity can be a FragmentActivity.
+    implementation(project(":core:crypto"))
+    implementation(project(":data:repository"))
+    implementation(libs.androidx.biometric)
+
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
+    // FakeClock (issue 1.3) — the app lock's timeout and lockout are clock-driven.
+    testImplementation(testFixtures(project(":core:common")))
 }

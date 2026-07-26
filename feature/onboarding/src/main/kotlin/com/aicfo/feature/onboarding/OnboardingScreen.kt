@@ -83,13 +83,12 @@ fun OnboardingContent(
             text = stringResource(R.string.onboarding_step_of, uiState.stepNumber, uiState.stepCount),
             style = MaterialTheme.typography.labelLarge,
         )
-        if (uiState.errorCode != null) {
-            ErrorBanner(onEvent = onEvent)
-        }
+        uiState.errorCode?.let { code -> ErrorBanner(code = code, onEvent = onEvent) }
         when (uiState.step) {
             OnboardingStep.WELCOME -> WelcomeStep()
             OnboardingStep.CONSENT -> ConsentStep(uiState = uiState, onEvent = onEvent)
             OnboardingStep.PROFILE -> ProfileStep(uiState = uiState, onEvent = onEvent)
+            OnboardingStep.SECURITY -> SecurityStep(uiState = uiState, onEvent = onEvent)
             OnboardingStep.QUICK_SETUP -> QuickSetupStep(uiState = uiState, onEvent = onEvent)
         }
         StepActions(uiState = uiState, onEvent = onEvent)
@@ -97,17 +96,33 @@ fun OnboardingContent(
 }
 
 /**
- * The save-failed banner.
+ * The something-went-wrong banner.
  * Why:    a failed write must be visible and dismissible rather than silently swallowed — the flow
  *         deliberately does not advance on failure, so without this the Finish button would look
- *         broken.
- * Result: the banner. Input: [onEvent]. Output: the composition.
+ *         broken. Issue 2.2 added two more reasons it can appear, and they need their own wording:
+ *         "that PIN is too short" and "generic save failure" are not the same instruction.
+ * Result: the banner. Input: [code] — an error code from the ViewModel; [onEvent].
+ * Output: the composition.
  * Changelog: 2026-07-25 — Created for issue 2.1.
+ *            2026-07-26 — Issue 2.2: takes a code so the PIN problems read differently.
  */
 @Composable
-private fun ErrorBanner(onEvent: (OnboardingEvent) -> Unit) {
+private fun ErrorBanner(
+    code: String,
+    onEvent: (OnboardingEvent) -> Unit,
+) {
     CfoCard {
-        Text(text = stringResource(R.string.onboarding_error), color = CfoTheme.extendedColors.negative)
+        Text(
+            text =
+                stringResource(
+                    when (code) {
+                        ERROR_PIN_TOO_SHORT -> R.string.onboarding_security_error_pin_short
+                        ERROR_PIN_MISMATCH -> R.string.onboarding_security_error_pin_mismatch
+                        else -> R.string.onboarding_error
+                    },
+                ),
+            color = CfoTheme.extendedColors.negative,
+        )
         CfoSecondaryButton(
             text = stringResource(R.string.onboarding_error_dismiss),
             onClick = { onEvent(OnboardingEvent.DismissError) },

@@ -17,6 +17,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.input.KeyboardType
 import com.aicfo.core.designsystem.component.CfoCard
 import com.aicfo.core.designsystem.component.CfoListRow
+import com.aicfo.core.designsystem.component.CfoPinField
 
 /*
  * The four faces of the onboarding flow (issue 2.1; FR-ONB-001/002/003).
@@ -214,5 +215,84 @@ private fun AmountField(
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+/**
+ * Step 4 — the app lock (FR-ONB-001 step 3, SEC-002, issue 2.2).
+ * Why:    ADR-0002 deferred this step to issue 2.2 and fixed its position after [ProfileStep] — the
+ *         profile exists by then, which is what a PIN is protecting. It is **skippable**: SEC-002
+ *         describes the lock, it does not require enabling it during first run, and a user who
+ *         declines here can turn it on later in settings (FR-SET-001).
+ * Result: the composition. Input: [uiState], [onEvent]. Output: the rendered step.
+ * Changelog: 2026-07-26 — Created for issue 2.2.
+ */
+@Composable
+internal fun SecurityStep(
+    uiState: OnboardingUiState,
+    onEvent: (OnboardingEvent) -> Unit,
+) {
+    Text(text = stringResource(R.string.onboarding_security_title), style = MaterialTheme.typography.headlineSmall)
+    Text(text = stringResource(R.string.onboarding_security_body))
+    CfoCard {
+        Text(text = stringResource(R.string.onboarding_security_explainer))
+    }
+    CfoListRow(
+        title = stringResource(R.string.onboarding_security_toggle),
+        // Same reasoning as the consent row: the whole row is the control, announced once with its
+        // label and on/off state, rather than an unlabelled switch beside an inert piece of text.
+        modifier =
+            Modifier.toggleable(
+                value = uiState.appLockEnabled,
+                role = Role.Switch,
+                onValueChange = { onEvent(OnboardingEvent.AppLockToggled(it)) },
+            ),
+        trailing = {
+            Switch(
+                checked = uiState.appLockEnabled,
+                onCheckedChange = null,
+                modifier = Modifier.clearAndSetSemantics {},
+            )
+        },
+    )
+    if (uiState.appLockEnabled) {
+        PinFields(uiState = uiState, onEvent = onEvent)
+    }
+    Text(
+        text = stringResource(R.string.onboarding_security_optional),
+        style = MaterialTheme.typography.bodySmall,
+    )
+}
+
+/**
+ * The choose-and-confirm PIN pair, shown only once the lock is switched on.
+ * Why:    hidden until asked for, because a first-run screen that opens with two PIN boxes reads as
+ *         a demand rather than the offer ADR-0002 requires this step to be. Extracted from
+ *         [SecurityStep] to keep that function inside detekt's length limit.
+ * Result: the composition. Input: [uiState], [onEvent]. Output: the two fields plus their help text.
+ * Changelog: 2026-07-26 — Created for issue 2.2.
+ *
+ * The confirm field exists because a mistyped PIN set here is not recoverable by trying again — the
+ * next thing that asks for it is the lock screen, and the user has only their memory of what they
+ * meant to type.
+ */
+@Composable
+private fun PinFields(
+    uiState: OnboardingUiState,
+    onEvent: (OnboardingEvent) -> Unit,
+) {
+    CfoPinField(
+        value = uiState.pinText,
+        onValueChange = { onEvent(OnboardingEvent.PinChanged(it)) },
+        label = stringResource(R.string.onboarding_security_pin_label),
+    )
+    CfoPinField(
+        value = uiState.pinConfirmText,
+        onValueChange = { onEvent(OnboardingEvent.PinConfirmChanged(it)) },
+        label = stringResource(R.string.onboarding_security_pin_confirm_label),
+    )
+    Text(
+        text = stringResource(R.string.onboarding_security_pin_help),
+        style = MaterialTheme.typography.bodySmall,
     )
 }

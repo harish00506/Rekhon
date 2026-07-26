@@ -1,5 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- User-visible strings are externalised here (§5, ICU plurals as needed). -->
+<!--
+  User-visible strings are externalised here (§5, §21.6, ICU plurals as needed).
+
+  The `CfoHardcodedUiString` lint rule from issue 1.5 only scans `:feature:*`, so this module's
+  compliance is on us — which is why the lock screen's copy is here rather than inline.
+-->
 <resources>
     <string name="app_name">AI Personal CFO</string>
+
+    <!-- App lock (issue 2.2, SEC-002) -->
+    <string name="lock_title">Locked</string>
+    <string name="lock_body">Enter your PIN to open your finances.</string>
+    <string name="lock_pin_label">PIN</string>
+    <string name="lock_unlock">Unlock</string>
+    <string name="lock_use_biometric">Use fingerprint or face</string>
+    <string name="lock_biometric_prompt_title">Unlock AI Personal CFO</string>
+    <string name="lock_biometric_prompt_subtitle">Confirm it\'s you to see your finances.</string>
+    <string name="lock_biometric_prompt_negative">Use PIN</string>
+
+    <!--
+      Errors, deliberately vague about which factor failed and why: telling the person holding the
+      phone what went wrong is telling them what to attack next.
+    -->
+    <string name="lock_error_wrong_pin">That PIN is not right.</string>
+    <string name="lock_error_biometric">Couldn\'t verify you. Try your PIN.</string>
+    <string name="lock_error_dismiss">Dismiss</string>
+
+    <!-- ICU plurals: "1 attempt" must not read as "1 attempts" (§21.6). -->
+    <plurals name="lock_attempts_remaining">
+        <item quantity="one">%1$d attempt left before a timeout</item>
+        <item quantity="other">%1$d attempts left before a timeout</item>
+    </plurals>
+    <plurals name="lock_locked_out">
+        <item quantity="one">Too many attempts. Try again in %1$d second.</item>
+        <item quantity="other">Too many attempts. Try again in %1$d seconds.</item>
+    </plurals>
 </resources>

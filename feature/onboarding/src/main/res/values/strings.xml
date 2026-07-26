@@ -51,4 +51,15 @@
     <string name="onboarding_quick_setup_rent_label">Rent or EMI each month</string>
     <string name="onboarding_quick_setup_savings_label">Typical savings each month</string>
     <string name="onboarding_quick_setup_amount_hint">₹</string>
+    <!-- Step 4 - the app lock (FR-ONB-001 step 3, SEC-002, issue 2.2). Skippable by design. -->
+    <string name="onboarding_security_title">Lock the app</string>
+    <string name="onboarding_security_body">Add a lock so that whoever picks up your phone cannot open your finances.</string>
+    <string name="onboarding_security_explainer">Your PIN never leaves this device and is never stored as you typed it. If your phone supports fingerprint or face unlock, you can use that too.</string>
+    <string name="onboarding_security_toggle">Require a PIN to open the app</string>
+    <string name="onboarding_security_pin_label">Choose a PIN</string>
+    <string name="onboarding_security_pin_confirm_label">Enter it again</string>
+    <string name="onboarding_security_pin_help">4 to 6 digits. There is no way to recover it, so pick something you will remember.</string>
+    <string name="onboarding_security_optional">You can skip this and turn it on later in Settings.</string>
+    <string name="onboarding_security_error_pin_short">A PIN needs 4 to 6 digits.</string>
+    <string name="onboarding_security_error_pin_mismatch">Those two PINs are different.</string>
 </resources>

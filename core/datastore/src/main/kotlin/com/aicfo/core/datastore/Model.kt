@@ -71,7 +71,8 @@ enum class ThemeSetting {
  *         [theme]. [profileDisplayName] — local only, `null` when unset.
  *         [onboardingCompletedAtUtcMillis] — UTC epoch millis (TIM-001), `null` until first-run
  *         onboarding finishes; this is what decides the app's start destination.
- *         [quickSetup] — the optional FR-ONB-002 seeds.
+ *         [quickSetup] — the optional FR-ONB-002 seeds. The app lock's state is **not** here — it
+ *         lives behind its own narrow `AppLockStore` (issue 2.2), for the same reason consents do.
  * Output: an immutable value.
  */
 data class SettingsSnapshot(
@@ -113,3 +114,40 @@ data class QuickSetupSeeds(
     val rentOrEmi: Money? = null,
     val typicalSavings: Money? = null,
 )
+
+/**
+ * The app lock's persisted state (issue 2.2; SEC-002, FR-SET-001).
+ *
+ * Why:    the lock has to answer three questions at launch, and getting any of them from memory
+ *         would be a hole: is the lock on, how long may the app sit in the background, and how many
+ *         failures have already happened. The last one especially — SEC-002's escalating lockout is
+ *         only a defence if force-stopping the app does **not** reset it, which is the first thing
+ *         someone with a stolen phone would try.
+ * Result: what `AppLockStore.observe()` emits.
+ * Changelog: 2026-07-26 — Created for issue 2.2.
+ *
+ * Input:  [enabled] — whether the lock screen gates the app; [biometricEnabled] — whether to offer
+ *         BiometricPrompt (independent of [enabled]; SEC-002 makes the PIN the fallback);
+ *         [autoLockTimeoutSeconds] — background idle before re-locking, defaulted from the stored
+ *         `0` to [DEFAULT_AUTO_LOCK_SECONDS]; [failedAttempts] — consecutive failures, the input to
+ *         `LockoutPolicy`; [lastFailureAtUtcMillis] — when the last one happened (TIM-001), `null`
+ *         when there have been none.
+ * Output: an immutable value.
+ */
+data class AppLockSettings(
+    val enabled: Boolean = false,
+    val biometricEnabled: Boolean = false,
+    val autoLockTimeoutSeconds: Int = DEFAULT_AUTO_LOCK_SECONDS,
+    val failedAttempts: Int = 0,
+    val lastFailureAtUtcMillis: Long? = null,
+)
+
+/**
+ * The auto-lock timer's default, in seconds.
+ *
+ * SRS §23.1's threat table names it directly — "app-level lock (biometric/PIN) with auto-lock timer
+ * (default 1 min)". It lives here rather than in the UI because the stored `0` has to resolve to it
+ * at the point the proto is read; a default applied in the settings screen would leave every other
+ * caller reading `0` and re-locking instantly.
+ */
+const val DEFAULT_AUTO_LOCK_SECONDS: Int = 60

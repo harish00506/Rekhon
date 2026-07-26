@@ -206,18 +206,71 @@ class MigrationSafetyTest {
      */
     @Test
     fun `every table supports soft delete and profile scoping`() {
-        SchemaFixtures.load(CfoDatabase.VERSION).database.entitiesByTableName().forEach { (table, entity) ->
-            val columns = entity.fieldsByColumnName().keys
-            assertTrue(
-                "$table must have deleted_at_utc_millis for soft delete (DB-003 recoverability)",
-                "deleted_at_utc_millis" in columns,
-            )
-            if (table != "profile") {
-                assertTrue("$table must carry profile_id so no query can span profiles", "profile_id" in columns)
+        SchemaFixtures.load(CfoDatabase.VERSION).database.entitiesByTableName()
+            .filterKeys { it !in INVARIANT_EXEMPT_TABLES }
+            .forEach { (table, entity) ->
+                val columns = entity.fieldsByColumnName().keys
+                assertTrue(
+                    "$table must have deleted_at_utc_millis for soft delete (DB-003 recoverability)",
+                    "deleted_at_utc_millis" in columns,
+                )
+                if (table != "profile") {
+                    assertTrue("$table must carry profile_id so no query can span profiles", "profile_id" in columns)
+                }
             }
-        }
+    }
+
+    /**
+     * Input:  the exemption list itself.
+     * Output: asserts it is exactly the one table that has been argued for. The exemption above is
+     *         a hole in an invariant that protects user data, so it must not be possible to widen
+     *         it by adding a string — this test makes that a deliberate, reviewed edit.
+     */
+    @Test
+    fun `only audit_log is exempt from the per-row invariants`() {
+        assertEquals(setOf("audit_log"), INVARIANT_EXEMPT_TABLES.keys)
+    }
+
+    /**
+     * Input:  the `audit_log` table's columns.
+     * Output: asserts the table is exactly the four columns issue 2.2 defined, and no more.
+     *
+     * §21.6 bans PII and amounts from logs and sends security events here instead — which only
+     * holds because there is nowhere in this table to put them. `event` and `method` store constant
+     * names from closed enums (`AuditEventTest` pins those). A column added later called `detail`,
+     * `note` or `user` would quietly turn a PII-free log into a PII store, and no other test would
+     * notice. So the column set is pinned rather than the intent being described in a comment.
+     */
+    @Test
+    fun `audit_log has no column that could hold PII or an amount`() {
+        val columns =
+            SchemaFixtures.load(CfoDatabase.VERSION)
+                .database
+                .entitiesByTableName()
+                .getValue("audit_log")
+                .fieldsByColumnName()
+                .keys
+        assertEquals(setOf("id", "event", "occurred_at_utc_millis", "method"), columns)
     }
 }
+
+/**
+ * Tables deliberately outside the soft-delete and profile-scoping invariants, with the reason.
+ *
+ * Why:    those two rules exist to protect *user data* — a deleted transaction must be recoverable,
+ *         and no query may leak across profiles. `audit_log` is neither: it holds security events
+ *         about the app itself, written before any profile is even selected (the lock gates the app
+ *         first), and an append-only log a caller can soft-delete is not evidence of anything.
+ * Result: the invariant keeps biting for every table it was written for.
+ * Changelog: 2026-07-26 — Created for issue 2.2, when `audit_log` became the first exemption.
+ */
+private val INVARIANT_EXEMPT_TABLES =
+    mapOf(
+        "audit_log" to
+            "append-only security log (issue 2.2, §21.6): no profile exists at unlock time, and " +
+            "a security log that can be soft-deleted proves nothing. Rows leave only with " +
+            "erase-all (SEC-006).",
+    )
 
 // --- synthetic-schema builders, used only to prove the detector bites --------------------------
 

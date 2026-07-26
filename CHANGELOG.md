@@ -11,6 +11,46 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > First-run onboarding, the biometric app lock, and the accounts + net-worth core. Epic 1 built
 > foundations; this is the first epic a user can see.
 
+### [0.2.2] — Issue 2.2: Biometric/PIN app lock (BiometricPrompt)  (2026-07-26)
+
+- **Implemented:** the app lock — BiometricPrompt class 3 with a PIN fallback, gating the whole app
+  on cold start and after an idle timeout (SEC-002, SEC-003, §23.1, FR-SET-001, FR-ONB-001 step 3;
+  P-01, P-04, P-08, TIM-001, ARC-003, ARC-004, ARC-005, DB-003, §21.6).
+  - **Fail-secure by default, not by code path.** The session flag starts closed and the UI state
+    starts `CHECKING`, so a wrong PIN, a cancelled prompt, a Keystore that has stopped working and
+    an unreadable settings file all leave the app locked without any branch having to say so. 21
+    cases in `AppLockViewModelTest` assert the *negative* — that the session did not open.
+  - **SEC-002's schedule, exactly.** 5 failures → 30 s, doubling, capped at an hour, pinned attempt
+    by attempt. The counter lives in Proto DataStore, so force-stopping the app — the first thing
+    anyone with a stolen phone would try — does not clear a lockout.
+  - **A PIN cannot be brute-forced offline.** Four to six digits is a million candidates; no hash
+    survives that. The credential is `salt || HMAC-SHA256(salt || pin)` under a key generated inside
+    the Android Keystore, so the file on disk gives an attacker no oracle to test guesses against.
+    Tink only (SEC-003). The PIN is never written to `SavedStateHandle`, which reaches disk.
+  - **The lock gates the encrypted store with an assertion, not a promise.** The Hilt provider for
+    `CfoDatabase` refuses to hand it to feature code while locked. The audit log is the single
+    exemption — it must record *refused* unlocks — and that exemption is a Hilt qualifier
+    (`@AuditDatabase`) visible at every injection site rather than a comment.
+  - **`audit_log` arrives as schema v2** (§21.6) with the first real migration, additive only. Four
+    columns, holding closed-enum codes and a timestamp: there is nowhere in the table to put PII,
+    and a test asserts that against the real SQLite columns. First class in `:data:repository`.
+  - **Onboarding gains its SECURITY step**, where [ADR-0002](docs/adr/0002-onboarding-step-order.md)
+    said it would go — after the profile, and skippable.
+- **Deviation on record:** SEC-001's "wrapped by a Keystore key **requiring user authentication**"
+  clause is deliberately left open. Binding the key to device auth would permanently destroy the
+  database if the user ever removed their lock screen, and there is no server copy.
+  [ADR-0003](docs/adr/0003-app-lock-gate-and-deferred-user-auth-key.md) records that, and the
+  related limit that the database gate is checked once per process rather than on every access.
+  **SEC-001 is not closed by this issue.**
+- **Tests:** 285 passed, 0 skipped (was 202). +83: the SEC-002 schedule, the PIN verifier, the
+  app-lock store, the audit repository against a real SQLite engine, the fail-secure matrix, and the
+  onboarding security step.
+- **Not verified:** `BiometricPrompt` and the real Android Keystore have **never been executed** —
+  no device or emulator exists on this machine, so `connectedDebugAndroidTest`, `/run` and `/verify`
+  are blocked rather than skipped. The v1 → v2 migration is proven structurally on the JVM and its
+  DDL diffed by hand against Room's generated SQL, but has not been run.
+  [The tracker](docs/issues/2.2-biometric-pin-app-lock-biometricprompt-tracker.md) lists every gap.
+
 ### [0.2.1] — Issue 2.1: 4-step onboarding flow  (2026-07-25)
 
 - **Implemented:** the first-run flow — welcome & privacy pledge → SMS-parsing opt-in → profile,

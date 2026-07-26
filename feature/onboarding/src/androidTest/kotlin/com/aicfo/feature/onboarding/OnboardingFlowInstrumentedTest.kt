@@ -12,8 +12,10 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aicfo.core.common.DefaultDispatcherProvider
 import com.aicfo.core.common.FakeClock
 import com.aicfo.core.common.getOrNull
+import com.aicfo.core.crypto.KeystoreMacFactory
 import com.aicfo.core.datastore.CfoDataStoreFactory
 import com.aicfo.core.datastore.ConsentFeature
+import com.aicfo.core.datastore.DEFAULT_AUTO_LOCK_SECONDS
 import com.aicfo.core.designsystem.theme.CfoTheme
 import com.aicfo.core.model.Money
 import kotlinx.coroutines.CoroutineScope
@@ -38,7 +40,8 @@ import java.time.ZoneId
  *       device, one assertion that survives everything in between. It also exercises the path the
  *       Windows rename bug broke once before (handoff trap #4), which no JVM test on this machine
  *       can honestly cover.
- * What: drives all four steps, then reads the profile and the consent back out of storage.
+ * What: drives all five steps, then reads the profile, the consent and the app lock back out
+ *       of storage.
  * Result: proof that finishing onboarding actually persists, rather than appearing to.
  * Changelog: 2026-07-25 — Created for issue 2.1.
  *
@@ -58,10 +61,15 @@ class OnboardingFlowInstrumentedTest {
     private val context: Context get() = ApplicationProvider.getApplicationContext()
 
     /**
-     * Input:  the flow, driven through all four steps on a device.
-     * Output: asserts the profile, the quick-setup seed and the SMS consent are all readable from
-     *         real storage afterwards — and that the completion timestamp came from the injected
-     *         clock (TIM-001), which is what makes it assertable at all.
+     * Input:  the flow, driven through all five steps on a device, with the app lock enabled.
+     * Output: asserts the profile, the quick-setup seed, the SMS consent and the SEC-002 app lock
+     *         are all readable from real storage afterwards — and that the completion timestamp came
+     *         from the injected clock (TIM-001), which is what makes it assertable at all.
+     *
+     * The PIN is set through the **real** `TinkPinVerifier` over the real Android Keystore, so this
+     * is the only place the Keystore path is exercised at all: the JVM tests use a fake `Mac`
+     * because a TEE does not exist off-device. That makes verifying the PIN back out the single
+     * most valuable assertion in this file.
      */
     @Test
     fun completingOnboardingPersistsTheProfileAndTheConsent() {
@@ -73,7 +81,17 @@ class OnboardingFlowInstrumentedTest {
         val stores = CfoDataStoreFactory.create(context, clock, DefaultDispatcherProvider(), scope)
 
         try {
-            val viewModel = OnboardingViewModel(stores.settings, stores.consents, clock, SavedStateHandle())
+            val pinVerifier = KeystoreMacFactory.createVerifier(context)
+            pinVerifier.clearPin()
+            val viewModel =
+                OnboardingViewModel(
+                    stores.settings,
+                    stores.consents,
+                    stores.appLock,
+                    pinVerifier,
+                    clock,
+                    SavedStateHandle(),
+                )
             compose.setContent {
                 CfoTheme { OnboardingScreen(onFinished = {}, viewModel = viewModel) }
             }
@@ -82,6 +100,11 @@ class OnboardingFlowInstrumentedTest {
             node(string(R.string.onboarding_consent_toggle)).performClick()
             clickNext()
             node("Asia/Dubai").performClick()
+            clickNext()
+            // SECURITY (issue 2.2, SEC-002): enable the lock and set a PIN.
+            node(string(R.string.onboarding_security_toggle)).performClick()
+            node(string(R.string.onboarding_security_pin_label)).performTextInput("135790")
+            node(string(R.string.onboarding_security_pin_confirm_label)).performTextInput("135790")
             clickNext()
             node(string(R.string.onboarding_quick_setup_income_label)).performTextInput("85000")
             node(string(R.string.onboarding_finish)).performClick()
@@ -103,6 +126,15 @@ class OnboardingFlowInstrumentedTest {
                 val consent = stores.consents.observe(ConsentFeature.SMS_PARSING).first().getOrNull()!!
                 assertTrue("the opt-in must survive the write", consent.granted)
                 assertEquals(FIXED_MILLIS, consent.grantedAtUtcMillis)
+
+                val lock = stores.appLock.observe().first().getOrNull()!!
+                assertTrue("the app lock must be on after the security step", lock.enabled)
+                assertEquals(DEFAULT_AUTO_LOCK_SECONDS, lock.autoLockTimeoutSeconds)
+
+                // The real Keystore round trip: the PIN verifies, and a different one does not.
+                assertTrue("a PIN must have been stored", pinVerifier.isPinSet().getOrNull() == true)
+                assertTrue("the chosen PIN must verify", pinVerifier.verify("135790").getOrNull() == true)
+                assertTrue("any other PIN must be refused", pinVerifier.verify("000000").getOrNull() == false)
             }
         } finally {
             scope.cancel()
