@@ -1,6 +1,7 @@
 package com.aicfo.feature.onboarding
 
 import androidx.compose.runtime.Immutable
+import com.aicfo.domain.engines.quicksetup.QuickSetupPlan
 
 /**
  * The four steps of first-run onboarding (FR-ONB-001, FR-ONB-002, FR-ONB-003).
@@ -68,7 +69,9 @@ enum class OnboardingStep {
  *         [displayName], [currencyCode], [timeZoneId]; [deviceZoneId] — what the device reports,
  *         carried in state so the composable stays a pure function of it rather than reading the
  *         platform itself; [appLockEnabled], [pinText], [pinConfirmText] — the SEC-002 step;
- *         [monthlyIncomeText], [rentOrEmiText], [typicalSavingsText]; [isSaving];
+ *         [monthlyIncomeText], [rentOrEmiText], [typicalSavingsText]; [quickSetupPlan] — what the
+ *         engine derived from those three, recomputed on every keystroke and `null` until at least
+ *         one of them parses (issue 2.3); [isSaving];
  *         [isComplete]; [errorCode] — an `AppError.code`, never a message, so the wording stays in
  *         `strings.xml` (§21.6).
  * Output: an immutable snapshot for the composable.
@@ -87,6 +90,7 @@ data class OnboardingUiState(
     val monthlyIncomeText: String = "",
     val rentOrEmiText: String = "",
     val typicalSavingsText: String = "",
+    val quickSetupPlan: QuickSetupPlan? = null,
     val isSaving: Boolean = false,
     val isComplete: Boolean = false,
     val errorCode: String? = null,

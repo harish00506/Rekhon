@@ -80,6 +80,14 @@ The quick-setup step captures its figures here but does nothing with them; issue
 seed budgets and the emergency-fund target. They are stored as `int64` minor units (MNY-001) so that
 consumption needs no migration.
 
+> **Update, 2026-07-27:** issue 2.3 has closed that loop. The quick-setup step now derives a budget
+> and an emergency-fund target from the figures as the user types, shows them with the rules that
+> produced them, and persists them as `budget` and `recurring_rule` rows at schema v3
+> ([ADR-0004](0004-quick-setup-persists-budgets-and-recurring-rules.md)) — along with the app's
+> first `profile` row. The step order decided here is unchanged. **FR-ONB-001 remains unsatisfied**:
+> step 4 (first account with opening balance) still waits on issue 2.5, which is also what will
+> attach an account to the recurring rules 2.3 leaves unattached.
+
 ## Alternatives considered
 
 **Build FR-ONB-001 literally, with steps 3 and 4 as placeholders.** Rejected: two of four steps

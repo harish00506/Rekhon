@@ -31,6 +31,9 @@ import org.junit.runner.RunWith
  * across — see `migrate1To2_preservesTransactionsAndAddsAuditLog`. It is the template for every
  * later bump: insert real rows at the old version, migrate, assert the exact values survived.
  * Changelog: 2026-07-26 — Issue 2.2: added the 1 → 2 case.
+ *            2026-07-27 — Issue 2.3: added the 2 → 3 case (`budget`, `recurring_rule`). Still not
+ *            run: this machine has gained no device since issue 2.2, so the structural guard in
+ *            `MigrationSafetyTest` remains the only part of the harness that has actually executed.
  */
 @RunWith(AndroidJUnit4::class)
 class MigrationRoundTripTest {
@@ -102,6 +105,73 @@ class MigrationRoundTripTest {
         migrated.query("SELECT COUNT(*) FROM audit_log").use { cursor ->
             assertTrue(cursor.moveToFirst())
             assertEquals(1, cursor.getInt(0))
+        }
+        migrated.close()
+    }
+
+    /**
+     * 2 → 3 adds `budget` and `recurring_rule` for the quick-setup seeds (issue 2.3, FR-ONB-002).
+     *
+     * Input:  a version-2 database holding a transaction and an audit event — one row from each of
+     *         the two versions that came before, so the test proves the *chain* survives rather
+     *         than just the newest step.
+     * Output: asserts both rows are intact afterwards and that the two new tables accept a write.
+     *
+     * The budget amount is checked as an exact `Long` for the same reason the transaction is: a
+     * planned ₹42,500.00 is `4250000` paise, and a column that had been created as `REAL` would
+     * return it as a value that no longer compares equal (MNY-001). `runMigrationsAndValidate` also
+     * re-checks the hand-written DDL in `MIGRATION_2_3` against the committed `schemas/3.json`, so
+     * a typo in a column name fails here rather than on a user's phone.
+     */
+    @Test
+    fun migrate2To3_preservesEarlierRowsAndAddsBudgetAndRecurringRule() {
+        helper.createDatabase(TEST_DB, 2).use { db ->
+            db.execSQL(
+                "INSERT INTO transactions (id, profile_id, account_id, amount_minor, " +
+                    "currency_code, occurred_at_utc_millis, booked_on_iso_date, source, " +
+                    "created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('t1','p1','a1',-12345678,'INR',1767312000000,'2026-01-02'," +
+                    "'manual',1767312000000,1767312000000)",
+            )
+            db.execSQL(
+                "INSERT INTO audit_log (event, occurred_at_utc_millis, method) " +
+                    "VALUES ('APP_UNLOCK_SUCCESS', 1767312000000, 'PIN')",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 3, true, Migrations.MIGRATION_2_3)
+
+        migrated.query("SELECT amount_minor FROM transactions WHERE id = 't1'").use { cursor ->
+            assertTrue("the pre-migration transaction must still be there", cursor.moveToFirst())
+            assertEquals(-12345678L, cursor.getLong(0))
+        }
+        migrated.query("SELECT COUNT(*) FROM audit_log").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("the audit log added at v2 must survive v3", 1, cursor.getInt(0))
+        }
+
+        migrated.execSQL(
+            "INSERT INTO budget (id, profile_id, category_id, nature, period_start_iso_date, " +
+                "amount_minor, rollover_enabled, source, rule_id, rule_version, " +
+                "created_at_utc_millis, updated_at_utc_millis) " +
+                "VALUES ('b1','p1',NULL,'need','2026-07-01',4250000,0,'quick_setup'," +
+                "'RULE-50-30-20','1.0',1767312000000,1767312000000)",
+        )
+        migrated.query("SELECT amount_minor FROM budget WHERE id = 'b1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(4250000L, cursor.getLong(0))
+        }
+
+        migrated.execSQL(
+            "INSERT INTO recurring_rule (id, profile_id, account_id, category_id, name, seed_kind, " +
+                "amount_minor, cadence, next_due_iso_date, source, is_confirmed, " +
+                "created_at_utc_millis, updated_at_utc_millis) " +
+                "VALUES ('r1','p1',NULL,NULL,NULL,'rent_emi',-2400000,'monthly','2026-08-01'," +
+                "'quick_setup',0,1767312000000,1767312000000)",
+        )
+        migrated.query("SELECT amount_minor FROM recurring_rule WHERE id = 'r1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("an outflow stays negative, as in transactions", -2400000L, cursor.getLong(0))
         }
         migrated.close()
     }

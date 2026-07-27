@@ -14,8 +14,13 @@ import com.aicfo.core.datastore.OnboardingProfile
 import com.aicfo.core.datastore.SettingsSnapshot
 import com.aicfo.core.datastore.SettingsStore
 import com.aicfo.core.datastore.ThemeSetting
+import com.aicfo.data.repository.ProfileSeed
+import com.aicfo.data.repository.QuickSetupRepository
+import com.aicfo.domain.engines.quicksetup.BudgetEnvelope
+import com.aicfo.domain.engines.quicksetup.QuickSetupPlan
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
 /*
@@ -155,6 +160,45 @@ internal class FakeAppLockStore(
         apply()
         return Ok(Unit)
     }
+}
+
+/**
+ * A [QuickSetupRepository] that records what onboarding asked it to persist (issue 2.3).
+ * Why:    the two assertions that matter here are about **absence**: a skipped step must not call
+ *         this at all, and a failed earlier write must stop before it. Neither can be shown by a
+ *         fake that only counts successes, so the plan itself is captured.
+ * Result: the recorded plan and profile, and the number of attempts.
+ * Input:  [failWith] — when non-null, `applySeeds` returns `Err` with it. Output: a fake repository.
+ * Changelog: 2026-07-27 — Created for issue 2.3.
+ */
+internal class FakeQuickSetupRepository(
+    var failWith: AppError? = null,
+) : QuickSetupRepository {
+    /** The last plan handed to [applySeeds], or `null` if it was never called. */
+    var savedPlan: QuickSetupPlan? = null
+        private set
+
+    /** The last profile handed to [applySeeds], or `null` if it was never called. */
+    var savedProfile: ProfileSeed? = null
+        private set
+
+    /** How many times a write was attempted — the skip path must leave this at zero. */
+    var applyCallCount: Int = 0
+        private set
+
+    override suspend fun applySeeds(
+        plan: QuickSetupPlan,
+        profile: ProfileSeed,
+    ): Result<Unit, AppError> {
+        applyCallCount++
+        failWith?.let { return Err(it) }
+        savedPlan = plan
+        savedProfile = profile
+        return Ok(Unit)
+    }
+
+    override fun observeLatestEnvelopes(profileId: String): Flow<List<BudgetEnvelope>> =
+        flowOf(savedPlan?.envelopes.orEmpty())
 }
 
 /**

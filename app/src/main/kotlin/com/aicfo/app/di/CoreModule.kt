@@ -13,6 +13,10 @@ import com.aicfo.core.database.CfoDatabaseFactory
 import com.aicfo.core.datastore.CfoDataStoreFactory
 import com.aicfo.core.datastore.ConsentStore
 import com.aicfo.core.datastore.SettingsStore
+import com.aicfo.data.repository.QuickSetupRepository
+import com.aicfo.data.repository.RepositoryFactory
+import com.aicfo.domain.engines.quicksetup.QuickSetupEngine
+import com.aicfo.domain.engines.quicksetup.QuickSetupEngineFactory
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -156,6 +160,36 @@ object CoreModule {
         }
         return database
     }
+
+    /**
+     * The quick-setup engine (issue 2.3; FR-ONB-002, ARC-003).
+     * Why:    the implementation is `internal` to its module, so only its factory can build one —
+     *         the same seam every engine will use. Stateless and deterministic, so a singleton is
+     *         safe and there is nothing to reset between screens.
+     * Result: a [QuickSetupEngine]. Input: none. Output: the engine.
+     * Changelog: 2026-07-27 — Created for issue 2.3.
+     */
+    @Provides
+    @Singleton
+    fun provideQuickSetupEngine(): QuickSetupEngine = QuickSetupEngineFactory.create()
+
+    /**
+     * The quick-setup store (issue 2.3; FR-ONB-002, SEC-002).
+     * Why:    takes the **gated** [CfoDatabase], deliberately not `@AuditDatabase`. This holds the
+     *         user's income, rent and budget — financial data, which is exactly what the app lock
+     *         exists to gate. The audit log's exemption is for security events written *while*
+     *         locked; nothing here has that excuse.
+     * Result: a [QuickSetupRepository]. Input: [database], [clock], [dispatchers].
+     * Output: the repository.
+     * Changelog: 2026-07-27 — Created for issue 2.3.
+     */
+    @Provides
+    @Singleton
+    fun provideQuickSetupRepository(
+        database: CfoDatabase,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+    ): QuickSetupRepository = RepositoryFactory.quickSetup(database, clock, dispatchers)
 }
 
 /**

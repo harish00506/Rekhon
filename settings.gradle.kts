@@ -56,6 +56,7 @@ include(":core:designsystem")   // M3 theme tokens + Compose components
 
 // :domain:*                pure-Kotlin engines + use cases (ARC-002/003)
 include(":domain:engines:forecast") // representative engine stub
+include(":domain:engines:quicksetup") // FR-ONB-002 seeds -> budget envelopes + emergency target
 include(":domain:usecase")
 
 // :data:*                  the ONLY DAO/network touchers (ARC-005)

@@ -30,4 +30,18 @@ object RepositoryFactory {
         clock: Clock,
         dispatchers: DispatcherProvider,
     ): AuditLogRepository = RoomAuditLogRepository(database.auditLogDao(), clock, dispatchers)
+
+    /**
+     * Builds the quick-setup store (issue 2.3, FR-ONB-002).
+     * Why:    takes the whole [database] rather than DAOs, because its atomicity guarantee rests on
+     *         `withTransaction`, which is a method on the database.
+     * Result: a [QuickSetupRepository] over the encrypted database.
+     * Input:  [database] — the open, encrypted database; [clock] — TIM-001; [dispatchers].
+     * Output: [QuickSetupRepository].
+     */
+    fun quickSetup(
+        database: CfoDatabase,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+    ): QuickSetupRepository = RoomQuickSetupRepository(database, clock, dispatchers)
 }

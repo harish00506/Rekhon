@@ -129,19 +129,30 @@ private fun MoneySummary(uiState: DashboardUiState) {
 }
 
 /**
- * The needs/wants/savings bar.
- * Result: the labelled chart. Input: [uiState]. Output: the composition.
+ * The needs/wants/savings bar, or the empty state when there is no budget.
+ * Why:    since issue 2.3 these are the user's real envelopes, so the absent case is now reachable:
+ *         someone who skipped quick setup has no budget at all. Rendering a bar of three zeroes for
+ *         them would be a chart of numbers nobody supplied (P-03), and it looks identical to a
+ *         genuine budget of ₹0 — so the two are drawn differently.
+ * Result: the labelled chart, or a line explaining how to get one. Input: [uiState].
+ * Output: the composition.
  * Changelog: 2026-07-25 — Created for issue 1.10.
+ *            2026-07-27 — Issue 2.3: real figures plus the empty state.
  */
 @Composable
 private fun SpendSplitSection(uiState: DashboardUiState) {
     Text(text = stringResource(R.string.dashboard_spend_split_label))
+    val split = uiState.spendSplit
+    if (split == null) {
+        Text(text = stringResource(R.string.dashboard_spend_split_empty))
+        return
+    }
     CfoProportionBar(
         segments =
             listOf(
-                CfoProportionSegment(uiState.spendSplit.needsMinor, CfoTheme.extendedColors.negative),
-                CfoProportionSegment(uiState.spendSplit.wantsMinor, CfoTheme.extendedColors.warning),
-                CfoProportionSegment(uiState.spendSplit.savingsMinor, CfoTheme.extendedColors.positive),
+                CfoProportionSegment(split.needsMinor, CfoTheme.extendedColors.negative),
+                CfoProportionSegment(split.wantsMinor, CfoTheme.extendedColors.warning),
+                CfoProportionSegment(split.savingsMinor, CfoTheme.extendedColors.positive),
             ),
         contentDescription = stringResource(R.string.dashboard_spend_split_description),
     )

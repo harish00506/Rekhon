@@ -4,13 +4,17 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 import com.aicfo.core.database.dao.AccountDao
 import com.aicfo.core.database.dao.AuditLogDao
+import com.aicfo.core.database.dao.BudgetDao
 import com.aicfo.core.database.dao.CategoryDao
 import com.aicfo.core.database.dao.ProfileDao
+import com.aicfo.core.database.dao.RecurringRuleDao
 import com.aicfo.core.database.dao.TransactionDao
 import com.aicfo.core.database.entity.AccountEntity
 import com.aicfo.core.database.entity.AuditLogEntity
+import com.aicfo.core.database.entity.BudgetEntity
 import com.aicfo.core.database.entity.CategoryEntity
 import com.aicfo.core.database.entity.ProfileEntity
+import com.aicfo.core.database.entity.RecurringRuleEntity
 import com.aicfo.core.database.entity.TransactionEntity
 
 /**
@@ -39,6 +43,8 @@ import com.aicfo.core.database.entity.TransactionEntity
         TransactionEntity::class,
         CategoryEntity::class,
         AuditLogEntity::class,
+        BudgetEntity::class,
+        RecurringRuleEntity::class,
     ],
     version = CfoDatabase.VERSION,
     exportSchema = true,
@@ -59,9 +65,15 @@ abstract class CfoDatabase : RoomDatabase() {
     /** Input: none. Output: the audit-log DAO (issue 2.2, §21.6). */
     abstract fun auditLogDao(): AuditLogDao
 
+    /** Input: none. Output: the budget DAO (issue 2.3, FR-BUD-001). */
+    abstract fun budgetDao(): BudgetDao
+
+    /** Input: none. Output: the recurring-rule DAO (issue 2.3, FR-TXN-006). */
+    abstract fun recurringRuleDao(): RecurringRuleDao
+
     companion object {
         /** Bump only alongside a hand-written migration and a test that proves data survives. */
-        const val VERSION = 2
+        const val VERSION = 3
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"
