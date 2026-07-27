@@ -192,6 +192,138 @@ data class CategoryEntity(
 )
 
 /**
+ * A planned amount for one kind of spending in one month (issue 2.3; FR-BUD-001, FR-ONB-002).
+ *
+ * Why:    FR-BUD-001 allows a budget "per category or category-group", and at first run there are
+ *         no categories at all — issue 4.1 builds the editor. So the row supports both: a budget
+ *         either names a [categoryId] or, when it does not, carries a [nature] and is an envelope
+ *         for a whole group. Quick setup writes the second kind; issue 4.4's editor will write the
+ *         first, into these same columns rather than a new table.
+ * Result: a Room row in `budget`, added at schema version 3 by issue 2.3.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-07-27 — Created for issue 2.3 (FR-ONB-002, FR-BUD-001).
+ *
+ * **Both foreign keys are deliberately nullable**, and both are filled in by a later issue: 4.1
+ * attaches categories, and neither exists at onboarding. Under DB-003 a nullable column added now
+ * is free, while a NOT NULL one guessed now would need a migration to relax.
+ *
+ * **[source], [ruleId] and [ruleVersion] are the P-02 trail.** A budget the app proposed must be
+ * able to say which rule proposed it and at what version, or the user's drill-down shows a number
+ * with no derivation (AI-ARC-006). A budget the user typed carries `source = manual` and no rule.
+ */
+@Entity(
+    tableName = "budget",
+    indices = [
+        Index("profile_id", "period_start_iso_date"),
+        Index("category_id"),
+    ],
+)
+data class BudgetEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** Set when this budget is for one category (issue 4.4); null for a nature-level envelope. */
+    @ColumnInfo(name = "category_id")
+    val categoryId: String? = null,
+    /** `need` | `want` | `invest`. Set when [categoryId] is null — the group this envelope covers. */
+    @ColumnInfo(name = "nature")
+    val nature: String? = null,
+    /** TIM-002: the first day of the budget month, ISO `yyyy-MM-dd`. Never a midnight timestamp. */
+    @ColumnInfo(name = "period_start_iso_date")
+    val periodStartIsoDate: String,
+    /** MNY-001: paise. */
+    @ColumnInfo(name = "amount_minor")
+    val amountMinor: Long,
+    /** FR-BUD-001's optional rollover of an unused amount. Off by default. */
+    @ColumnInfo(name = "rollover_enabled")
+    val rolloverEnabled: Boolean = false,
+    /** `quick_setup` | `manual` | `suggested`. Where the figure came from (P-02). */
+    @ColumnInfo(name = "source")
+    val source: String,
+    /** The rulebook row that produced this amount, or null when the user typed it (AI-ARC-006). */
+    @ColumnInfo(name = "rule_id")
+    val ruleId: String? = null,
+    @ColumnInfo(name = "rule_version")
+    val ruleVersion: String? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+)
+
+/**
+ * A money movement the user expects to repeat (issue 2.3; FR-ONB-002, FR-TXN-006).
+ *
+ * Why:    quick setup captures a salary and a rent that recur every month, and FR-TXN-006 describes
+ *         the same shape arriving the other way — proposed by the detector in issue 3.7 and
+ *         confirmed by the user. Both are the same row, which is why [isConfirmed] exists rather
+ *         than the two living in separate tables: a rule the user has not confirmed must not start
+ *         creating transactions.
+ * Result: a Room row in `recurring_rule`, added at schema version 3 by issue 2.3.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-07-27 — Created for issue 2.3 (FR-ONB-002, FR-TXN-006).
+ *
+ * **[amountMinor] is signed exactly as `transactions` is** — positive is an inflow, negative an
+ * outflow — so a rule that fires produces a transaction without anything re-deciding the sign.
+ *
+ * **[seedKind] rather than a stored English label.** §21.6 puts every user-visible string in
+ * `strings.xml`; a row holding "Rent or EMI" could never be translated. Quick setup writes a code
+ * the UI resolves to a string resource, and [name] stays null and reserved for issue 3.7's rules,
+ * which are named after a real merchant and so *are* data rather than copy.
+ */
+@Entity(
+    tableName = "recurring_rule",
+    indices = [
+        Index("profile_id", "next_due_iso_date"),
+        Index("account_id"),
+    ],
+)
+data class RecurringRuleEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** Which account it moves through. Null until issue 2.5 gives the user an account to attach. */
+    @ColumnInfo(name = "account_id")
+    val accountId: String? = null,
+    /** Attached by issue 4.1/4.3 once categories exist. */
+    @ColumnInfo(name = "category_id")
+    val categoryId: String? = null,
+    /** A user- or merchant-supplied name (issue 3.7). Null for quick-setup rows — see [seedKind]. */
+    @ColumnInfo(name = "name")
+    val name: String? = null,
+    /** `income` | `rent_emi` | `savings` for a quick-setup row; null otherwise. A code, not copy. */
+    @ColumnInfo(name = "seed_kind")
+    val seedKind: String? = null,
+    /** MNY-001: paise, signed. Negative is an outflow, positive an inflow — as in `transactions`. */
+    @ColumnInfo(name = "amount_minor")
+    val amountMinor: Long,
+    /** `monthly`. A string, so a new cadence is not a migration. */
+    @ColumnInfo(name = "cadence")
+    val cadence: String,
+    /** TIM-002: the next occurrence, ISO `yyyy-MM-dd`. */
+    @ColumnInfo(name = "next_due_iso_date")
+    val nextDueIsoDate: String,
+    /** `quick_setup` | `detected` | `manual`. Provenance, so the UI can show where it came from. */
+    @ColumnInfo(name = "source")
+    val source: String,
+    /** FR-TXN-006: false until the user confirms. An unconfirmed rule creates nothing. */
+    @ColumnInfo(name = "is_confirmed")
+    val isConfirmed: Boolean = false,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+)
+
+/**
  * One security event. Never anything about the person it happened to.
  *
  * Why:    §21.6 bans PII and amounts from logs and routes security events here instead. That only

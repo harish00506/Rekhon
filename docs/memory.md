@@ -17,20 +17,32 @@
 
 ## Current state
 
-- **Version:** `0.2.2` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (Epic 2 under way).
-- **Currently working file:** none — issue 2.2 is merged into `dev`; nothing in flight.
-- **In progress:** nothing. Last shipped: **Epic 2 · issue 2.2** — biometric/PIN app lock
-  ([2.2](issues/2.2-biometric-pin-app-lock-biometricprompt.md) ·
-  [tracker](issues/2.2-biometric-pin-app-lock-biometricprompt-tracker.md)). 285 tests green, but the
-  **emulator gate is blocked, not skipped** — `BiometricPrompt` and the real Keystore have never
-  executed on this machine, so the lock is unproven on a device.
-- **Next up:** **2.5** (accounts CRUD) and **2.3** (quick-setup seeds, which can now read the
-  figures 2.1 captures). 2.5 inserts the last deferred onboarding step; where, is fixed by
-  [ADR-0002](adr/0002-onboarding-step-order.md). Note 2.2 already took the first schema version bump
-  (`audit_log`, v2) and the first `:data:repository` class, which had been pencilled in for 2.5.
+- **Version:** `0.2.3` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (Epic 2 under way).
+- **Currently working file:** none — issue 2.3 is merged into `dev`; nothing in flight.
+- **In progress:** nothing. Last shipped: **Epic 2 · issue 2.3** — quick-setup seeds
+  ([2.3](issues/2.3-quick-setup-seeds-income-rent-savings.md) ·
+  [tracker](issues/2.3-quick-setup-seeds-income-rent-savings-tracker.md)). 536 tests green. The
+  **emulator gate is still blocked, not skipped** — `adb` is not installed and no AVD exists, so the
+  app has never been launched and neither the v1→v2 nor the v2→v3 migration has run against real
+  SQLite.
+- **Next up:** **2.5** (accounts CRUD) — it inserts the last deferred onboarding step (position fixed
+  by [ADR-0002](adr/0002-onboarding-step-order.md)) and is what finally attaches an account to the
+  recurring rules 2.3 leaves with a null `account_id`. Then **2.4** (demo mode) and **2.6** (net
+  worth). Note 2.3 already wrote the first `profile` row and took schema v3 (`budget`,
+  `recurring_rule`), both of which had been pencilled in for later issues —
+  [ADR-0004](adr/0004-quick-setup-persists-budgets-and-recurring-rules.md) says what 4.4 / 3.7 / 2.5
+  are expected to add to those tables rather than rewrite.
 - **Still the largest gap:** CI has never run — there is no git remote, so every green is a local
-  green on one Windows machine. **Second largest, new with 2.2:** the security-critical Keystore and
-  BiometricPrompt paths are the first code in the project that *cannot* be tested without a device.
+  green on one Windows machine. **Second:** the security-critical Keystore and BiometricPrompt paths
+  (2.2) still cannot be tested without a device. **Third, new with 2.3:** nothing in the app loads
+  `ai/` yet, so the first engine's thresholds are Kotlin constants guarded by a drift test rather
+  than rulebook rows — a deliberate, recorded deferral of CLAUDE.md §6
+  ([ADR-0005](adr/0005-quick-setup-thresholds-deferred-rulebook-loader.md)) with a named trigger.
+- **Practice worth keeping:** 2.3 made both of its new gates fail on purpose before trusting them
+  (a one-point threshold change to red the drift test; temporary uncovered code to red `koverVerify`
+  on the new module). This project has shipped a vacuous gate before — audit G-01, a `koverVerify`
+  that was green at 0% coverage — so "the gate passed" is not evidence until the gate has been seen
+  to fail.
 
 ## Completed
 
@@ -53,6 +65,14 @@
 - **Epic 2 — issue 2.1 (v0.2.1, 2026-07-25):** the 4-step first-run onboarding. First screen that
   writes; closes the "nothing sets the profile time zone" seam from Epic 1 and gives the consent
   ledger its first caller.
+- **Epic 2 — issue 2.3 (v0.2.3, 2026-07-27):** the quick-setup seeds (FR-ONB-002). The project's
+  **first engine** (`:domain:engines:quicksetup`, pure Kotlin), its **first `EngineProvenance`**
+  (AI-ARC-003), its **first `profile` row**, and schema **v3** (`budget`, `recurring_rule`). The
+  dashboard's hardcoded spending split is gone, replaced by the user's real budget. Two recorded
+  deviations: [ADR-0004](adr/0004-quick-setup-persists-budgets-and-recurring-rules.md) (schemas
+  defined ahead of the issues that own them) and
+  [ADR-0005](adr/0005-quick-setup-thresholds-deferred-rulebook-loader.md) (§6 rulebook loader
+  deferred, guarded by a drift test).
 - **Epic 2 — issue 2.2 (v0.2.2, 2026-07-26):** the biometric/PIN app lock (SEC-002). First security
   perimeter in the app: a session gate the database provider asserts on, a Keystore-bound PIN, the
   escalating lockout, and `audit_log` as schema **v2** — the project's first real migration and its

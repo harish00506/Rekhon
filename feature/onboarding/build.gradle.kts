@@ -37,6 +37,11 @@ dependencies {
     // Issue 2.2: the SECURITY step sets the PIN through the same Keystore-bound verifier the lock
     // screen checks against (SEC-002).
     implementation(project(":core:crypto"))
+    // Issue 2.3: the quick-setup step derives its summary from the engine and persists the result
+    // through the repository. ARC-001's chain is feature -> domain -> data/core, so both are below
+    // this module; `:app` already injects a repository the same way (issue 2.2).
+    implementation(project(":domain:engines:quicksetup"))
+    implementation(project(":data:repository"))
 
     // Compose UI tests run on the JVM here (issue 2.1): the flow is checked on every `test` run,
     // not only when an emulator happens to be up.
@@ -60,5 +65,7 @@ dependencies {
     // Issue 2.2: the device test sets a PIN through the real Keystore-backed verifier — the one
     // path no JVM test can exercise, because a TEE does not exist off-device.
     androidTestImplementation(project(":core:crypto"))
+    androidTestImplementation(project(":domain:engines:quicksetup"))
+    androidTestImplementation(project(":data:repository"))
     androidTestImplementation(testFixtures(project(":core:common")))
 }

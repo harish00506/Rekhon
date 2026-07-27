@@ -20,4 +20,6 @@
     <string name="dashboard_safe_to_spend_description">Safe to spend this month</string>
     <string name="dashboard_net_worth_description">Your net worth</string>
     <string name="dashboard_spend_split_description">Spending split between needs, wants and savings</string>
+    <!-- Issue 2.3: shown when the user skipped quick setup, so there is no budget to chart. -->
+    <string name="dashboard_spend_split_empty">No budget yet. Add your monthly income in Settings and we\'ll suggest one.</string>
 </resources>

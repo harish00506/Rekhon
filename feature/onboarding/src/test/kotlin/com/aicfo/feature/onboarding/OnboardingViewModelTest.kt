@@ -6,6 +6,8 @@ import com.aicfo.core.common.AppError
 import com.aicfo.core.common.FakeClock
 import com.aicfo.core.datastore.ConsentFeature
 import com.aicfo.core.model.Money
+import com.aicfo.domain.engines.quicksetup.BudgetNature
+import com.aicfo.domain.engines.quicksetup.QuickSetupEngineFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -39,6 +41,8 @@ class OnboardingViewModelTest {
     private val consents = FakeConsentStore()
     private val appLock = FakeAppLockStore()
     private val pinVerifier = FakePinVerifier()
+    private val quickSetup = FakeQuickSetupRepository()
+    private val engine = QuickSetupEngineFactory.create()
     private val clock = FakeClock(initialZone = ZoneId.of("Asia/Kolkata"))
     private var savedState = SavedStateHandle()
 
@@ -54,7 +58,15 @@ class OnboardingViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun viewModel() = OnboardingViewModel(settings, consents, appLock, pinVerifier, clock, savedState)
+    private fun viewModel() =
+        OnboardingViewModel(
+            settings,
+            consents,
+            AppLockSetup(pinVerifier, appLock),
+            QuickSetupCoordinator(engine, quickSetup, clock),
+            clock,
+            savedState,
+        )
 
     /** Advances the flow to its last step. Derived from the enum, so a new step needs no edit. */
     private fun OnboardingViewModel.goToLastStep() {
@@ -477,5 +489,178 @@ class OnboardingViewModelTest {
         assertFalse(viewModel.uiState.value.isComplete)
         assertNull("nothing may be marked onboarded after a failed step", settings.savedProfile)
         assertEquals(AppError.Crypto("KeyStoreException").code, viewModel.uiState.value.errorCode)
+    }
+
+    // --- issue 2.3: the derived plan and its persistence (FR-ONB-002) --------------------------
+
+    /**
+     * Input:  an income typed into the quick-setup step.
+     * Output: asserts the plan appears in state without any further action. The summary updates as
+     *         the user types, so the derivation cannot wait for Next — and a state that only gained
+     *         its plan at Finish would render an empty card throughout the step.
+     */
+    @Test
+    fun `the plan is derived as the user types`() {
+        val viewModel = viewModel()
+        viewModel.goToLastStep()
+
+        viewModel.onEvent(OnboardingEvent.MonthlyIncomeChanged("85000"))
+
+        val plan = viewModel.uiState.value.quickSetupPlan
+        assertEquals(Money(42_500_00L), plan?.envelopes?.first { it.nature == BudgetNature.NEED }?.amount)
+        assertEquals(Money(1_27_500_00L), plan?.emergencyFundTarget)
+    }
+
+    /**
+     * Input:  an income, then a larger one.
+     * Output: asserts the plan followed. Recomputing rather than remembering is the point: a stale
+     *         budget beside an edited figure is the one wrong state this card can show.
+     */
+    @Test
+    fun `editing an amount re-derives the plan rather than keeping the old one`() {
+        val viewModel = viewModel()
+        viewModel.goToLastStep()
+
+        viewModel.onEvent(OnboardingEvent.MonthlyIncomeChanged("85000"))
+        viewModel.onEvent(OnboardingEvent.MonthlyIncomeChanged("100000"))
+
+        val needs = viewModel.uiState.value.quickSetupPlan?.envelopes?.first { it.nature == BudgetNature.NEED }
+        assertEquals(Money(50_000_00L), needs?.amount)
+    }
+
+    /**
+     * Input:  an untouched step, then input `MoneyFormatter.parse` refuses.
+     * Output: asserts there is no plan in either case — a card of zeros derived from nothing is
+     *         exactly the fabrication P-03 forbids.
+     *
+     * `"1.234"` is finer than a paise, which the parser declines rather than rounds. Note that
+     * `"1."` is **not** in this test: it parses as ₹1.00, and asserting otherwise would pin
+     * behaviour the parser does not have.
+     */
+    @Test
+    fun `no plan is derived from an unparseable or empty step`() {
+        val viewModel = viewModel()
+        viewModel.goToLastStep()
+        assertNull("an untouched step has nothing to summarise", viewModel.uiState.value.quickSetupPlan)
+
+        viewModel.onEvent(OnboardingEvent.MonthlyIncomeChanged("1.234"))
+
+        assertNull(viewModel.uiState.value.quickSetupPlan)
+    }
+
+    /**
+     * Input:  the full step, finished with Next.
+     * Output: asserts the plan and the profile both reached the repository, and that the profile
+     *         carries the answers from the earlier steps rather than defaults.
+     */
+    @Test
+    fun `finishing with seeds persists the plan and the profile`() {
+        val viewModel = viewModel()
+        viewModel.onEvent(OnboardingEvent.DisplayNameChanged("  Arjun  "))
+        viewModel.onEvent(OnboardingEvent.TimeZoneChanged("Asia/Kolkata"))
+        viewModel.goToLastStep()
+        viewModel.onEvent(OnboardingEvent.MonthlyIncomeChanged("85000"))
+        viewModel.onEvent(OnboardingEvent.RentOrEmiChanged("24000"))
+
+        viewModel.onEvent(OnboardingEvent.Next)
+
+        assertEquals(1, quickSetup.applyCallCount)
+        assertEquals(3, quickSetup.savedPlan?.envelopes?.size)
+        assertEquals("Arjun", quickSetup.savedProfile?.displayName)
+        assertEquals("Asia/Kolkata", quickSetup.savedProfile?.timeZoneId)
+        assertTrue(viewModel.uiState.value.isComplete)
+    }
+
+    /**
+     * Input:  amounts typed, then Skip.
+     * Output: asserts the repository was **not called at all** — not called with an empty plan,
+     *         not called with the figures the user typed and then declined to use. "Nothing is
+     *         fabricated if skipped" is an acceptance criterion, and Skip is the path that tests it.
+     */
+    @Test
+    fun `skipping writes nothing, even after amounts were typed`() {
+        val viewModel = viewModel()
+        viewModel.goToLastStep()
+        viewModel.onEvent(OnboardingEvent.MonthlyIncomeChanged("85000"))
+
+        viewModel.onEvent(OnboardingEvent.SkipQuickSetup)
+
+        assertEquals("Skip must not reach the repository", 0, quickSetup.applyCallCount)
+        assertTrue("skipping still completes onboarding", viewModel.uiState.value.isComplete)
+    }
+
+    /**
+     * Input:  the step finished with nothing typed.
+     * Output: asserts the repository is still not called. The engine produces an empty plan and the
+     *         ViewModel drops it, so the repository's own empty-plan guard is a third line of
+     *         defence rather than the only one.
+     */
+    @Test
+    fun `finishing an untouched step writes no seeds`() {
+        val viewModel = viewModel()
+        viewModel.goToLastStep()
+
+        viewModel.onEvent(OnboardingEvent.Next)
+
+        assertEquals(0, quickSetup.applyCallCount)
+        assertTrue(viewModel.uiState.value.isComplete)
+    }
+
+    /**
+     * Input:  a repository that fails.
+     * Output: asserts the flow does **not** complete and surfaces the code. The seeds are written
+     *         after the completion flag, so this is the one failure that leaves the app onboarded —
+     *         which is why the user has to be told rather than silently landed on a dashboard with
+     *         no budget.
+     */
+    @Test
+    fun `a failed seed write is surfaced instead of completing silently`() {
+        quickSetup.failWith = AppError.Storage("SQLiteException")
+        val viewModel = viewModel()
+        viewModel.goToLastStep()
+        viewModel.onEvent(OnboardingEvent.MonthlyIncomeChanged("85000"))
+
+        viewModel.onEvent(OnboardingEvent.Next)
+
+        assertFalse(viewModel.uiState.value.isComplete)
+        assertEquals(AppError.Storage("SQLiteException").code, viewModel.uiState.value.errorCode)
+    }
+
+    /**
+     * Input:  a ViewModel rebuilt from a saved bundle holding an income.
+     * Output: asserts the plan is back. It is deliberately **not** persisted into
+     *         `SavedStateHandle` — it is derived, and storing derived state is how a restored
+     *         screen shows a budget that no longer matches the rules that produced it.
+     */
+    @Test
+    fun `the plan is re-derived after process death rather than restored`() {
+        val first = viewModel()
+        first.goToLastStep()
+        first.onEvent(OnboardingEvent.MonthlyIncomeChanged("85000"))
+
+        val restored = viewModel()
+
+        assertEquals(
+            Money(42_500_00L),
+            restored.uiState.value.quickSetupPlan?.envelopes?.first { it.nature == BudgetNature.NEED }?.amount,
+        )
+    }
+
+    /**
+     * Input:  a profile time zone whose local date differs from UTC's at this instant.
+     * Output: asserts the budget period is the profile-zone month, not the device's. At 23:30 IST
+     *         on the 31st, UTC is still on the previous day — and a budget filed under the wrong
+     *         month is invisible to the screen that looks for the current one (TIM-001, TIM-002).
+     */
+    @Test
+    fun `the budget period is the profile zone's month`() {
+        // 2026-07-31T20:00:00Z is 2026-08-01T01:30 in Asia/Kolkata.
+        clock.setTo(java.time.Instant.parse("2026-07-31T20:00:00Z").toEpochMilli())
+        val viewModel = viewModel()
+        viewModel.goToLastStep()
+
+        viewModel.onEvent(OnboardingEvent.MonthlyIncomeChanged("85000"))
+
+        assertEquals("2026-08-01", viewModel.uiState.value.quickSetupPlan?.periodStartIsoDate)
     }
 }

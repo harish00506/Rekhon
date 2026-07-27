@@ -7,8 +7,10 @@ import androidx.room.Query
 import androidx.room.Update
 import com.aicfo.core.database.entity.AccountEntity
 import com.aicfo.core.database.entity.AuditLogEntity
+import com.aicfo.core.database.entity.BudgetEntity
 import com.aicfo.core.database.entity.CategoryEntity
 import com.aicfo.core.database.entity.ProfileEntity
+import com.aicfo.core.database.entity.RecurringRuleEntity
 import com.aicfo.core.database.entity.TransactionEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -161,6 +163,97 @@ interface CategoryDao {
             "AND deleted_at_utc_millis IS NULL ORDER BY name",
     )
     fun observeForProfile(profileId: String): Flow<List<CategoryEntity>>
+}
+
+/** Reads and writes budgets (issue 2.3; FR-BUD-001, FR-ONB-002). */
+@Dao
+interface BudgetDao {
+    /**
+     * Inserts many budgets at once, replacing any with the same id.
+     * Why:    quick setup writes three envelopes that only make sense together, and REPLACE on a
+     *         **derived** id is what makes re-running onboarding update the same three rows rather
+     *         than accumulate a new set each time (P-08 determinism, applied to storage).
+     * Result: the rows are present afterwards. Input: [budgets]. Output: none (suspends).
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(budgets: List<BudgetEntity>)
+
+    /**
+     * Observes a profile's live budgets for one month.
+     * Why:    scoped to a period because every budget question is "this month" — loading every
+     *         month a user has ever had to filter in memory would grow without bound.
+     * Result: emits on every change; soft-deleted rows excluded.
+     * Input:  [profileId], [periodStartIsoDate] — the month's first day. Output: `Flow<List<BudgetEntity>>`.
+     */
+    @Query(
+        "SELECT * FROM budget WHERE profile_id = :profileId " +
+            "AND period_start_iso_date = :periodStartIsoDate " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY nature, category_id",
+    )
+    fun observeForPeriod(
+        profileId: String,
+        periodStartIsoDate: String,
+    ): Flow<List<BudgetEntity>>
+
+    /**
+     * Observes a profile's most recent budget period.
+     * Why:    the dashboard has to render before anything tells it which month to ask for, and
+     *         "the newest period that exists" is the honest answer for a screen whose only budgets
+     *         so far came from onboarding. Issue 5.1 replaces this with the current month once the
+     *         dashboard reads the profile clock.
+     * Result: emits the rows of the latest period, or an empty list when there are none.
+     * Input:  [profileId]. Output: `Flow<List<BudgetEntity>>`.
+     */
+    @Query(
+        "SELECT * FROM budget WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
+            "AND period_start_iso_date = (" +
+            "SELECT MAX(period_start_iso_date) FROM budget " +
+            "WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL) " +
+            "ORDER BY nature, category_id",
+    )
+    fun observeLatestPeriod(profileId: String): Flow<List<BudgetEntity>>
+
+    /**
+     * Marks a budget deleted without removing the row.
+     * Result: it disappears from reads. Input: [id], [deletedAtUtcMillis]. Output: rows affected.
+     */
+    @Query("UPDATE budget SET deleted_at_utc_millis = :deletedAtUtcMillis WHERE id = :id")
+    suspend fun softDelete(
+        id: String,
+        deletedAtUtcMillis: Long,
+    ): Int
+}
+
+/** Reads and writes recurring rules (issue 2.3; FR-ONB-002, FR-TXN-006). */
+@Dao
+interface RecurringRuleDao {
+    /**
+     * Inserts many rules at once, replacing any with the same id.
+     * Result: the rows are present afterwards. Input: [rules]. Output: none (suspends).
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(rules: List<RecurringRuleEntity>)
+
+    /**
+     * Observes a profile's live recurring rules, soonest due first.
+     * Result: emits on every change; soft-deleted rows excluded.
+     * Input:  [profileId]. Output: `Flow<List<RecurringRuleEntity>>`.
+     */
+    @Query(
+        "SELECT * FROM recurring_rule WHERE profile_id = :profileId " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY next_due_iso_date, id",
+    )
+    fun observeForProfile(profileId: String): Flow<List<RecurringRuleEntity>>
+
+    /**
+     * Marks a recurring rule deleted without removing the row.
+     * Result: it stops being proposed. Input: [id], [deletedAtUtcMillis]. Output: rows affected.
+     */
+    @Query("UPDATE recurring_rule SET deleted_at_utc_millis = :deletedAtUtcMillis WHERE id = :id")
+    suspend fun softDelete(
+        id: String,
+        deletedAtUtcMillis: Long,
+    ): Int
 }
 
 /**

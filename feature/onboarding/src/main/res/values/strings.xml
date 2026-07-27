@@ -51,6 +51,21 @@
     <string name="onboarding_quick_setup_rent_label">Rent or EMI each month</string>
     <string name="onboarding_quick_setup_savings_label">Typical savings each month</string>
     <string name="onboarding_quick_setup_amount_hint">₹</string>
+
+    <!-- The derived plan (issue 2.3, FR-ONB-002). Every line names the rule behind it (P-02). -->
+    <string name="onboarding_quick_setup_summary_title">What we\'ll set up</string>
+    <string name="onboarding_quick_setup_summary_needs">Needs</string>
+    <string name="onboarding_quick_setup_summary_wants">Wants</string>
+    <string name="onboarding_quick_setup_summary_savings">Savings</string>
+    <string name="onboarding_quick_setup_summary_emergency">Emergency fund target</string>
+    <string name="onboarding_quick_setup_summary_emergency_help">%1$d months of your needs budget.</string>
+    <string name="onboarding_quick_setup_summary_obligations">Rent and EMIs take %1$s of your income.</string>
+    <string name="onboarding_quick_setup_summary_obligations_within">That is within the guideline.</string>
+    <string name="onboarding_quick_setup_summary_obligations_above">That is above the usual guideline of 40%.</string>
+    <string name="onboarding_quick_setup_summary_obligations_fail">That is high enough that most lenders would refuse more credit.</string>
+    <string name="onboarding_quick_setup_summary_short">Your rent is more than this budget can cover. We have kept your savings intact rather than balancing the books on paper.</string>
+    <string name="onboarding_quick_setup_summary_rules">Based on %1$s</string>
+    <string name="onboarding_quick_setup_summary_editable">You can change any of this later.</string>
     <!-- Step 4 - the app lock (FR-ONB-001 step 3, SEC-002, issue 2.2). Skippable by design. -->
     <string name="onboarding_security_title">Lock the app</string>
     <string name="onboarding_security_body">Add a lock so that whoever picks up your phone cannot open your finances.</string>

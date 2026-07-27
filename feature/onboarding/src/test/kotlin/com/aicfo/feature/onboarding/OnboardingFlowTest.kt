@@ -18,6 +18,7 @@ import com.aicfo.core.common.FakeClock
 import com.aicfo.core.datastore.ConsentFeature
 import com.aicfo.core.designsystem.theme.CfoTheme
 import com.aicfo.core.model.Money
+import com.aicfo.domain.engines.quicksetup.QuickSetupEngineFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -86,7 +87,15 @@ class OnboardingFlowTest {
         darkTheme: Boolean = false,
         fontScale: Float = 1f,
     ) {
-        val viewModel = OnboardingViewModel(settings, consents, appLock, pinVerifier, clock, SavedStateHandle())
+        val viewModel =
+            OnboardingViewModel(
+                settings,
+                consents,
+                AppLockSetup(pinVerifier, appLock),
+                QuickSetupCoordinator(QuickSetupEngineFactory.create(), FakeQuickSetupRepository(), clock),
+                clock,
+                SavedStateHandle(),
+            )
         setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(
@@ -285,6 +294,83 @@ class OnboardingFlowTest {
         node(text(R.string.onboarding_security_toggle)).assertIsDisplayed()
         assertNull("a mismatched PIN must never be stored", pinVerifier.storedPin)
     }
+
+    // --- issue 2.3: the derived summary on screen (FR-ONB-002, P-02) ---------------------------
+
+    /**
+     * Input:  an income typed into the quick-setup step.
+     * Output: asserts the summary appears with the derived envelopes, the emergency-fund target,
+     *         and the rule ids behind them. P-02 requires the rule to be **visible**, so the
+     *         assertion is on the rendered text rather than on the state that feeds it — a card
+     *         that computed the right figures and never drew them would satisfy the ViewModel test
+     *         and fail the user.
+     */
+    @Test
+    fun `the quick-setup step shows the derived budget and the rules behind it`() {
+        compose.showFlow()
+        goToQuickSetupStep()
+
+        node(text(R.string.onboarding_quick_setup_income_label)).performTextInput("85000")
+
+        node(text(R.string.onboarding_quick_setup_summary_title)).assertIsDisplayed()
+        node(text(R.string.onboarding_quick_setup_summary_needs)).assertIsDisplayed()
+        // ₹42,500.00 — the needs envelope, formatted the Indian way by MoneyFormatter.
+        node("₹42,500.00").assertIsDisplayed()
+        node("₹1,27,500.00").assertIsDisplayed()
+        node(text(R.string.onboarding_quick_setup_summary_rules, "RULE-50-30-20, RULE-EMERG-FIRST"))
+            .assertIsDisplayed()
+    }
+
+    /**
+     * Input:  the quick-setup step, untouched.
+     * Output: asserts no summary is shown. An empty card of zeroes on a step the user has not
+     *         answered is the fabrication P-03 forbids, and it would also imply the step is
+     *         mandatory when it is explicitly skippable.
+     */
+    @Test
+    fun `no summary is shown until something is typed`() {
+        compose.showFlow()
+        goToQuickSetupStep()
+
+        compose.onNodeWithText(text(R.string.onboarding_quick_setup_summary_title)).assertDoesNotExist()
+    }
+
+    /**
+     * Input:  a rent far past what the budget frame can absorb.
+     * Output: asserts the app says so in words. The needs envelope is deliberately left short of
+     *         the rent (the flex stops at the metro cap rather than raiding savings), and without
+     *         this sentence that reads as an arithmetic bug instead of a deliberate refusal.
+     */
+    @Test
+    fun `an unaffordable rent is explained rather than left to look like a bug`() {
+        compose.showFlow()
+        goToQuickSetupStep()
+
+        node(text(R.string.onboarding_quick_setup_income_label)).performTextInput("50000")
+        node(text(R.string.onboarding_quick_setup_rent_label)).performTextInput("40000")
+
+        node(text(R.string.onboarding_quick_setup_summary_short)).assertIsDisplayed()
+        // The share and the verdict are one sentence in one node, so the whole line is asserted.
+        // 40,000 of 50,000 is 8000 bps, rendered as a percentage at the very edge of the UI.
+        node(
+            text(R.string.onboarding_quick_setup_summary_obligations, "80.0%") + " " +
+                text(R.string.onboarding_quick_setup_summary_obligations_fail),
+        ).assertIsDisplayed()
+    }
+
+    /**
+     * Advances to the quick-setup step.
+     * Why:    same reasoning as [goToSecurityStep] — derived from the enum, because ADR-0002 says
+     *         issue 2.5 will insert another step and a hardcoded tap count would break this again.
+     * Result: the flow sits on [OnboardingStep.QUICK_SETUP]. Input: none. Output: none.
+     * Changelog: 2026-07-27 — Created for issue 2.3.
+     */
+    private fun goToQuickSetupStep() = repeat(OnboardingStep.QUICK_SETUP.ordinal) { clickNext() }
+
+    private fun text(
+        id: Int,
+        vararg formatArgs: Any,
+    ): String = context.getString(id, *formatArgs)
 
     private companion object {
         /** The DoD's accessibility case: text at twice the default size. */

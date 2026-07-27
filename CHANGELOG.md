@@ -11,6 +11,56 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > First-run onboarding, the biometric app lock, and the accounts + net-worth core. Epic 1 built
 > foundations; this is the first epic a user can see.
 
+### [0.2.3] — Issue 2.3: Quick-setup seeds (income/rent/savings)  (2026-07-27)
+
+- **Implemented:** the quick-setup step now *does* something. The three figures onboarding has been
+  collecting since 2.1 become a budget, an emergency-fund target and the app's first real financial
+  rows (FR-ONB-002, FR-BUD-001, FR-TXN-006; MNY-001, MNY-002, TIM-001, TIM-002, DB-003,
+  AI-ARC-003, AI-ARC-006, P-02, P-03, P-04, P-08).
+  - **The project's first engine.** `:domain:engines:quicksetup` is pure Kotlin (ARC-002) and turns
+    income / rent / savings into needs-wants-savings envelopes, a 3-month emergency-fund target and
+    an obligation verdict, citing `RULE-50-30-20`, `RULE-EMERG-FIRST`, `RULE-RUNWAY-M` and
+    `RULE-EMI-40` by id **and version** in its provenance.
+  - **The budget tells the truth when it does not fit.** RULE-50-30-20's metro flex raises the needs
+    band to cover a high rent and takes it from *wants* — never from the savings floor. Past the 60%
+    ceiling the envelope is left visibly short of the rent, beside a hard-fail verdict and a sentence
+    saying so, rather than being balanced on paper by cancelling the user's saving.
+  - **Envelopes total the income exactly**, proven over 800 seeded awkward amounts, because the
+    split goes through `Money.allocate`'s largest-remainder algorithm rather than three separate
+    divisions. There is no `Double` anywhere on the path; rates are integer basis points.
+  - **Nothing is fabricated if skipped**, enforced independently at three layers: a blank field
+    produces no engine output, Skip never calls the repository, and an empty plan writes no row at
+    all — not even a profile.
+  - **`budget` and `recurring_rule` arrive as schema v3**, additive only, along with the app's
+    **first `profile` row** — every table is `profile_id`-scoped and until now nothing had ever
+    written one. Ids are derived rather than generated, so re-running onboarding updates the same
+    rows instead of duplicating them (P-08 applied to storage), and the whole write is one
+    transaction.
+  - **`EngineProvenance` lands in `:core:model`** (AI-ARC-003): engine id, version, instant and the
+    rules that fired — the type every future engine result will carry.
+  - **The dashboard's spending split is real.** `SAMPLE_NEEDS/WANTS/SAVINGS_MINOR` are gone,
+    replaced by the persisted budget observed as a Flow. Safe-to-Spend and net worth remain
+    placeholders — they need the engines issues 5.1/5.2 own. Skipping quick setup now shows an
+    empty state rather than a bar of zeroes, because a zeroed chart is a number the app invented.
+- **Deviations on record:** two, both deliberate.
+  [ADR-0004](docs/adr/0004-quick-setup-persists-budgets-and-recurring-rules.md) — issue 2.3 defines
+  `budget` and `recurring_rule` columns owned by issues 4.4 and 3.7, with every forward-looking
+  foreign key nullable and a list of what each later issue is expected to add.
+  [ADR-0005](docs/adr/0005-quick-setup-thresholds-deferred-rulebook-loader.md) — the four rulebook
+  thresholds are typed Kotlin constants rather than rows loaded from `ai/`, because nothing in the
+  app loads `ai/` yet; a drift test reads the real rulebook and fails the build if they diverge.
+- **Tests:** 536 passed, 0 skipped (was 285). +251: the engine's golden, boundary, property and
+  determinism suites, the rulebook drift guard, the repository against a real SQLite engine, the
+  onboarding derive/persist/skip paths, and the dashboard's budget states.
+- **Gates proven to fail before being trusted.** This project has shipped a vacuous gate before
+  (audit G-01), so both new ones were made red on purpose first: a one-point threshold change turned
+  the drift test red, and temporarily uncovered code turned `koverVerify` red on the new module.
+- **Not verified:** nothing has run on a device — `adb` is not installed and no AVD exists, so
+  `/run`, `/verify` and `connectedDebugAndroidTest` are **blocked, not skipped**. The 2 → 3 migration
+  is proven structurally on the JVM but has never executed against real SQLite, and the repository
+  is tested on unencrypted in-memory Room because SQLCipher needs a device.
+  [The tracker](docs/issues/2.3-quick-setup-seeds-income-rent-savings-tracker.md) lists every gap.
+
 ### [0.2.2] — Issue 2.2: Biometric/PIN app lock (BiometricPrompt)  (2026-07-26)
 
 - **Implemented:** the app lock — BiometricPrompt class 3 with a PIN fallback, gating the whole app

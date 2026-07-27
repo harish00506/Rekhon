@@ -147,6 +147,7 @@ internal fun ProfileStep(
  *         a half-typed "1." is not an amount and must not become one.
  * Result: the composition. Input: [uiState], [onEvent]. Output: the rendered step.
  * Changelog: 2026-07-25 — Created for issue 2.1.
+ *            2026-07-27 — Issue 2.3: the derived plan is shown live beneath the fields.
  */
 @Composable
 internal fun QuickSetupStep(
@@ -167,6 +168,7 @@ internal fun QuickSetupStep(
         value = uiState.typicalSavingsText,
         label = stringResource(R.string.onboarding_quick_setup_savings_label),
     ) { onEvent(OnboardingEvent.TypicalSavingsChanged(it)) }
+    uiState.quickSetupPlan?.let { QuickSetupSummary(plan = it) }
 }
 
 /**

@@ -9,14 +9,14 @@ import com.aicfo.core.common.Err
 import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
 import com.aicfo.core.common.flatMap
-import com.aicfo.core.crypto.PinVerifier
-import com.aicfo.core.datastore.AppLockStore
 import com.aicfo.core.datastore.ConsentFeature
 import com.aicfo.core.datastore.ConsentStore
 import com.aicfo.core.datastore.OnboardingProfile
 import com.aicfo.core.datastore.QuickSetupSeeds
 import com.aicfo.core.datastore.SettingsStore
 import com.aicfo.core.model.MoneyFormatter
+import com.aicfo.data.repository.ProfileSeed
+import com.aicfo.domain.engines.quicksetup.QuickSetupPlan
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -38,14 +38,19 @@ import javax.inject.Inject
  * Result: a flow whose every state — including a failed save — is reachable in a unit test.
  * Changelog: 2026-07-25 — Created for issue 2.1.
  *            2026-07-26 — Issue 2.2: the SECURITY step ADR-0002 reserved for it.
+ *            2026-07-27 — Issue 2.3: the quick-setup seeds are derived live and persisted at Finish.
  *
- * Nothing here touches the network, and DataStore is local: the whole flow works in airplane mode
- * (P-04).
+ * Nothing here touches the network, and both stores are local: the whole flow works in airplane
+ * mode (P-04).
  *
  * Input:  [settingsStore] — where the profile lands; [consentStore] — the P-01 ledger;
- *         [appLockStore] and [pinVerifier] — the SEC-002 security step (issue 2.2);
- *         [clock] — supplies the device's current zone as the default, so this never reads
- *         `ZoneId.systemDefault()` itself (TIM-001); [savedState] — survives process death.
+ *         [appLockSetup] — the SEC-002 security step, which owns the order its two writes
+ *         must happen in (issue 2.2);
+ *         [quickSetup] — derives the budget from the seeds and persists it, so this class parses no
+ *         amount and computes no figure of its own (P-03, issue 2.3);
+ *         [clock] — supplies the profile zone and the instants, so this never reads
+ *         `ZoneId.systemDefault()` or the wall clock itself (TIM-001); [savedState] — survives
+ *         process death.
  * Output: an observable flow state.
  */
 @HiltViewModel
@@ -54,12 +59,13 @@ class OnboardingViewModel
     constructor(
         private val settingsStore: SettingsStore,
         private val consentStore: ConsentStore,
-        private val appLockStore: AppLockStore,
-        private val pinVerifier: PinVerifier,
-        clock: Clock,
+        private val appLockSetup: AppLockSetup,
+        private val quickSetup: QuickSetupCoordinator,
+        private val clock: Clock,
         private val savedState: SavedStateHandle,
     ) : ViewModel() {
-        private val _uiState = MutableStateFlow(savedState.restore(defaultZoneId = clock.zone().id))
+        private val _uiState =
+            MutableStateFlow(savedState.restore(defaultZoneId = clock.zone().id).withDerivedPlan())
 
         /**
          * The flow's state.
@@ -116,11 +122,33 @@ class OnboardingViewModel
                 is OnboardingEvent.PinChanged -> updateState { it.copy(pinText = event.pin, errorCode = null) }
                 is OnboardingEvent.PinConfirmChanged ->
                     updateState { it.copy(pinConfirmText = event.pin, errorCode = null) }
-                is OnboardingEvent.MonthlyIncomeChanged -> updateState { it.copy(monthlyIncomeText = event.text) }
-                is OnboardingEvent.RentOrEmiChanged -> updateState { it.copy(rentOrEmiText = event.text) }
-                is OnboardingEvent.TypicalSavingsChanged -> updateState { it.copy(typicalSavingsText = event.text) }
+                is OnboardingEvent.MonthlyIncomeChanged ->
+                    updateState { it.copy(monthlyIncomeText = event.text).withDerivedPlan() }
+                is OnboardingEvent.RentOrEmiChanged ->
+                    updateState { it.copy(rentOrEmiText = event.text).withDerivedPlan() }
+                is OnboardingEvent.TypicalSavingsChanged ->
+                    updateState { it.copy(typicalSavingsText = event.text).withDerivedPlan() }
             }
         }
+
+        /**
+         * Re-derives the quick-setup plan from whatever is currently typed (issue 2.3, FR-ONB-002).
+         *
+         * Why:    the summary updates as the user types, so this runs on every keystroke — which is
+         *         affordable only because the engine is pure and reads no clock of its own. It is
+         *         **recomputed rather than remembered**: keeping a stale plan while the amounts
+         *         moved is how a screen ends up showing a budget for a figure the user has already
+         *         changed.
+         * What:   parses the three fields, hands them to the engine with the current month, and
+         *         stores the result.
+         * Result: a state whose `quickSetupPlan` matches its three amount fields; `null` when
+         *         nothing parses yet or the engine rejects the input — the summary then renders
+         *         nothing rather than a partial budget.
+         * Input:  the receiver. Output: [OnboardingUiState].
+         * Changelog: 2026-07-27 — Created for issue 2.3.
+         */
+        private fun OnboardingUiState.withDerivedPlan(): OnboardingUiState =
+            copy(quickSetupPlan = quickSetup.derive(monthlyIncomeText, rentOrEmiText, typicalSavingsText))
 
         /**
          * Moves on from the current step, or finishes if it is the last.
@@ -182,7 +210,16 @@ class OnboardingViewModel
          *         save leaves nothing marked complete, and the user retries from a clean state. The
          *         profile write carries the completion flag, so it is deliberately last: whatever
          *         fails, the app is never "onboarded" without a time zone.
-         * What:   applies the consent decision, then one atomic `completeOnboarding`.
+         *
+         *         Issue 2.3 appends the seeds **after** that flag, and the ordering is the opposite
+         *         trade on purpose. Both orders lose something if the second write fails: seeds
+         *         first would leave budget rows belonging to an onboarding that never completed,
+         *         and the user would be sent back through a flow that then writes them again.
+         *         Flag first means the worst case is an onboarded user whose budget is missing —
+         *         recoverable from Settings, and it leaves no orphan rows behind. The error is
+         *         still surfaced either way.
+         * What:   applies the consent decision, then one atomic `completeOnboarding`, then the
+         *         quick-setup rows.
          * Result: `isComplete` on success — the screen navigates on that. On failure, `errorCode`
          *         is set and `isComplete` stays false, because navigating away from a save that did
          *         not happen would strand the user on a dashboard with no profile.
@@ -197,8 +234,9 @@ class OnboardingViewModel
             viewModelScope.launch {
                 val outcome =
                     applyConsentDecision(answers.smsConsentGranted)
-                        .flatMap { applyAppLockDecision(answers) }
+                        .flatMap { appLockSetup.apply(answers.appLockEnabled, answers.pinText) }
                         .flatMap { settingsStore.completeOnboarding(answers.toProfile(withSeeds)) }
+                        .flatMap { applyQuickSetup(answers, withSeeds) }
                 updateState { state ->
                     when (outcome) {
                         is Ok -> state.copy(isSaving = false, isComplete = true)
@@ -225,23 +263,35 @@ class OnboardingViewModel
             }
 
         /**
-         * Sets the PIN and enables the lock, if the user asked for one (SEC-002).
-         * Why:    **the PIN is written before the lock is enabled, never the other way round.** A
-         *         lock switched on whose `setPin` then failed would leave the user staring at a
-         *         prompt no PIN opens, on an app they have just finished setting up. This ordering
-         *         makes the worst case a lock that is off — which they can simply turn on again.
-         * What:   `setPin` then `setEnabled(true)`, or nothing at all when the step was declined.
-         * Result: `Ok(Unit)` when there was nothing to do or both writes succeeded; the first
-         *         failure otherwise, which stops `finish` before anything is marked complete.
-         * Input:  [answers] — the captured state. Output: `Result<Unit, AppError>`.
-         * Changelog: 2026-07-26 — Created for issue 2.2.
+         * Persists the quick-setup seeds as real rows (issue 2.3; FR-ONB-002).
+         *
+         * Why:    **the skip path never gets here.** [withSeeds] is false when the user skipped, and
+         *         an unanswered step produces an empty plan anyway — two independent reasons
+         *         nothing is written, because "nothing is fabricated if skipped" is an acceptance
+         *         criterion and one guard is one refactor away from being removed. The repository
+         *         holds the third: an empty plan writes no row at all, not even the profile.
+         * What:   hands the derived plan and the profile answers to the repository, which writes
+         *         them in one transaction.
+         * Result: `Ok(Unit)` when there was nothing to write or the write succeeded; `Err`
+         *         otherwise, which leaves `isComplete` false and surfaces the code.
+         * Input:  [answers] — the captured state; [withSeeds]. Output: `Result<Unit, AppError>`.
+         * Changelog: 2026-07-27 — Created for issue 2.3.
          */
-        private suspend fun applyAppLockDecision(answers: OnboardingUiState): Result<Unit, AppError> =
-            if (!answers.appLockEnabled) {
-                Ok(Unit)
-            } else {
-                pinVerifier.setPin(answers.pinText).flatMap { appLockStore.setEnabled(true) }
-            }
+        private suspend fun applyQuickSetup(
+            answers: OnboardingUiState,
+            withSeeds: Boolean,
+        ): Result<Unit, AppError> {
+            val plan: QuickSetupPlan = answers.quickSetupPlan.takeIf { withSeeds } ?: return Ok(Unit)
+            return quickSetup.persist(
+                plan = plan,
+                profile =
+                    ProfileSeed(
+                        displayName = answers.displayName.trim(),
+                        timeZoneId = answers.timeZoneId,
+                        currencyCode = answers.currencyCode,
+                    ),
+            )
+        }
 
         /**
          * Applies a change and keeps the saved copy in step.

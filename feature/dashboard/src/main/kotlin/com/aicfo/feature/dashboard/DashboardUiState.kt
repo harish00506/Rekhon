@@ -15,12 +15,18 @@ import com.aicfo.core.model.Money
  * Result: the reference shape every other screen in this app copies.
  * Changelog: 2026-07-25 — Created for issue 1.10 as the ARC-004 reference implementation.
  *
- * The figures are placeholders: real Safe-to-Spend and net worth arrive with issues 5.1/5.2, which
- * will replace the values without changing this shape. Amounts are [Money] (`Long` paise, MNY-001)
- * even while they are placeholders, because a screen that starts out rendering a `Double` teaches
+ * **What is real and what is not, as of issue 2.3.** [spendSplit] now comes from the budget
+ * envelopes quick setup persisted (FR-ONB-002) — real figures, derived by the quick-setup engine
+ * from what the user typed. [safeToSpend] and [netWorth] are **still placeholders**: they need the
+ * engines issues 5.1/5.2 own, and no amount of wiring here can conjure them. Amounts are [Money]
+ * (`Long` paise, MNY-001) either way, because a screen that starts out rendering a `Double` teaches
  * the wrong pattern to everything that copies it.
  *
- * Input:  [isLoading], [safeToSpend], [netWorth], [spendSplit], [errorCode].
+ * Input:  [isLoading], [safeToSpend], [netWorth]; [spendSplit] — **`null` when the user skipped
+ *         quick setup**, which the screen renders as an empty state. Deliberately not a zeroed
+ *         `SpendSplit`: a bar of three zeroes is indistinguishable from a real budget of nothing,
+ *         and showing one to a user who has no budget is a number the app made up (P-03).
+ *         [errorCode].
  * Output: an immutable snapshot for the composable.
  */
 @Immutable
@@ -28,7 +34,7 @@ data class DashboardUiState(
     val isLoading: Boolean = true,
     val safeToSpend: Money = Money.ZERO,
     val netWorth: Money = Money.ZERO,
-    val spendSplit: SpendSplit = SpendSplit(),
+    val spendSplit: SpendSplit? = null,
     /**
      * An `AppError.code` when something failed, else `null`.
      * The **code**, not a message: the wording belongs in this feature's `strings.xml` (§21.6), so
@@ -43,6 +49,7 @@ data class DashboardUiState(
  * Result: input for `CfoProportionBar` (issue 1.8).
  * Input:  the three weights in `Long` paise (MNY-001). Output: an immutable value.
  * Changelog: 2026-07-25 — Created for issue 1.10.
+ *            2026-07-27 — Issue 2.3: populated from the persisted budget envelopes.
  */
 @Immutable
 data class SpendSplit(
