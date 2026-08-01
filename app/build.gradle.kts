@@ -14,7 +14,7 @@ android {
 
     defaultConfig {
         applicationId = "com.aicfo.personalcfo"
-        versionCode = 6
+        versionCode = 7
         versionName = rootProject.file("VERSION").readText().trim()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -49,6 +49,13 @@ dependencies {
     implementation(project(":core:database"))
     implementation(project(":core:datastore"))
 
+    // Issue 2.6: FR-ACC-005's daily net-worth snapshot runs as a WorkManager job. Both of these
+    // have been in the version catalog since issue 1.1 and unused until now — this is the app's
+    // first background work.
+    implementation(libs.work.runtime.ktx)
+    implementation(libs.androidx.hilt.work)
+    ksp(libs.androidx.hilt.compiler)
+
     // Issue 2.2: the app lock. :core:crypto is the PIN/lockout logic, :data:repository the audit
     // log, and biometric-ktx is BiometricPrompt (class 3, SEC-002) — which is also what pulls in
     // androidx.fragment, so MainActivity can be a FragmentActivity.
@@ -58,6 +65,11 @@ dependencies {
 
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
+    // Issue 2.6: the snapshot worker runs on Robolectric so its locked path — the one that would
+    // otherwise crash the process — is checked on every `test` run, not only on a device.
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.junit)
+    testImplementation(libs.work.testing)
     // FakeClock (issue 1.3) — the app lock's timeout and lockout are clock-driven.
     testImplementation(testFixtures(project(":core:common")))
 }

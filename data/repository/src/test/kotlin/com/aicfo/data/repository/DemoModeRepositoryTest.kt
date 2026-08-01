@@ -206,6 +206,47 @@ class DemoModeRepositoryTest {
         }
 
     /**
+     * Input:  a demo session that produced a net-worth snapshot, then `exit()`.
+     * Output: asserts the snapshot goes too.
+     *
+     * Why this is a separate test rather than covered by the one above: the demo dataset does not
+     * create snapshots — the daily job does, while the user is browsing — so a demo profile that has
+     * been open for a day has rows in a table `enter()` never wrote. **A profile-scoped table the
+     * wipe does not reach is exactly the residue ADR-0006 forbids**, and issue 2.6 added the first
+     * such table since that ADR was written.
+     * Changelog: 2026-08-01 — Added for issue 2.6 (`net_worth_snapshot`).
+     */
+    @Test
+    fun `a snapshot taken during the demo is erased on the way out`() =
+        runTest {
+            assertTrue(repository.enter() is Ok)
+            database.netWorthSnapshotDao().upsertAll(
+                listOf(
+                    com.aicfo.core.database.entity.NetWorthSnapshotEntity(
+                        id = "${DemoModeRepository.DEMO_PROFILE_ID}:networth:2026-03-17",
+                        profileId = DemoModeRepository.DEMO_PROFILE_ID,
+                        asOfIsoDate = "2026-03-17",
+                        assetsMinor = 3_10_000_00L,
+                        liabilitiesMinor = 18_000_00L,
+                        netWorthMinor = 2_92_000_00L,
+                        engineId = "net-worth",
+                        engineVersion = "1.0",
+                        computedAtUtcMillis = clock.nowUtcMillis(),
+                        createdAtUtcMillis = clock.nowUtcMillis(),
+                        updatedAtUtcMillis = clock.nowUtcMillis(),
+                    ),
+                ),
+            )
+
+            assertTrue(repository.exit() is Ok)
+
+            assertEquals(0, database.demoDao().countRowsFor(DemoModeRepository.DEMO_PROFILE_ID))
+            assertNull(
+                database.netWorthSnapshotDao().findForDate(DemoModeRepository.DEMO_PROFILE_ID, "2026-03-17"),
+            )
+        }
+
+    /**
      * Input:  `exit()`.
      * Output: asserts the flag is cleared and the active profile goes back to the real one — which
      *         is what removes the banner and returns the dashboard to the user's own budget.

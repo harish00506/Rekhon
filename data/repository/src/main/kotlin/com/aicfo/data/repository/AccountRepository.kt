@@ -154,7 +154,8 @@ interface AccountRepository {
  *
  * Input:  [name] — the user's own label, required; [type] — one of FR-ACC-001's eleven;
  *         [openingBalance] — MNY-001 paise, signed, negative for a liability; [currencyCode] —
- *         ISO-4217; [institution] — the bank or issuer, optional (cash has none).
+ *         ISO-4217; [institution] — the bank or issuer, optional (cash has none);
+ *         [includeInNetWorth] — FR-ACC-005, issue 2.6.
  * Output: an immutable value.
  */
 data class AccountDraft(
@@ -163,6 +164,13 @@ data class AccountDraft(
     val openingBalance: Money,
     val currencyCode: String,
     val institution: String? = null,
+    /**
+     * Whether the account counts towards net worth (issue 2.6; FR-ACC-005).
+     *
+     * Defaults to counting, because an account the user has said nothing about is one they expect
+     * to see in their total.
+     */
+    val includeInNetWorth: Boolean = true,
 )
 
 /**
@@ -228,6 +236,7 @@ internal class RoomAccountRepository(
                         currentBalanceMinor = validated.openingBalance.minor,
                         currencyCode = validated.currencyCode,
                         institution = validated.institution,
+                        includeInNetWorth = validated.includeInNetWorth,
                         createdAtUtcMillis = now,
                         updatedAtUtcMillis = now,
                     )
@@ -252,6 +261,7 @@ internal class RoomAccountRepository(
                         openingBalanceMinor = validated.openingBalance.minor,
                         currencyCode = validated.currencyCode,
                         institution = validated.institution,
+                        includeInNetWorth = validated.includeInNetWorth,
                         updatedAtUtcMillis = clock.nowUtcMillis(),
                     ),
                 )
@@ -345,6 +355,7 @@ internal fun AccountEntity.toAccount(movementMinor: Long): Account? {
         balance = Money(openingBalanceMinor) + Money(movementMinor),
         currencyCode = currencyCode,
         isArchived = archivedAtUtcMillis != null,
+        includeInNetWorth = includeInNetWorth,
     )
 }
 

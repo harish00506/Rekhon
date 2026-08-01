@@ -128,11 +128,20 @@ private fun MoneySummary(uiState: DashboardUiState) {
     }
     CfoCard {
         Text(text = stringResource(R.string.dashboard_net_worth_label))
-        CfoAmountText(
-            amount = uiState.netWorth,
-            contentDescription = stringResource(R.string.dashboard_net_worth_description),
-            showSign = false,
-        )
+        // The absence is rendered, not zeroed: no snapshot has been taken yet, and ₹0 would be a
+        // figure the app invented (P-03, issue 2.6).
+        val netWorth = uiState.netWorth
+        if (netWorth == null) {
+            Text(text = stringResource(R.string.dashboard_net_worth_pending))
+        } else {
+            CfoAmountText(
+                amount = netWorth,
+                contentDescription = stringResource(R.string.dashboard_net_worth_description),
+                // Signed: a user who owes more than they hold has a negative net worth, and hiding
+                // the minus would turn a debt into savings.
+                showSign = true,
+            )
+        }
     }
 }
 

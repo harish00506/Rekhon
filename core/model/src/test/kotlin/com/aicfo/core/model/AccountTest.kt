@@ -1,6 +1,7 @@
 package com.aicfo.core.model
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -83,6 +84,47 @@ class AccountTest {
     fun `stored values are unique`() {
         val values = AccountType.entries.map { it.storedValue }
         assertEquals(values.size, values.toSet().size)
+    }
+
+    // --- asset vs liability (issue 2.6; FR-ACC-005) -----------------------------------------------
+
+    /**
+     * The three types the user owes on, written out by hand.
+     * Derived from FR-ACC-005's meaning rather than from the enum: a test that asks the code what it
+     * thinks would agree with any answer, including a wrong one.
+     */
+    private val liabilityTypeValues = listOf("credit_card", "loan", "payable")
+
+    @Test
+    fun `exactly three account types are liabilities`() {
+        assertEquals(
+            liabilityTypeValues.sorted(),
+            AccountType.entries.filter { it.isLiability }.map { it.storedValue }.sorted(),
+        )
+    }
+
+    @Test
+    fun `money owed to you is an asset, money you owe is a liability`() {
+        // The pair most likely to be swapped, and the swap would be invisible in any total that
+        // happened to hold only one of them.
+        assertFalse("a receivable is money owed TO the user", AccountType.RECEIVABLE.isLiability)
+        assertTrue("a payable is money the user owes", AccountType.PAYABLE.isLiability)
+    }
+
+    @Test
+    fun `every type is on exactly one side`() {
+        // A partition, not two overlapping lists — net worth double-counts otherwise.
+        val assets = AccountType.entries.filterNot { it.isLiability }
+        val liabilities = AccountType.entries.filter { it.isLiability }
+
+        assertEquals(AccountType.entries.size, assets.size + liabilities.size)
+        assertTrue("the two sides must not overlap", assets.intersect(liabilities.toSet()).isEmpty())
+    }
+
+    @Test
+    fun `an investment is an asset even though it can lose value`() {
+        assertFalse(AccountType.INVESTMENT.isLiability)
+        assertFalse(AccountType.CRYPTO.isLiability)
     }
 
     @Test

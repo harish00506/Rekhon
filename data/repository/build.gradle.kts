@@ -27,6 +27,9 @@ dependencies {
     // api: QuickSetupPlan and BudgetEnvelope appear on QuickSetupRepository's public surface, so
     // the ViewModels that call it must be able to name them (issue 2.3).
     api(project(":domain:engines:quicksetup"))
+    // Issue 2.6: the net-worth engine FR-ACC-005 requires; the repository hands it balances
+    // and stores what it returns, computing nothing of its own (P-03).
+    api(project(":domain:engines:networth"))
 
     // withTransaction — the atomicity guarantee applySeeds is built on (issue 2.3).
     implementation(libs.room.ktx)

@@ -7,8 +7,10 @@ import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.datastore.SettingsStore
 import com.aicfo.data.repository.AccountRepository
 import com.aicfo.data.repository.DemoModeRepository
+import com.aicfo.data.repository.NetWorthRepository
 import com.aicfo.data.repository.QuickSetupRepository
 import com.aicfo.data.repository.RepositoryFactory
+import com.aicfo.domain.engines.networth.NetWorthEngine
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -90,4 +92,23 @@ object RepositoryModule {
         dispatchers: DispatcherProvider,
         demoMode: DemoModeRepository,
     ): AccountRepository = RepositoryFactory.accounts(database, clock, ids, dispatchers, demoMode.activeProfileId)
+
+    /**
+     * The net-worth store (issue 2.6; FR-ACC-005).
+     * Why:    takes the engine rather than building one, so the figure and the code that produced it
+     *         are assembled in the graph rather than by the repository (ARC-003, P-03). Follows the
+     *         demo like everything else here: exploring the sample data shows the sample net worth.
+     * Result: a [NetWorthRepository]. Input: [database], [engine], [clock], [dispatchers], [demoMode].
+     * Output: the repository.
+     * Changelog: 2026-08-01 — Created for issue 2.6.
+     */
+    @Provides
+    @Singleton
+    fun provideNetWorthRepository(
+        database: CfoDatabase,
+        engine: NetWorthEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        demoMode: DemoModeRepository,
+    ): NetWorthRepository = RepositoryFactory.netWorth(database, engine, clock, dispatchers, demoMode.activeProfileId)
 }

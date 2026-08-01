@@ -79,7 +79,8 @@ sealed interface AccountsEvent {
  * never does money math.
  *
  * Input:  [id] — `null` when creating; [name]; [type]; [institution]; [openingBalanceText];
- *         [isLoading]; [isSaving]; [isSaved] — the screen should leave; [errorCode].
+ *         [includeInNetWorth] — FR-ACC-005's opt-out, on by default (issue 2.6); [isLoading];
+ *         [isSaving]; [isSaved] — the screen should leave; [errorCode].
  * Output: an immutable snapshot for the composable.
  */
 @Immutable
@@ -89,6 +90,7 @@ data class AccountEditorUiState(
     val type: AccountType = AccountType.BANK,
     val institution: String = "",
     val openingBalanceText: String = "",
+    val includeInNetWorth: Boolean = true,
     val isLoading: Boolean = false,
     val isSaving: Boolean = false,
     val isSaved: Boolean = false,
@@ -124,6 +126,9 @@ sealed interface AccountEditorEvent {
 
     /** The user typed in the opening-balance field. */
     data class OpeningBalanceChanged(val value: String) : AccountEditorEvent
+
+    /** The user toggled whether this account counts towards net worth (issue 2.6, FR-ACC-005). */
+    data class IncludeInNetWorthChanged(val value: Boolean) : AccountEditorEvent
 
     /** The user tapped Save. */
     data object Save : AccountEditorEvent

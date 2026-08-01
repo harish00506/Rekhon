@@ -177,8 +177,59 @@ internal object Migrations {
             }
         }
 
+    /**
+     * 4 → 5: adds `net_worth_snapshot` and `account.include_in_networth` (issue 2.6; FR-ACC-005).
+     *
+     * Why:    FR-ACC-005 requires net worth "snapshotted daily", and there was nowhere to put a
+     *         snapshot. The column arrives in the same migration because net worth is the only
+     *         thing that reads it — splitting them would mean two migrations for one feature.
+     * What:   one `CREATE TABLE` plus its index, and one `ALTER TABLE … ADD COLUMN`. **Purely
+     *         additive**, like every migration above it: no existing column is read, rewritten or
+     *         dropped (DB-003).
+     * Result: an existing installation gains an empty table and one column, and keeps everything.
+     * Input:  [SupportSQLiteDatabase] — the database mid-upgrade. Output: none (executes DDL).
+     *
+     * **`NOT NULL DEFAULT 1` on the new column, and the default is the load-bearing part.** Every
+     * account that already exists keeps counting towards net worth, which is what a user who has
+     * never been asked the question expects. A nullable column would have meant every read carrying
+     * a "null means yes" rule, and the first reader to forget it would silently drop every
+     * pre-upgrade account out of the total.
+     *
+     * The DDL matches what Room generates for `NetWorthSnapshotEntity` and `AccountEntity`; the
+     * committed `schemas/5.json` is the reference, and `MigrationRoundTripTest` fails on a device if
+     * the two drift.
+     */
+    val MIGRATION_4_5 =
+        object : Migration(VERSION_4, VERSION_5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `net_worth_snapshot` (" +
+                        "`id` TEXT NOT NULL, " +
+                        "`profile_id` TEXT NOT NULL, " +
+                        "`as_of_iso_date` TEXT NOT NULL, " +
+                        "`assets_minor` INTEGER NOT NULL, " +
+                        "`liabilities_minor` INTEGER NOT NULL, " +
+                        "`net_worth_minor` INTEGER NOT NULL, " +
+                        "`engine_id` TEXT NOT NULL, " +
+                        "`engine_version` TEXT NOT NULL, " +
+                        "`computed_at_utc_millis` INTEGER NOT NULL, " +
+                        "`created_at_utc_millis` INTEGER NOT NULL, " +
+                        "`updated_at_utc_millis` INTEGER NOT NULL, " +
+                        "`deleted_at_utc_millis` INTEGER, " +
+                        "PRIMARY KEY(`id`))",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_net_worth_snapshot_profile_id_as_of_iso_date` " +
+                        "ON `net_worth_snapshot` (`profile_id`, `as_of_iso_date`)",
+                )
+                db.execSQL(
+                    "ALTER TABLE `account` ADD COLUMN `include_in_networth` INTEGER NOT NULL DEFAULT 1",
+                )
+            }
+        }
+
     /** Every migration, in order, for `CfoDatabaseFactory` to register. */
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
 
     /** Named so the version pair reads as a schema version rather than an unexplained literal. */
     private const val VERSION_2 = 2
@@ -186,6 +237,9 @@ internal object Migrations {
     /** The version issue 2.3 introduced, and the one issue 2.5 upgrades from. */
     private const val VERSION_3 = 3
 
-    /** Matches `CfoDatabase.VERSION` at the time this migration was written (issue 2.5). */
+    /** The version issue 2.5 introduced, and the one issue 2.6 upgrades from. */
     private const val VERSION_4 = 4
+
+    /** Matches `CfoDatabase.VERSION` at the time this migration was written (issue 2.6). */
+    private const val VERSION_5 = 5
 }

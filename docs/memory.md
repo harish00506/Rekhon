@@ -17,13 +17,30 @@
 
 ## Current state
 
-- **Version:** `0.2.5` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (Epic 2 under way).
-- **Currently working file:** none — issue 2.5 is **shipped**: committed on
-  `feature/2-5-accounts-crud-all-types` and merged `--no-ff` into `dev`. Push skipped (no remote).
-- **In progress:** nothing. Last built: **Epic 2 · issue 2.5** — accounts CRUD
-  ([2.5](issues/2.5-accounts-crud-all-types.md) ·
-  [tracker](issues/2.5-accounts-crud-all-types-tracker.md)). **510 unit tests + 9 instrumented,
-  all green.**
+- **Version:** `0.2.6` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (Epic 2 under way).
+- **Currently working file:** none — issue 2.6 is implemented and verified on
+  `feature/2-6-net-worth-assets-liabilities-daily-snapshot`, **not yet committed or merged**.
+- **In progress:** nothing. Last built: **Epic 2 · issue 2.6** — net worth
+  ([2.6](issues/2.6-net-worth-assets-liabilities-daily-snapshot.md) ·
+  [tracker](issues/2.6-net-worth-assets-liabilities-daily-snapshot-tracker.md)). **578 unit tests +
+  10 instrumented, all green.**
+- **Run `./gradlew unitTests`. Never `testDebugUnitTest`.** The latter is an Android *variant* task,
+  so it skips the pure-Kotlin modules (`:core:model`, `:core:common`, `:domain:engines:*`) **and
+  never reached `:lint` at all** — whose fourteen tests are the only thing checking the five custom
+  detectors that make MNY-001, TIM-001, ARC-006, the PII-logging ban and the hardcoded-string ban
+  fail the build. **Those tests had never run in CI.** Proven by disabling `MoneyDoubleDetector`
+  outright: `testDebugUnitTest` stayed green, `unitTests` failed. Issue 2.6 added the root aggregate
+  and pointed CI, CLAUDE.md, the workflow and the templates at it. `koverVerify` does pull the
+  pure-Kotlin modules in transitively, so CI was covering those — `:lint` was the real hole.
+- **Count tests from `unitTests` only, after clearing stale results.** The count is **573** at
+  v0.2.6, across 21 modules. `build-logic:convention`'s 5 are a separate composite CI runs on its
+  own and are not in that figure. Earlier numbers in this file drifted because whatever happened to
+  be on disk got counted.
+- **The app now has background work.** `NetWorthSnapshotWorker` (daily, WorkManager) is the first.
+  Two things it establishes for every worker after it: the gated `CfoDatabase` **throws** while the
+  app is locked (SEC-002), so a worker must check `SessionLock` first and inject its repository
+  through a `Provider`; and `CfoApplication` is a `Configuration.Provider`, which means the manifest
+  must keep removing `androidx.work.WorkManagerInitializer` (lint enforces it).
 - **FR-ONB-001 is finally satisfied.** Its fourth step — "add first account with opening balance" —
   landed in 2.5, three ADR-0002 updates after that record first deferred it. The ADR is now closed. Onboarding is six
   steps, and **the skip action is no longer `isLast`**: quick setup used to be last, so Skip and
@@ -49,17 +66,22 @@
   v2→v3 Room migrations** ran against real SQLite and preserved their rows, and **SEC-002's Keystore
   PIN round trip** executed on a real TEE. Both had previously only ever been exercised by JVM
   stand-ins.
-- **Next up:** **2.6** (net worth = assets − liabilities + daily snapshot). Everything it needs now
-  exists: real accounts with derived balances, a liability that carries its sign, and the demo's four
-  sample accounts to compute over. It owns the asset/liability mapping, which 2.5 deliberately did
-  **not** model — the sign on the balance is all that carries it today. Then **2.7**
-  (reconciliation), which is also what builds DB-001's nightly integrity job and so is what finally
-  gives `account.current_balance_minor` a reader.
+- **Next up:** **2.7** (account reconciliation, FR-ACC-006) — the last issue in Epic 2. It builds
+  DB-001's integrity job, which is what finally gives `account.current_balance_minor` a reader:
+  today it is a cache nothing checks ([ADR-0007](adr/0007-account-balances-derived-not-stored.md)).
+  Then Epic 3 opens with transactions, and **issue 3.4 (future-dated) is already accounted for** —
+  net worth's as-of query bounds by `booked_on_iso_date`, so a scheduled payment will not be
+  subtracted from today's figure.
 - **Still the largest gap:** CI has never run — there is no git remote, so every green is a local
   green on one Windows machine. **Second:** nothing in the app loads `ai/` yet, so the first engine's
   thresholds are Kotlin constants guarded by a drift test rather than rulebook rows — a deliberate,
   recorded deferral of CLAUDE.md §6
   ([ADR-0005](adr/0005-quick-setup-thresholds-deferred-rulebook-loader.md)) with a named trigger.
+- **The emulator gate has now found something two issues running.** 2.5: a squeezed Delete button.
+  2.6: the dashboard showed the *stored* daily snapshot, so deleting an account left net worth
+  unchanged — every unit test agreed with the code because they all asserted the stored figure, which
+  was correct. Unlike 2.5's case this one **could** be turned into a test, and was. **Drive the app;
+  green tests are not the same as a working screen.**
 - **A gate that could not be made to bite, recorded as such.** 2.5 found a layout defect on the
   device (a `Row` squeezed the Delete button to 10px) and could not reproduce it in Robolectric at
   any screen width — its text measurement is a stub. The regression test is kept as a smoke check
@@ -94,6 +116,11 @@
 - **Epic 2 — issue 2.1 (v0.2.1, 2026-07-25):** the 4-step first-run onboarding. First screen that
   writes; closes the "nothing sets the profile time zone" seam from Epic 1 and gives the consent
   ledger its first caller.
+- **Epic 2 — issue 2.6 (v0.2.6, 2026-08-02):** net worth (FR-ACC-005). The project's **second
+  engine** (`:domain:engines:networth`, pure Kotlin) and its **first background work** — a daily
+  WorkManager snapshot that backfills missed days, at schema **v5** (`net_worth_snapshot`,
+  `account.include_in_networth`). Classification is by account type, never by the sign of the
+  balance. The dashboard's hardcoded ₹4,82,350.00 is gone; Safe-to-Spend is the last placeholder.
 - **Epic 2 — issue 2.5 (v0.2.5, 2026-08-01):** accounts CRUD (FR-ACC-001, FR-ACC-007). All eleven
   SRS account types behind an `AccountType` enum (the old six included a `wallet` the SRS never had,
   and the demo was writing a `card` nothing would match); balances **derived** from transactions

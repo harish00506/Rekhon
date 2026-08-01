@@ -159,6 +159,8 @@ retrofit-kotlinx-serialization = { module = "com.jakewharton.retrofit:retrofit2-
 
 # --- Background work ---
 work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
+# Issue 2.6: TestListenableWorkerBuilder, so the snapshot worker's locked path is provable on the JVM.
+work-testing = { module = "androidx.work:work-testing", version.ref = "work" }
 
 # --- ML Kit ---
 mlkit-text-recognition = { module = "com.google.mlkit:text-recognition", version.ref = "mlkitTextRecognition" }

@@ -111,6 +111,19 @@ data class AccountEntity(
     @ColumnInfo(name = "institution")
     val institution: String? = null,
     /**
+     * Whether this account counts towards net worth (issue 2.6; §20.2, FR-ACC-005).
+     *
+     * **Distinct from [archivedAtUtcMillis], and both from [deletedAtUtcMillis].** Archiving retires
+     * an account the user has closed; this excludes one that is still open and still transacting but
+     * is not theirs to count — a company card, or an account held for someone else. An account can
+     * be active, used daily, and legitimately outside the total.
+     *
+     * Defaults to counting: the migration fills every existing row with `1`, and an account the user
+     * has said nothing about is one they expect to see in their net worth.
+     */
+    @ColumnInfo(name = "include_in_networth", defaultValue = "1")
+    val includeInNetWorth: Boolean = true,
+    /**
      * FR-ACC-007: when the user retired this account, or null while it is active.
      *
      * **Distinct from [deletedAtUtcMillis] on purpose.** A deleted account is a mistake being
@@ -389,4 +402,68 @@ data class AuditLogEntity(
     /** An `AuditMethod` constant name, or null where the event had no factor. */
     @ColumnInfo(name = "method")
     val method: String? = null,
+)
+
+/**
+ * One day's net worth, computed and frozen (issue 2.6; FR-ACC-005, AI-ARC-006).
+ *
+ * Why:    FR-ACC-005 requires net worth to be "snapshotted daily", and the reason is that a *trend*
+ *         must not move under the user. Recomputing history from today's accounts would silently
+ *         rewrite it every time an account is archived, an opening balance corrected, or a
+ *         transaction back-dated — the chart would show a past that never happened. A stored row is
+ *         what makes issue 6.6's history exact rather than merely plausible.
+ * Result: a Room row in `net_worth_snapshot`, added at schema version 5 by issue 2.6.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-08-01 — Created for issue 2.6 (FR-ACC-005).
+ *
+ * **[id] is derived, never generated** — `<profile>:networth:<as-of-date>` — which is what makes the
+ * daily job idempotent under REPLACE: running twice on the same day updates one row rather than
+ * leaving two figures for one date. The same reasoning as `budgetId()` in `:data:repository`.
+ *
+ * **[engineId] and [engineVersion] are stored on every row (AI-ARC-006).** A snapshot outlives the
+ * code that produced it, and "why did it say ₹2,92,000 in August?" has an answer only if the row
+ * remembers which formula ran. Without them a future engine change would make the whole series
+ * unexplainable.
+ *
+ * **All three figures are stored, not just [netWorthMinor].** Recomputing the split from the total
+ * is impossible, and P-02 requires the working — a history point the user cannot break down into
+ * assets and liabilities is a number with no derivation.
+ */
+@Entity(
+    tableName = "net_worth_snapshot",
+    indices = [Index("profile_id", "as_of_iso_date")],
+)
+data class NetWorthSnapshotEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** TIM-002: the profile-zone day this figure describes, ISO `yyyy-MM-dd`. Never a timestamp. */
+    @ColumnInfo(name = "as_of_iso_date")
+    val asOfIsoDate: String,
+    /** MNY-001: paise. Signed — an overdrawn asset account legitimately reduces this. */
+    @ColumnInfo(name = "assets_minor")
+    val assetsMinor: Long,
+    /** MNY-001: paise, a positive magnitude — what the user owes, as the engine reports it. */
+    @ColumnInfo(name = "liabilities_minor")
+    val liabilitiesMinor: Long,
+    /** MNY-001: paise. `assets_minor - liabilities_minor`, stored so history cannot drift. */
+    @ColumnInfo(name = "net_worth_minor")
+    val netWorthMinor: Long,
+    /** The engine that produced this row (AI-ARC-003). */
+    @ColumnInfo(name = "engine_id")
+    val engineId: String,
+    /** That engine's version at the moment it ran (AI-ARC-006). */
+    @ColumnInfo(name = "engine_version")
+    val engineVersion: String,
+    /** TIM-001: when it was computed, which is not the same as the day it describes. */
+    @ColumnInfo(name = "computed_at_utc_millis")
+    val computedAtUtcMillis: Long,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
 )

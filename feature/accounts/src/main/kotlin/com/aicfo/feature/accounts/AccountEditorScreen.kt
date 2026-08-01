@@ -3,15 +3,18 @@ package com.aicfo.feature.accounts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -20,6 +23,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
@@ -166,6 +171,49 @@ private fun EditorFields(
     )
     Text(
         text = stringResource(R.string.account_editor_liability_help),
+        style = MaterialTheme.typography.bodySmall,
+    )
+    NetWorthToggle(
+        checked = uiState.includeInNetWorth,
+        onCheckedChange = { onEvent(AccountEditorEvent.IncludeInNetWorthChanged(it)) },
+    )
+}
+
+/**
+ * FR-ACC-005's opt-out (issue 2.6).
+ *
+ * Why:    `toggleable` on the **Row**, not the `Switch` — the same pattern the accounts list landed
+ *         for its archived toggle. A 20dp switch beside inert text is under the 48dp minimum and is
+ *         announced to a screen reader as two unrelated things.
+ *
+ *         The explanation sits under it because "count towards net worth" is not self-explanatory:
+ *         a user needs to know it is *not* the same as archiving, and that the account stays in
+ *         their list either way.
+ * Result: the composition. Input: [checked], [onCheckedChange]. Output: none.
+ * Changelog: 2026-08-01 — Created for issue 2.6.
+ */
+@Composable
+private fun NetWorthToggle(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+                .defaultMinSize(minHeight = CfoDimens.minTouchTarget),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(CfoDimens.spaceSm),
+    ) {
+        Switch(checked = checked, onCheckedChange = null, modifier = Modifier.clearAndSetSemantics {})
+        Text(
+            text = stringResource(R.string.account_editor_include_in_networth),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+    Text(
+        text = stringResource(R.string.account_editor_include_in_networth_help),
         style = MaterialTheme.typography.bodySmall,
     )
 }

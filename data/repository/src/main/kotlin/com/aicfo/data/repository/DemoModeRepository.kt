@@ -156,6 +156,10 @@ internal class RoomDemoModeRepository(
                     // Children before the parent: if this fails part-way, what is left is rows under
                     // a profile that still exists, rather than orphans no query can reach to clean up.
                     demo.deleteBudgets(DemoModeRepository.DEMO_PROFILE_ID)
+                    // Issue 2.6: not written by enter(), but produced while the user browses — the
+                    // daily job snapshots whichever profile is active. A profile-scoped table the
+                    // wipe does not reach is the residue ADR-0006 forbids.
+                    demo.deleteNetWorthSnapshots(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteRecurringRules(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteTransactions(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteCategories(DemoModeRepository.DEMO_PROFILE_ID)

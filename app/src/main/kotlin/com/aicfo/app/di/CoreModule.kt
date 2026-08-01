@@ -15,8 +15,6 @@ import com.aicfo.core.database.CfoDatabaseFactory
 import com.aicfo.core.datastore.CfoDataStoreFactory
 import com.aicfo.core.datastore.ConsentStore
 import com.aicfo.core.datastore.SettingsStore
-import com.aicfo.domain.engines.quicksetup.QuickSetupEngine
-import com.aicfo.domain.engines.quicksetup.QuickSetupEngineFactory
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -178,18 +176,6 @@ object CoreModule {
         }
         return database
     }
-
-    /**
-     * The quick-setup engine (issue 2.3; FR-ONB-002, ARC-003).
-     * Why:    the implementation is `internal` to its module, so only its factory can build one —
-     *         the same seam every engine will use. Stateless and deterministic, so a singleton is
-     *         safe and there is nothing to reset between screens.
-     * Result: a [QuickSetupEngine]. Input: none. Output: the engine.
-     * Changelog: 2026-07-27 — Created for issue 2.3.
-     */
-    @Provides
-    @Singleton
-    fun provideQuickSetupEngine(): QuickSetupEngine = QuickSetupEngineFactory.create()
 }
 
 /**
