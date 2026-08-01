@@ -18,8 +18,8 @@
 ## Current state
 
 - **Version:** `0.2.4` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (Epic 2 under way).
-- **Currently working file:** none — issue 2.4 is implemented and verified on
-  `feature/2-4-demo-mode-with-sample-data`, **not yet committed or merged**.
+- **Currently working file:** none — issue 2.4 is **shipped**: committed on
+  `feature/2-4-demo-mode-with-sample-data` and merged `--no-ff` into `dev`. Push skipped (no remote).
 - **In progress:** nothing. Last built: **Epic 2 · issue 2.4** — demo mode
   ([2.4](issues/2.4-demo-mode-with-sample-data.md) ·
   [tracker](issues/2.4-demo-mode-with-sample-data-tracker.md)). **386 unit tests + 8 instrumented,
