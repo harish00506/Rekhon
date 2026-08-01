@@ -11,6 +11,54 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > First-run onboarding, the biometric app lock, and the accounts + net-worth core. Epic 1 built
 > foundations; this is the first epic a user can see.
 
+### [0.2.5] — Issue 2.5: Accounts CRUD (all types)  (2026-08-01)
+
+- **Implemented:** a user can create, read, edit, close and delete an account of any type the SRS
+  names, and **FR-ONB-001 is satisfied for the first time** (**FR-ACC-001**, **FR-ACC-007**,
+  **FR-ONB-001** step 4; DB-001, DB-002, DB-003, MNY-001, TIM-001, ARC-003, ARC-005, P-02, P-03,
+  P-08).
+  - **All eleven account types, not six.** `AccountEntity`'s doc comment (issue 1.6) listed
+    `bank | cash | wallet | card | loan | investment`; FR-ACC-001 names eleven and includes neither
+    `wallet` nor `card`. `AccountType` in `:core:model` is now the single definition, carrying
+    §20.2's exact stored strings. The demo dataset had been writing `"card"` — a value no type-aware
+    query would ever have matched — and is corrected to `credit_card`; a new test asserts every demo
+    account carries a type the enum recognises, which is the check that was missing.
+  - **Balances are derived, never stated** ([ADR-0007](docs/adr/0007-account-balances-derived-not-stored.md)).
+    DB-001 says the current balance "is derivable from opening balance + transactions" and is "never
+    mutated ad hoc", so every read computes `opening + SUM(live transactions)` in one correlated
+    subquery. `AccountDraft` deliberately cannot express a balance: correcting one is FR-ACC-006's
+    reconciliation flow (issue 2.7), which posts an adjustment transaction. `current_balance_minor`
+    stays as the cache DB-001's integrity job will check against.
+  - **Archive is not delete (FR-ACC-007).** A closed account keeps every transaction it ever had and
+    drops out of the active list; a deleted one is soft-deleted (DB-002) and the row survives. The
+    two are independently observable, and the DAO's delete now filters `deleted_at IS NULL` so a
+    second delete reports `NotFound` rather than confirming something that never happened.
+  - **Onboarding's fourth step, three ADR-0002 updates later.** `OnboardingStep.ACCOUNT` lands
+    exactly where that record said it would, and attaches the account to the recurring rules issue
+    2.3 wrote with a null `account_id`. Skipping is a blank name — one representation, so it cannot
+    disagree with itself. Skipping *quick setup* now has to be remembered rather than meaning
+    "finish", because a step follows it.
+  - **Schema v3 → v4**, purely additive: `account.institution` and `account.archived_at_utc_millis`.
+    The first migration in this app that alters an existing table rather than creating new ones.
+  - **`:feature:accounts`** — list and editor, and `CfoRoute.AccountEditor(accountId: String?)`, the
+    first typed route in the app to carry an argument.
+- **Tests:** 510 unit passed, 0 skipped (+124); 9 instrumented passed on `emulator-5554`.
+  Highlights: a **seeded property test** over ~2 000 generated transactions asserting
+  `balance == opening + sum` (money math, 100% coverage); `migrate3To4` against real SQLite; the
+  full six-step onboarding flow; **an airplane-mode pass** — an account created with the radio off
+  (P-04).
+- **Found and fixed on the device, not in a test:** a plain `Row` squeezed the Delete action to 10px
+  on an active row and to nothing on a closed one, where the label reads "Reopen account". Fixed
+  with `FlowRow`. The regression test added alongside it **does not reproduce the defect** —
+  Robolectric measures text with a stub, so it stays green against the broken layout; that was
+  confirmed by reverting the fix, and the tracker records the device as the gate rather than
+  claiming the test bites.
+- **Also fixed:** the archived-accounts switch was not part of its own label's tap target;
+  `AccountsUiState.isEmpty` rendered a failed read as a cheerful "no accounts yet"; the issue
+  generator cited **§11** (the Investment Intelligence Module) for accounts and told every tracker to
+  merge to `main`, which CLAUDE.md §7 forbids — both corrected at
+  [`scripts/gen_issue_docs.py`](scripts/gen_issue_docs.py) rather than in the generated files.
+
 ### [0.2.4] — Issue 2.4: Demo mode with sample data  (2026-07-28)
 
 - **Implemented:** the app can be explored on realistic sample data before any real figure is

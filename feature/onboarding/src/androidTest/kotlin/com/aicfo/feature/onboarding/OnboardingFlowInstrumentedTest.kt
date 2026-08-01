@@ -11,6 +11,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aicfo.core.common.AppError
 import com.aicfo.core.common.DefaultDispatcherProvider
+import com.aicfo.core.common.Err
 import com.aicfo.core.common.FakeClock
 import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
@@ -20,7 +21,10 @@ import com.aicfo.core.datastore.CfoDataStoreFactory
 import com.aicfo.core.datastore.ConsentFeature
 import com.aicfo.core.datastore.DEFAULT_AUTO_LOCK_SECONDS
 import com.aicfo.core.designsystem.theme.CfoTheme
+import com.aicfo.core.model.Account
 import com.aicfo.core.model.Money
+import com.aicfo.data.repository.AccountDraft
+import com.aicfo.data.repository.AccountRepository
 import com.aicfo.data.repository.DemoModeRepository
 import com.aicfo.data.repository.ProfileSeed
 import com.aicfo.data.repository.QuickSetupRepository
@@ -102,7 +106,12 @@ class OnboardingFlowInstrumentedTest {
                 OnboardingViewModel(
                     OnboardingWriter(stores.settings, stores.consents),
                     AppLockSetup(pinVerifier, stores.appLock),
-                    QuickSetupCoordinator(QuickSetupEngineFactory.create(), NoOpQuickSetupRepository(), clock),
+                    FinancialSetupCoordinator(
+                        QuickSetupEngineFactory.create(),
+                        NoOpQuickSetupRepository(),
+                        NoOpAccountRepository(),
+                        clock,
+                    ),
                     NoOpDemoModeRepository(),
                     clock,
                     SavedStateHandle(),
@@ -122,6 +131,10 @@ class OnboardingFlowInstrumentedTest {
             node(string(R.string.onboarding_security_pin_confirm_label)).performTextInput("135790")
             clickNext()
             node(string(R.string.onboarding_quick_setup_income_label)).performTextInput("85000")
+            clickNext()
+            // ACCOUNT (issue 2.5, FR-ONB-001 step 4): skipped by leaving the name blank, because
+            // this test's doubles do not store an account — what it proves is the DataStore and
+            // Keystore halves, and `AccountRepositoryTest` proves the Room half against real SQL.
             node(string(R.string.onboarding_finish)).performClick()
             // waitForIdle() is not enough here, and the difference is the whole point of running
             // this on a device: the write runs on a real I/O dispatcher, so the composition can be
@@ -196,6 +209,46 @@ private class NoOpQuickSetupRepository : QuickSetupRepository {
     override fun observeLatestEnvelopes(): Flow<List<BudgetEnvelope>> = flowOf(emptyList())
 
     override fun observeLatestEnvelopes(profileId: String): Flow<List<BudgetEnvelope>> = flowOf(emptyList())
+
+    override suspend fun attachAccountToSeededRules(
+        profileId: String,
+        accountId: String,
+    ): Result<Unit, AppError> = Ok(Unit)
+}
+
+/**
+ * An [AccountRepository] that accepts everything and stores nothing (issue 2.5).
+ *
+ * Why:  same reasoning as [NoOpQuickSetupRepository] — this file proves what **Proto DataStore and
+ *       the Keystore** hold, and the account's Room half is proven against a real SQL engine by
+ *       `AccountRepositoryTest`. The flow's new fourth step is skipped here (its name is left
+ *       blank), so nothing this double returns is ever read.
+ * Result: a double that lets the flow finish. Input: none. Output: the double.
+ * Changelog: 2026-07-28 — Created for issue 2.5.
+ */
+private class NoOpAccountRepository : AccountRepository {
+    override fun observeAccounts(includeArchived: Boolean): Flow<List<Account>> = flowOf(emptyList())
+
+    override fun observeAccounts(
+        profileId: String,
+        includeArchived: Boolean,
+    ): Flow<List<Account>> = flowOf(emptyList())
+
+    override suspend fun find(id: String): Result<Account, AppError> = Err(AppError.NotFound)
+
+    override suspend fun create(draft: AccountDraft): Result<Account, AppError> = Err(AppError.NotFound)
+
+    override suspend fun update(
+        id: String,
+        draft: AccountDraft,
+    ): Result<Account, AppError> = Err(AppError.NotFound)
+
+    override suspend fun setArchived(
+        id: String,
+        archived: Boolean,
+    ): Result<Unit, AppError> = Ok(Unit)
+
+    override suspend fun delete(id: String): Result<Unit, AppError> = Ok(Unit)
 }
 
 /**

@@ -1,10 +1,11 @@
 package com.aicfo.feature.onboarding
 
 import androidx.compose.runtime.Immutable
+import com.aicfo.core.model.AccountType
 import com.aicfo.domain.engines.quicksetup.QuickSetupPlan
 
 /**
- * The four steps of first-run onboarding (FR-ONB-001, FR-ONB-002, FR-ONB-003).
+ * The steps of first-run onboarding (FR-ONB-001, FR-ONB-002, FR-ONB-003).
  *
  * Why:  an ordered enum rather than an `Int` means "which step am I on?" cannot hold a value that
  *       is not a step, and `entries` gives the progress indicator its total for free — so adding a
@@ -12,11 +13,13 @@ import com.aicfo.domain.engines.quicksetup.QuickSetupPlan
  * What: the closed, ordered set of steps.
  * Result: the flow's position, expressed as a type.
  * Changelog: 2026-07-25 — Created for issue 2.1.
+ *            2026-07-26 — Issue 2.2 inserted [SECURITY].
+ *            2026-07-28 — Issue 2.5 appended [ACCOUNT]. **FR-ONB-001 is now satisfied** — see
+ *            `docs/adr/0002-onboarding-step-order.md`, which predicted both insertions and has been
+ *            waiting on this one since.
  *
- * The SRS's own step 3 (security) and step 4 (first account) belong to issues 2.2 and 2.5, which
- * this issue does not depend on and which therefore cannot be built yet. The ordering here is the
- * one the issue and tracker specify; the deviation is recorded in
- * `docs/adr/0002-onboarding-step-order.md`, which also says where 2.2 and 2.5 insert their steps.
+ * ADR-0002 records why issue 2.1 could not build the SRS's four steps literally: two of them
+ * belonged to issues it did not depend on. Both have now landed where that record said they would.
  */
 enum class OnboardingStep {
     /** Welcome and the privacy pledge (FR-ONB-001). */
@@ -39,10 +42,29 @@ enum class OnboardingStep {
 
     /** The optional income / rent / savings seeds (FR-ONB-002). */
     QUICK_SETUP,
+
+    /**
+     * The first account and its opening balance (FR-ONB-001 step 4, SEC-002's sibling; issue 2.5).
+     *
+     * Placed **last**, exactly as ADR-0002 said it would be — it needed a repository and a schema
+     * version that did not exist when issue 2.1 built this flow. Skippable, like quick setup:
+     * leaving the name blank writes no account rather than inventing an empty one (P-03).
+     */
+    ACCOUNT,
     ;
 
     /** Whether this is the last step, i.e. its primary action finishes rather than advances. */
     val isLast: Boolean get() = ordinal == entries.lastIndex
+
+    /**
+     * Whether the step offers a Skip action (issue 2.5).
+     *
+     * Why: the two data steps are optional and the other four are not — the app cannot work without
+     *      a time zone, and the welcome and consent steps ask for nothing to skip. Until issue 2.5
+     *      this was expressed as `isLast`, which was true only by coincidence: quick setup happened
+     *      to be last. Appending [ACCOUNT] would have moved Skip off quick setup entirely.
+     */
+    val isSkippable: Boolean get() = this == QUICK_SETUP || this == ACCOUNT
 }
 
 /**
@@ -69,9 +91,14 @@ enum class OnboardingStep {
  *         [displayName], [currencyCode], [timeZoneId]; [deviceZoneId] — what the device reports,
  *         carried in state so the composable stays a pure function of it rather than reading the
  *         platform itself; [appLockEnabled], [pinText], [pinConfirmText] — the SEC-002 step;
- *         [monthlyIncomeText], [rentOrEmiText], [typicalSavingsText]; [quickSetupPlan] — what the
+ *         [monthlyIncomeText], [rentOrEmiText], [typicalSavingsText]; [accountName],
+ *         [accountType], [accountOpeningBalanceText] — FR-ONB-001's fourth step, all optional; a
+ *         blank [accountName] means the user skipped it and no account is written (issue 2.5);
+ *         [quickSetupPlan] — what the
  *         engine derived from those three, recomputed on every keystroke and `null` until at least
- *         one of them parses (issue 2.3); [isSaving];
+ *         one of them parses (issue 2.3); [quickSetupSkipped] — the user pressed Skip on the
+ *         quick-setup step, so its amounts are not written even if something was typed before
+ *         (issue 2.5, which moved that step off the end of the flow); [isSaving];
  *         [isComplete]; [isDemoStarted] — the sample dataset is loaded and the screen should leave
  *         for the dashboard (issue 2.4). **Separate from [isComplete] on purpose:** onboarding was
  *         not completed, no profile exists, and conflating the two would mark a demo user onboarded;
@@ -94,6 +121,10 @@ data class OnboardingUiState(
     val rentOrEmiText: String = "",
     val typicalSavingsText: String = "",
     val quickSetupPlan: QuickSetupPlan? = null,
+    val quickSetupSkipped: Boolean = false,
+    val accountName: String = "",
+    val accountType: AccountType = AccountType.BANK,
+    val accountOpeningBalanceText: String = "",
     val isSaving: Boolean = false,
     val isComplete: Boolean = false,
     val isDemoStarted: Boolean = false,
@@ -207,6 +238,21 @@ sealed interface OnboardingEvent {
 
     /** The user edited their typical savings (FR-ONB-002). */
     data class TypicalSavingsChanged(
+        val text: String,
+    ) : Answer
+
+    /** The user named their first account (issue 2.5, FR-ONB-001 step 4). Blank means skipped. */
+    data class AccountNameChanged(
+        val name: String,
+    ) : Answer
+
+    /** The user picked their first account's type (issue 2.5, FR-ACC-001). */
+    data class AccountTypeChanged(
+        val type: AccountType,
+    ) : Answer
+
+    /** The user edited their first account's opening balance (issue 2.5). */
+    data class AccountOpeningBalanceChanged(
         val text: String,
     ) : Answer
 

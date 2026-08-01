@@ -76,13 +76,19 @@ abstract class CfoDatabase : RoomDatabase() {
      * Input:  none. Output: the demo wipe DAO (issue 2.4, FR-ONB-004).
      *
      * Adding it needed **no schema change** — a DAO is a set of queries over tables that already
-     * exist, and Room's exported schema describes tables, not queries. [VERSION] stays at 3.
+     * exist, and Room's exported schema describes tables, not queries. It did not move [VERSION].
      */
     abstract fun demoDao(): DemoDao
 
     companion object {
-        /** Bump only alongside a hand-written migration and a test that proves data survives. */
-        const val VERSION = 3
+        /**
+         * Bump only alongside a hand-written migration and a test that proves data survives.
+         *
+         * History: 1 — issue 1.6 (profile, account, transactions, category) · 2 — issue 2.2
+         * (`audit_log`) · 3 — issue 2.3 (`budget`, `recurring_rule`) · 4 — issue 2.5
+         * (`account.institution`, `account.archived_at_utc_millis`; FR-ACC-007).
+         */
+        const val VERSION = 4
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"

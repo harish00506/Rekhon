@@ -9,6 +9,7 @@ import com.aicfo.core.database.entity.CategoryEntity
 import com.aicfo.core.database.entity.ProfileEntity
 import com.aicfo.core.database.entity.RecurringRuleEntity
 import com.aicfo.core.database.entity.TransactionEntity
+import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Money
 import com.aicfo.domain.engines.quicksetup.QuickSetupEngineFactory
 import com.aicfo.domain.engines.quicksetup.QuickSetupInput
@@ -126,10 +127,11 @@ internal object DemoDataset {
                 id = accountId(spec.key),
                 profileId = DemoModeRepository.DEMO_PROFILE_ID,
                 name = spec.name,
-                type = spec.type,
+                type = spec.type.storedValue,
                 openingBalanceMinor = spec.openingBalanceMinor,
                 currentBalanceMinor = spec.openingBalanceMinor + (movement[accountId(spec.key)] ?: 0L),
                 currencyCode = DEMO_CURRENCY_CODE,
+                institution = spec.institution,
                 createdAtUtcMillis = nowUtcMillis,
                 updatedAtUtcMillis = nowUtcMillis,
             )
@@ -369,14 +371,21 @@ internal object DemoDataset {
             JitteredSpec("health", 1, -1_500_00L, 500L, "cash", "health", "Pharmacy/clinic"),
         )
 
-    /** The accounts, with the opening balances the derived closing balances build on. */
+    /**
+     * The accounts, with the opening balances the derived closing balances build on.
+     *
+     * Columns: `key`, `name`, `type` (an `AccountType`, so `"card"` can no longer be written where
+     * `credit_card` was meant — issue 2.5), `openingBalanceMinor`, `institution`.
+     */
+    @Suppress("MagicNumber") // See the note above FIXED_SPECS.
     private val ACCOUNT_SPECS =
         listOf(
-            AccountSpec("savings", "HDFC Savings", type = "bank", openingBalanceMinor = 1_85_000_00L),
-            AccountSpec("cash", "Cash Wallet", type = "cash", openingBalanceMinor = 5_000_00L),
+            AccountSpec("savings", "HDFC Savings", AccountType.BANK, 1_85_000_00L, "HDFC Bank"),
+            // No institution: cash has no issuer, which is why the column is nullable.
+            AccountSpec("cash", "Cash Wallet", AccountType.CASH, 5_000_00L, null),
             // Negative on purpose: a card is a liability, and the net-worth engine (2.6) subtracts it.
-            AccountSpec("card", "ICICI Credit Card", type = "card", openingBalanceMinor = -18_000_00L),
-            AccountSpec("sip", "Index Fund Folio", type = "investment", openingBalanceMinor = 1_20_000_00L),
+            AccountSpec("card", "ICICI Credit Card", AccountType.CREDIT_CARD, -18_000_00L, "ICICI Bank"),
+            AccountSpec("sip", "Index Fund Folio", AccountType.INVESTMENT, 1_20_000_00L, "Zerodha Coin"),
         )
 
     /** The spending categories, natures drawn from the §8.3 closed set. */
@@ -475,12 +484,22 @@ internal data class JitteredSpec(
     override val merchant: String,
 ) : DemoSpec
 
-/** One account before its closing balance is derived. Input: see the constructor. Output: a value. */
+/**
+ * One account before its closing balance is derived.
+ *
+ * [type] is an [AccountType] rather than a string (issue 2.5): the demo used to write `"card"`,
+ * which is not in FR-ACC-001's vocabulary, so it was an account no type-aware query would ever have
+ * matched. The enum makes that unrepresentable.
+ *
+ * Input: [key], [name], [type], [openingBalanceMinor] — MNY-001 paise, signed;
+ *        [institution] — null where there is no issuer. Output: an immutable value.
+ */
 internal data class AccountSpec(
     val key: String,
     val name: String,
-    val type: String,
+    val type: AccountType,
     val openingBalanceMinor: Long,
+    val institution: String?,
 )
 
 /** One category. Input: [key], [name], [nature] — a §8.3 code. Output: an immutable value. */

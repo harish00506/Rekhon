@@ -60,6 +60,19 @@
     <string name="onboarding_quick_setup_income_label">Monthly income</string>
     <string name="onboarding_quick_setup_rent_label">Rent or EMI each month</string>
     <string name="onboarding_quick_setup_savings_label">Typical savings each month</string>
+
+    <!-- Issue 2.5: FR-ONB-001's fourth step, the last one ADR-0002 was waiting on. -->
+    <string name="onboarding_account_title">Your first account</string>
+    <string name="onboarding_account_body">Add the account you use most. You can add the rest later,
+        and skip this entirely by leaving the name blank.</string>
+    <string name="onboarding_account_name_label">Account name</string>
+    <string name="onboarding_account_balance_label">Opening balance (optional)</string>
+    <string name="onboarding_account_balance_help">What it holds right now. For a credit card, enter
+        what you owe as a negative amount.</string>
+    <string name="onboarding_account_type_bank">Bank account</string>
+    <string name="onboarding_account_type_cash">Cash</string>
+    <string name="onboarding_account_type_credit_card">Credit card</string>
+    <string name="onboarding_account_type_investment">Investment</string>
     <string name="onboarding_quick_setup_amount_hint">₹</string>
 
     <!-- The derived plan (issue 2.3, FR-ONB-002). Every line names the rule behind it (P-02). -->

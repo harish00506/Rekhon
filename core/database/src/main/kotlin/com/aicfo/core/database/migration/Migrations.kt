@@ -146,12 +146,46 @@ internal object Migrations {
         )
     }
 
+    /**
+     * 3 → 4: adds `institution` and `archived_at_utc_millis` to `account` (issue 2.5; FR-ACC-007).
+     *
+     * Why:    issue 2.5 is the first code that lets a user *create* an account, and two things the
+     *         SRS's own DDL (§20.2) has always had were missing from issue 1.6's narrower table.
+     *         `institution` is the bank or issuer. `archived_at_utc_millis` is FR-ACC-007: a closed
+     *         account "MUST retain history and be excluded from active totals", which a soft delete
+     *         cannot express — deleting a closed card would take its past transactions out of every
+     *         month it appeared in.
+     * What:   two `ALTER TABLE … ADD COLUMN` statements. **Purely additive**, like both migrations
+     *         above: no existing column is read, rewritten or dropped, and both new columns are
+     *         nullable, so every existing row is already valid the moment they exist (DB-003).
+     * Result: an existing installation gains two null columns and keeps every account it had.
+     * Input:  [SupportSQLiteDatabase] — the database mid-upgrade. Output: none (executes DDL).
+     *
+     * **No `IF NOT EXISTS` here, unlike the `CREATE` statements above** — SQLite's `ADD COLUMN` has
+     * no such clause. That is the right behaviour anyway: a migration that finds the column already
+     * present has been run twice, and failing loudly is better than continuing over a database in
+     * an unknown state.
+     *
+     * The types match what Room generates for `AccountEntity`; the committed `schemas/4.json` is
+     * the reference, and `MigrationRoundTripTest` fails on a device if the two drift.
+     */
+    val MIGRATION_3_4 =
+        object : Migration(VERSION_3, VERSION_4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `account` ADD COLUMN `institution` TEXT")
+                db.execSQL("ALTER TABLE `account` ADD COLUMN `archived_at_utc_millis` INTEGER")
+            }
+        }
+
     /** Every migration, in order, for `CfoDatabaseFactory` to register. */
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 
     /** Named so the version pair reads as a schema version rather than an unexplained literal. */
     private const val VERSION_2 = 2
 
-    /** Matches `CfoDatabase.VERSION` at the time this migration was written (issue 2.3). */
+    /** The version issue 2.3 introduced, and the one issue 2.5 upgrades from. */
     private const val VERSION_3 = 3
+
+    /** Matches `CfoDatabase.VERSION` at the time this migration was written (issue 2.5). */
+    private const val VERSION_4 = 4
 }

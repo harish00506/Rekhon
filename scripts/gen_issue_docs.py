@@ -532,9 +532,9 @@ ISSUES: list[Issue] = [
        "The dataset is deterministic (seeded) and covered by a test."],
       ["Demo data is visibly labelled and isolated from real data (P-02)."]),
     I("2.5", 2, "Accounts CRUD (all types)", "accounts", "H", "1.6",
-      "SS5.7, SS11; FR-ACC-*", "SS5 Data Model",
-      "Create/read/update/soft-delete for every account type (bank, cash, wallet, card, loan, investment) - the entities balances and net worth are computed from.",
-      ["CRUD for every account type in SS11; soft-delete (`deleted_at`) and per-profile scoping.",
+      "SS5.7 (FR-ACC-001, FR-ACC-007), SS20.2", "SS5 Data Model",
+      "Create/read/update/archive/soft-delete for every account type FR-ACC-001 names - the entities balances and net worth are computed from.",
+      ["CRUD for every account type in FR-ACC-001; archive (FR-ACC-007), soft-delete (`deleted_at`) and per-profile scoping.",
        "Balances are `Money` paise; opening + running balance are correct (property test).",
        "The repository is the only DAO toucher (ARC-005); the ViewModel sees domain models only."],
       ["Repositories are the only classes touching DAOs (ARC-005)."]),
@@ -1212,7 +1212,9 @@ def tracker_phases(issue: Issue) -> list[tuple[str, str]]:
     if labels & {"transactions", "dashboard", "onboarding", "accounts", "app", "e2e", "export", "widget", "backup"}:
         phases.append(("E2E smoke + airplane-mode", "`./gradlew connectedDebugAndroidTest` incl. airplane-mode (P-04)"))
     phases.append(("Docs + VERSION + CHANGELOG", "ENGINE.md/ADR as needed; `VERSION` + `CHANGELOG.md` bumped"))
-    phases.append(("Merge to `main` + push", "merged to `main`; Verification Log complete; pushed"))
+    # CLAUDE.md SS7: `dev` is the integration branch; `main` and `stage` are protected and PR-only,
+    # so no issue merges straight to `main`. The generator said otherwise until issue 2.5.
+    phases.append(("Merge to `dev` + push", "merged to `dev`; Verification Log complete; pushed"))
     return phases
 
 
@@ -1400,8 +1402,8 @@ def render_tracker(issue: Issue, slug: str) -> str:
     lines.append("")
     lines.append(f"**Parent issue:** [{issue_file}]({issue_file})  ")
     lines.append(f"**Strategy:** {issue.summary}  ")
-    lines.append("**Branch (integration):** `main`  ")
-    lines.append(f"**Branch (implementation):** `{branch_name(issue, slug)}` -> merged to `main`")
+    lines.append("**Branch (integration):** `dev`  ")
+    lines.append(f"**Branch (implementation):** `{branch_name(issue, slug)}` -> merged to `dev`")
     lines.append("")
     lines.append("---")
     lines.append("")
@@ -1488,11 +1490,29 @@ def main() -> int:
     write_csv(ISSUES)
 
     file_count = 0
+    preserved: list[str] = []
     for issue in ISSUES:
         slug = slugify(issue.title)
         (ISSUES_DIR / f"{issue.id}-{slug}.md").write_text(polish(render_issue(issue, slug)), encoding="utf-8")
-        (ISSUES_DIR / f"{issue.id}-{slug}-tracker.md").write_text(polish(render_tracker(issue, slug)), encoding="utf-8")
-        file_count += 2
+        file_count += 1
+
+        # A tracker is hand-maintained once work starts: it carries the Verification Log, the phase
+        # checklist and the "what is proven, and what is not" section, none of which this script can
+        # regenerate. Overwriting one destroys the only record that a gate was ever run.
+        #
+        # Issue 2.5 found this the hard way -- a routine regeneration blanked all fourteen completed
+        # trackers back to "not started" in one command, and only git had them. So a tracker is now
+        # written **only when it does not already exist**; a started one is reported and left alone.
+        # To deliberately reset one, delete the file first.
+        tracker = ISSUES_DIR / f"{issue.id}-{slug}-tracker.md"
+        if tracker.exists() and "(not started)" not in tracker.read_text(encoding="utf-8"):
+            preserved.append(tracker.name)
+            continue
+        tracker.write_text(polish(render_tracker(issue, slug)), encoding="utf-8")
+        file_count += 1
+
+    if preserved:
+        print(f"  preserved {len(preserved)} tracker(s) with recorded progress (delete to regenerate)")
 
     epic_counts: dict[int, int] = {}
     for issue in ISSUES:

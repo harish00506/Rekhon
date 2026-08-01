@@ -11,9 +11,11 @@ import com.aicfo.core.common.Result
 import com.aicfo.core.common.flatMap
 import com.aicfo.core.datastore.OnboardingProfile
 import com.aicfo.core.datastore.QuickSetupSeeds
+import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.MoneyFormatter
 import com.aicfo.data.repository.DemoModeRepository
 import com.aicfo.data.repository.ProfileSeed
+import com.aicfo.data.repository.QuickSetupRepository
 import com.aicfo.domain.engines.quicksetup.QuickSetupPlan
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,6 +40,7 @@ import javax.inject.Inject
  *            2026-07-26 — Issue 2.2: the SECURITY step ADR-0002 reserved for it.
  *            2026-07-27 — Issue 2.3: the quick-setup seeds are derived live and persisted at Finish.
  *            2026-07-28 — Issue 2.4: the demo-mode escape hatch, which writes nothing this class does.
+ *            2026-07-28 — Issue 2.5: the ACCOUNT step, which finally satisfies FR-ONB-001.
  *
  * Nothing here touches the network, and both stores are local: the whole flow works in airplane
  * mode (P-04).
@@ -46,8 +49,9 @@ import javax.inject.Inject
  *         (issue 2.4, extracted from here);
  *         [appLockSetup] — the SEC-002 security step, which owns the order its two writes
  *         must happen in (issue 2.2);
- *         [quickSetup] — derives the budget from the seeds and persists it, so this class parses no
- *         amount and computes no figure of its own (P-03, issue 2.3);
+ *         [financialSetup] — derives the budget from the seeds, persists it, and writes the first
+ *         account, so this class parses no amount and computes no figure of its own (P-03; issues
+ *         2.3, 2.5);
  *         [demoMode] — loads the sample dataset for the FR-ONB-004 escape hatch, which deliberately
  *         bypasses every write this class otherwise makes (issue 2.4);
  *         [clock] — supplies the profile zone and the instants, so this never reads
@@ -61,13 +65,13 @@ class OnboardingViewModel
     constructor(
         private val writer: OnboardingWriter,
         private val appLockSetup: AppLockSetup,
-        private val quickSetup: QuickSetupCoordinator,
+        private val financialSetup: FinancialSetupCoordinator,
         private val demoMode: DemoModeRepository,
         private val clock: Clock,
         private val savedState: SavedStateHandle,
     ) : ViewModel() {
         private val _uiState =
-            MutableStateFlow(savedState.restore(defaultZoneId = clock.zone().id).withDerivedPlan())
+            MutableStateFlow(savedState.restore(defaultZoneId = clock.zone().id).withDerivedPlan(financialSetup))
 
         /**
          * The flow's state.
@@ -87,7 +91,7 @@ class OnboardingViewModel
             when (event) {
                 OnboardingEvent.Next -> advance()
                 OnboardingEvent.Back -> moveBy(-1)
-                OnboardingEvent.SkipQuickSetup -> finish(withSeeds = false)
+                OnboardingEvent.SkipQuickSetup -> advance(skipping = true)
                 OnboardingEvent.StartDemo -> startDemo()
                 OnboardingEvent.DismissError -> updateState { it.copy(errorCode = null) }
                 is OnboardingEvent.Answer -> applyAnswer(event)
@@ -111,55 +115,56 @@ class OnboardingViewModel
                 is OnboardingEvent.DisplayNameChanged -> updateState { it.copy(displayName = event.name) }
                 is OnboardingEvent.CurrencyChanged -> updateState { it.copy(currencyCode = event.currencyCode) }
                 is OnboardingEvent.TimeZoneChanged -> updateState { it.copy(timeZoneId = event.zoneId) }
+                is OnboardingEvent.AccountNameChanged -> updateState { it.copy(accountName = event.name) }
+                is OnboardingEvent.AccountTypeChanged -> updateState { it.copy(accountType = event.type) }
+                is OnboardingEvent.AccountOpeningBalanceChanged ->
+                    updateState { it.copy(accountOpeningBalanceText = event.text) }
                 is OnboardingEvent.AppLockToggled -> onAppLockToggled(event.enabled)
                 is OnboardingEvent.PinChanged -> updateState { it.copy(pinText = event.pin, errorCode = null) }
                 is OnboardingEvent.PinConfirmChanged ->
                     updateState { it.copy(pinConfirmText = event.pin, errorCode = null) }
                 is OnboardingEvent.MonthlyIncomeChanged ->
-                    updateState { it.copy(monthlyIncomeText = event.text).withDerivedPlan() }
+                    updateState { it.copy(monthlyIncomeText = event.text).withDerivedPlan(financialSetup) }
                 is OnboardingEvent.RentOrEmiChanged ->
-                    updateState { it.copy(rentOrEmiText = event.text).withDerivedPlan() }
+                    updateState { it.copy(rentOrEmiText = event.text).withDerivedPlan(financialSetup) }
                 is OnboardingEvent.TypicalSavingsChanged ->
-                    updateState { it.copy(typicalSavingsText = event.text).withDerivedPlan() }
+                    updateState { it.copy(typicalSavingsText = event.text).withDerivedPlan(financialSetup) }
             }
         }
 
         /**
-         * Re-derives the quick-setup plan from whatever is currently typed (issue 2.3, FR-ONB-002).
+         * Moves on from the current step — by answering it, or by skipping it (issues 2.2, 2.5).
          *
-         * Why:    the summary updates as the user types, so this runs on every keystroke — which is
-         *         affordable only because the engine is pure and reads no clock of its own. It is
-         *         **recomputed rather than remembered**: keeping a stale plan while the amounts
-         *         moved is how a screen ends up showing a budget for a figure the user has already
-         *         changed.
-         * What:   parses the three fields, hands them to the engine with the current month, and
-         *         stores the result.
-         * Result: a state whose `quickSetupPlan` matches its three amount fields; `null` when
-         *         nothing parses yet or the engine rejects the input — the summary then renders
-         *         nothing rather than a partial budget.
-         * Input:  the receiver. Output: [OnboardingUiState].
-         * Changelog: 2026-07-27 — Created for issue 2.3.
-         */
-        private fun OnboardingUiState.withDerivedPlan(): OnboardingUiState =
-            copy(quickSetupPlan = quickSetup.derive(monthlyIncomeText, rentOrEmiText, typicalSavingsText))
-
-        /**
-         * Moves on from the current step, or finishes if it is the last.
-         * Why:    the security step can refuse (issue 2.2): a lock switched on with no usable PIN
-         *         would leave the user with an app nothing opens, on their very first launch. Every
-         *         other step always advances, so the guard is expressed once here rather than being
-         *         re-derived per step.
+         * Why:    Next and Skip are the same movement and differ in one thing only: whether the
+         *         step's answers count. Keeping them as one function is what stops the two drifting
+         *         over where "the last step" finishes.
+         *
+         *         **The security step can refuse** (issue 2.2): a lock switched on with no usable
+         *         PIN would leave the user with an app nothing opens, on their very first launch.
+         *         Every other step always advances, so the guard is expressed once here.
+         *
+         *         **Skipping quick setup has to be remembered** (issue 2.5). It used to be the last
+         *         step, so Skip and "finish without seeds" were one action; appending the ACCOUNT
+         *         step separated them. The flag is remembered rather than the typed amounts being
+         *         cleared, so a user who skips and then steps back still sees what they wrote. The
+         *         account step needs no equivalent — a blank name already means skipped, and one
+         *         representation of that is better than two that could disagree.
          * Result: advances, finishes, or sets the error explaining what is missing.
-         * Input:  none. Output: none.
+         * Input:  [skipping] — `true` when the user pressed Skip rather than Next.
+         * Output: none.
          * Changelog: 2026-07-26 — Extracted for issue 2.2.
+         *            2026-07-28 — Issue 2.5: absorbed Skip, which is no longer always Finish.
          */
-        private fun advance() {
+        private fun advance(skipping: Boolean = false) {
             val state = _uiState.value
             if (!state.canAdvance) {
                 if (!state.isSaving) updateState { it.copy(errorCode = pinProblem(it)) }
                 return
             }
-            if (state.step.isLast) finish(withSeeds = true) else moveBy(1)
+            if (skipping && state.step == OnboardingStep.QUICK_SETUP) {
+                updateState { it.copy(quickSetupSkipped = true) }
+            }
+            if (state.step.isLast) finish(withSeeds = !_uiState.value.quickSetupSkipped) else moveBy(1)
         }
 
         /**
@@ -238,6 +243,7 @@ class OnboardingViewModel
                     appLockSetup.apply(answers.appLockEnabled, answers.pinText)
                         .flatMap { writer.apply(answers.smsConsentGranted, answers.toProfile(withSeeds)) }
                         .flatMap { applyQuickSetup(answers, withSeeds) }
+                        .flatMap { applyFirstAccount(answers) }
                 updateState { state ->
                     when (outcome) {
                         is Ok -> state.copy(isSaving = false, isComplete = true)
@@ -296,7 +302,7 @@ class OnboardingViewModel
             withSeeds: Boolean,
         ): Result<Unit, AppError> {
             val plan: QuickSetupPlan = answers.quickSetupPlan.takeIf { withSeeds } ?: return Ok(Unit)
-            return quickSetup.persist(
+            return financialSetup.persist(
                 plan = plan,
                 profile =
                     ProfileSeed(
@@ -308,6 +314,32 @@ class OnboardingViewModel
         }
 
         /**
+         * Writes the first account and attaches the seeded rules to it (issue 2.5; FR-ONB-001).
+         *
+         * Why:    **last in the chain, and that is required rather than incidental.** The account is
+         *         scoped to a profile, and the profile row is written by [applyQuickSetup]
+         *         immediately before — running these the other way round would create an account
+         *         under a profile that does not exist yet. The rules it attaches to are written
+         *         there too.
+         *
+         *         Unlike the steps before it there is no `withSeeds`-style flag: a blank name *is*
+         *         the skip, and the coordinator treats it as one. One representation of "skipped"
+         *         rather than two that could disagree.
+         * Result: `Ok(Unit)` when the step was skipped or both writes landed; `Err` otherwise, which
+         *         leaves `isComplete` false and surfaces the code.
+         * Input:  [answers] — the captured state. Output: `Result<Unit, AppError>`.
+         * Changelog: 2026-07-28 — Created for issue 2.5.
+         */
+        private suspend fun applyFirstAccount(answers: OnboardingUiState): Result<Unit, AppError> =
+            financialSetup.persistFirstAccount(
+                name = answers.accountName.trim(),
+                type = answers.accountType,
+                openingBalanceText = answers.accountOpeningBalanceText,
+                currencyCode = answers.currencyCode,
+                profileId = QuickSetupRepository.DEFAULT_PROFILE_ID,
+            )
+
+        /**
          * Applies a change and keeps the saved copy in step.
          * Why:    persisting in one place means a new field cannot be added to the state and
          *         silently left out of what survives process death.
@@ -317,6 +349,29 @@ class OnboardingViewModel
             _uiState.update { current -> transform(current).also(savedState::persist) }
         }
     }
+
+/**
+ * Re-derives the quick-setup plan from whatever is currently typed (issue 2.3, FR-ONB-002).
+ *
+ * Why:    the summary updates as the user types, so this runs on every keystroke — which is
+ *         affordable only because the engine is pure and reads no clock of its own. It is
+ *         **recomputed rather than remembered**: keeping a stale plan while the amounts moved is
+ *         how a screen ends up showing a budget for a figure the user has already changed.
+ *
+ *         A top-level function rather than a member (issue 2.5): it needs nothing from the
+ *         ViewModel but the coordinator, and moving it out is what kept that class inside detekt's
+ *         function limit without raising the limit.
+ * What:   parses the three fields, hands them to the engine with the current month, and stores the
+ *         result.
+ * Result: a state whose `quickSetupPlan` matches its three amount fields; `null` when nothing
+ *         parses yet or the engine rejects the input — the summary then renders nothing rather than
+ *         a partial budget.
+ * Input:  the receiver; [setup] — derives the plan. Output: [OnboardingUiState].
+ * Changelog: 2026-07-27 — Created for issue 2.3.
+ *            2026-07-28 — Issue 2.5: moved out of OnboardingViewModel.
+ */
+private fun OnboardingUiState.withDerivedPlan(setup: FinancialSetupCoordinator): OnboardingUiState =
+    copy(quickSetupPlan = setup.derive(monthlyIncomeText, rentOrEmiText, typicalSavingsText))
 
 /**
  * Converts the typed answers into what the store writes.
@@ -391,6 +446,10 @@ private fun SavedStateHandle.persist(state: OnboardingUiState) {
     this[KEY_INCOME] = state.monthlyIncomeText
     this[KEY_RENT] = state.rentOrEmiText
     this[KEY_SAVINGS] = state.typicalSavingsText
+    this[KEY_QUICK_SETUP_SKIPPED] = state.quickSetupSkipped
+    this[KEY_ACCOUNT_NAME] = state.accountName
+    this[KEY_ACCOUNT_TYPE] = state.accountType.storedValue
+    this[KEY_ACCOUNT_OPENING] = state.accountOpeningBalanceText
 }
 
 /**
@@ -417,6 +476,12 @@ private fun SavedStateHandle.restore(defaultZoneId: String): OnboardingUiState =
         monthlyIncomeText = get<String>(KEY_INCOME).orEmpty(),
         rentOrEmiText = get<String>(KEY_RENT).orEmpty(),
         typicalSavingsText = get<String>(KEY_SAVINGS).orEmpty(),
+        quickSetupSkipped = get<Boolean>(KEY_QUICK_SETUP_SKIPPED) ?: false,
+        accountName = get<String>(KEY_ACCOUNT_NAME).orEmpty(),
+        // Falls back rather than throwing, for the same reason the step name does: a value written
+        // by another build must not crash the relaunch.
+        accountType = get<String>(KEY_ACCOUNT_TYPE)?.let(AccountType::fromStored) ?: AccountType.BANK,
+        accountOpeningBalanceText = get<String>(KEY_ACCOUNT_OPENING).orEmpty(),
     )
 
 private const val KEY_STEP = "onboarding.step"
@@ -428,3 +493,7 @@ private const val KEY_TIME_ZONE = "onboarding.timeZone"
 private const val KEY_INCOME = "onboarding.income"
 private const val KEY_RENT = "onboarding.rent"
 private const val KEY_SAVINGS = "onboarding.savings"
+private const val KEY_QUICK_SETUP_SKIPPED = "onboarding.quickSetupSkipped"
+private const val KEY_ACCOUNT_NAME = "onboarding.accountName"
+private const val KEY_ACCOUNT_TYPE = "onboarding.accountType"
+private const val KEY_ACCOUNT_OPENING = "onboarding.accountOpening"

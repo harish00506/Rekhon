@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 
 /**
  * Persists what the quick-setup engine derived (issue 2.3; FR-ONB-002, ARC-005, DB-003).
@@ -89,6 +90,28 @@ interface QuickSetupRepository {
      * Input:  [profileId]. Output: `Flow<List<BudgetEnvelope>>`.
      */
     fun observeLatestEnvelopes(profileId: String): Flow<List<BudgetEnvelope>>
+
+    /**
+     * Points this profile's unattached quick-setup rules at an account (issue 2.5).
+     *
+     * Why:    issue 2.3 wrote the salary, rent and savings rules with `account_id = null`, because
+     *         no account existed to attach and none could be invented (P-03). Issue 2.5 gives the
+     *         user one, and this is where the loop closes. **It lives on this interface, not on
+     *         `AccountRepository`, because this is the class that wrote those rows** — the account
+     *         side has no business knowing that quick setup produced anything.
+     * What:   one `UPDATE` over the rules that are still unattached **and** came from quick setup.
+     *         Both conditions matter: a rule the user later attached by hand, and a rule issue 3.7
+     *         detected from the transaction stream, are neither of them this call's to reassign.
+     * Result: `Ok(Unit)` — including when there was nothing to attach, which is the normal case for
+     *         a user who skipped quick setup. `Err(Storage)` on a write failure.
+     * Input:  [profileId]; [accountId] — the account the seeded money moves through.
+     * Output: `Result<Unit, AppError>`.
+     * Changelog: 2026-07-28 — Created for issue 2.5.
+     */
+    suspend fun attachAccountToSeededRules(
+        profileId: String,
+        accountId: String,
+    ): Result<Unit, AppError>
 
     companion object {
         /**
@@ -181,6 +204,24 @@ internal class RoomQuickSetupRepository(
                     plan.recurring.map { it.toEntity(profile.id, now) },
                 )
             }
+        }
+
+    override suspend fun attachAccountToSeededRules(
+        profileId: String,
+        accountId: String,
+    ): Result<Unit, AppError> =
+        runCatchingToResult {
+            withContext(dispatchers.io) {
+                database.recurringRuleDao().attachAccountToUnattached(
+                    profileId = profileId,
+                    accountId = accountId,
+                    source = SOURCE_QUICK_SETUP,
+                    updatedAtUtcMillis = clock.nowUtcMillis(),
+                )
+            }
+            // Explicit: the DAO returns the affected-row count, and zero is the correct, expected
+            // outcome for a user who skipped quick setup. Nothing to report but success.
+            Unit
         }
 
     override fun observeLatestEnvelopes(): Flow<List<BudgetEnvelope>> =

@@ -42,6 +42,7 @@ class OnboardingViewModelTest {
     private val appLock = FakeAppLockStore()
     private val pinVerifier = FakePinVerifier()
     private val quickSetup = FakeQuickSetupRepository()
+    private val accounts = FakeAccountRepository()
     private val demoMode = FakeDemoModeRepository()
     private val engine = QuickSetupEngineFactory.create()
     private val clock = FakeClock(initialZone = ZoneId.of("Asia/Kolkata"))
@@ -63,7 +64,7 @@ class OnboardingViewModelTest {
         OnboardingViewModel(
             OnboardingWriter(settings, consents),
             AppLockSetup(pinVerifier, appLock),
-            QuickSetupCoordinator(engine, quickSetup, clock),
+            FinancialSetupCoordinator(engine, quickSetup, accounts, clock),
             demoMode,
             clock,
             savedState,
@@ -87,6 +88,37 @@ class OnboardingViewModelTest {
     }
 
     /**
+     * Presses Next until the flow finishes, from wherever it currently is.
+     * Why:    issue 2.5 broke four tests here that each counted Next presses to reach the end, and
+     *         counting was never the thing any of them meant — they meant "and then finish". A
+     *         helper driven by the enum survives the next inserted step, which ADR-0002 says is
+     *         still coming (issues 4.x own the categories step).
+     * Result: the flow is complete, or has stopped on a step that refused to advance.
+     * Input:  none. Output: none.
+     * Changelog: 2026-07-28 — Created for issue 2.5.
+     */
+    private fun OnboardingViewModel.finishFlow() {
+        repeat(OnboardingStep.entries.size) {
+            if (uiState.value.isComplete) return
+            onEvent(OnboardingEvent.Next)
+        }
+    }
+
+    /**
+     * Skips the quick-setup step specifically, then finishes.
+     * Why:    before issue 2.5 quick setup was the last step, so "Skip" and "finish" were one press.
+     *         They are two now, and a test that presses Skip on the last step is skipping the
+     *         *account* step — which is a different assertion wearing the same name.
+     * Result: onboarding is complete with no seeds written. Input: none. Output: none.
+     * Changelog: 2026-07-28 — Created for issue 2.5.
+     */
+    private fun OnboardingViewModel.skipQuickSetupThenFinish() {
+        goTo(OnboardingStep.QUICK_SETUP)
+        onEvent(OnboardingEvent.SkipQuickSetup)
+        finishFlow()
+    }
+
+    /**
      * Input:  a fresh ViewModel.
      * Output: asserts the flow opens on the welcome step with the SMS consent **off**. A consent
      *         that defaulted on would be granted by a user who simply pressed Next — which is the
@@ -99,10 +131,11 @@ class OnboardingViewModelTest {
         assertFalse("absence is never consent", state.smsConsentGranted)
         assertFalse(state.canGoBack)
         assertEquals(1, state.stepNumber)
-        // Five since issue 2.2 inserted SECURITY, exactly where ADR-0002 said it would go. The
-        // count is derived from the enum, so this asserts the indicator can never disagree with it.
+        // Six since issue 2.5 appended ACCOUNT, the last step ADR-0002 was waiting on — SECURITY
+        // arrived in 2.2. The count is derived from the enum, so this asserts the indicator can
+        // never disagree with it, and the literal asserts the enum itself has not drifted.
         assertEquals(OnboardingStep.entries.size, state.stepCount)
-        assertEquals(5, state.stepCount)
+        assertEquals("FR-ONB-001's four steps, plus consent and quick setup", 6, state.stepCount)
     }
 
     /**
@@ -128,7 +161,7 @@ class OnboardingViewModelTest {
     fun `steps forward and back, clamped at both ends`() {
         val viewModel = viewModel()
         viewModel.goToLastStep()
-        assertEquals(OnboardingStep.QUICK_SETUP, viewModel.uiState.value.step)
+        assertEquals(OnboardingStep.ACCOUNT, viewModel.uiState.value.step)
 
         repeat(OnboardingStep.entries.size + 2) { viewModel.onEvent(OnboardingEvent.Back) }
         assertEquals(OnboardingStep.WELCOME, viewModel.uiState.value.step)
@@ -191,8 +224,7 @@ class OnboardingViewModelTest {
         runTest {
             val viewModel = viewModel()
             viewModel.onEvent(OnboardingEvent.MonthlyIncomeChanged("85000"))
-            viewModel.goToLastStep()
-            viewModel.onEvent(OnboardingEvent.SkipQuickSetup)
+            viewModel.skipQuickSetupThenFinish()
 
             val saved = settings.savedProfile!!
             assertNull(saved.quickSetup.monthlyIncome)
@@ -378,8 +410,7 @@ class OnboardingViewModelTest {
         viewModel.onEvent(OnboardingEvent.AppLockToggled(true))
         viewModel.onEvent(OnboardingEvent.PinChanged("135790"))
         viewModel.onEvent(OnboardingEvent.PinConfirmChanged("135790"))
-        viewModel.onEvent(OnboardingEvent.Next)
-        viewModel.onEvent(OnboardingEvent.Next)
+        viewModel.finishFlow()
 
         assertEquals("135790", pinVerifier.storedPin)
         assertTrue(appLock.enabled)
@@ -483,8 +514,7 @@ class OnboardingViewModelTest {
         viewModel.onEvent(OnboardingEvent.AppLockToggled(true))
         viewModel.onEvent(OnboardingEvent.PinChanged("1234"))
         viewModel.onEvent(OnboardingEvent.PinConfirmChanged("1234"))
-        viewModel.onEvent(OnboardingEvent.Next)
-        viewModel.onEvent(OnboardingEvent.Next)
+        viewModel.finishFlow()
 
         assertFalse(appLock.enabled)
         assertFalse(viewModel.uiState.value.isComplete)
@@ -581,10 +611,9 @@ class OnboardingViewModelTest {
     @Test
     fun `skipping writes nothing, even after amounts were typed`() {
         val viewModel = viewModel()
-        viewModel.goToLastStep()
         viewModel.onEvent(OnboardingEvent.MonthlyIncomeChanged("85000"))
 
-        viewModel.onEvent(OnboardingEvent.SkipQuickSetup)
+        viewModel.skipQuickSetupThenFinish()
 
         assertEquals("Skip must not reach the repository", 0, quickSetup.applyCallCount)
         assertTrue("skipping still completes onboarding", viewModel.uiState.value.isComplete)

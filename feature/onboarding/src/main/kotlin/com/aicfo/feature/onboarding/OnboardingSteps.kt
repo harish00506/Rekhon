@@ -1,5 +1,6 @@
 package com.aicfo.feature.onboarding
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
@@ -19,6 +20,7 @@ import com.aicfo.core.designsystem.component.CfoCard
 import com.aicfo.core.designsystem.component.CfoListRow
 import com.aicfo.core.designsystem.component.CfoPinField
 import com.aicfo.core.designsystem.component.CfoSecondaryButton
+import com.aicfo.core.model.AccountType
 
 /*
  * The four faces of the onboarding flow (issue 2.1; FR-ONB-001/002/003).
@@ -194,6 +196,73 @@ internal fun QuickSetupStep(
     ) { onEvent(OnboardingEvent.TypicalSavingsChanged(it)) }
     uiState.quickSetupPlan?.let { QuickSetupSummary(plan = it) }
 }
+
+/**
+ * Step 6 — the first account and its opening balance (FR-ONB-001 step 4; issue 2.5).
+ *
+ * Why:    the last of FR-ONB-001's four steps, deferred by ADR-0002 until a repository existed to
+ *         store it. **Skippable, and skipping means leaving the name blank** — there is no separate
+ *         Skip action because there is nothing to skip past: an unnamed account is simply not
+ *         created, and inventing an empty one for a user who declined would be fabricating data
+ *         (P-03).
+ *
+ *         Only three fields, against the eleven-type editor in `:feature:accounts`: a first-run flow
+ *         asking about gold, crypto and receivables would be asking a question the user has no
+ *         reason to answer yet. The common cases are here; everything else is one screen away.
+ * Result: the composition. Input: [uiState], [onEvent]. Output: the rendered step.
+ * Changelog: 2026-07-28 — Created for issue 2.5.
+ */
+@Composable
+internal fun AccountStep(
+    uiState: OnboardingUiState,
+    onEvent: (OnboardingEvent) -> Unit,
+) {
+    Text(text = stringResource(R.string.onboarding_account_title), style = MaterialTheme.typography.headlineSmall)
+    Text(text = stringResource(R.string.onboarding_account_body))
+    OutlinedTextField(
+        value = uiState.accountName,
+        onValueChange = { onEvent(OnboardingEvent.AccountNameChanged(it)) },
+        label = { Text(stringResource(R.string.onboarding_account_name_label)) },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    ONBOARDING_ACCOUNT_TYPES.forEach { type ->
+        ChoiceRow(
+            label = stringResource(onboardingAccountTypeLabel(type)),
+            selected = uiState.accountType == type,
+        ) { onEvent(OnboardingEvent.AccountTypeChanged(type)) }
+    }
+    AmountField(
+        value = uiState.accountOpeningBalanceText,
+        label = stringResource(R.string.onboarding_account_balance_label),
+    ) { onEvent(OnboardingEvent.AccountOpeningBalanceChanged(it)) }
+    Text(text = stringResource(R.string.onboarding_account_balance_help))
+}
+
+/**
+ * The account types worth offering during first run.
+ * Why:    a subset of FR-ACC-001's eleven, deliberately. A first-run flow is not the place to ask
+ *         whether someone holds SGBs — these four cover what almost everyone has on day one, and
+ *         the full set lives in the accounts editor, one screen away.
+ * Result: the ordered options. Changelog: 2026-07-28 — Created for issue 2.5.
+ */
+internal val ONBOARDING_ACCOUNT_TYPES: List<AccountType> =
+    listOf(AccountType.BANK, AccountType.CASH, AccountType.CREDIT_CARD, AccountType.INVESTMENT)
+
+/**
+ * Result: the label for one of [ONBOARDING_ACCOUNT_TYPES]. Input: [type]. Output: a string resource.
+ *
+ * `:feature:accounts` has its own copy of this mapping and cannot share it — features never depend
+ * on each other (ARC-001) — so this covers only the four offered here and falls back for the rest.
+ */
+@StringRes
+private fun onboardingAccountTypeLabel(type: AccountType): Int =
+    when (type) {
+        AccountType.CASH -> R.string.onboarding_account_type_cash
+        AccountType.CREDIT_CARD -> R.string.onboarding_account_type_credit_card
+        AccountType.INVESTMENT -> R.string.onboarding_account_type_investment
+        else -> R.string.onboarding_account_type_bank
+    }
 
 /**
  * One selectable option.

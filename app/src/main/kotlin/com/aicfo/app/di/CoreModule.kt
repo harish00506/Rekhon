@@ -4,7 +4,9 @@ import android.content.Context
 import com.aicfo.core.common.Clock
 import com.aicfo.core.common.DefaultDispatcherProvider
 import com.aicfo.core.common.DispatcherProvider
+import com.aicfo.core.common.IdGenerator
 import com.aicfo.core.common.SystemClock
+import com.aicfo.core.common.UuidIdGenerator
 import com.aicfo.core.common.errorOrNull
 import com.aicfo.core.common.getOrNull
 import com.aicfo.core.crypto.SessionLock
@@ -75,6 +77,20 @@ object CoreModule {
     @Provides
     @Singleton
     fun provideClock(zoneProvider: ProfileZoneProvider): Clock = SystemClock(zoneProvider)
+
+    /**
+     * The app's only source of new row ids (issue 2.5; P-08).
+     * Why:    sits here beside [provideClock] because it is the same kind of thing — a seam over a
+     *         non-deterministic primitive, so that no class further down calls `UUID.randomUUID()`
+     *         directly and becomes untestable. `:core:model` and `:domain:*` cannot see it either
+     *         way; only repositories mint ids.
+     * Result: the production [IdGenerator].
+     * Input:  none. Output: [IdGenerator].
+     * Changelog: 2026-07-28 — Created for issue 2.5.
+     */
+    @Provides
+    @Singleton
+    fun provideIdGenerator(): IdGenerator = UuidIdGenerator()
 
     /**
      * Settings and consents (issue 1.9), which share one atomic file.

@@ -2,8 +2,10 @@ package com.aicfo.data.repository
 
 import com.aicfo.core.common.FakeClock
 import com.aicfo.core.common.toProfileDate
+import com.aicfo.core.model.AccountType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -276,6 +278,35 @@ class DemoDatasetTest {
         DemoDataset.build(clock).transactions
             .filter { it.merchant == "Monthly salary" }
             .forEach { assertNull(it.categoryId) }
+    }
+
+    /**
+     * Every demo account carries a type FR-ACC-001 actually names (issue 2.5).
+     *
+     * Why:  until issue 2.5 this file asserted row *counts* and never the type strings, and the
+     *       demo's credit card was stored as `"card"` — a value in no SRS list, which no type-aware
+     *       query would ever have matched. Nothing caught it because nothing looked. This is the
+     *       gate that looks: the demo is the app's own sample data, so a type it invents is a type
+     *       the app is teaching itself is real.
+     */
+    @Test
+    fun `every demo account has a type FR-ACC-001 recognises`() {
+        DemoDataset.build(clock).accounts.forEach { account ->
+            assertNotNull(
+                "${account.name} has type '${account.type}', which is not an AccountType",
+                AccountType.fromStored(account.type),
+            )
+        }
+    }
+
+    @Test
+    fun `the demo covers an asset and a liability, so net worth has both sides`() {
+        // Issue 2.6 subtracts liabilities from assets. A sample dataset with only assets would let
+        // that engine ship with its subtraction never once exercised.
+        val types = DemoDataset.build(clock).accounts.mapNotNull { AccountType.fromStored(it.type) }
+
+        assertTrue("the demo needs a bank account", AccountType.BANK in types)
+        assertTrue("the demo needs a liability", AccountType.CREDIT_CARD in types)
     }
 
     private companion object {

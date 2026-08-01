@@ -95,7 +95,12 @@ class OnboardingFlowTest {
             OnboardingViewModel(
                 OnboardingWriter(settings, consents),
                 AppLockSetup(pinVerifier, appLock),
-                QuickSetupCoordinator(QuickSetupEngineFactory.create(), FakeQuickSetupRepository(), clock),
+                FinancialSetupCoordinator(
+                    QuickSetupEngineFactory.create(),
+                    FakeQuickSetupRepository(),
+                    FakeAccountRepository(),
+                    clock,
+                ),
                 demoMode,
                 clock,
                 SavedStateHandle(),
@@ -142,14 +147,16 @@ class OnboardingFlowTest {
     private fun goToSecurityStep() = repeat(OnboardingStep.SECURITY.ordinal) { clickNext() }
 
     /**
-     * Input:  the flow, clicked through all five steps with answers along the way.
+     * Input:  the flow, clicked through all six steps with answers along the way.
      * Output: asserts each step renders, the profile is written exactly once with the amounts
      *         converted to paise, the consent is granted, and the caller is told to navigate on.
      * Changelog: 2026-07-26 — Issue 2.2 added the SECURITY step, passed through here without
      *            enabling the lock; `enables the app lock when the user sets a PIN` covers that.
+     *            2026-07-28 — Issue 2.5 added the ACCOUNT step, filled in here so the full flow is
+     *            what the test drives.
      */
     @Test
-    fun `drives all five steps and saves the profile`() {
+    fun `drives all six steps and saves the profile`() {
         compose.showFlow()
 
         compose.onNodeWithText(text(R.string.onboarding_welcome_pledge_title)).assertIsDisplayed()
@@ -167,6 +174,11 @@ class OnboardingFlowTest {
         clickNext()
 
         node(text(R.string.onboarding_quick_setup_income_label)).performTextInput("85000")
+        clickNext()
+
+        // ACCOUNT (issue 2.5): FR-ONB-001's fourth step, and now the last one.
+        node(text(R.string.onboarding_account_name_label)).performTextInput("HDFC Savings")
+        node(text(R.string.onboarding_account_balance_label)).performTextInput("125000")
         node(text(R.string.onboarding_finish)).performClick()
         // The save is asynchronous and the navigation hangs off a LaunchedEffect on its result, so
         // the composition has to be pumped before either can be asserted.
@@ -272,6 +284,8 @@ class OnboardingFlowTest {
         node(text(R.string.onboarding_security_pin_confirm_label)).performTextInput("135790")
         clickNext()
 
+        // Two skips since issue 2.5: quick setup, then the account step, which is now the last one.
+        node(text(R.string.onboarding_skip)).performClick()
         node(text(R.string.onboarding_skip)).performClick()
         compose.waitForIdle()
 

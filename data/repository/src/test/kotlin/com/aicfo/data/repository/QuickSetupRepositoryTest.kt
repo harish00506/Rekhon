@@ -360,6 +360,71 @@ class QuickSetupRepositoryTest {
         return (result as Ok).value
     }
 
+    // --- attaching an account (issue 2.5, FR-ONB-001 step 4) ---------------------------------------
+
+    @Test
+    fun `attaching an account fills in the seeded rules' null account_id`() =
+        runTest {
+            // The loop issue 2.3 deliberately left open: it wrote these rules with no account
+            // because none existed, and this is the call that closes it.
+            repository.applySeeds(planFor(income = 95_000_00L, rent = 28_000_00L), profileSeed())
+            assertTrue(ruleAccountIds().all { it == null })
+
+            assertTrue(
+                repository.attachAccountToSeededRules(
+                    QuickSetupRepository.DEFAULT_PROFILE_ID,
+                    "account:1",
+                ) is Ok,
+            )
+
+            assertEquals(listOf("account:1", "account:1"), ruleAccountIds())
+        }
+
+    @Test
+    fun `attaching does not reassign a rule that already names an account`() =
+        runTest {
+            // A rule the user attached by hand is not this call's to move.
+            repository.applySeeds(planFor(income = 95_000_00L, rent = 28_000_00L), profileSeed())
+            repository.attachAccountToSeededRules(QuickSetupRepository.DEFAULT_PROFILE_ID, "account:1")
+
+            repository.attachAccountToSeededRules(QuickSetupRepository.DEFAULT_PROFILE_ID, "account:2")
+
+            assertEquals(listOf("account:1", "account:1"), ruleAccountIds())
+        }
+
+    @Test
+    fun `attaching leaves another profile's rules alone`() =
+        runTest {
+            repository.applySeeds(planFor(income = 95_000_00L, rent = null), profileSeed())
+
+            repository.attachAccountToSeededRules("someone-else", "account:1")
+
+            assertEquals(listOf(null), ruleAccountIds())
+        }
+
+    @Test
+    fun `attaching when there is nothing to attach is a success, not an error`() =
+        runTest {
+            // The normal outcome for a user who skipped quick setup. Reporting an error here would
+            // make onboarding fail for the people who answered the fewest questions.
+            assertTrue(
+                repository.attachAccountToSeededRules(
+                    QuickSetupRepository.DEFAULT_PROFILE_ID,
+                    "account:1",
+                ) is Ok,
+            )
+        }
+
+    /** Result: every rule's `account_id`, in id order, nulls included. Output: `List<String?>`. */
+    private fun ruleAccountIds(): List<String?> =
+        database.query("SELECT account_id FROM recurring_rule ORDER BY id", emptyArray()).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) {
+                    add(if (cursor.isNull(0)) null else cursor.getString(0))
+                }
+            }
+        }
+
     private fun count(table: String): Int =
         database.query("SELECT COUNT(*) FROM $table", emptyArray()).use { cursor ->
             cursor.moveToFirst()
