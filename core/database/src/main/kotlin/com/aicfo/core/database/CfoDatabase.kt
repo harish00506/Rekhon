@@ -7,6 +7,7 @@ import com.aicfo.core.database.dao.AuditLogDao
 import com.aicfo.core.database.dao.BudgetDao
 import com.aicfo.core.database.dao.CategoryDao
 import com.aicfo.core.database.dao.DemoDao
+import com.aicfo.core.database.dao.NetWorthSnapshotDao
 import com.aicfo.core.database.dao.ProfileDao
 import com.aicfo.core.database.dao.RecurringRuleDao
 import com.aicfo.core.database.dao.TransactionDao
@@ -14,6 +15,7 @@ import com.aicfo.core.database.entity.AccountEntity
 import com.aicfo.core.database.entity.AuditLogEntity
 import com.aicfo.core.database.entity.BudgetEntity
 import com.aicfo.core.database.entity.CategoryEntity
+import com.aicfo.core.database.entity.NetWorthSnapshotEntity
 import com.aicfo.core.database.entity.ProfileEntity
 import com.aicfo.core.database.entity.RecurringRuleEntity
 import com.aicfo.core.database.entity.TransactionEntity
@@ -46,6 +48,7 @@ import com.aicfo.core.database.entity.TransactionEntity
         AuditLogEntity::class,
         BudgetEntity::class,
         RecurringRuleEntity::class,
+        NetWorthSnapshotEntity::class,
     ],
     version = CfoDatabase.VERSION,
     exportSchema = true,
@@ -72,6 +75,9 @@ abstract class CfoDatabase : RoomDatabase() {
     /** Input: none. Output: the recurring-rule DAO (issue 2.3, FR-TXN-006). */
     abstract fun recurringRuleDao(): RecurringRuleDao
 
+    /** Input: none. Output: the net-worth snapshot DAO (issue 2.6, FR-ACC-005). */
+    abstract fun netWorthSnapshotDao(): NetWorthSnapshotDao
+
     /**
      * Input:  none. Output: the demo wipe DAO (issue 2.4, FR-ONB-004).
      *
@@ -86,9 +92,10 @@ abstract class CfoDatabase : RoomDatabase() {
          *
          * History: 1 — issue 1.6 (profile, account, transactions, category) · 2 — issue 2.2
          * (`audit_log`) · 3 — issue 2.3 (`budget`, `recurring_rule`) · 4 — issue 2.5
-         * (`account.institution`, `account.archived_at_utc_millis`; FR-ACC-007).
+         * (`account.institution`, `account.archived_at_utc_millis`; FR-ACC-007) · 5 — issue 2.6
+         * (`net_worth_snapshot`, `account.include_in_networth`; FR-ACC-005).
          */
-        const val VERSION = 4
+        const val VERSION = 5
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"

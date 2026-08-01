@@ -539,7 +539,7 @@ ISSUES: list[Issue] = [
        "The repository is the only DAO toucher (ARC-005); the ViewModel sees domain models only."],
       ["Repositories are the only classes touching DAOs (ARC-005)."]),
     I("2.6", 2, "Net worth = assets - liabilities + daily snapshot", "accounts;engine", "H", "2.5",
-      "SS5.7; FR-NW-*, P-03", "SS5 Data Model, SS7 Money & Time",
+      "SS5.7 (FR-ACC-005), SS20.3 (DB-001)", "SS5 Data Model, SS7 Money & Time",
       "The deterministic net-worth computation (assets - liabilities) plus a daily snapshot job so trend history is exact and reproducible.",
       ["Net worth = sum(assets) - sum(liabilities) in `Money` paise; the number comes from the engine, not the LLM (P-03).",
        "A daily snapshot is written via WorkManager on the injected `Clock`, idempotent per day.",
@@ -736,7 +736,7 @@ ISSUES: list[Issue] = [
        "The network is consent-gated; covered by tests with the backend absent."],
       ["Market data via the backend proxy only; degrade to cached + staleness (P-04)."]),
     I("6.6", 6, "Net-worth snapshots history", "wealth", "M", "2.6",
-      "SS5.7; FR-NW-*", "SS5 Data Model",
+      "SS5.7 (FR-ACC-005), SS20.3", "SS5 Data Model",
       "Persisted net-worth snapshot history with trend queries - an exact, reproducible time series from the daily snapshots (2.6).",
       ["Snapshot history is queryable by range; the trend derives from stored snapshots (no recompute drift).",
        "Values are `Money` paise; charts come from the design system; offline.",
@@ -1197,10 +1197,10 @@ def tracker_phases(issue: Issue) -> list[tuple[str, str]]:
     phases: list[tuple[str, str]] = [
         ("Dependencies clear or waived", f"deps: {deps_display(issue)}"),
         ("Branch created", "`git branch --show-current` -> feature/..."),
-        ("Failing tests written (TDD)", "new tests are red before implementation (`./gradlew testDebugUnitTest`)"),
+        ("Failing tests written (TDD)", "new tests are red before implementation (`./gradlew unitTests`)"),
         ("Implementation to acceptance criteria", "all acceptance criteria above are met"),
         ("Static analysis clean", "`./gradlew ktlintCheck detekt lintDebug` - no new warnings"),
-        ("Unit + coverage gate", "`./gradlew testDebugUnitTest koverVerify` - engine >= 85%, money 100%"),
+        ("Unit + coverage gate", "`./gradlew unitTests koverVerify` - engine >= 85%, money 100%"),
     ]
     if labels & {"database"}:
         phases.append(("Migration test green", "schema migration test passes; no destructive migration (DB-003)"))
@@ -1354,7 +1354,7 @@ def render_issue(issue: Issue, slug: str) -> str:
     lines.append("")
     lines.append("```text")
     lines.append("./gradlew ktlintCheck detekt lintDebug")
-    lines.append("./gradlew testDebugUnitTest koverVerify")
+    lines.append("./gradlew unitTests koverVerify")
     lines.append("# /run + /verify on an emulator; connectedDebugAndroidTest for core flows (incl. airplane-mode)")
     lines.append("```")
     lines.append("")

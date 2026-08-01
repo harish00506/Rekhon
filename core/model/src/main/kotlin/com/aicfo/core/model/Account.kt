@@ -20,9 +20,7 @@ package com.aicfo.core.model
  * (FR-ACC-002) and a loan's principal, rate and EMI (FR-ACC-003) live in their own tables, built by
  * issues 3.1 and 3.2. This issue gives every type a row it can hang off.
  *
- * **Asset vs liability is not modelled here either.** The sign of the balance already carries it —
- * a credit card holds a negative amount — and FR-ACC-005 (net worth = assets − liabilities) is
- * issue 2.6's to decide, with the full picture of what it needs.
+ * **Asset vs liability is [isLiability]** (added by issue 2.6, which 2.5 deferred it to).
  */
 enum class AccountType(val storedValue: String) {
     /** Savings or current account at a bank. */
@@ -58,6 +56,28 @@ enum class AccountType(val storedValue: String) {
     /** Informal lending: money the user owes. */
     PAYABLE("payable"),
     ;
+
+    /**
+     * Whether this kind of account is something the user **owes** (issue 2.6; FR-ACC-005).
+     *
+     * Why:    FR-ACC-005 is "net worth MUST equal assets − liabilities", and that sentence needs a
+     *         rule for which side each account falls on. **The arithmetic does not:** balances are
+     *         already signed, so a plain sum of every balance is already assets − liabilities.
+     *         What this exists for is P-02 — a screen that can only say "₹3.1L" and not "assets
+     *         ₹3.3L, you owe ₹18k" cannot show its work, and the two subtotals need the partition.
+     *
+     *         **Classification is by type, never by sign.** An overdrawn bank account is an asset
+     *         with a negative value; a credit card paid past zero is a liability with a positive
+     *         one. Reading the sign instead would silently reclassify both, which is the bug this
+     *         doc comment exists to prevent — `NetWorthEngineTest` pins both cases.
+     *
+     *         [RECEIVABLE] is an **asset**: it is money owed *to* the user. Only [PAYABLE] is the
+     *         other direction.
+     * Result: `true` for the three types the user owes on, `false` for the other eight.
+     * Changelog: 2026-08-01 — Created for issue 2.6 (FR-ACC-005), which 2.5 deferred it to.
+     */
+    val isLiability: Boolean
+        get() = this == CREDIT_CARD || this == LOAN || this == PAYABLE
 
     companion object {
         /**
@@ -97,7 +117,8 @@ enum class AccountType(val storedValue: String) {
  * Input:  [id]; [profileId] — the scope every row carries; [name] — the user's own label;
  *         [type]; [institution] — the bank or issuer, optional and free text; [openingBalance] —
  *         what the account held when the user started tracking it; [balance] — that plus every
- *         live transaction against it; [currencyCode] — ISO-4217; [isArchived] — FR-ACC-007.
+ *         live transaction against it; [currencyCode] — ISO-4217; [isArchived] — FR-ACC-007;
+ *         [includeInNetWorth] — FR-ACC-005, issue 2.6.
  * Output: an immutable value.
  */
 data class Account(
@@ -110,4 +131,11 @@ data class Account(
     val balance: Money,
     val currencyCode: String,
     val isArchived: Boolean,
+    /**
+     * Whether this account counts towards net worth (issue 2.6; FR-ACC-005).
+     *
+     * Separate from [isArchived]: an archived account is closed, this one is open and transacting
+     * but is not the user's to count — a company card, or an account held for someone else.
+     */
+    val includeInNetWorth: Boolean = true,
 )

@@ -38,6 +38,11 @@
         The current balance is worked out from your transactions.</string>
     <string name="account_editor_liability_help">For a card or a loan, enter what you owe as a
         negative amount.</string>
+    <!-- Issue 2.6 (FR-ACC-005): the opt-out, for an account that is open but not yours to count. -->
+    <string name="account_editor_include_in_networth">Count towards net worth</string>
+    <string name="account_editor_include_in_networth_help">Turn this off for an account you use but
+        do not own — a company card, or one you hold for someone else. It stays in your list either
+        way.</string>
     <string name="account_editor_save">Save</string>
     <string name="account_editor_cancel">Cancel</string>
     <string name="account_editor_error_validation">Check the name and the opening balance.</string>

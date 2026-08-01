@@ -11,6 +11,7 @@ import com.aicfo.core.database.entity.AccountEntity
 import com.aicfo.core.database.entity.AuditLogEntity
 import com.aicfo.core.database.entity.BudgetEntity
 import com.aicfo.core.database.entity.CategoryEntity
+import com.aicfo.core.database.entity.NetWorthSnapshotEntity
 import com.aicfo.core.database.entity.ProfileEntity
 import com.aicfo.core.database.entity.RecurringRuleEntity
 import com.aicfo.core.database.entity.TransactionEntity
@@ -160,6 +161,82 @@ interface AccountDao {
             "FROM account a WHERE a.id = :id AND a.deleted_at_utc_millis IS NULL",
     )
     suspend fun findWithBalance(id: String): AccountWithBalance?
+
+    /**
+     * The accounts and balances that count towards net worth on one day (issue 2.6; FR-ACC-005).
+     *
+     * Why:    **this is deliberately not [observeWithBalances] with a date bolted on** — it answers a
+     *         different question, and three of its clauses say so:
+     *
+     *         **`booked_on_iso_date <= :asOfIsoDate`.** Net worth on a day is what the user held on
+     *         that day. The current-balance query sums every live transaction whenever it happened,
+     *         which is right for "what is in this account now" and wrong here the moment issue 3.4
+     *         lands future-dated transactions — a rent payment scheduled for next week would
+     *         otherwise be subtracted from today's net worth. It is also what makes the backfill
+     *         possible: the same query with an older date reconstructs an older day exactly.
+     *
+     *         **`archived_at_utc_millis IS NULL`.** FR-ACC-007: a closed account is "excluded from
+     *         active totals".
+     *
+     *         **`include_in_networth = 1`.** An account that is open and transacting but is not the
+     *         user's to count (issue 2.6, §20.2).
+     *
+     *         `suspend`, not a `Flow`: the caller computes one snapshot per day and stores it. A
+     *         live query would recompute history every time any row changed, which is the drift the
+     *         stored snapshot exists to prevent.
+     * Result: one row per counted account, with its balance as at [asOfIsoDate].
+     * Input:  [profileId]; [asOfIsoDate] — inclusive ISO `yyyy-MM-dd` bound (TIM-002).
+     * Output: `List<AccountWithBalance>`.
+     * Changelog: 2026-08-01 — Created for issue 2.6.
+     */
+    @Query(
+        "SELECT a.*, COALESCE((" +
+            "SELECT SUM(t.amount_minor) FROM transactions t " +
+            "WHERE t.account_id = a.id AND t.deleted_at_utc_millis IS NULL " +
+            "AND t.booked_on_iso_date <= :asOfIsoDate" +
+            "), 0) AS movement_minor " +
+            "FROM account a " +
+            "WHERE a.profile_id = :profileId AND a.deleted_at_utc_millis IS NULL " +
+            "AND a.archived_at_utc_millis IS NULL AND a.include_in_networth = 1 " +
+            "ORDER BY a.id",
+    )
+    suspend fun balancesForNetWorth(
+        profileId: String,
+        asOfIsoDate: String,
+    ): List<AccountWithBalance>
+
+    /**
+     * The same query as a live one, for the screen that shows net worth **now** (issue 2.6).
+     *
+     * Why:    the stored daily snapshot is a *historical record* — it is what makes issue 6.6's trend
+     *         exact. It is the wrong thing for a headline figure: a user who adds an account, or
+     *         deletes one, would see the total sit unchanged until the next day's job ran and
+     *         reasonably conclude the app was broken. **Found by driving the app, not by a test** —
+     *         every unit test asserted the stored figure, which was correct and not what a user
+     *         needs to see.
+     *
+     *         So the dashboard observes this and the snapshot table records history; both go through
+     *         the identical filter above, so the number the screen shows and the number tonight's
+     *         job stores can never disagree about which accounts count.
+     * Result: emits on every change to `account` **or** `transactions`.
+     * Input:  [profileId]; [asOfIsoDate] — normally today. Output: `Flow<List<AccountWithBalance>>`.
+     * Changelog: 2026-08-01 — Created for issue 2.6.
+     */
+    @Query(
+        "SELECT a.*, COALESCE((" +
+            "SELECT SUM(t.amount_minor) FROM transactions t " +
+            "WHERE t.account_id = a.id AND t.deleted_at_utc_millis IS NULL " +
+            "AND t.booked_on_iso_date <= :asOfIsoDate" +
+            "), 0) AS movement_minor " +
+            "FROM account a " +
+            "WHERE a.profile_id = :profileId AND a.deleted_at_utc_millis IS NULL " +
+            "AND a.archived_at_utc_millis IS NULL AND a.include_in_networth = 1 " +
+            "ORDER BY a.id",
+    )
+    fun observeBalancesForNetWorth(
+        profileId: String,
+        asOfIsoDate: String,
+    ): Flow<List<AccountWithBalance>>
 
     /**
      * Archives or restores an account (issue 2.5; FR-ACC-007).
@@ -420,6 +497,16 @@ interface DemoDao {
     @Query("DELETE FROM budget WHERE profile_id = :profileId")
     suspend fun deleteBudgets(profileId: String): Int
 
+    /**
+     * Result: rows removed from `net_worth_snapshot`. Input: [profileId]. Output: the count.
+     *
+     * Added by issue 2.6, which introduced the table. A profile-scoped table that the wipe does not
+     * reach is exactly the residue ADR-0006 forbids — and [countRowsFor] below now counts it, so
+     * forgetting this would have reddened the residue test rather than shipping quietly.
+     */
+    @Query("DELETE FROM net_worth_snapshot WHERE profile_id = :profileId")
+    suspend fun deleteNetWorthSnapshots(profileId: String): Int
+
     /** Result: rows removed from `recurring_rule`. Input: [profileId]. Output: the count. */
     @Query("DELETE FROM recurring_rule WHERE profile_id = :profileId")
     suspend fun deleteRecurringRules(profileId: String): Int
@@ -454,7 +541,7 @@ interface DemoDao {
      *         Deliberately **not** filtered by `deleted_at_utc_millis`: a soft-deleted row is
      *         precisely the residue being looked for, so it must count.
      * Result: `0` once the profile has been erased.
-     * Input:  [profileId]. Output: the total row count across all six tables.
+     * Input:  [profileId]. Output: the total row count across all seven tables.
      */
     @Query(
         "SELECT (SELECT COUNT(*) FROM profile WHERE id = :profileId) + " +
@@ -462,9 +549,77 @@ interface DemoDao {
             "(SELECT COUNT(*) FROM transactions WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM category WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM budget WHERE profile_id = :profileId) + " +
-            "(SELECT COUNT(*) FROM recurring_rule WHERE profile_id = :profileId)",
+            "(SELECT COUNT(*) FROM recurring_rule WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM net_worth_snapshot WHERE profile_id = :profileId)",
     )
     suspend fun countRowsFor(profileId: String): Int
+}
+
+/**
+ * Reads and writes the daily net-worth snapshots (issue 2.6; FR-ACC-005).
+ *
+ * Why:  the whole table exists so history cannot drift, and two queries here carry that. [upsertAll]
+ *       relies on a **derived** id, so the daily job is idempotent by construction rather than by
+ *       remembering to check first. And [findLatestAsOfDate] is what makes the backfill possible:
+ *       "which day did we last record?" is the only state the job needs, and asking SQL for it beats
+ *       keeping a cursor somewhere that could disagree with the rows.
+ * Result: an exact, reproducible series for issue 6.6's trend chart to read.
+ * Changelog: 2026-08-01 — Created for issue 2.6.
+ */
+@Dao
+interface NetWorthSnapshotDao {
+    /**
+     * Inserts snapshots, replacing any for the same day.
+     * Why:    REPLACE on a derived id (`<profile>:networth:<date>`) is what makes running the job
+     *         twice in a day update one row rather than leave two figures for one date — the same
+     *         mechanism `BudgetDao.upsertAll` uses. A backfill writes several days at once, so this
+     *         takes a list and the caller wraps it in one transaction.
+     * Result: the rows are present afterwards. Input: [snapshots]. Output: none (suspends).
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(snapshots: List<NetWorthSnapshotEntity>)
+
+    /**
+     * Observes a profile's most recent snapshot.
+     * Why:    the dashboard shows one figure — the latest — and a `Flow` so it updates when tonight's
+     *         job lands without the screen polling.
+     * Result: emits the newest row, or `null` when the profile has none yet. **`null` is a real
+     *         state**: a user who has just onboarded has no snapshot, and the screen must render
+     *         that as "not computed yet" rather than as ₹0 (P-03).
+     * Input:  [profileId]. Output: `Flow<NetWorthSnapshotEntity?>`.
+     */
+    @Query(
+        "SELECT * FROM net_worth_snapshot WHERE profile_id = :profileId " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY as_of_iso_date DESC LIMIT 1",
+    )
+    fun observeLatest(profileId: String): Flow<NetWorthSnapshotEntity?>
+
+    /**
+     * The newest day this profile has a snapshot for.
+     * Why:    the backfill's only input. Returning the **date** rather than the row keeps the job
+     *         from accidentally reusing a stale figure instead of recomputing.
+     * Result: an ISO `yyyy-MM-dd`, or `null` when there are none — which the job reads as "first
+     *         ever run", and writes today only rather than inventing a history (P-03).
+     * Input:  [profileId]. Output: `String?`.
+     */
+    @Query(
+        "SELECT MAX(as_of_iso_date) FROM net_worth_snapshot " +
+            "WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL",
+    )
+    suspend fun findLatestAsOfDate(profileId: String): String?
+
+    /**
+     * Fetches one day's snapshot.
+     * Result: the row, or `null`. Input: [profileId], [asOfIsoDate]. Output: `NetWorthSnapshotEntity?`.
+     */
+    @Query(
+        "SELECT * FROM net_worth_snapshot WHERE profile_id = :profileId " +
+            "AND as_of_iso_date = :asOfIsoDate AND deleted_at_utc_millis IS NULL",
+    )
+    suspend fun findForDate(
+        profileId: String,
+        asOfIsoDate: String,
+    ): NetWorthSnapshotEntity?
 }
 
 /**

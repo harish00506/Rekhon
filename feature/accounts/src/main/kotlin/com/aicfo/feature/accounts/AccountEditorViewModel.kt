@@ -86,6 +86,9 @@ class AccountEditorViewModel
                 is AccountEditorEvent.OpeningBalanceChanged ->
                     _uiState.update { it.copy(openingBalanceText = event.value) }
 
+                is AccountEditorEvent.IncludeInNetWorthChanged ->
+                    _uiState.update { it.copy(includeInNetWorth = event.value) }
+
                 AccountEditorEvent.Save -> save()
                 AccountEditorEvent.DismissError -> _uiState.update { it.copy(errorCode = null) }
             }
@@ -119,6 +122,7 @@ class AccountEditorViewModel
                     openingBalance = openingBalance,
                     currencyCode = DEFAULT_CURRENCY_CODE,
                     institution = state.institution,
+                    includeInNetWorth = state.includeInNetWorth,
                 )
 
             _uiState.update { it.copy(isSaving = true, errorCode = null) }
@@ -180,5 +184,6 @@ internal fun Account.toEditorState(): AccountEditorUiState =
         type = type,
         institution = institution.orEmpty(),
         openingBalanceText = MoneyFormatter.format(openingBalance),
+        includeInNetWorth = includeInNetWorth,
         isLoading = false,
     )

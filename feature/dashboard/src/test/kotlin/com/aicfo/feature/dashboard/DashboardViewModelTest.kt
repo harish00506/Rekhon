@@ -2,6 +2,7 @@ package com.aicfo.feature.dashboard
 
 import app.cash.turbine.test
 import com.aicfo.core.common.FakeClock
+import com.aicfo.core.model.Money
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -32,8 +33,9 @@ import org.junit.Test
 class DashboardViewModelTest {
     private val clock = FakeClock()
     private val budget = FakeQuickSetupRepository()
+    private val netWorth = FakeNetWorthRepository()
 
-    private fun viewModel() = DashboardViewModel(clock, budget)
+    private fun viewModel() = DashboardViewModel(clock, budget, netWorth)
 
     /** `viewModelScope` runs on `Dispatchers.Main`, which has no factory on a plain JVM. */
     @Before
@@ -60,7 +62,8 @@ class DashboardViewModelTest {
                 val state = awaitItem()
                 assertFalse("loading must finish", state.isLoading)
                 assertTrue("safe-to-spend must be populated", state.safeToSpend.minor > 0L)
-                assertTrue("net worth must be populated", state.netWorth.minor > 0L)
+                // Net worth is absent until a snapshot exists — see the two tests for it below.
+                assertNull("no snapshot has been taken yet", state.netWorth)
                 assertNull(state.errorCode)
                 cancelAndIgnoreRemainingEvents()
             }
@@ -199,5 +202,65 @@ class DashboardViewModelTest {
             assertEquals(42_500_00L, split?.needsMinor)
             assertEquals(0L, split?.wantsMinor)
             assertEquals(0L, split?.savingsMinor)
+        }
+
+    // --- net worth (issue 2.6; FR-ACC-005) ---------------------------------------------------
+
+    /**
+     * Input:  a stored snapshot.
+     * Output: asserts the figure reaches the state. This is the assertion that the dashboard shows a
+     *         **computed** number rather than the ₹4,82,350.00 it hardcoded until issue 2.6.
+     */
+    @Test
+    fun `the stored snapshot's net worth reaches the state`() =
+        runTest {
+            val viewModel = viewModel()
+
+            netWorth.emit(2_92_000_00L)
+
+            assertEquals(Money(2_92_000_00L), viewModel.uiState.value.netWorth)
+        }
+
+    /**
+     * Input:  no snapshot.
+     * Output: asserts the figure is **null, never zero**. A user who onboarded a minute ago has no
+     *         snapshot, and rendering ₹0 would be a number the app made up (P-03) — and one
+     *         indistinguishable from a genuine net worth of nothing.
+     */
+    @Test
+    fun `no snapshot yet is absent, not zero`() {
+        assertNull(viewModel().uiState.value.netWorth)
+    }
+
+    /**
+     * Input:  a snapshot arriving while the screen is open.
+     * Output: asserts the card updates. This is the nightly job landing under a user who left the
+     *         app on — a one-off read at construction would leave them looking at "not worked out
+     *         yet" until they navigated away and back.
+     */
+    @Test
+    fun `a snapshot arriving later updates the card`() =
+        runTest {
+            val viewModel = viewModel()
+            assertNull(viewModel.uiState.value.netWorth)
+
+            netWorth.emit(1_00_000_00L)
+
+            assertEquals(Money(1_00_000_00L), viewModel.uiState.value.netWorth)
+        }
+
+    /**
+     * Input:  a negative net worth.
+     * Output: asserts the sign survives to the state. A user who owes more than they hold must not
+     *         be shown their debt as savings.
+     */
+    @Test
+    fun `a negative net worth keeps its sign`() =
+        runTest {
+            val viewModel = viewModel()
+
+            netWorth.emit(-12_18_000_00L)
+
+            assertEquals(Money(-12_18_000_00L), viewModel.uiState.value.netWorth)
         }
 }

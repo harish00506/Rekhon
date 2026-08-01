@@ -15,10 +15,10 @@ import com.aicfo.core.model.Money
  * Result: the reference shape every other screen in this app copies.
  * Changelog: 2026-07-25 — Created for issue 1.10 as the ARC-004 reference implementation.
  *
- * **What is real and what is not, as of issue 2.3.** [spendSplit] now comes from the budget
- * envelopes quick setup persisted (FR-ONB-002) — real figures, derived by the quick-setup engine
- * from what the user typed. [safeToSpend] and [netWorth] are **still placeholders**: they need the
- * engines issues 5.1/5.2 own, and no amount of wiring here can conjure them. Amounts are [Money]
+ * **What is real and what is not, as of issue 2.6.** [spendSplit] comes from the budget envelopes
+ * quick setup persisted (FR-ONB-002), and [netWorth] from the daily snapshot (FR-ACC-005) — both
+ * derived by engines from the user's own data. [safeToSpend] is **the last placeholder**: it needs
+ * the engine issue 5.2 owns, and no amount of wiring here can conjure it. Amounts are [Money]
  * (`Long` paise, MNY-001) either way, because a screen that starts out rendering a `Double` teaches
  * the wrong pattern to everything that copies it.
  *
@@ -33,7 +33,14 @@ import com.aicfo.core.model.Money
 data class DashboardUiState(
     val isLoading: Boolean = true,
     val safeToSpend: Money = Money.ZERO,
-    val netWorth: Money = Money.ZERO,
+    /**
+     * The latest stored snapshot's net worth, or **`null` before the first one is taken** (2.6).
+     *
+     * Nullable rather than zeroed for the same reason [spendSplit] is: a user who onboarded a minute
+     * ago has no snapshot, and ₹0 is both a figure the app made up (P-03) and indistinguishable from
+     * a real net worth of nothing. The screen renders the absence.
+     */
+    val netWorth: Money? = null,
     val spendSplit: SpendSplit? = null,
     /**
      * An `AppError.code` when something failed, else `null`.

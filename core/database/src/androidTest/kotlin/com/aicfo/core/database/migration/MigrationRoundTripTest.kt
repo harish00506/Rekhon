@@ -245,6 +245,53 @@ class MigrationRoundTripTest {
         migrated.close()
     }
 
+    /**
+     * 4 → 5 adds `net_worth_snapshot` and `account.include_in_networth` (issue 2.6, FR-ACC-005).
+     *
+     * Input:  a version-4 database holding an account with an exact opening balance.
+     * Output: asserts the account survives, that the new column arrives **set to 1** on the existing
+     *         row, and that the new table accepts a write.
+     *
+     * **The `1` is the assertion that matters.** `ADD COLUMN … NOT NULL DEFAULT 1` fills existing
+     * rows with the default, and getting it wrong the other way — `DEFAULT 0`, or a nullable column
+     * read as "null means no" — would silently drop every account a user already had out of their
+     * net worth, with no error anywhere. The figure would just be wrong.
+     */
+    @Test
+    fun migrate4To5_preservesAccountsAndCountsThemInNetWorthByDefault() {
+        helper.createDatabase(TEST_DB, 4).use { db ->
+            db.execSQL(
+                "INSERT INTO account (id, profile_id, name, type, opening_balance_minor, " +
+                    "current_balance_minor, currency_code, created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('a1','p1','HDFC Savings','bank',18500000,18500000,'INR'," +
+                    "1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 5, true, Migrations.MIGRATION_4_5)
+
+        migrated.query("SELECT opening_balance_minor, include_in_networth FROM account WHERE id = 'a1'")
+            .use { cursor ->
+                assertTrue("the pre-migration account must still be there", cursor.moveToFirst())
+                assertEquals("MNY-001: the balance must survive byte for byte", 18500000L, cursor.getLong(0))
+                assertEquals("an existing account must keep counting towards net worth", 1, cursor.getInt(1))
+            }
+
+        migrated.execSQL(
+            "INSERT INTO net_worth_snapshot (id, profile_id, as_of_iso_date, assets_minor, " +
+                "liabilities_minor, net_worth_minor, engine_id, engine_version, " +
+                "computed_at_utc_millis, created_at_utc_millis, updated_at_utc_millis) " +
+                "VALUES ('p1:networth:2026-08-01','p1','2026-08-01',31000000,1800000,29200000," +
+                "'net-worth','1.0',1767312000000,1767312000000,1767312000000)",
+        )
+        migrated.query("SELECT net_worth_minor, engine_version FROM net_worth_snapshot").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(29200000L, cursor.getLong(0))
+            assertEquals("AI-ARC-006: the row remembers which formula produced it", "1.0", cursor.getString(1))
+        }
+        migrated.close()
+    }
+
     private companion object {
         const val TEST_DB = "migration-test.db"
     }

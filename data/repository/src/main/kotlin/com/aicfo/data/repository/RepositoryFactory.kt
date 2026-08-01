@@ -5,6 +5,7 @@ import com.aicfo.core.common.DispatcherProvider
 import com.aicfo.core.common.IdGenerator
 import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.datastore.SettingsStore
+import com.aicfo.domain.engines.networth.NetWorthEngine
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -82,4 +83,22 @@ object RepositoryFactory {
         dispatchers: DispatcherProvider,
         activeProfileId: Flow<String>,
     ): AccountRepository = RoomAccountRepository(database, clock, ids, dispatchers, activeProfileId)
+
+    /**
+     * Builds the net-worth store (issue 2.6, FR-ACC-005).
+     * Why:    takes the whole [database] because the backfill writes several days in one
+     *         `withTransaction`, and takes the [engine] rather than constructing one so the figure
+     *         and the code that produced it stay assembled in the DI graph (ARC-003, P-03).
+     * Result: a [NetWorthRepository] over the encrypted database.
+     * Input:  [database]; [engine] — computes every figure; [clock] — TIM-001; [dispatchers];
+     *         [activeProfileId] — which profile is read and snapshotted, so the demo gets its own.
+     * Output: [NetWorthRepository].
+     */
+    fun netWorth(
+        database: CfoDatabase,
+        engine: NetWorthEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        activeProfileId: Flow<String>,
+    ): NetWorthRepository = RoomNetWorthRepository(database, engine, clock, dispatchers, activeProfileId)
 }

@@ -74,7 +74,13 @@ jobs:
         run: ./gradlew ktlintCheck detekt lintDebug --stacktrace
 
       - name: Unit tests (+ coverage; money math must be 100%)
-        run: ./gradlew testDebugUnitTest koverVerify --stacktrace
+        # `unitTests`, not `testDebugUnitTest` (issue 2.6). The latter is an Android *variant* task,
+        # so it does not exist on the pure-Kotlin modules and — critically — never reached `:lint`.
+        # That left the fourteen tests covering the custom detectors (MNY-001, TIM-001, ARC-006, the
+        # PII-logging ban, the hardcoded-string ban) running in no CI step at all: a detector could
+        # be disabled outright and this job would stay green while the rules quietly stopped being
+        # enforced. Demonstrated by disabling MoneyDoubleDetector — `testDebugUnitTest` passed.
+        run: ./gradlew unitTests koverVerify --stacktrace
 
       - name: Paparazzi screenshot diff
         # Wired by issue 1.8. Renders on the JVM, so no emulator is needed — which is the only

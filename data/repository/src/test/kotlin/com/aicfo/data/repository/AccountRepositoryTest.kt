@@ -85,7 +85,7 @@ class AccountRepositoryTest {
     @Test
     fun `creating an account returns it with a generated id`() =
         runTest {
-            val created = repository.create(draft(name = "HDFC Savings"))
+            val created = repository.create(draft { copy(name = "HDFC Savings") })
 
             assertTrue(created is Ok)
             val account = (created as Ok).value
@@ -97,7 +97,7 @@ class AccountRepositoryTest {
     @Test
     fun `a new account's balance is its opening balance — it has no transactions yet`() =
         runTest {
-            val account = repository.create(draft(openingBalance = Money(50_000_00L))).expectOk()
+            val account = repository.create(draft { copy(openingBalance = Money(50_000_00L)) }).expectOk()
 
             assertEquals(Money(50_000_00L), account.openingBalance)
             assertEquals(Money(50_000_00L), account.balance)
@@ -109,7 +109,7 @@ class AccountRepositoryTest {
             // The requirement is a MUST and it names eleven. A type the store cannot return is a
             // type the app does not really support, however well the picker renders it.
             AccountType.entries.forEach { type ->
-                repository.create(draft(name = type.storedValue, type = type)).expectOk()
+                repository.create(draft { copy(name = type.storedValue, type = type) }).expectOk()
             }
 
             val stored = repository.observeAccounts(REAL_PROFILE).first().associate { it.name to it.type }
@@ -125,8 +125,8 @@ class AccountRepositoryTest {
         runTest {
             // The reason `budgetId()`-style derivation is wrong here: a derived id would make the
             // second write silently REPLACE the first.
-            repository.create(draft(name = "HDFC Savings")).expectOk()
-            repository.create(draft(name = "HDFC Savings")).expectOk()
+            repository.create(draft { copy(name = "HDFC Savings") }).expectOk()
+            repository.create(draft { copy(name = "HDFC Savings") }).expectOk()
 
             assertEquals(2, repository.observeAccounts(REAL_PROFILE).first().size)
         }
@@ -136,7 +136,7 @@ class AccountRepositoryTest {
         runTest {
             val card =
                 repository.create(
-                    draft(type = AccountType.CREDIT_CARD, openingBalance = Money(-18_000_00L)),
+                    draft { copy(type = AccountType.CREDIT_CARD, openingBalance = Money(-18_000_00L)) },
                 ).expectOk()
 
             assertEquals(Money(-18_000_00L), card.balance)
@@ -145,13 +145,16 @@ class AccountRepositoryTest {
     @Test
     fun `an account may be created without an institution`() =
         runTest {
-            assertNull(repository.create(draft(institution = null)).expectOk().institution)
+            assertNull(repository.create(draft { copy(institution = null) }).expectOk().institution)
         }
 
     @Test
     fun `names and institutions are trimmed, so two spellings cannot look identical`() =
         runTest {
-            val account = repository.create(draft(name = "  HDFC Savings  ", institution = "  HDFC  ")).expectOk()
+            val account =
+                repository.create(
+                    draft { copy(name = "  HDFC Savings  ", institution = "  HDFC  ") },
+                ).expectOk()
 
             assertEquals("HDFC Savings", account.name)
             assertEquals("HDFC", account.institution)
@@ -160,7 +163,7 @@ class AccountRepositoryTest {
     @Test
     fun `a whitespace-only institution is stored as absent, not as blank`() =
         runTest {
-            assertNull(repository.create(draft(institution = "   ")).expectOk().institution)
+            assertNull(repository.create(draft { copy(institution = "   ") }).expectOk().institution)
         }
 
     // --- validation --------------------------------------------------------------------------------
@@ -168,7 +171,7 @@ class AccountRepositoryTest {
     @Test
     fun `a blank name is rejected and nothing is written`() =
         runTest {
-            val result = repository.create(draft(name = "   "))
+            val result = repository.create(draft { copy(name = "   ") })
 
             assertEquals(AppError.Validation("name"), (result as Err).error)
             assertTrue(repository.observeAccounts(REAL_PROFILE).first().isEmpty())
@@ -179,7 +182,7 @@ class AccountRepositoryTest {
         runTest {
             // Validation happens before the generator is touched. An id burned on a rejected write
             // is harmless but it means the failure left a trace, and it makes golden ids drift.
-            repository.create(draft(name = ""))
+            repository.create(draft { copy(name = "") })
 
             assertEquals(0, ids.issuedCount)
         }
@@ -189,7 +192,7 @@ class AccountRepositoryTest {
     @Test
     fun `find returns the account`() =
         runTest {
-            val created = repository.create(draft(name = "Cash")).expectOk()
+            val created = repository.create(draft { copy(name = "Cash") }).expectOk()
 
             assertEquals(created, repository.find(created.id).expectOk())
         }
@@ -205,7 +208,7 @@ class AccountRepositoryTest {
         runTest {
             // A row from a newer build. The list shows fewer accounts; it does not crash.
             database.accountDao().upsert(rawAccount(id = "a1", type = "timeshare"))
-            repository.create(draft(name = "Cash")).expectOk()
+            repository.create(draft { copy(name = "Cash") }).expectOk()
 
             assertEquals(listOf("Cash"), repository.observeAccounts(REAL_PROFILE).first().map { it.name })
         }
@@ -213,8 +216,8 @@ class AccountRepositoryTest {
     @Test
     fun `accounts come back name-ordered`() =
         runTest {
-            repository.create(draft(name = "Zerodha")).expectOk()
-            repository.create(draft(name = "Axis")).expectOk()
+            repository.create(draft { copy(name = "Zerodha") }).expectOk()
+            repository.create(draft { copy(name = "Axis") }).expectOk()
 
             assertEquals(listOf("Axis", "Zerodha"), repository.observeAccounts(REAL_PROFILE).first().map { it.name })
         }
@@ -224,12 +227,12 @@ class AccountRepositoryTest {
     @Test
     fun `updating changes the fields the user owns`() =
         runTest {
-            val created = repository.create(draft(name = "HDFC", type = AccountType.BANK)).expectOk()
+            val created = repository.create(draft { copy(name = "HDFC", type = AccountType.BANK) }).expectOk()
 
             val updated =
                 repository.update(
                     created.id,
-                    draft(name = "HDFC Salary", type = AccountType.BANK, institution = "HDFC Bank"),
+                    draft { copy(name = "HDFC Salary", type = AccountType.BANK, institution = "HDFC Bank") },
                 ).expectOk()
 
             assertEquals(created.id, updated.id)
@@ -240,9 +243,9 @@ class AccountRepositoryTest {
     @Test
     fun `updating the opening balance re-derives the balance`() =
         runTest {
-            val created = repository.create(draft(openingBalance = Money(10_000_00L))).expectOk()
+            val created = repository.create(draft { copy(openingBalance = Money(10_000_00L)) }).expectOk()
 
-            val updated = repository.update(created.id, draft(openingBalance = Money(25_000_00L))).expectOk()
+            val updated = repository.update(created.id, draft { copy(openingBalance = Money(25_000_00L)) }).expectOk()
 
             assertEquals(Money(25_000_00L), updated.balance)
         }
@@ -256,12 +259,51 @@ class AccountRepositoryTest {
     @Test
     fun `an update with a blank name is rejected and changes nothing`() =
         runTest {
-            val created = repository.create(draft(name = "Cash")).expectOk()
+            val created = repository.create(draft { copy(name = "Cash") }).expectOk()
 
-            val result = repository.update(created.id, draft(name = ""))
+            val result = repository.update(created.id, draft { copy(name = "") })
 
             assertEquals(AppError.Validation("name"), (result as Err).error)
             assertEquals("Cash", repository.find(created.id).expectOk().name)
+        }
+
+    // --- the net-worth opt-out (issue 2.6, FR-ACC-005) ---------------------------------------------
+
+    @Test
+    fun `an account counts towards net worth by default`() =
+        runTest {
+            assertTrue(repository.create(draft()).expectOk().includeInNetWorth)
+        }
+
+    @Test
+    fun `creating an account opted out persists the choice`() =
+        runTest {
+            val created = repository.create(draft { copy(includeInNetWorth = false) }).expectOk()
+
+            assertFalse(created.includeInNetWorth)
+            assertFalse(repository.find(created.id).expectOk().includeInNetWorth)
+        }
+
+    @Test
+    fun `updating an account can opt it out of net worth`() =
+        runTest {
+            // The path the editor takes. Read back through `find`, not from the returned value, so
+            // this proves the column was written rather than that the object was constructed.
+            val created = repository.create(draft()).expectOk()
+
+            repository.update(created.id, draft { copy(includeInNetWorth = false) }).expectOk()
+
+            assertFalse(repository.find(created.id).expectOk().includeInNetWorth)
+        }
+
+    @Test
+    fun `updating can opt an account back in`() =
+        runTest {
+            val created = repository.create(draft { copy(includeInNetWorth = false) }).expectOk()
+
+            repository.update(created.id, draft { copy(includeInNetWorth = true) }).expectOk()
+
+            assertTrue(repository.find(created.id).expectOk().includeInNetWorth)
         }
 
     // --- archive (FR-ACC-007) ----------------------------------------------------------------------
@@ -269,7 +311,7 @@ class AccountRepositoryTest {
     @Test
     fun `an archived account leaves the active list but keeps its row`() =
         runTest {
-            val created = repository.create(draft(name = "Old Card")).expectOk()
+            val created = repository.create(draft { copy(name = "Old Card") }).expectOk()
 
             assertTrue(repository.setArchived(created.id, archived = true) is Ok)
 
@@ -292,7 +334,7 @@ class AccountRepositoryTest {
     @Test
     fun `archiving is reversible`() =
         runTest {
-            val created = repository.create(draft(name = "Reopened")).expectOk()
+            val created = repository.create(draft { copy(name = "Reopened") }).expectOk()
             repository.setArchived(created.id, archived = true)
 
             assertTrue(repository.setArchived(created.id, archived = false) is Ok)
@@ -312,7 +354,7 @@ class AccountRepositoryTest {
     @Test
     fun `deleting is soft — the row survives`() =
         runTest {
-            val created = repository.create(draft(name = "Mistake")).expectOk()
+            val created = repository.create(draft { copy(name = "Mistake") }).expectOk()
 
             assertTrue(repository.delete(created.id) is Ok)
 
@@ -354,7 +396,7 @@ class AccountRepositoryTest {
     @Test
     fun `an account created under one profile is invisible to another`() =
         runTest {
-            repository.create(draft(name = "Real")).expectOk()
+            repository.create(draft { copy(name = "Real") }).expectOk()
 
             assertTrue(repository.observeAccounts(DEMO_PROFILE).first().isEmpty())
         }
@@ -362,9 +404,9 @@ class AccountRepositoryTest {
     @Test
     fun `the no-argument read follows the active profile`() =
         runTest {
-            repository.create(draft(name = "Real")).expectOk()
+            repository.create(draft { copy(name = "Real") }).expectOk()
             activeProfileId.value = DEMO_PROFILE
-            repository.create(draft(name = "Sample")).expectOk()
+            repository.create(draft { copy(name = "Sample") }).expectOk()
 
             assertEquals(listOf("Sample"), repository.observeAccounts().first().map { it.name })
 
@@ -378,7 +420,7 @@ class AccountRepositoryTest {
             // The reason the profile is read per write rather than cached at construction: an
             // account created while exploring the demo must not end up in the user's real data.
             activeProfileId.value = DEMO_PROFILE
-            val created = repository.create(draft(name = "Sample")).expectOk()
+            val created = repository.create(draft { copy(name = "Sample") }).expectOk()
 
             assertEquals(DEMO_PROFILE, created.profileId)
         }
@@ -389,13 +431,7 @@ class AccountRepositoryTest {
      * Result: a usable draft with every field overridable. Input: the named parameters.
      * Output: [AccountDraft].
      */
-    private fun draft(
-        name: String = "HDFC Savings",
-        type: AccountType = AccountType.BANK,
-        openingBalance: Money = Money(1_00_000_00L),
-        currencyCode: String = "INR",
-        institution: String? = "HDFC Bank",
-    ) = AccountDraft(name, type, openingBalance, currencyCode, institution)
+    private fun draft(changes: AccountDraft.() -> AccountDraft = { this }): AccountDraft = BASE_DRAFT.changes()
 
     /**
      * Result: an entity written straight to the DAO, bypassing validation — for rows the repository
@@ -445,6 +481,22 @@ class AccountRepositoryTest {
         }
 
     private companion object {
+        /**
+         * The default draft every [draft] call starts from.
+         *
+         * `copy` rather than a parameter per field: an [AccountDraft] has six, and a helper taking
+         * them all is the longest parameter list in the module for no gain — the same shape
+         * `feature/accounts`'s `account()` fixture settled on for the same reason.
+         */
+        val BASE_DRAFT =
+            AccountDraft(
+                name = "HDFC Savings",
+                type = AccountType.BANK,
+                openingBalance = Money(1_00_000_00L),
+                currencyCode = "INR",
+                institution = "HDFC Bank",
+            )
+
         const val REAL_PROFILE = "local"
         const val DEMO_PROFILE = "demo"
     }

@@ -11,6 +11,69 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > First-run onboarding, the biometric app lock, and the accounts + net-worth core. Epic 1 built
 > foundations; this is the first epic a user can see.
 
+### [0.2.6] — Issue 2.6: Net worth = assets − liabilities + daily snapshot  (2026-08-02)
+
+- **Implemented:** the app's headline figure is computed rather than invented (**FR-ACC-005**;
+  DB-001, DB-003, MNY-001, TIM-001, TIM-002, SEC-002, ARC-002, ARC-003, ARC-005, AI-ARC-003,
+  AI-ARC-006, P-02, P-03, P-04, P-08).
+  - **`:domain:engines:networth`** — the project's **second engine**, pure Kotlin. Partitions
+    accounts by `AccountType.isLiability` (`credit_card`, `loan`, `payable` — `receivable` is an
+    asset), sums each side, subtracts. The arithmetic never needed the partition: balances are
+    already signed, so a plain sum *is* assets − liabilities. It exists so a screen can say "assets
+    ₹5,02,800, you owe ₹82,079" instead of one unverifiable total (P-02).
+  - **Classification is by type, never by sign** — the one judgement in the engine. An overdrawn
+    bank account is an asset with a negative value; a card paid past zero is a liability with a
+    positive one. Net worth is *identical* either way, so the error would surface only in the two
+    subtotals a user checks against their own accounts. Both cases are pinned by tests, and the
+    demo's cash wallet turned out to be overdrawn, so the first case is live.
+  - **A daily snapshot that backfills** (schema **v5**, `net_worth_snapshot`). WorkManager job —
+    the app's **first background work**. Ids are derived (`<profile>:networth:<date>`), so a second
+    run in a day updates one row rather than leaving two figures for one date. Missed days are
+    recomputed from the transactions booked on or before each of them, capped at 90 days a run; a
+    first ever run writes today only, because inventing a history the user never had the app for
+    would be fabricating data (P-03).
+  - **The worker cannot crash a locked app.** `CoreModule.provideDatabase` *throws* when the session
+    is locked (SEC-002), so the worker checks `SessionLock` first and injects the repository through
+    a `Provider` — the graph is not built until that check passes. Observed on hardware:
+    `SUCCESS → RETRY (locked) → SUCCESS` 30 seconds later.
+  - **A second, date-bounded balance query.** Net worth reads `booked_on_iso_date <= :asOf`, unlike
+    2.5's current-balance query — so a future-dated transaction (issue 3.4) will not be subtracted
+    from today's figure, and the backfill can reconstruct a past day exactly. It also excludes
+    archived (FR-ACC-007) and opted-out accounts.
+  - **`account.include_in_networth`** (§20.2) with an editor toggle, for an account that is open and
+    transacting but is not the user's to count.
+  - **The dashboard's hardcoded ₹4,82,350.00 is gone.** Safe-to-Spend is now the only placeholder
+    left. No snapshot yet renders as "not worked out yet", never as ₹0.
+- **Tests:** **573** unit passed, 0 skipped, across 21 modules; 10 instrumented on `emulator-5554`.
+  Counted from the new `unitTests` task after clearing stale results — earlier drafts of this entry
+  said 578 because `build-logic`'s 5 (a separate composite CI runs on its own) were on disk.
+  Highlights: a **golden-file test on a fixed account set** (the AC) and a seeded property test
+  asserting `netWorth == assets − liabilities` *and* `== Σ signed balances` over generated
+  portfolios (money math, 100% coverage); `migrate4To5` against real SQLite, asserting the new
+  column defaults to **counting**; the worker's locked path. **Four gates were proven to fail
+  before being trusted.**
+- **Found by running it, not by a test:** the dashboard read the *stored* snapshot, so deleting a
+  ₹1,20,000 account left the total unchanged — correct for a historical record, wrong for a headline
+  figure. Split into `observeCurrent()` (live, what the screen shows) and `observeLatest()` (stored,
+  what issue 6.6 will chart), both through the same filter so they cannot disagree about which
+  accounts count. Two tests added that now red against the old behaviour.
+- **Fixed a hole in the test gate itself — the biggest thing this issue found.** `./gradlew
+  testDebugUnitTest`, the command CLAUDE.md, the workflow, every issue template **and CI** all named,
+  is an Android *variant* task: it does not exist on the pure-Kotlin modules and **never reached
+  `:lint` at all**. `:lint`'s fourteen tests are the only check on the five custom detectors that
+  make MNY-001, TIM-001, ARC-006, the PII-logging ban and the hardcoded-string ban fail the build —
+  so the enforcement layer's own tests **ran in no CI step**. Demonstrated rather than argued:
+  disabling `MoneyDoubleDetector` outright left `testDebugUnitTest` reporting BUILD SUCCESSFUL.
+  Added a root **`unitTests`** aggregate (matched by task name, so a new module is picked up without
+  anyone registering it) and pointed CI, CLAUDE.md, `00-issue-workflow.md`, both issue templates and
+  the generator at it. Same shape as audit G-01's vacuous coverage gate.
+- **Also fixed:** the demo wipe did not reach `net_worth_snapshot` — a profile-scoped table the wipe
+  misses is the residue ADR-0006 forbids, and the test written for it caught the gap immediately.
+  `androidx.work`'s own lint rule caught a missing `WorkManagerInitializer` removal. And
+  `scripts/gen_issue_docs.py` cited **`FR-NW-*`** for both 2.6 and 6.6 — a requirement ID that
+  appears **zero times** in the SRS; the real one is FR-ACC-005. Third citation error in a row
+  (2.4 cited §33, 2.5 cited §11), all fixed at the generator.
+
 ### [0.2.5] — Issue 2.5: Accounts CRUD (all types)  (2026-08-01)
 
 - **Implemented:** a user can create, read, edit, close and delete an account of any type the SRS

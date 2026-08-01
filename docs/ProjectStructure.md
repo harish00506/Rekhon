@@ -283,7 +283,7 @@ app/src/main/
 ## 8. CI — `.github/workflows/ci.yml`
 
 Runs on every push/PR to `main`, `stage`, `dev`. Steps: validate `ai/**` JSON → set up JDK 17 +
-Android SDK → **convention/ARC-002 tests** → `ktlintCheck detekt lintDebug` → `testDebugUnitTest
+Android SDK → **convention/ARC-002 tests** → `ktlintCheck detekt lintDebug` → `unitTests
 koverVerify` → `assembleDebug` → upload reports. (Paparazzi screenshot diff and the OSV dependency
 scan are stubbed until issues 1.8 and 11.6 wire their tasks.) A red pipeline blocks the merge.
 

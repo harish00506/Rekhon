@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.aicfo.core.common.Clock
 import com.aicfo.core.common.toAppError
 import com.aicfo.core.model.Money
+import com.aicfo.data.repository.NetWorthRepository
 import com.aicfo.data.repository.QuickSetupRepository
 import com.aicfo.domain.engines.quicksetup.BudgetEnvelope
 import com.aicfo.domain.engines.quicksetup.BudgetNature
@@ -31,16 +32,18 @@ import javax.inject.Inject
  * Changelog: 2026-07-25 — Created for issue 1.10 as the ARC-004 reference implementation.
  *
  * Changelog: 2026-07-27 — Issue 2.3: the spending split is real, read from the persisted budget.
+ *            2026-08-01 — Issue 2.6: net worth is real, read from the daily snapshot (FR-ACC-005).
  *
- * **Safe-to-Spend and net worth are still placeholders** — they need the engines issues 5.1/5.2
- * own. The spending split is not: since issue 2.3 it is the budget quick setup derived and stored
- * (FR-ONB-002), observed as a Flow so it updates the moment the budget changes. What was *never*
+ * **Safe-to-Spend is the last placeholder** — it needs the engine issue 5.2 owns. The other two are
+ * real: the spending split since issue 2.3 (FR-ONB-002), and net worth since issue 2.6 (FR-ACC-005),
+ * both observed as Flows so they update the moment the underlying data changes. What was *never*
  * placeholder is the shape: state in one immutable value, events in through one function, `Clock`
  * injected rather than read from the wall (TIM-001), and work on `viewModelScope` so it is
  * cancelled with the screen (ARC-006).
  *
  * Input:  [clock] — injected time, so a test can fix "now"; [quickSetupRepository] — the persisted
- *         budget envelopes. Output: an observable screen state.
+ *         budget envelopes; [netWorthRepository] — the stored daily snapshot (issue 2.6).
+ *         Output: an observable screen state.
  */
 @HiltViewModel
 class DashboardViewModel
@@ -48,6 +51,7 @@ class DashboardViewModel
     constructor(
         private val clock: Clock,
         private val quickSetupRepository: QuickSetupRepository,
+        private val netWorthRepository: NetWorthRepository,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(DashboardUiState())
 
@@ -61,6 +65,28 @@ class DashboardViewModel
         init {
             load()
             observeBudget()
+            observeNetWorth()
+        }
+
+        /**
+         * Keeps net worth in step with the stored snapshot (issue 2.6; FR-ACC-005).
+         *
+         * Why:    **`observeCurrent`, not `observeLatest`.** The stored daily snapshot is the
+         *         historical record issue 6.6 charts; showing it here would leave the headline
+         *         figure a day stale, so a user who deleted an account would watch the total not
+         *         move. That is what happened the first time this was driven on a device.
+         * Result: [uiState] carries the live figure. It stays `null` only until the first emission
+         *         arrives, which the screen renders as "not worked out yet" rather than as ₹0 —
+         *         a zero the app made up is what P-03 forbids, and it is indistinguishable from a
+         *         real net worth of nothing.
+         * Input:  none. Output: none (launches a collector).
+         * Changelog: 2026-08-01 — Created for issue 2.6.
+         */
+        private fun observeNetWorth() {
+            netWorthRepository.observeCurrent()
+                .onEach { current -> _uiState.update { it.copy(netWorth = current.netWorth) } }
+                .catch { failure -> _uiState.update { it.copy(errorCode = failure.toAppError().code) } }
+                .launchIn(viewModelScope)
         }
 
         /**
@@ -109,17 +135,16 @@ class DashboardViewModel
         private fun load() {
             _uiState.update { it.copy(isLoading = true, errorCode = null) }
             viewModelScope.launch {
-                // Placeholder figures — and only these two now. Issues 5.1/5.2 replace them with
-                // the Safe-to-Spend and net-worth engines; the state shape stays the same. The
-                // spending split is no longer here: issue 2.3 made it real, and it arrives through
-                // observeBudget(). `clock.today()` is still read so the injected Clock stays
-                // genuinely on this path rather than decorative (TIM-001).
+                // One placeholder left. Issue 5.2 replaces Safe-to-Spend with its engine; the state
+                // shape stays the same. Net worth is no longer here: issue 2.6 made it real, and it
+                // arrives through observeNetWorth(). The spending split went the same way in 2.3.
+                // `clock.today()` is still read so the injected Clock stays genuinely on this path
+                // rather than decorative (TIM-001).
                 val today = clock.today()
                 _uiState.update {
                     it.copy(
                         isLoading = false,
                         safeToSpend = Money(SAMPLE_SAFE_TO_SPEND_MINOR + today.dayOfMonth),
-                        netWorth = Money(SAMPLE_NET_WORTH_MINOR),
                     )
                 }
             }
@@ -127,7 +152,6 @@ class DashboardViewModel
 
         private companion object {
             const val SAMPLE_SAFE_TO_SPEND_MINOR = 12_500_00L
-            const val SAMPLE_NET_WORTH_MINOR = 4_82_350_00L
         }
     }
 

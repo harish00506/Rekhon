@@ -42,7 +42,7 @@ When working on any task, issue, or epic:
 9. **Run + verify (required before Done)** — the app must be **run and observed working**; a
    green build or green `./gradlew test` does **not** close an issue.
    - **Static analysis:** `./gradlew ktlintCheck detekt lintDebug` — no new warnings (§21.6).
-   - **Unit + coverage:** `./gradlew testDebugUnitTest koverVerify` — **engine ≥ 85%, money
+   - **Unit + coverage:** `./gradlew unitTests koverVerify` — **engine ≥ 85%, money
      math 100%** (§21.5).
    - **Screenshots (if UI changed):** `./gradlew verifyPaparazziDebug`.
    - **AI data (if `ai/**` changed):** confirm JSON/YAML parse and IDs/versions were bumped
@@ -138,8 +138,16 @@ Applies to every function, method, engine, or composable you add or change:
    change touches must pass, not just the new tests. A failing or skipped-for-convenience suite
    blocks Done. Passing suites are necessary but **not sufficient** — the running app must also
    be verified on an emulator per step 9.
-   - **Unit (domain/data/viewmodel):** `./gradlew testDebugUnitTest` (JUnit5, Turbine, MockK,
+   - **Unit (domain/data/viewmodel):** `./gradlew unitTests` (JUnit5, Turbine, MockK,
      Robolectric). Coverage gate: `./gradlew koverVerify` (engine ≥ 85%, money math 100%).
+
+     > **`unitTests`, not `testDebugUnitTest`** (issue 2.6). The latter is an Android *variant*
+     > task: it does not exist on the pure-Kotlin modules (`:core:model`, `:core:common`,
+     > `:domain:engines:*`) and never reached `:lint` at all — so the fourteen tests covering the
+     > custom detectors that make MNY-001, TIM-001 and ARC-006 build-failing ran in **no** command
+     > and in **no** CI step. Disabling `MoneyDoubleDetector` outright left `testDebugUnitTest`
+     > green. `unitTests` is a root aggregate over every module, matched by task name so a module
+     > added later is picked up without anyone remembering to register it.
    - **Screenshot:** `./gradlew verifyPaparazziDebug` for design-system components in
      light/dark/200% font.
    - **UI / user-flow (the Playwright analog):** Compose UI tests plus the **instrumented E2E

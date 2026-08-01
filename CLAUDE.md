@@ -141,7 +141,9 @@ engine. Every row is versioned and cited by ID in evidence (AI-ARC-006). See `ai
 ## 8. Definition of Done (§4.2 — applies to every feature)
 
 - [ ] Requirement implemented and traceable (commit references the FR/AI id).
-- [ ] Unit tests for domain logic (≥ 85% engine coverage; **100% money math**).
+- [ ] Unit tests for domain logic (≥ 85% engine coverage; **100% money math**) — run them with
+      **`./gradlew unitTests`**, never `testDebugUnitTest`, which is an Android variant task and
+      silently skips the pure-Kotlin modules and `:lint` entirely (issue 2.6).
 - [ ] UI state covered by ≥ 1 Compose UI test or screenshot test.
 - [ ] Works offline; verified with an airplane-mode test case.
 - [ ] Accessibility scan passes; strings externalised; dark mode verified.

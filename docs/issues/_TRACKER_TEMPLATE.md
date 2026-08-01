@@ -37,10 +37,10 @@ screenshot phase, a core flow an E2E phase). One-line verification per row.
 |---|-------|--------|--------------|
 | 1 | Dependencies clear or waived | [ ] | deps: <deps or None> |
 | 2 | Branch created | [ ] | `git branch --show-current` → feature/... |
-| 3 | Failing tests written (TDD) | [ ] | new tests are red before implementation (`./gradlew testDebugUnitTest`) |
+| 3 | Failing tests written (TDD) | [ ] | new tests are red before implementation (`./gradlew unitTests`) |
 | 4 | Implementation to acceptance criteria | [ ] | all acceptance criteria in the issue are met |
 | 5 | Static analysis clean | [ ] | `./gradlew ktlintCheck detekt lintDebug` — no new warnings |
-| 6 | Unit + coverage gate | [ ] | `./gradlew testDebugUnitTest koverVerify` — engine ≥ 85%, money 100% |
+| 6 | Unit + coverage gate | [ ] | `./gradlew unitTests koverVerify` — engine ≥ 85%, money 100% |
 | 7 | Run on emulator (real gate) | [ ] | `/run` + `/verify` — changed behaviour observed on a device |
 | 8 | Docs + VERSION + CHANGELOG | [ ] | ENGINE.md/ADR as needed; `VERSION` + `CHANGELOG.md` bumped |
 | 9 | Merge to `main` + push | [ ] | merged to `main`; Verification Log complete; pushed |
