@@ -18,8 +18,8 @@
 ## Current state
 
 - **Version:** `0.2.5` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (Epic 2 under way).
-- **Currently working file:** none — issue 2.5 is implemented and verified on
-  `feature/2-5-accounts-crud-all-types`, **not yet committed or merged**.
+- **Currently working file:** none — issue 2.5 is **shipped**: committed on
+  `feature/2-5-accounts-crud-all-types` and merged `--no-ff` into `dev`. Push skipped (no remote).
 - **In progress:** nothing. Last built: **Epic 2 · issue 2.5** — accounts CRUD
   ([2.5](issues/2.5-accounts-crud-all-types.md) ·
   [tracker](issues/2.5-accounts-crud-all-types-tracker.md)). **510 unit tests + 9 instrumented,
