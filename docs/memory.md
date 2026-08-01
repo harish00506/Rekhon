@@ -17,32 +17,45 @@
 
 ## Current state
 
-- **Version:** `0.2.3` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (Epic 2 under way).
-- **Currently working file:** none — issue 2.3 is merged into `dev`; nothing in flight.
-- **In progress:** nothing. Last shipped: **Epic 2 · issue 2.3** — quick-setup seeds
-  ([2.3](issues/2.3-quick-setup-seeds-income-rent-savings.md) ·
-  [tracker](issues/2.3-quick-setup-seeds-income-rent-savings-tracker.md)). 536 tests green. The
-  **emulator gate is still blocked, not skipped** — `adb` is not installed and no AVD exists, so the
-  app has never been launched and neither the v1→v2 nor the v2→v3 migration has run against real
-  SQLite.
+- **Version:** `0.2.4` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (Epic 2 under way).
+- **Currently working file:** none — issue 2.4 is implemented and verified on
+  `feature/2-4-demo-mode-with-sample-data`, **not yet committed or merged**.
+- **In progress:** nothing. Last built: **Epic 2 · issue 2.4** — demo mode
+  ([2.4](issues/2.4-demo-mode-with-sample-data.md) ·
+  [tracker](issues/2.4-demo-mode-with-sample-data-tracker.md)). **386 unit tests + 8 instrumented,
+  all green.**
+- **Count tests correctly.** Earlier figures here (2.3's "536") were inflated: summing every
+  `**/build/test-results/**/*.xml` picks up `testReleaseUnitTest` output as well as
+  `testDebugUnitTest`, counting each test twice and mixing in stale results from previous runs.
+  Exclude `testReleaseUnitTest` when counting.
+- **The emulator gate is OPEN — this changed with 2.4.** `adb` *is* installed
+  (`~/AppData/Local/Android/Sdk/platform-tools`) and an AVD named `CfoTest` *does* exist; the earlier
+  claim here was stale. The app has now been built, installed and driven on a device for the first
+  time: onboarding → demo → banner → exit, and the same flow again in airplane mode. **Run
+  `emulator -avd CfoTest` and use the gate — do not log it as blocked.** Instrumented tests: 8/8, but
+  **scope the command** — `connectedDebugAndroidTest` project-wide instruments every module and burns
+  ~5 min each on the many with no `androidTest` sources; only `:core:database` and
+  `:feature:onboarding` have any.
+- **Two long-unproven paths are now proven** (side effect of 2.4's emulator run): the **v1→v2 and
+  v2→v3 Room migrations** ran against real SQLite and preserved their rows, and **SEC-002's Keystore
+  PIN round trip** executed on a real TEE. Both had previously only ever been exercised by JVM
+  stand-ins.
 - **Next up:** **2.5** (accounts CRUD) — it inserts the last deferred onboarding step (position fixed
   by [ADR-0002](adr/0002-onboarding-step-order.md)) and is what finally attaches an account to the
-  recurring rules 2.3 leaves with a null `account_id`. Then **2.4** (demo mode) and **2.6** (net
-  worth). Note 2.3 already wrote the first `profile` row and took schema v3 (`budget`,
-  `recurring_rule`), both of which had been pencilled in for later issues —
-  [ADR-0004](adr/0004-quick-setup-persists-budgets-and-recurring-rules.md) says what 4.4 / 3.7 / 2.5
-  are expected to add to those tables rather than rewrite.
+  recurring rules 2.3 leaves with a null `account_id`. Then **2.6** (net worth), which is the first
+  engine that will find the demo's four accounts and ~84 transactions already waiting for it.
 - **Still the largest gap:** CI has never run — there is no git remote, so every green is a local
-  green on one Windows machine. **Second:** the security-critical Keystore and BiometricPrompt paths
-  (2.2) still cannot be tested without a device. **Third, new with 2.3:** nothing in the app loads
-  `ai/` yet, so the first engine's thresholds are Kotlin constants guarded by a drift test rather
-  than rulebook rows — a deliberate, recorded deferral of CLAUDE.md §6
+  green on one Windows machine. **Second:** nothing in the app loads `ai/` yet, so the first engine's
+  thresholds are Kotlin constants guarded by a drift test rather than rulebook rows — a deliberate,
+  recorded deferral of CLAUDE.md §6
   ([ADR-0005](adr/0005-quick-setup-thresholds-deferred-rulebook-loader.md)) with a named trigger.
-- **Practice worth keeping:** 2.3 made both of its new gates fail on purpose before trusting them
-  (a one-point threshold change to red the drift test; temporary uncovered code to red `koverVerify`
-  on the new module). This project has shipped a vacuous gate before — audit G-01, a `koverVerify`
-  that was green at 0% coverage — so "the gate passed" is not evidence until the gate has been seen
-  to fail.
+- **Practice worth keeping:** 2.3 and 2.4 both made every new gate fail on purpose before trusting
+  it (2.4: a one-digit seed change to red the golden dataset test; one hard delete swapped for a soft
+  delete to red the residue test). This project has shipped a vacuous gate before — audit G-01, a
+  `koverVerify` green at 0% coverage — so "the gate passed" is not evidence until the gate has been
+  seen to fail. **2.4 found another one:** `OnboardingFlowInstrumentedTest` had not compiled since
+  2.3, because `androidTest` is only compiled when a device is attached. Compile the androidTest
+  source set on every issue, device or no device.
 
 ## Completed
 
@@ -65,6 +78,12 @@
 - **Epic 2 — issue 2.1 (v0.2.1, 2026-07-25):** the 4-step first-run onboarding. First screen that
   writes; closes the "nothing sets the profile time zone" seam from Epic 1 and gives the consent
   ledger its first caller.
+- **Epic 2 — issue 2.4 (v0.2.4, 2026-07-28):** demo mode (FR-ONB-004). A deterministic, seeded
+  three-month sample dataset under an isolated `demo` profile, labelled by one banner above the nav
+  graph and erased by hard delete on the way out
+  ([ADR-0006](adr/0006-demo-mode-profile-isolation-and-hard-delete.md)). Needed **no schema change**.
+  Also: the project's **first emulator run**, and the repair of an instrumented test that had been
+  uncompilable since 2.3.
 - **Epic 2 — issue 2.3 (v0.2.3, 2026-07-27):** the quick-setup seeds (FR-ONB-002). The project's
   **first engine** (`:domain:engines:quicksetup`, pure Kotlin), its **first `EngineProvenance`**
   (AI-ARC-003), its **first `profile` row**, and schema **v3** (`budget`, `recurring_rule`). The

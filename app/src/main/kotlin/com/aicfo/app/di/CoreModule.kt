@@ -13,8 +13,6 @@ import com.aicfo.core.database.CfoDatabaseFactory
 import com.aicfo.core.datastore.CfoDataStoreFactory
 import com.aicfo.core.datastore.ConsentStore
 import com.aicfo.core.datastore.SettingsStore
-import com.aicfo.data.repository.QuickSetupRepository
-import com.aicfo.data.repository.RepositoryFactory
 import com.aicfo.domain.engines.quicksetup.QuickSetupEngine
 import com.aicfo.domain.engines.quicksetup.QuickSetupEngineFactory
 import dagger.Module
@@ -37,6 +35,10 @@ import javax.inject.Singleton
  * What: dispatchers, the application scope, the clock, and the stores from issues 1.6 and 1.9.
  * Result: features declare what they need in a constructor and Hilt supplies it.
  * Changelog: 2026-07-25 — Created for issue 1.10.
+ *            2026-07-28 — Issue 2.4: the repository bindings moved to [RepositoryModule]. This
+ *            object had reached detekt's `TooManyFunctions` ceiling, and the honest fix was to split
+ *            it along the seam it already had — platform primitives here, `:data:repository`
+ *            bindings there — rather than to raise the threshold.
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -172,24 +174,6 @@ object CoreModule {
     @Provides
     @Singleton
     fun provideQuickSetupEngine(): QuickSetupEngine = QuickSetupEngineFactory.create()
-
-    /**
-     * The quick-setup store (issue 2.3; FR-ONB-002, SEC-002).
-     * Why:    takes the **gated** [CfoDatabase], deliberately not `@AuditDatabase`. This holds the
-     *         user's income, rent and budget — financial data, which is exactly what the app lock
-     *         exists to gate. The audit log's exemption is for security events written *while*
-     *         locked; nothing here has that excuse.
-     * Result: a [QuickSetupRepository]. Input: [database], [clock], [dispatchers].
-     * Output: the repository.
-     * Changelog: 2026-07-27 — Created for issue 2.3.
-     */
-    @Provides
-    @Singleton
-    fun provideQuickSetupRepository(
-        database: CfoDatabase,
-        clock: Clock,
-        dispatchers: DispatcherProvider,
-    ): QuickSetupRepository = RepositoryFactory.quickSetup(database, clock, dispatchers)
 }
 
 /**

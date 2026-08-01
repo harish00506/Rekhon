@@ -9,8 +9,11 @@ import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.aicfo.core.common.AppError
 import com.aicfo.core.common.DefaultDispatcherProvider
 import com.aicfo.core.common.FakeClock
+import com.aicfo.core.common.Ok
+import com.aicfo.core.common.Result
 import com.aicfo.core.common.getOrNull
 import com.aicfo.core.crypto.KeystoreMacFactory
 import com.aicfo.core.datastore.CfoDataStoreFactory
@@ -18,11 +21,19 @@ import com.aicfo.core.datastore.ConsentFeature
 import com.aicfo.core.datastore.DEFAULT_AUTO_LOCK_SECONDS
 import com.aicfo.core.designsystem.theme.CfoTheme
 import com.aicfo.core.model.Money
+import com.aicfo.data.repository.DemoModeRepository
+import com.aicfo.data.repository.ProfileSeed
+import com.aicfo.data.repository.QuickSetupRepository
+import com.aicfo.domain.engines.quicksetup.BudgetEnvelope
+import com.aicfo.domain.engines.quicksetup.QuickSetupEngineFactory
+import com.aicfo.domain.engines.quicksetup.QuickSetupPlan
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -44,6 +55,10 @@ import java.time.ZoneId
  *       of storage.
  * Result: proof that finishing onboarding actually persists, rather than appearing to.
  * Changelog: 2026-07-25 — Created for issue 2.1.
+ *            2026-07-28 — Issue 2.4: **repaired.** This file had not compiled since issue 2.3 —
+ *            `OnboardingViewModel`'s constructor changed under it and nothing noticed, because
+ *            `androidTest` is only compiled when a device is attached and this project has never had
+ *            one. A gate that cannot compile is not a gate; noted in the tracker as a real finding.
  *
  * **No Hilt here on purpose.** Constructor injection (ARC-003) means the ViewModel can simply be
  * constructed, so this needs no test runner, no `@HiltAndroidTest`, and no test module — which is
@@ -85,15 +100,15 @@ class OnboardingFlowInstrumentedTest {
             pinVerifier.clearPin()
             val viewModel =
                 OnboardingViewModel(
-                    stores.settings,
-                    stores.consents,
-                    stores.appLock,
-                    pinVerifier,
+                    OnboardingWriter(stores.settings, stores.consents),
+                    AppLockSetup(pinVerifier, stores.appLock),
+                    QuickSetupCoordinator(QuickSetupEngineFactory.create(), NoOpQuickSetupRepository(), clock),
+                    NoOpDemoModeRepository(),
                     clock,
                     SavedStateHandle(),
                 )
             compose.setContent {
-                CfoTheme { OnboardingScreen(onFinished = {}, viewModel = viewModel) }
+                CfoTheme { OnboardingScreen(onFinished = {}, onDemoStarted = {}, viewModel = viewModel) }
             }
 
             clickNext()
@@ -158,4 +173,45 @@ class OnboardingFlowInstrumentedTest {
         /** Generous: a cold DataStore write on a software-rendered emulator is not fast. */
         const val WRITE_TIMEOUT_MILLIS = 10_000L
     }
+}
+
+/**
+ * A [QuickSetupRepository] that accepts everything and stores nothing.
+ *
+ * Why:  what this file exists to prove is that **Proto DataStore and the Keystore** hold what
+ *       onboarding wrote — the assertions at the bottom are all about those two. The Room half is
+ *       proven, against a real SQL engine, by `QuickSetupRepositoryTest`. Opening the encrypted
+ *       database here would drag SQLCipher, the Keystore-wrapped passphrase and the session gate
+ *       into a test about a settings file, and a failure in any of them would look like an
+ *       onboarding bug.
+ * Result: a double that lets the flow finish. Input: none. Output: the double.
+ * Changelog: 2026-07-28 — Created for issue 2.4, repairing a call this file could not compile.
+ */
+private class NoOpQuickSetupRepository : QuickSetupRepository {
+    override suspend fun applySeeds(
+        plan: QuickSetupPlan,
+        profile: ProfileSeed,
+    ): Result<Unit, AppError> = Ok(Unit)
+
+    override fun observeLatestEnvelopes(): Flow<List<BudgetEnvelope>> = flowOf(emptyList())
+
+    override fun observeLatestEnvelopes(profileId: String): Flow<List<BudgetEnvelope>> = flowOf(emptyList())
+}
+
+/**
+ * A [DemoModeRepository] the flow never reaches.
+ * Why:    this test drives the *real* setup path to the end, so it never taps the demo. The double
+ *         exists only to satisfy the constructor; the demo entry is asserted by the JVM twin
+ *         (`OnboardingFlowTest`) and its persistence by `DemoModeRepositoryTest`.
+ * Result: a double. Input: none. Output: the double.
+ * Changelog: 2026-07-28 — Created for issue 2.4.
+ */
+private class NoOpDemoModeRepository : DemoModeRepository {
+    override val isActive: Flow<Boolean> = flowOf(false)
+
+    override val activeProfileId: Flow<String> = flowOf(QuickSetupRepository.DEFAULT_PROFILE_ID)
+
+    override suspend fun enter(): Result<Unit, AppError> = Ok(Unit)
+
+    override suspend fun exit(): Result<Unit, AppError> = Ok(Unit)
 }

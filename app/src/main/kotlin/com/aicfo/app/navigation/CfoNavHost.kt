@@ -23,6 +23,7 @@ import com.aicfo.feature.transactions.TransactionsScreen
  * Changelog: 2026-07-25 — Created for issue 1.10.
  *            2026-07-25 — Issue 2.1: the start destination is now decided at launch, because a new
  *            install must land on onboarding rather than an empty dashboard.
+ *            2026-07-28 — Issue 2.4: onboarding gained a second exit — into the demo.
  *
  * Input:  [startDestination] — decided by `MainViewModel` from the stored onboarding flag;
  *         [modifier]; [navController] — hoisted so a test or a preview can supply its own.
@@ -45,6 +46,15 @@ fun CfoNavHost(
                     // inclusive: onboarding is finished, so Back must not return to it — a user
                     // stepping back into a completed first-run flow would be able to overwrite the
                     // profile they just made.
+                    navController.navigate(CfoRoute.Dashboard) {
+                        popUpTo<CfoRoute.Onboarding> { inclusive = true }
+                    }
+                },
+                // Issue 2.4: also inclusive, and for a different reason. Onboarding was *not*
+                // completed — no profile exists — so a Back into it would show a half-answered flow
+                // behind the demo banner. The way back is the banner's Exit action, which returns
+                // here from the top.
+                onDemoStarted = {
                     navController.navigate(CfoRoute.Dashboard) {
                         popUpTo<CfoRoute.Onboarding> { inclusive = true }
                     }

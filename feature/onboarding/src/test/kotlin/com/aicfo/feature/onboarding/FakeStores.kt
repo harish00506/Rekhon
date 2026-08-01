@@ -14,6 +14,7 @@ import com.aicfo.core.datastore.OnboardingProfile
 import com.aicfo.core.datastore.SettingsSnapshot
 import com.aicfo.core.datastore.SettingsStore
 import com.aicfo.core.datastore.ThemeSetting
+import com.aicfo.data.repository.DemoModeRepository
 import com.aicfo.data.repository.ProfileSeed
 import com.aicfo.data.repository.QuickSetupRepository
 import com.aicfo.domain.engines.quicksetup.BudgetEnvelope
@@ -66,6 +67,15 @@ internal class FakeSettingsStore(
     override suspend fun setPrivacyBlurEnabled(enabled: Boolean): Result<Unit, AppError> = write { }
 
     override suspend fun setTheme(theme: ThemeSetting): Result<Unit, AppError> = write { }
+
+    /**
+     * Records a demo-flag write (issue 2.4).
+     * Why:    the flag is set by `DemoModeRepository`, not by this ViewModel — so what these tests
+     *         assert about it is that onboarding **never touches it**, and a recording override is
+     *         how that absence becomes visible.
+     * Result: `Ok(Unit)`, or [failWith]. Input: [active]. Output: `Result<Unit, AppError>`.
+     */
+    override suspend fun setDemoModeActive(active: Boolean): Result<Unit, AppError> = write { }
 
     override suspend fun completeOnboarding(profile: OnboardingProfile): Result<Unit, AppError> {
         completeCallCount++
@@ -197,8 +207,56 @@ internal class FakeQuickSetupRepository(
         return Ok(Unit)
     }
 
+    override fun observeLatestEnvelopes(): Flow<List<BudgetEnvelope>> = flowOf(savedPlan?.envelopes.orEmpty())
+
+    /**
+     * The profile-scoped read (issue 2.4).
+     * Why:    answers identically to the no-argument form, because onboarding never reads envelopes
+     *         at all — this exists only to satisfy the interface.
+     * Result: the persisted envelopes. Input: [profileId] — ignored. Output: the flow.
+     */
     override fun observeLatestEnvelopes(profileId: String): Flow<List<BudgetEnvelope>> =
         flowOf(savedPlan?.envelopes.orEmpty())
+}
+
+/**
+ * A [DemoModeRepository] that records whether onboarding entered the demo (issue 2.4; FR-ONB-004).
+ *
+ * Why:    the requirement is about what does **not** happen — the demo must load "without creating
+ *         a profile", so the assertions that matter are that `enter()` was called *and* that the
+ *         settings and quick-setup fakes beside it recorded nothing. That is a claim about absence,
+ *         which only a recording fake can make visible.
+ * Result: the number of entries and exits, plus an injectable failure.
+ * Input:  [failWith] — when non-null, `enter` returns `Err` with it. Output: a fake repository.
+ * Changelog: 2026-07-28 — Created for issue 2.4.
+ */
+internal class FakeDemoModeRepository(
+    var failWith: AppError? = null,
+) : DemoModeRepository {
+    private val active = MutableStateFlow(false)
+
+    /** How many times the demo was entered — a failed entry must not be retried silently. */
+    var enterCallCount: Int = 0
+        private set
+
+    override val isActive: Flow<Boolean> = active
+
+    override val activeProfileId: Flow<String> =
+        active.map { on ->
+            if (on) DemoModeRepository.DEMO_PROFILE_ID else QuickSetupRepository.DEFAULT_PROFILE_ID
+        }
+
+    override suspend fun enter(): Result<Unit, AppError> {
+        enterCallCount++
+        failWith?.let { return Err(it) }
+        active.value = true
+        return Ok(Unit)
+    }
+
+    override suspend fun exit(): Result<Unit, AppError> {
+        active.value = false
+        return Ok(Unit)
+    }
 }
 
 /**

@@ -72,7 +72,10 @@ enum class OnboardingStep {
  *         [monthlyIncomeText], [rentOrEmiText], [typicalSavingsText]; [quickSetupPlan] — what the
  *         engine derived from those three, recomputed on every keystroke and `null` until at least
  *         one of them parses (issue 2.3); [isSaving];
- *         [isComplete]; [errorCode] — an `AppError.code`, never a message, so the wording stays in
+ *         [isComplete]; [isDemoStarted] — the sample dataset is loaded and the screen should leave
+ *         for the dashboard (issue 2.4). **Separate from [isComplete] on purpose:** onboarding was
+ *         not completed, no profile exists, and conflating the two would mark a demo user onboarded;
+ *         [errorCode] — an `AppError.code`, never a message, so the wording stays in
  *         `strings.xml` (§21.6).
  * Output: an immutable snapshot for the composable.
  */
@@ -93,6 +96,7 @@ data class OnboardingUiState(
     val quickSetupPlan: QuickSetupPlan? = null,
     val isSaving: Boolean = false,
     val isComplete: Boolean = false,
+    val isDemoStarted: Boolean = false,
     val errorCode: String? = null,
 ) {
     /** Human-facing step number, 1-based — `entries` supplies the total (see [OnboardingStep]). */
@@ -223,6 +227,14 @@ sealed interface OnboardingEvent {
 
     /** The user skipped the optional quick-setup step and finished without seeds. */
     data object SkipQuickSetup : OnboardingEvent
+
+    /**
+     * The user chose to explore the app on sample data instead (issue 2.4, FR-ONB-004).
+     *
+     * Not an [Answer]: it does not edit a field, it leaves the flow entirely — and it leaves it
+     * without writing a profile, which is the whole point of the requirement.
+     */
+    data object StartDemo : OnboardingEvent
 
     /** The user dismissed the error banner. */
     data object DismissError : OnboardingEvent

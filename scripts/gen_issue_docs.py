@@ -525,7 +525,7 @@ ISSUES: list[Issue] = [
        "Amounts are stored as `Money` paise and covered by tests."],
       ["Seeds are user-entered; never invent a financial number (P-03)."]),
     I("2.4", 2, "Demo mode with sample data", "onboarding", "M", "2.1",
-      "SS5.1, SS33 (demo)", "SS6 Module Structure",
+      "SS5.1 (FR-ONB-004)", "SS6 Module Structure",
       "A demo mode that loads a labelled sample dataset so the app can be explored without entering real data - clearly marked and fully wipeable.",
       ["Demo loads a fixed sample dataset into an isolated/flagged profile, clearly labelled as demo.",
        "Exiting demo wipes the sample data with no residue in the real profile.",

@@ -257,6 +257,67 @@ class SettingsStoreTest {
             }
         }
 
+    /**
+     * Input:  a fresh store, then the demo flag turned on and off again (issue 2.4, FR-ONB-004).
+     * Output: asserts it defaults to **off** and round-trips. Off by default is the only safe
+     *         direction: a flag that defaulted on would show every new user fabricated money and
+     *         call it theirs.
+     */
+    @Test
+    fun `demo mode defaults to off and round-trips`() =
+        scope.runTest {
+            open()
+            assertFalse("nobody is in a demo they never started", store.observe().first().getOrNull()!!.demoModeActive)
+
+            assertWritten(store.setDemoModeActive(true))
+            assertTrue(store.observe().first().getOrNull()!!.demoModeActive)
+
+            assertWritten(store.setDemoModeActive(false))
+            assertFalse(store.observe().first().getOrNull()!!.demoModeActive)
+        }
+
+    /**
+     * Input:  the demo flag set on a store nobody has onboarded (issue 2.4, FR-ONB-004).
+     * Output: asserts **nothing else** was written — no zone, no currency, no display name, no
+     *         completion flag. This is the "without creating a profile" clause of FR-ONB-004
+     *         expressed as an assertion: if entering the demo ever starts marking the app onboarded,
+     *         a user who exits it lands on an empty dashboard with no way back into first-run setup.
+     */
+    @Test
+    fun `entering demo mode creates no profile`() =
+        scope.runTest {
+            open()
+            assertWritten(store.setDemoModeActive(true))
+
+            val settings = store.observe().first().getOrNull()!!
+            assertTrue(settings.demoModeActive)
+            assertFalse("the demo must not onboard anyone", settings.isOnboarded)
+            assertNull(settings.onboardingCompletedAtUtcMillis)
+            assertNull(settings.profileTimeZoneId)
+            assertNull(settings.currencyCode)
+            assertNull(settings.profileDisplayName)
+            assertNull(settings.quickSetup.monthlyIncome)
+        }
+
+    /**
+     * Input:  a real onboarding completed while the demo flag is on.
+     * Output: asserts the two are independent — completing onboarding neither clears nor sets the
+     *         demo flag. They answer different questions ("does this user exist?" vs "is the app
+     *         showing fake data?"), and coupling them in the store would make the banner disappear
+     *         the moment a demo user completed setup.
+     */
+    @Test
+    fun `the demo flag and the onboarding flag are independent`() =
+        scope.runTest {
+            open()
+            assertWritten(store.setDemoModeActive(true))
+            assertWritten(store.completeOnboarding(OnboardingProfile("Asia/Kolkata", "INR")))
+
+            val settings = store.observe().first().getOrNull()!!
+            assertTrue(settings.isOnboarded)
+            assertTrue(settings.demoModeActive)
+        }
+
     private companion object {
         /** An arbitrary fixed instant — the point is that it comes from [FakeClock], not the wall. */
         const val FIXED_COMPLETION_MILLIS = 1_800_000_000_000L

@@ -42,6 +42,7 @@ class OnboardingViewModelTest {
     private val appLock = FakeAppLockStore()
     private val pinVerifier = FakePinVerifier()
     private val quickSetup = FakeQuickSetupRepository()
+    private val demoMode = FakeDemoModeRepository()
     private val engine = QuickSetupEngineFactory.create()
     private val clock = FakeClock(initialZone = ZoneId.of("Asia/Kolkata"))
     private var savedState = SavedStateHandle()
@@ -60,10 +61,10 @@ class OnboardingViewModelTest {
 
     private fun viewModel() =
         OnboardingViewModel(
-            settings,
-            consents,
+            OnboardingWriter(settings, consents),
             AppLockSetup(pinVerifier, appLock),
             QuickSetupCoordinator(engine, quickSetup, clock),
+            demoMode,
             clock,
             savedState,
         )
@@ -662,5 +663,62 @@ class OnboardingViewModelTest {
         viewModel.onEvent(OnboardingEvent.MonthlyIncomeChanged("85000"))
 
         assertEquals("2026-08-01", viewModel.uiState.value.quickSetupPlan?.periodStartIsoDate)
+    }
+
+    // --- demo mode (issue 2.4, FR-ONB-004) --------------------------------------------------------
+
+    /**
+     * Input:  the demo action on the welcome step.
+     * Output: asserts the sample data is loaded and the screen is told to leave. `isDemoStarted` and
+     *         not `isComplete`, because those mean different things to the navigation graph: one is
+     *         "this user is set up", the other "this user is browsing" — and the second must be able
+     *         to come back here.
+     */
+    @Test
+    fun `starting the demo loads the sample data and leaves the flow`() {
+        val viewModel = viewModel()
+
+        viewModel.onEvent(OnboardingEvent.StartDemo)
+
+        assertEquals(1, demoMode.enterCallCount)
+        assertTrue(viewModel.uiState.value.isDemoStarted)
+        assertFalse("a demo user is not onboarded", viewModel.uiState.value.isComplete)
+        assertFalse(viewModel.uiState.value.isSaving)
+    }
+
+    /**
+     * Input:  the demo action.
+     * Output: asserts **nothing else was written** — no profile, no consent decision, no PIN, no
+     *         budget. This is FR-ONB-004's "without creating a profile" clause stated as an
+     *         assertion, and it is the one that would quietly stop being true if `startDemo` were
+     *         ever refactored to share code with `finish`.
+     */
+    @Test
+    fun `starting the demo creates no profile`() {
+        viewModel().onEvent(OnboardingEvent.StartDemo)
+
+        assertEquals(0, settings.completeCallCount)
+        assertNull(settings.savedProfile)
+        assertEquals(0, quickSetup.applyCallCount)
+        assertTrue("no consent decision belongs to a demo", consents.granted.isEmpty() && consents.revoked.isEmpty())
+        assertNull(pinVerifier.storedPin)
+    }
+
+    /**
+     * Input:  the demo action with the seed failing.
+     * Output: asserts the error is surfaced and the user stays put. Sending them onward would show a
+     *         dashboard labelled as a demo with no sample data behind it — an empty app that looks
+     *         broken rather than an error they can retry.
+     */
+    @Test
+    fun `a failed demo load keeps the user on the welcome step`() {
+        demoMode.failWith = AppError.Storage("disk")
+        val viewModel = viewModel()
+
+        viewModel.onEvent(OnboardingEvent.StartDemo)
+
+        assertFalse(viewModel.uiState.value.isDemoStarted)
+        assertEquals(AppError.Storage("disk").code, viewModel.uiState.value.errorCode)
+        assertEquals(OnboardingStep.WELCOME, viewModel.uiState.value.step)
     }
 }
