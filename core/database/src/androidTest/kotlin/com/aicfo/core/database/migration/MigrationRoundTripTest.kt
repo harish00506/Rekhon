@@ -23,17 +23,20 @@ import org.junit.runner.RunWith
  * Result: at the first version bump, a migration that drops or corrupts data fails here.
  * Changelog: 2026-07-25 — Created for issue 1.7.
  *
- * **NOT YET RUN.** No device or emulator exists on this machine (`adb devices` is empty, no AVD
- * installed), so like `EncryptedDatabaseTest` this compiles but has never executed:
- * `./gradlew :core:database:connectedDebugAndroidTest`.
+ * **These have now run.** Issue 2.4 opened the emulator gate for the first time in this project and
+ * every case here passed against real SQLite: `emulator -avd CfoTest`, then
+ * `./gradlew :core:database:connectedDebugAndroidTest`. Before that they compiled and had never
+ * executed anywhere, so DB-003 was taken on the structural guard's word alone.
  *
  * **Version 2 (issue 2.2) is the first real bump**, so there is now a migration with data to carry
  * across — see `migrate1To2_preservesTransactionsAndAddsAuditLog`. It is the template for every
  * later bump: insert real rows at the old version, migrate, assert the exact values survived.
  * Changelog: 2026-07-26 — Issue 2.2: added the 1 → 2 case.
- *            2026-07-27 — Issue 2.3: added the 2 → 3 case (`budget`, `recurring_rule`). Still not
- *            run: this machine has gained no device since issue 2.2, so the structural guard in
- *            `MigrationSafetyTest` remains the only part of the harness that has actually executed.
+ *            2026-07-27 — Issue 2.3: added the 2 → 3 case (`budget`, `recurring_rule`).
+ *            2026-07-28 — Issue 2.4: first execution on a device; both cases passed.
+ *            2026-07-28 — Issue 2.5: added the 3 → 4 case — **the first migration that alters an
+ *            existing table rather than creating new ones**, so the first with a row that has to
+ *            survive a change to its own definition.
  */
 @RunWith(AndroidJUnit4::class)
 class MigrationRoundTripTest {
@@ -172,6 +175,72 @@ class MigrationRoundTripTest {
         migrated.query("SELECT amount_minor FROM recurring_rule WHERE id = 'r1'").use { cursor ->
             assertTrue(cursor.moveToFirst())
             assertEquals("an outflow stays negative, as in transactions", -2400000L, cursor.getLong(0))
+        }
+        migrated.close()
+    }
+
+    /**
+     * 3 → 4 adds `institution` and `archived_at_utc_millis` to `account` (issue 2.5, FR-ACC-007).
+     *
+     * Input:  a version-3 database holding an account with an exact opening balance, plus a
+     *         transaction against it — the row whose own table is about to change, and a row that
+     *         references it.
+     * Output: asserts the account survives with its balance intact, that the two new columns arrive
+     *         **NULL** on the existing row, and that both are writable afterwards.
+     *
+     * **This is the first migration in the app that alters an existing table.** 1 → 2 and 2 → 3 both
+     * only created new ones, where the worst outcome is a table that does not appear. Here the worst
+     * outcome is a user's account being rewritten, which is exactly what DB-003 exists to prevent —
+     * so the assertion that matters is `1_85_000_00` coming back byte for byte, not the row merely
+     * existing.
+     *
+     * The NULL assertions are not decoration either: SQLite's `ADD COLUMN` fills existing rows with
+     * the column default, and a migration written with `NOT NULL DEFAULT 0` would silently mark
+     * every pre-existing account as archived at the epoch.
+     */
+    @Test
+    fun migrate3To4_preservesAccountsAndAddsInstitutionAndArchivedAt() {
+        helper.createDatabase(TEST_DB, 3).use { db ->
+            db.execSQL(
+                "INSERT INTO account (id, profile_id, name, type, opening_balance_minor, " +
+                    "current_balance_minor, currency_code, created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('a1','p1','HDFC Savings','bank',18500000,18500000,'INR'," +
+                    "1767312000000,1767312000000)",
+            )
+            db.execSQL(
+                "INSERT INTO transactions (id, profile_id, account_id, amount_minor, " +
+                    "currency_code, occurred_at_utc_millis, booked_on_iso_date, source, " +
+                    "created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('t1','p1','a1',-12345678,'INR',1767312000000,'2026-01-02'," +
+                    "'manual',1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 4, true, Migrations.MIGRATION_3_4)
+
+        migrated.query(
+            "SELECT opening_balance_minor, institution, archived_at_utc_millis " +
+                "FROM account WHERE id = 'a1'",
+        ).use { cursor ->
+            assertTrue("the pre-migration account must still be there", cursor.moveToFirst())
+            assertEquals("MNY-001: the opening balance must survive byte for byte", 18500000L, cursor.getLong(0))
+            assertTrue("institution must arrive NULL on an existing row", cursor.isNull(1))
+            assertTrue("an existing account must not come back archived", cursor.isNull(2))
+        }
+        migrated.query("SELECT amount_minor FROM transactions WHERE id = 't1'").use { cursor ->
+            assertTrue("the account's transaction must survive too", cursor.moveToFirst())
+            assertEquals(-12345678L, cursor.getLong(0))
+        }
+
+        // Both new columns must be usable, not merely present.
+        migrated.execSQL(
+            "UPDATE account SET institution = 'HDFC Bank', archived_at_utc_millis = 1767312000000 " +
+                "WHERE id = 'a1'",
+        )
+        migrated.query("SELECT institution, archived_at_utc_millis FROM account WHERE id = 'a1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("HDFC Bank", cursor.getString(0))
+            assertEquals(1767312000000L, cursor.getLong(1))
         }
         migrated.close()
     }

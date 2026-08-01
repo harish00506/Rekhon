@@ -31,4 +31,19 @@ sealed interface CfoRoute {
     /** The transaction list (issue 3.6). Present here to prove cross-feature navigation works. */
     @Serializable
     data object Transactions : CfoRoute
+
+    /** The accounts list (issue 2.5; FR-ACC-001). */
+    @Serializable
+    data object Accounts : CfoRoute
+
+    /**
+     * Create or edit one account (issue 2.5).
+     *
+     * **The first route in this app to carry an argument**, and the shape this file's header
+     * describes: a `data class` with a typed property, not a string template. [accountId] is `null`
+     * when creating, which is what lets one destination serve both — and being nullable is checked
+     * by the compiler here rather than parsed out of a path at runtime.
+     */
+    @Serializable
+    data class AccountEditor(val accountId: String? = null) : CfoRoute
 }

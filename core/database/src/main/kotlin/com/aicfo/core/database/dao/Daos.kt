@@ -1,6 +1,8 @@
 package com.aicfo.core.database.dao
 
+import androidx.room.ColumnInfo
 import androidx.room.Dao
+import androidx.room.Embedded
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
@@ -62,7 +64,26 @@ interface ProfileDao {
     suspend fun findById(id: String): ProfileEntity?
 }
 
-/** Reads and writes accounts. */
+/**
+ * An account row together with the net movement of its live transactions (issue 2.5; DB-001).
+ *
+ * Why:  DB-001 — "current_balance is derivable from opening balance + transactions and is verified
+ *       by a nightly integrity job". This is the derivation, done in SQL rather than by loading a
+ *       year of transactions into memory to add them up. Keeping the sum beside the row it belongs
+ *       to means the repository does one arithmetic step, [movementMinor] plus the opening balance,
+ *       and never has to match two lists up by id.
+ * Result: everything one [Account] needs, in one row.
+ * Changelog: 2026-07-28 — Created for issue 2.5.
+ *
+ * Input:  [account] — the row; [movementMinor] — MNY-001 paise, signed, `0` for an account with no
+ *         transactions. Output: an immutable value.
+ */
+data class AccountWithBalance(
+    @Embedded val account: AccountEntity,
+    @ColumnInfo(name = "movement_minor") val movementMinor: Long,
+)
+
+/** Reads and writes accounts (issue 1.6; extended by issue 2.5 for FR-ACC-001 and FR-ACC-007). */
 @Dao
 interface AccountDao {
     /** Inserts an account, replacing one with the same id. Input: [account]. Output: none. */
@@ -85,12 +106,98 @@ interface AccountDao {
     fun observeForProfile(profileId: String): Flow<List<AccountEntity>>
 
     /**
+     * Observes a profile's accounts with their derived balances (issue 2.5; DB-001, FR-ACC-007).
+     *
+     * Why:    the query the accounts screen and the net-worth engine (issue 2.6) actually want.
+     *         Three decisions are load-bearing:
+     *
+     *         **A correlated subquery, not a `JOIN … GROUP BY`.** A join drops any account with no
+     *         transactions unless it is a `LEFT JOIN` with a `GROUP BY` on every selected column —
+     *         and a brand-new account, the one the user just created, has no transactions. The
+     *         subquery cannot drop a row because it is evaluated per row.
+     *
+     *         **The sum filters `deleted_at_utc_millis IS NULL`.** A soft-deleted transaction must
+     *         not count towards a balance; leaving this out is the bug that makes a deleted expense
+     *         keep suppressing the total.
+     *
+     *         **`archived_at_utc_millis` is filtered separately from `deleted_at_utc_millis`.**
+     *         FR-ACC-007 wants a closed account excluded from *active* totals while its history
+     *         survives, which is a different question from whether the row was deleted.
+     * Result: emits on every change to `account` **or** `transactions`, name-ordered. Each row's
+     *         balance is `opening_balance_minor + movement_minor`.
+     * Input:  [profileId]; [includeArchived] — `false` for active totals, `true` for the full list.
+     * Output: `Flow<List<AccountWithBalance>>`.
+     * Changelog: 2026-07-28 — Created for issue 2.5.
+     */
+    @Query(
+        "SELECT a.*, COALESCE((" +
+            "SELECT SUM(t.amount_minor) FROM transactions t " +
+            "WHERE t.account_id = a.id AND t.deleted_at_utc_millis IS NULL" +
+            "), 0) AS movement_minor " +
+            "FROM account a " +
+            "WHERE a.profile_id = :profileId AND a.deleted_at_utc_millis IS NULL " +
+            "AND (:includeArchived OR a.archived_at_utc_millis IS NULL) " +
+            "ORDER BY a.name",
+    )
+    fun observeWithBalances(
+        profileId: String,
+        includeArchived: Boolean,
+    ): Flow<List<AccountWithBalance>>
+
+    /**
+     * Fetches one account with its derived balance (issue 2.5).
+     * Why:    the editor loads the account it is about to change, and it must show the same balance
+     *         the list showed — so it uses the same derivation rather than reading the cached
+     *         column (DB-001). Archived accounts are found too: editing is how a user un-archives.
+     * Result: the row, or `null` if it does not exist or was soft-deleted.
+     * Input:  [id]. Output: `AccountWithBalance?`.
+     */
+    @Query(
+        "SELECT a.*, COALESCE((" +
+            "SELECT SUM(t.amount_minor) FROM transactions t " +
+            "WHERE t.account_id = a.id AND t.deleted_at_utc_millis IS NULL" +
+            "), 0) AS movement_minor " +
+            "FROM account a WHERE a.id = :id AND a.deleted_at_utc_millis IS NULL",
+    )
+    suspend fun findWithBalance(id: String): AccountWithBalance?
+
+    /**
+     * Archives or restores an account (issue 2.5; FR-ACC-007).
+     * Why:    a single nullable column rather than an `is_archived` flag plus a date, so the two
+     *         can never disagree about whether the account is closed.
+     * Result: the account leaves the active list, keeping every transaction it ever had. `0` when
+     *         the id names nothing live, which is how the caller tells "archived" from "no such
+     *         account".
+     * Input:  [id]; [archivedAtUtcMillis] — from the injected `Clock` (TIM-001), or `null` to
+     *         restore; [updatedAtUtcMillis]. Output: rows affected.
+     */
+    @Query(
+        "UPDATE account SET archived_at_utc_millis = :archivedAtUtcMillis, " +
+            "updated_at_utc_millis = :updatedAtUtcMillis " +
+            "WHERE id = :id AND deleted_at_utc_millis IS NULL",
+    )
+    suspend fun setArchivedAt(
+        id: String,
+        archivedAtUtcMillis: Long?,
+        updatedAtUtcMillis: Long,
+    ): Int
+
+    /**
      * Marks an account deleted without removing the row.
      * Why:    DB-003 and recoverability — the row stays so history and any future sync can still
      *         see that it existed.
-     * Result: the account disappears from reads. Input: [id], [deletedAtUtcMillis]. Output: rows affected.
+     *
+     *         **`AND deleted_at_utc_millis IS NULL` matters** (added by issue 2.5): without it a
+     *         second delete of the same id reports one row affected and the caller has no way to
+     *         tell it apart from the first. That is the bug where a user taps Delete twice and the
+     *         app confirms something that never happened.
+     * Result: the account disappears from reads; `0` when it was already gone.
+     * Input:  [id], [deletedAtUtcMillis]. Output: rows affected.
      */
-    @Query("UPDATE account SET deleted_at_utc_millis = :deletedAtUtcMillis WHERE id = :id")
+    @Query(
+        "UPDATE account SET deleted_at_utc_millis = :deletedAtUtcMillis " +
+            "WHERE id = :id AND deleted_at_utc_millis IS NULL",
+    )
     suspend fun softDelete(
         id: String,
         deletedAtUtcMillis: Long,
@@ -244,6 +351,35 @@ interface RecurringRuleDao {
             "AND deleted_at_utc_millis IS NULL ORDER BY next_due_iso_date, id",
     )
     fun observeForProfile(profileId: String): Flow<List<RecurringRuleEntity>>
+
+    /**
+     * Points a profile's unattached rules of one source at an account (issue 2.5; FR-ONB-001).
+     *
+     * Why:    issue 2.3 wrote the quick-setup rules with no account, because none existed yet. This
+     *         attaches the account onboarding's new fourth step creates.
+     *
+     *         **Three conditions, and each excludes a rule that is not this call's to touch.**
+     *         `account_id IS NULL` leaves alone anything the user already attached by hand;
+     *         `source = :source` leaves alone the rules issue 3.7 will detect from the transaction
+     *         stream; `deleted_at_utc_millis IS NULL` leaves alone tombstones, which must not be
+     *         quietly edited back into a state they never had.
+     * Result: the rules start naming an account. `0` when there were none, which is the normal
+     *         outcome for a user who skipped quick setup — not an error.
+     * Input:  [profileId]; [accountId]; [source] — the provenance code to match, e.g. `quick_setup`;
+     *         [updatedAtUtcMillis] — from the injected `Clock` (TIM-001). Output: rows affected.
+     */
+    @Query(
+        "UPDATE recurring_rule SET account_id = :accountId, " +
+            "updated_at_utc_millis = :updatedAtUtcMillis " +
+            "WHERE profile_id = :profileId AND account_id IS NULL AND source = :source " +
+            "AND deleted_at_utc_millis IS NULL",
+    )
+    suspend fun attachAccountToUnattached(
+        profileId: String,
+        accountId: String,
+        source: String,
+        updatedAtUtcMillis: Long,
+    ): Int
 
     /**
      * Marks a recurring rule deleted without removing the row.

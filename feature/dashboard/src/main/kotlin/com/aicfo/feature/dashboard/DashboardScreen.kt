@@ -35,13 +35,14 @@ import com.aicfo.core.designsystem.theme.CfoTheme
  *
  * The figures are placeholders until issues 5.1/5.2; the structure is not.
  *
- * Input:  [onNavigateToTransactions] — where the transactions action goes; [modifier];
+ * Input:  [onNavigateToTransactions], [onNavigateToAccounts] — where each action goes; [modifier];
  *         [viewModel] — supplied by Hilt, overridable in tests.
  * Output: the rendered screen.
  */
 @Composable
 fun DashboardScreen(
     onNavigateToTransactions: () -> Unit,
+    onNavigateToAccounts: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
@@ -52,6 +53,7 @@ fun DashboardScreen(
         uiState = uiState,
         onEvent = viewModel::onEvent,
         onNavigateToTransactions = onNavigateToTransactions,
+        onNavigateToAccounts = onNavigateToAccounts,
         modifier = modifier,
     )
 }
@@ -61,7 +63,8 @@ fun DashboardScreen(
  * Why:    stateless, so a preview or a screenshot test can render any state — including loading and
  *         error — without constructing a ViewModel.
  * Result: the rendered content.
- * Input:  [uiState]; [onEvent] — events up (ARC-004); [onNavigateToTransactions]; [modifier].
+ * Input:  [uiState]; [onEvent] — events up (ARC-004); [onNavigateToTransactions];
+ *         [onNavigateToAccounts]; [modifier].
  * Output: the composition.
  * Changelog: 2026-07-25 — Created for issue 1.10.
  */
@@ -70,6 +73,7 @@ fun DashboardContent(
     uiState: DashboardUiState,
     onEvent: (DashboardEvent) -> Unit,
     onNavigateToTransactions: () -> Unit,
+    onNavigateToAccounts: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -90,6 +94,10 @@ fun DashboardContent(
         MoneySummary(uiState)
         SpendSplitSection(uiState)
 
+        CfoSecondaryButton(
+            text = stringResource(R.string.dashboard_accounts_action),
+            onClick = onNavigateToAccounts,
+        )
         CfoSecondaryButton(
             text = stringResource(R.string.dashboard_transactions_action),
             onClick = onNavigateToTransactions,

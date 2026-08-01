@@ -67,6 +67,7 @@ include(":ml:ocr")              // ML Kit Text Recognition v2
 include(":ml:llm")              // on-device LLM behind LlmEngine
 
 // :feature:*               Compose screens + ViewModels (never depend on each other)
+include(":feature:accounts")    // FR-ACC-001/007 — CRUD for all eleven account types
 include(":feature:dashboard")
 include(":feature:onboarding")
 include(":feature:transactions")

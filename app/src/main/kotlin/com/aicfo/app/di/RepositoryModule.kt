@@ -2,8 +2,10 @@ package com.aicfo.app.di
 
 import com.aicfo.core.common.Clock
 import com.aicfo.core.common.DispatcherProvider
+import com.aicfo.core.common.IdGenerator
 import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.datastore.SettingsStore
+import com.aicfo.data.repository.AccountRepository
 import com.aicfo.data.repository.DemoModeRepository
 import com.aicfo.data.repository.QuickSetupRepository
 import com.aicfo.data.repository.RepositoryFactory
@@ -69,4 +71,23 @@ object RepositoryModule {
         clock: Clock,
         dispatchers: DispatcherProvider,
     ): DemoModeRepository = RepositoryFactory.demoMode(database, settingsStore, clock, dispatchers)
+
+    /**
+     * The accounts store (issue 2.5; FR-ACC-001, FR-ACC-007).
+     * Why:    takes its active profile from [DemoModeRepository] for the same reason quick setup
+     *         does — the accounts list must show the demo's four sample accounts while a demo is
+     *         loaded, and the user's own the moment it is left, without the screen knowing either.
+     * Result: an [AccountRepository]. Input: [database], [clock], [ids] — the injected id source
+     *         (P-08), [dispatchers], [demoMode]. Output: the repository.
+     * Changelog: 2026-07-28 — Created for issue 2.5.
+     */
+    @Provides
+    @Singleton
+    fun provideAccountRepository(
+        database: CfoDatabase,
+        clock: Clock,
+        ids: IdGenerator,
+        dispatchers: DispatcherProvider,
+        demoMode: DemoModeRepository,
+    ): AccountRepository = RepositoryFactory.accounts(database, clock, ids, dispatchers, demoMode.activeProfileId)
 }

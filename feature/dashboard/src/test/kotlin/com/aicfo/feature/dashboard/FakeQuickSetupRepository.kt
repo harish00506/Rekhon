@@ -50,6 +50,18 @@ internal class FakeQuickSetupRepository : QuickSetupRepository {
     override fun observeLatestEnvelopes(profileId: String): Flow<List<BudgetEnvelope>> = envelopes
 
     /**
+     * The rule-attaching write (issue 2.5).
+     * Why:    the dashboard never calls it — this exists only to satisfy the interface, and it
+     *         returns `Ok` rather than throwing so a future dashboard change that did reach it
+     *         would fail in a test that says what it wanted, not in this fake.
+     * Result: `Ok(Unit)`. Input: [profileId], [accountId] — both ignored. Output: the result.
+     */
+    override suspend fun attachAccountToSeededRules(
+        profileId: String,
+        accountId: String,
+    ): Result<Unit, AppError> = Ok(Unit)
+
+    /**
      * Publishes a complete budget.
      * Result: collectors see three envelopes. Input: the three amounts in paise. Output: none.
      */

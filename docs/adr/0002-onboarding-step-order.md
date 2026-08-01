@@ -88,6 +88,21 @@ consumption needs no migration.
 > step 4 (first account with opening balance) still waits on issue 2.5, which is also what will
 > attach an account to the recurring rules 2.3 leaves unattached.
 
+> **Update, 2026-08-01 — this ADR is now closed.** Issue 2.5 has inserted the `ACCOUNT` step last,
+> after `QUICK_SETUP`, exactly where this record said it would go, and skippable in the same way
+> (leaving the name blank writes no account). It also attaches that account to the recurring rules
+> 2.3 left with a null `account_id`. **FR-ONB-001 is satisfied**: all four of its steps exist, and
+> the flow is six steps because FR-ONB-003's consent and FR-ONB-002's quick setup were added
+> alongside them.
+>
+> One consequence of appending a step was not anticipated here and is worth recording: quick setup
+> **was** the last step, so its "Skip for now" action and "finish without seeds" were the same
+> thing, expressed as `isLast`. Adding a step after it would silently have moved Skip onto the
+> account step. Issue 2.5 split the two — `OnboardingStep.isSkippable` names the two optional steps
+> explicitly, and the skip decision is remembered in state rather than implied by position. Anything
+> inserted after `ACCOUNT` (issue 4.x's categories step is the likely next one) inherits that
+> correctly.
+
 ## Alternatives considered
 
 **Build FR-ONB-001 literally, with steps 3 and 4 as placeholders.** Rejected: two of four steps

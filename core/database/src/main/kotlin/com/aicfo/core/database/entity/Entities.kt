@@ -61,12 +61,14 @@ data class ProfileEntity(
 )
 
 /**
- * A place money sits: bank, cash, wallet, card, loan or investment.
+ * A place money sits — one of the eleven types FR-ACC-001 names.
  * Why:    balances are the input to net worth and Safe-to-Spend, so the amount columns are the
  *         first place MNY-001 has to hold.
  * Result: a Room row in `account`, scoped to one profile.
  * Input:  see the constructor. Output: a Room row.
  * Changelog: 2026-07-25 — Created for issue 1.6.
+ *            2026-07-28 — Issue 2.5: `institution` and `archived_at_utc_millis` added at schema
+ *            version 4; the type list moved to `AccountType`, which is now its only definition.
  */
 @Entity(
     tableName = "account",
@@ -80,16 +82,44 @@ data class AccountEntity(
     val profileId: String,
     @ColumnInfo(name = "name")
     val name: String,
-    /** `bank` | `cash` | `wallet` | `card` | `loan` | `investment`. A string, so a new type is not a migration. */
+    /**
+     * An `AccountType.storedValue` (`:core:model`) — the §20.2 vocabulary, e.g. `credit_card`.
+     *
+     * A plain string with no CHECK constraint, so **a new type is not a migration**; the enum is
+     * what keeps a typo from becoming a row every query silently misses. Issue 1.6's doc comment
+     * listed six types including `wallet`, which is in no SRS list; issue 2.5 replaced that guess
+     * with the enum and dropped `wallet`.
+     */
     @ColumnInfo(name = "type")
     val type: String,
     /** MNY-001: paise, never a floating-point rupee value. */
     @ColumnInfo(name = "opening_balance_minor")
     val openingBalanceMinor: Long,
+    /**
+     * MNY-001: paise. **A cache, not the truth (DB-001).**
+     *
+     * The current balance "is derivable from opening balance + transactions" and is "never mutated
+     * ad hoc", so every read derives it — see `AccountDao.observeWithBalances`. This column stays
+     * for the nightly integrity job DB-001 describes, which compares the two and raises an
+     * adjustment prompt when they disagree (FR-ACC-006, issue 2.7). Recorded in ADR-0007.
+     */
     @ColumnInfo(name = "current_balance_minor")
     val currentBalanceMinor: Long,
     @ColumnInfo(name = "currency_code")
     val currencyCode: String,
+    /** The bank, issuer or custodian. Free text and optional — cash has none (issue 2.5). */
+    @ColumnInfo(name = "institution")
+    val institution: String? = null,
+    /**
+     * FR-ACC-007: when the user retired this account, or null while it is active.
+     *
+     * **Distinct from [deletedAtUtcMillis] on purpose.** A deleted account is a mistake being
+     * undone; an archived one is a real account the user closed, and FR-ACC-007 requires its
+     * history to survive while it drops out of active totals. Conflating them would lose a closed
+     * card's transactions from every past month.
+     */
+    @ColumnInfo(name = "archived_at_utc_millis")
+    val archivedAtUtcMillis: Long? = null,
     @ColumnInfo(name = "created_at_utc_millis")
     val createdAtUtcMillis: Long,
     @ColumnInfo(name = "updated_at_utc_millis")

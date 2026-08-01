@@ -14,6 +14,9 @@ import com.aicfo.core.datastore.OnboardingProfile
 import com.aicfo.core.datastore.SettingsSnapshot
 import com.aicfo.core.datastore.SettingsStore
 import com.aicfo.core.datastore.ThemeSetting
+import com.aicfo.core.model.Account
+import com.aicfo.data.repository.AccountDraft
+import com.aicfo.data.repository.AccountRepository
 import com.aicfo.data.repository.DemoModeRepository
 import com.aicfo.data.repository.ProfileSeed
 import com.aicfo.data.repository.QuickSetupRepository
@@ -217,6 +220,82 @@ internal class FakeQuickSetupRepository(
      */
     override fun observeLatestEnvelopes(profileId: String): Flow<List<BudgetEnvelope>> =
         flowOf(savedPlan?.envelopes.orEmpty())
+
+    /** The account id the seeded rules were pointed at, or `null` if they never were (issue 2.5). */
+    var attachedAccountId: String? = null
+        private set
+
+    override suspend fun attachAccountToSeededRules(
+        profileId: String,
+        accountId: String,
+    ): Result<Unit, AppError> {
+        failWith?.let { return Err(it) }
+        attachedAccountId = accountId
+        return Ok(Unit)
+    }
+}
+
+/**
+ * An [AccountRepository] that records what onboarding created (issue 2.5; FR-ONB-001 step 4).
+ *
+ * Why:    the assertions that matter are about **absence** as much as presence — a user who skips
+ *         the step must leave [createdDrafts] empty, and that is a claim only a recording fake can
+ *         make. Reading it back through a real database would prove the same thing far more slowly
+ *         and would drag Room into a ViewModel test.
+ * Result: the drafts created, plus an injectable failure.
+ * Input:  [failWith] — when non-null, `create` returns `Err` with it. Output: a fake repository.
+ * Changelog: 2026-07-28 — Created for issue 2.5.
+ */
+internal class FakeAccountRepository(
+    var failWith: AppError? = null,
+) : AccountRepository {
+    private val accounts = MutableStateFlow<List<Account>>(emptyList())
+
+    /** Every draft handed to [create], in order. Empty when the step was skipped. */
+    val createdDrafts: MutableList<AccountDraft> = mutableListOf()
+
+    override fun observeAccounts(includeArchived: Boolean): Flow<List<Account>> = accounts
+
+    override fun observeAccounts(
+        profileId: String,
+        includeArchived: Boolean,
+    ): Flow<List<Account>> = accounts
+
+    override suspend fun find(id: String): Result<Account, AppError> =
+        accounts.value.firstOrNull { it.id == id }?.let { Ok(it) } ?: Err(AppError.NotFound)
+
+    override suspend fun create(draft: AccountDraft): Result<Account, AppError> {
+        failWith?.let { return Err(it) }
+        createdDrafts += draft
+        val account =
+            Account(
+                id = "account:${createdDrafts.size}",
+                profileId = QuickSetupRepository.DEFAULT_PROFILE_ID,
+                name = draft.name,
+                type = draft.type,
+                institution = draft.institution,
+                openingBalance = draft.openingBalance,
+                // No transactions exist in a ViewModel test, so the derived balance is the opening
+                // one — the same thing the real repository returns from `create`.
+                balance = draft.openingBalance,
+                currencyCode = draft.currencyCode,
+                isArchived = false,
+            )
+        accounts.value = accounts.value + account
+        return Ok(account)
+    }
+
+    override suspend fun update(
+        id: String,
+        draft: AccountDraft,
+    ): Result<Account, AppError> = Err(AppError.NotFound)
+
+    override suspend fun setArchived(
+        id: String,
+        archived: Boolean,
+    ): Result<Unit, AppError> = Ok(Unit)
+
+    override suspend fun delete(id: String): Result<Unit, AppError> = Ok(Unit)
 }
 
 /**

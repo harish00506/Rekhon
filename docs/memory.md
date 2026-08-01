@@ -17,13 +17,22 @@
 
 ## Current state
 
-- **Version:** `0.2.4` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (Epic 2 under way).
-- **Currently working file:** none — issue 2.4 is **shipped**: committed on
-  `feature/2-4-demo-mode-with-sample-data` and merged `--no-ff` into `dev`. Push skipped (no remote).
-- **In progress:** nothing. Last built: **Epic 2 · issue 2.4** — demo mode
-  ([2.4](issues/2.4-demo-mode-with-sample-data.md) ·
-  [tracker](issues/2.4-demo-mode-with-sample-data-tracker.md)). **386 unit tests + 8 instrumented,
+- **Version:** `0.2.5` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (Epic 2 under way).
+- **Currently working file:** none — issue 2.5 is implemented and verified on
+  `feature/2-5-accounts-crud-all-types`, **not yet committed or merged**.
+- **In progress:** nothing. Last built: **Epic 2 · issue 2.5** — accounts CRUD
+  ([2.5](issues/2.5-accounts-crud-all-types.md) ·
+  [tracker](issues/2.5-accounts-crud-all-types-tracker.md)). **510 unit tests + 9 instrumented,
   all green.**
+- **FR-ONB-001 is finally satisfied.** Its fourth step — "add first account with opening balance" —
+  landed in 2.5, three ADR-0002 updates after that record first deferred it. The ADR is now closed. Onboarding is six
+  steps, and **the skip action is no longer `isLast`**: quick setup used to be last, so Skip and
+  Finish were the same thing; anything inserted after `ACCOUNT` must keep using
+  `OnboardingStep.isSkippable` instead.
+- **`gen_issue_docs.py` used to destroy every tracker on every run**, and 2.5 found it by running
+  it: fourteen completed verification logs blanked to "not started" in one command, recoverable only
+  because they were committed. It now writes a tracker **only when one does not already exist**.
+  If you need to reset one, delete the file first.
 - **Count tests correctly.** Earlier figures here (2.3's "536") were inflated: summing every
   `**/build/test-results/**/*.xml` picks up `testReleaseUnitTest` output as well as
   `testDebugUnitTest`, counting each test twice and mixing in stale results from previous runs.
@@ -32,24 +41,31 @@
   (`~/AppData/Local/Android/Sdk/platform-tools`) and an AVD named `CfoTest` *does* exist; the earlier
   claim here was stale. The app has now been built, installed and driven on a device for the first
   time: onboarding → demo → banner → exit, and the same flow again in airplane mode. **Run
-  `emulator -avd CfoTest` and use the gate — do not log it as blocked.** Instrumented tests: 8/8, but
-  **scope the command** — `connectedDebugAndroidTest` project-wide instruments every module and burns
+  `emulator -avd CfoTest` and use the gate — do not log it as blocked.** Instrumented tests: 9/9 as of
+  2.5, but **scope the command** — `connectedDebugAndroidTest` project-wide instruments every module and burns
   ~5 min each on the many with no `androidTest` sources; only `:core:database` and
   `:feature:onboarding` have any.
 - **Two long-unproven paths are now proven** (side effect of 2.4's emulator run): the **v1→v2 and
   v2→v3 Room migrations** ran against real SQLite and preserved their rows, and **SEC-002's Keystore
   PIN round trip** executed on a real TEE. Both had previously only ever been exercised by JVM
   stand-ins.
-- **Next up:** **2.5** (accounts CRUD) — it inserts the last deferred onboarding step (position fixed
-  by [ADR-0002](adr/0002-onboarding-step-order.md)) and is what finally attaches an account to the
-  recurring rules 2.3 leaves with a null `account_id`. Then **2.6** (net worth), which is the first
-  engine that will find the demo's four accounts and ~84 transactions already waiting for it.
+- **Next up:** **2.6** (net worth = assets − liabilities + daily snapshot). Everything it needs now
+  exists: real accounts with derived balances, a liability that carries its sign, and the demo's four
+  sample accounts to compute over. It owns the asset/liability mapping, which 2.5 deliberately did
+  **not** model — the sign on the balance is all that carries it today. Then **2.7**
+  (reconciliation), which is also what builds DB-001's nightly integrity job and so is what finally
+  gives `account.current_balance_minor` a reader.
 - **Still the largest gap:** CI has never run — there is no git remote, so every green is a local
   green on one Windows machine. **Second:** nothing in the app loads `ai/` yet, so the first engine's
   thresholds are Kotlin constants guarded by a drift test rather than rulebook rows — a deliberate,
   recorded deferral of CLAUDE.md §6
   ([ADR-0005](adr/0005-quick-setup-thresholds-deferred-rulebook-loader.md)) with a named trigger.
-- **Practice worth keeping:** 2.3 and 2.4 both made every new gate fail on purpose before trusting
+- **A gate that could not be made to bite, recorded as such.** 2.5 found a layout defect on the
+  device (a `Row` squeezed the Delete button to 10px) and could not reproduce it in Robolectric at
+  any screen width — its text measurement is a stub. The regression test is kept as a smoke check
+  and is **explicitly not claimed as a gate**, in the test and in the tracker. Prefer that over a
+  green test nobody has seen fail.
+- **Practice worth keeping:** 2.3, 2.4 and 2.5 all made every new gate fail on purpose before trusting
   it (2.4: a one-digit seed change to red the golden dataset test; one hard delete swapped for a soft
   delete to red the residue test). This project has shipped a vacuous gate before — audit G-01, a
   `koverVerify` green at 0% coverage — so "the gate passed" is not evidence until the gate has been
@@ -78,6 +94,13 @@
 - **Epic 2 — issue 2.1 (v0.2.1, 2026-07-25):** the 4-step first-run onboarding. First screen that
   writes; closes the "nothing sets the profile time zone" seam from Epic 1 and gives the consent
   ledger its first caller.
+- **Epic 2 — issue 2.5 (v0.2.5, 2026-08-01):** accounts CRUD (FR-ACC-001, FR-ACC-007). All eleven
+  SRS account types behind an `AccountType` enum (the old six included a `wallet` the SRS never had,
+  and the demo was writing a `card` nothing would match); balances **derived** from transactions
+  rather than stored ([ADR-0007](adr/0007-account-balances-derived-not-stored.md), DB-001); archive
+  kept distinct from soft delete; schema **v4** and the first migration that alters an existing
+  table. Also the app's **first typed route with an argument**, and **FR-ONB-001's last step**, which
+  closes [ADR-0002](adr/0002-onboarding-step-order.md).
 - **Epic 2 — issue 2.4 (v0.2.4, 2026-07-28):** demo mode (FR-ONB-004). A deterministic, seeded
   three-month sample dataset under an isolated `demo` profile, labelled by one banner above the nav
   graph and erased by hard delete on the way out

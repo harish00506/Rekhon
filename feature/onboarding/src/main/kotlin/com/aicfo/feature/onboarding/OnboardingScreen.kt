@@ -97,6 +97,7 @@ fun OnboardingContent(
             OnboardingStep.PROFILE -> ProfileStep(uiState = uiState, onEvent = onEvent)
             OnboardingStep.SECURITY -> SecurityStep(uiState = uiState, onEvent = onEvent)
             OnboardingStep.QUICK_SETUP -> QuickSetupStep(uiState = uiState, onEvent = onEvent)
+            OnboardingStep.ACCOUNT -> AccountStep(uiState = uiState, onEvent = onEvent)
         }
         StepActions(uiState = uiState, onEvent = onEvent)
     }
@@ -138,7 +139,7 @@ private fun ErrorBanner(
 }
 
 /**
- * Back, Next/Finish, and Skip on the optional step.
+ * Back, Next/Finish, and Skip on the optional steps.
  * Why:    one place decides what the primary action means, so "Next" cannot appear on the last step
  *         or "Finish" on the first. Everything is disabled while a save is in flight, because a
  *         second Finish tap would attempt a second write.
@@ -166,7 +167,10 @@ private fun StepActions(
             enabled = !uiState.isSaving,
         )
     }
-    if (uiState.step.isLast) {
+    // Both optional steps offer it (issue 2.5). Before 2.5 quick setup *was* the last step, so
+    // `isLast` happened to name the only skippable one; it no longer does, and using it here would
+    // have silently moved Skip off quick setup and onto the account step.
+    if (uiState.step.isSkippable) {
         CfoSecondaryButton(
             text = stringResource(R.string.onboarding_skip),
             onClick = { onEvent(OnboardingEvent.SkipQuickSetup) },

@@ -2,6 +2,7 @@ package com.aicfo.data.repository
 
 import com.aicfo.core.common.Clock
 import com.aicfo.core.common.DispatcherProvider
+import com.aicfo.core.common.IdGenerator
 import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.datastore.SettingsStore
 import kotlinx.coroutines.flow.Flow
@@ -64,4 +65,21 @@ object RepositoryFactory {
         clock: Clock,
         dispatchers: DispatcherProvider,
     ): DemoModeRepository = RoomDemoModeRepository(database, settingsStore, clock, dispatchers)
+
+    /**
+     * Builds the accounts store (issue 2.5, FR-ACC-001).
+     * Result: an [AccountRepository] over the encrypted database.
+     * Input:  [database]; [clock] — TIM-001; [ids] — mints account ids from an injected source
+     *         rather than `UUID.randomUUID()`, so the write stays reproducible in a test (P-08);
+     *         [dispatchers]; [activeProfileId] — which profile the no-argument reads and every
+     *         write resolve to, so the accounts list follows the demo without knowing it exists.
+     * Output: [AccountRepository].
+     */
+    fun accounts(
+        database: CfoDatabase,
+        clock: Clock,
+        ids: IdGenerator,
+        dispatchers: DispatcherProvider,
+        activeProfileId: Flow<String>,
+    ): AccountRepository = RoomAccountRepository(database, clock, ids, dispatchers, activeProfileId)
 }
