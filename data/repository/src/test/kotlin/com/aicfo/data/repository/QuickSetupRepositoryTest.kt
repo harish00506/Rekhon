@@ -14,6 +14,7 @@ import com.aicfo.domain.engines.quicksetup.QuickSetupInput
 import com.aicfo.domain.engines.quicksetup.QuickSetupPlan
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -69,6 +70,9 @@ class QuickSetupRepositoryTest {
                 database = database,
                 clock = clock,
                 dispatchers = TestDispatchers(UnconfinedTestDispatcher()),
+                // Fixed at the real profile: these tests are about the write and the SQL, not about
+                // demo mode. `DemoModeRepositoryTest` is what proves the switch (issue 2.4).
+                activeProfileId = flowOf(QuickSetupRepository.DEFAULT_PROFILE_ID),
             )
     }
 

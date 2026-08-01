@@ -257,6 +257,81 @@ interface RecurringRuleDao {
 }
 
 /**
+ * Erases one profile's rows outright — the demo wipe, and nothing else (issue 2.4; FR-ONB-004).
+ *
+ * Why:  **this is the one DAO in the app that hard-deletes, and that is deliberate.** Every other
+ *       query here sets `deleted_at_utc_millis` instead, because a user's own row must stay
+ *       recoverable and visible to a future sync. Demo rows have neither property: they were
+ *       fabricated by the app, nobody can want them back, and issue 2.4's acceptance criterion is
+ *       that exiting the demo leaves **no residue** — a tombstone is residue. Recorded in
+ *       `docs/adr/0006-demo-mode-profile-isolation-and-hard-delete.md`.
+ * What: one `DELETE` per profile-scoped table, plus the profile row itself.
+ * Result: once every query here has run for a profile id, [countRowsFor] returns `0`.
+ * Changelog: 2026-07-28 — Created for issue 2.4.
+ *
+ * **Every query is scoped by `profile_id` and takes it as a parameter** — there is no
+ * "delete everything" here. That is what keeps the real profile safe from a mistyped call: the
+ * worst a bug can do is erase the profile it was handed, and the only id ever handed to it is the
+ * demo one.
+ *
+ * **`audit_log` is not touched.** It has no `profile_id` — the app lock gates the whole app before
+ * any profile is chosen — and it is append-only by design (see [AuditLogDao]). Security events are
+ * not the demo's to erase.
+ */
+@Dao
+interface DemoDao {
+    /** Result: rows removed from `budget`. Input: [profileId]. Output: the count. */
+    @Query("DELETE FROM budget WHERE profile_id = :profileId")
+    suspend fun deleteBudgets(profileId: String): Int
+
+    /** Result: rows removed from `recurring_rule`. Input: [profileId]. Output: the count. */
+    @Query("DELETE FROM recurring_rule WHERE profile_id = :profileId")
+    suspend fun deleteRecurringRules(profileId: String): Int
+
+    /** Result: rows removed from `transactions`. Input: [profileId]. Output: the count. */
+    @Query("DELETE FROM transactions WHERE profile_id = :profileId")
+    suspend fun deleteTransactions(profileId: String): Int
+
+    /** Result: rows removed from `category`. Input: [profileId]. Output: the count. */
+    @Query("DELETE FROM category WHERE profile_id = :profileId")
+    suspend fun deleteCategories(profileId: String): Int
+
+    /** Result: rows removed from `account`. Input: [profileId]. Output: the count. */
+    @Query("DELETE FROM account WHERE profile_id = :profileId")
+    suspend fun deleteAccounts(profileId: String): Int
+
+    /**
+     * Removes the profile row itself.
+     * Why:    called **last**, after everything scoped to it — deleting the parent first would leave
+     *         orphans behind if the caller failed mid-way, which is exactly the residue this exists
+     *         to prevent.
+     * Result: rows removed from `profile`. Input: [profileId]. Output: the count.
+     */
+    @Query("DELETE FROM profile WHERE id = :profileId")
+    suspend fun deleteProfile(profileId: String): Int
+
+    /**
+     * Counts every row still carrying a profile id, across every table above.
+     * Why:    "no residue" has to be *assertable*, not asserted table by table in a test that a new
+     *         table would silently fall out of. This is the one query that answers it, and adding a
+     *         profile-scoped table means adding a term here — which the reviewer will see.
+     *         Deliberately **not** filtered by `deleted_at_utc_millis`: a soft-deleted row is
+     *         precisely the residue being looked for, so it must count.
+     * Result: `0` once the profile has been erased.
+     * Input:  [profileId]. Output: the total row count across all six tables.
+     */
+    @Query(
+        "SELECT (SELECT COUNT(*) FROM profile WHERE id = :profileId) + " +
+            "(SELECT COUNT(*) FROM account WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM transactions WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM category WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM budget WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM recurring_rule WHERE profile_id = :profileId)",
+    )
+    suspend fun countRowsFor(profileId: String): Int
+}
+
+/**
  * Appends and reads security events (issue 2.2; §21.6, ARC-005).
  *
  * Append-only by design: there is no update and no delete. A security log a caller can rewrite is

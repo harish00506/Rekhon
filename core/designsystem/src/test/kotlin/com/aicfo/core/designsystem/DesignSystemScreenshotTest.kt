@@ -16,6 +16,7 @@ import com.aicfo.core.designsystem.chart.CfoSparkline
 import com.aicfo.core.designsystem.component.CfoAmountText
 import com.aicfo.core.designsystem.component.CfoButton
 import com.aicfo.core.designsystem.component.CfoCard
+import com.aicfo.core.designsystem.component.CfoDemoBanner
 import com.aicfo.core.designsystem.component.CfoListRow
 import com.aicfo.core.designsystem.component.CfoPinField
 import com.aicfo.core.designsystem.component.CfoSecondaryButton
@@ -37,6 +38,7 @@ import org.junit.Test
  * Result: a visual diff fails the build when a token or layout changes unintentionally.
  * Changelog: 2026-07-25 — Created for issue 1.8 (closes governance audit G-02).
  *            2026-07-26 — Issue 2.2: CfoPinField joins the gallery.
+ *            2026-07-28 — Issue 2.4: CfoDemoBanner joins the gallery.
  *
  * Record baselines with `./gradlew :core:designsystem:recordPaparazziDebug`; verify with
  * `verifyPaparazziDebug`. Baselines are committed — a screenshot test with no committed baseline
@@ -99,6 +101,14 @@ class DesignSystemScreenshotTest {
                     CfoPinField(value = "1357", onValueChange = {}, label = "PIN")
                     CfoButton(text = "Add transaction", onClick = {})
                     CfoSecondaryButton(text = "Skip", onClick = {})
+                    // Issue 2.4: the demo label. In the gallery because its whole job is to be
+                    // unmistakable — whether it still reads that way in dark mode and at 200% font
+                    // is a question only a render can answer.
+                    CfoDemoBanner(
+                        message = "Demo data — not your money",
+                        actionText = "Exit demo",
+                        onExit = {},
+                    )
                 }
             }
         }

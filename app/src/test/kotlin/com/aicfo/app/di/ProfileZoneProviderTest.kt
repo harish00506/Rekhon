@@ -168,6 +168,7 @@ class ProfileZoneProviderTest {
  * Why:    only `observe()` matters here; the writers would be noise.
  * Changelog: 2026-07-25 — Created for issue 1.10.
  *            2026-07-25 — Issue 2.1 added `completeOnboarding` to the interface.
+ *            2026-07-28 — Issue 2.4 added `setDemoModeActive` to the interface.
  */
 private class FakeSettingsStore(
     private val flow: Flow<Result<SettingsSnapshot, AppError>>,
@@ -183,4 +184,6 @@ private class FakeSettingsStore(
     override suspend fun setTheme(theme: ThemeSetting): Result<Unit, AppError> = Ok(Unit)
 
     override suspend fun completeOnboarding(profile: OnboardingProfile): Result<Unit, AppError> = Ok(Unit)
+
+    override suspend fun setDemoModeActive(active: Boolean): Result<Unit, AppError> = Ok(Unit)
 }

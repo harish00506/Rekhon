@@ -27,6 +27,16 @@
     <string name="onboarding_welcome_pledge_title">Our privacy pledge</string>
     <string name="onboarding_welcome_pledge">Everything is stored encrypted on this device. Nothing about your money is sent anywhere unless you turn a feature on yourself, and you can turn it back off at any time. The app works fully offline.</string>
 
+    <!--
+      Demo mode (issue 2.4, FR-ONB-004). Offered on step 1, because the requirement is that the
+      sample data be reachable *without creating a profile* — an offer made after the questions is
+      one the user has already answered their way past. The body states what leaving does, since
+      "what will this leave on my phone?" is the question a privacy-first user asks first.
+    -->
+    <string name="onboarding_demo_title">Just want a look first?</string>
+    <string name="onboarding_demo_body">Explore the whole app on a sample household\'s finances — no setup, and nothing of yours entered. The sample data is clearly marked while you browse, and leaving the demo erases every bit of it.</string>
+    <string name="onboarding_demo_action">Explore with sample data</string>
+
     <!-- Step 2 — SMS parsing opt-in (FR-ONB-003, P-01) -->
     <string name="onboarding_consent_title">Read bank messages?</string>
     <string name="onboarding_consent_body">If you turn this on, the app reads transaction alerts from banks and UPI apps to fill in your spending automatically.</string>

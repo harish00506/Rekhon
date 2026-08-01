@@ -8,6 +8,13 @@
 <resources>
     <string name="app_name">AI Personal CFO</string>
 
+    <!--
+      Demo mode (issue 2.4, FR-ONB-004). The banner sits above the nav graph, so this copy is what
+      labels every screen in the app while the sample data is loaded.
+    -->
+    <string name="demo_banner_message">Sample data — none of this is yours</string>
+    <string name="demo_banner_exit">Exit demo</string>
+
     <!-- App lock (issue 2.2, SEC-002) -->
     <string name="lock_title">Locked</string>
     <string name="lock_body">Enter your PIN to open your finances.</string>

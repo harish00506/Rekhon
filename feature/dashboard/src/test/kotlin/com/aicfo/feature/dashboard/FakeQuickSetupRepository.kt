@@ -36,6 +36,17 @@ internal class FakeQuickSetupRepository : QuickSetupRepository {
         profile: ProfileSeed,
     ): Result<Unit, AppError> = Ok(Unit)
 
+    override fun observeLatestEnvelopes(): Flow<List<BudgetEnvelope>> = envelopes
+
+    /**
+     * The profile-scoped read.
+     * Why:    returns the same flow as the no-argument form, because the dashboard never calls this
+     *         one — it asks for "whatever profile is active" and the real repository resolves that
+     *         (issue 2.4). Answering identically keeps this fake from implying a distinction the
+     *         screen under test does not make.
+     * Result: the same envelopes. Input: [profileId] — ignored. Output: `Flow<List<BudgetEnvelope>>`.
+     * Changelog: 2026-07-28 — Issue 2.4: added alongside the no-argument overload.
+     */
     override fun observeLatestEnvelopes(profileId: String): Flow<List<BudgetEnvelope>> = envelopes
 
     /**

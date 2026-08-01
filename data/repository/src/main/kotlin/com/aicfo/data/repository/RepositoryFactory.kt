@@ -3,6 +3,8 @@ package com.aicfo.data.repository
 import com.aicfo.core.common.Clock
 import com.aicfo.core.common.DispatcherProvider
 import com.aicfo.core.database.CfoDatabase
+import com.aicfo.core.datastore.SettingsStore
+import kotlinx.coroutines.flow.Flow
 
 /**
  * Assembles the repositories for the DI graph (issue 2.2; ARC-003, ARC-005).
@@ -36,12 +38,30 @@ object RepositoryFactory {
      * Why:    takes the whole [database] rather than DAOs, because its atomicity guarantee rests on
      *         `withTransaction`, which is a method on the database.
      * Result: a [QuickSetupRepository] over the encrypted database.
-     * Input:  [database] — the open, encrypted database; [clock] — TIM-001; [dispatchers].
+     * Input:  [database] — the open, encrypted database; [clock] — TIM-001; [dispatchers];
+     *         [activeProfileId] — which profile the no-argument reads resolve to, so the dashboard
+     *         follows the demo without knowing demo mode exists (issue 2.4).
      * Output: [QuickSetupRepository].
      */
     fun quickSetup(
         database: CfoDatabase,
         clock: Clock,
         dispatchers: DispatcherProvider,
-    ): QuickSetupRepository = RoomQuickSetupRepository(database, clock, dispatchers)
+        activeProfileId: Flow<String>,
+    ): QuickSetupRepository = RoomQuickSetupRepository(database, clock, dispatchers, activeProfileId)
+
+    /**
+     * Builds the demo-mode store (issue 2.4, FR-ONB-004).
+     * Why:    takes the whole [database] for the same reason quick setup does — both transitions are
+     *         all-or-nothing, and `withTransaction` is a method on the database.
+     * Result: a [DemoModeRepository] over the encrypted database.
+     * Input:  [database]; [settingsStore] — holds the demo flag; [clock] — TIM-001; [dispatchers].
+     * Output: [DemoModeRepository].
+     */
+    fun demoMode(
+        database: CfoDatabase,
+        settingsStore: SettingsStore,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+    ): DemoModeRepository = RoomDemoModeRepository(database, settingsStore, clock, dispatchers)
 }

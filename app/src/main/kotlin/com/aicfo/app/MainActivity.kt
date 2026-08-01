@@ -4,16 +4,22 @@ import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.compose.rememberNavController
 import com.aicfo.app.lock.AppLockGate
 import com.aicfo.app.navigation.CfoNavHost
+import com.aicfo.app.navigation.CfoRoute
+import com.aicfo.core.designsystem.component.CfoDemoBanner
 import com.aicfo.core.designsystem.theme.CfoTheme
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -32,6 +38,7 @@ import dagger.hilt.android.AndroidEntryPoint
  *            onboarding rather than an empty dashboard.
  *            2026-07-26 — Issue 2.2: became a `FragmentActivity` and the graph moved inside
  *            [AppLockGate].
+ *            2026-07-28 — Issue 2.4: the graph moved inside [AppContent], which labels it as a demo.
  *
  * `enableEdgeToEdge()` before `setContent`, with the `Scaffold`'s insets applied to the content —
  * drawing under the system bars without consuming their insets is how content ends up hidden
@@ -66,11 +73,57 @@ class MainActivity : FragmentActivity() {
                             // disk read of one small file, so it is a frame or two, not a splash.
                             val viewModel: MainViewModel = hiltViewModel()
                             val startDestination by viewModel.startDestination.collectAsStateWithLifecycle()
-                            startDestination?.let { CfoNavHost(startDestination = it) }
+                            startDestination?.let { AppContent(it, viewModel) }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/**
+ * The navigation graph, with the demo label above it (issue 2.4; FR-ONB-004, P-02).
+ *
+ * Why:  **the banner wraps the graph rather than living inside a screen**, which is the same
+ *       argument [AppLockGate] makes one level up: a per-screen label is one forgotten screen away
+ *       from showing a user fabricated figures with nothing saying so. Composed here, no destination
+ *       — existing, added later, or reached by a deep link — can render without it.
+ *
+ *       The `NavController` is created here rather than inside [CfoNavHost] because the exit action
+ *       has to navigate: leaving the demo returns to onboarding, and a controller owned by the graph
+ *       would be out of reach of the banner sitting above it.
+ * What: a column of the banner (when active) and the graph.
+ * Result: the app is unmistakable as a demo while one is loaded, and one tap from leaving it.
+ * Changelog: 2026-07-28 — Created for issue 2.4.
+ *
+ * Input:  [startDestination] — decided by [MainViewModel]; [viewModel] — supplies the demo flag and
+ *         the wipe. Output: the rendered app.
+ */
+@Composable
+private fun AppContent(
+    startDestination: CfoRoute,
+    viewModel: MainViewModel,
+) {
+    val navController = rememberNavController()
+    val isDemoActive by viewModel.isDemoActive.collectAsStateWithLifecycle()
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        if (isDemoActive) {
+            CfoDemoBanner(
+                message = stringResource(R.string.demo_banner_message),
+                actionText = stringResource(R.string.demo_banner_exit),
+                onExit = {
+                    viewModel.exitDemo()
+                    // inclusive, so the dashboard the demo filled cannot be reached with Back. The
+                    // user is returning to a flow they never completed, and the app must look to
+                    // them exactly as it did before they tapped into the demo.
+                    navController.navigate(CfoRoute.Onboarding) {
+                        popUpTo<CfoRoute.Dashboard> { inclusive = true }
+                    }
+                },
+            )
+        }
+        CfoNavHost(startDestination = startDestination, navController = navController)
     }
 }

@@ -11,6 +11,57 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > First-run onboarding, the biometric app lock, and the accounts + net-worth core. Epic 1 built
 > foundations; this is the first epic a user can see.
 
+### [0.2.4] — Issue 2.4: Demo mode with sample data  (2026-07-28)
+
+- **Implemented:** the app can be explored on realistic sample data before any real figure is
+  entered — clearly marked throughout, and erased without residue on the way out (**FR-ONB-004**;
+  MNY-001, TIM-001, TIM-002, P-01, P-02, P-03, P-04, P-08).
+  - **Reachable without creating a profile**, which is what FR-ONB-004 actually asks for. The offer
+    sits on the *first* onboarding step, and taking it writes no time zone, no currency, no display
+    name, no consent decision and no completion flag — only a `demo_mode_active` setting. A user who
+    leaves the demo lands back on first-run onboarding rather than on an empty dashboard belonging to
+    a profile they never made. Asserted, not assumed: `starting the demo creates no profile`.
+  - **Isolated by profile id, erased by hard delete** ([ADR-0006](docs/adr/0006-demo-mode-profile-isolation-and-hard-delete.md)).
+    Sample rows live under a second `demo` profile in the same encrypted database, so the
+    per-profile scoping every query already has *is* the isolation. `DemoDao` is the one DAO in the
+    app that deletes outright — a soft-delete tombstone would be exactly the residue the acceptance
+    criterion forbids. **No schema change:** a DAO adds queries, not tables, so the database stays at
+    version 3.
+  - **A deterministic, seeded dataset.** Three months of an Indian salaried household — 4 accounts,
+    12 categories, ~29 transactions a month, 3 budget envelopes, 2 recurring rules — from a fixed
+    backbone of obligations plus discretionary spending jittered by a seeded `Random` (P-08). Fixed
+    clock plus fixed seed gives byte-identical rows, which is what makes the golden test possible.
+    Every account's closing balance is derived as opening + its own transactions, so the demo adds up.
+  - **The demo's budget is computed, not typed** (P-03). It comes from the real `QuickSetupEngine`,
+    so the sample dashboard carries the same `RULE-…` citations a real user's does.
+  - **One banner labels every screen.** `CfoDemoBanner` is composed above the navigation graph, not
+    inside a destination — a per-screen label is one forgotten screen away from showing fabricated
+    figures with nothing saying so. It carries the exit action and is announced as a live region.
+  - **Readers follow the active profile automatically**: `observeLatestEnvelopes()` resolves it from
+    `DemoModeRepository`, so the dashboard swaps to the sample budget and back without importing
+    demo mode at all — and every reader added later inherits that.
+- **Also fixed:** `OnboardingFlowInstrumentedTest` **had not compiled since issue 2.3** — the
+  ViewModel's constructor changed under it and nothing noticed, because `androidTest` is only
+  compiled when a device is attached. Repaired and now verified running.
+- **Refactored:** `OnboardingWriter` extracts the consent + profile writes (and the order they must
+  happen in) out of `OnboardingViewModel`; `RepositoryModule` splits the `:data:repository` bindings
+  out of `CoreModule`. Both were detekt limits reached, fixed by splitting along real seams rather
+  than by raising a threshold.
+- **Tests:** 386 unit passed (35 new), 8 instrumented passed, 0 skipped. **Counting basis, because
+  earlier entries got this wrong:** each test once. A project-wide `testDebugUnitTest` also leaves
+  `testReleaseUnitTest` results on disk from previous runs, and naively summing every
+  `test-results/**` XML double-counts them — which is where the inflated figures in earlier
+  changelog entries and `docs/memory.md` came from. Both new gates were **proven to fail before
+  being trusted** —
+  the golden dataset test reddened on a one-digit seed change, and the residue test reddened when one
+  hard delete was swapped for a soft delete.
+- **First emulator run in the project's history.** The app was built, installed and driven on an
+  Android emulator: onboarding → demo → banner + sample budget → exit → back to onboarding, with the
+  same flow repeated in **airplane mode** (P-04). The instrumented suite passes **8/8** on the
+  device, which incidentally executed two paths that had never run anywhere: the **v1→v2 and v2→v3
+  Room migrations** against real SQLite (DB-003 was previously taken on trust), and **SEC-002's
+  Keystore PIN round trip** (every JVM test of it uses a fake `Mac`).
+
 ### [0.2.3] — Issue 2.3: Quick-setup seeds (income/rent/savings)  (2026-07-27)
 
 - **Implemented:** the quick-setup step now *does* something. The three figures onboarding has been

@@ -18,6 +18,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import com.aicfo.core.designsystem.component.CfoCard
 import com.aicfo.core.designsystem.component.CfoListRow
 import com.aicfo.core.designsystem.component.CfoPinField
+import com.aicfo.core.designsystem.component.CfoSecondaryButton
 
 /*
  * The four faces of the onboarding flow (issue 2.1; FR-ONB-001/002/003).
@@ -32,14 +33,23 @@ import com.aicfo.core.designsystem.component.CfoPinField
  */
 
 /**
- * Step 1 — welcome and the privacy pledge (FR-ONB-001).
+ * Step 1 — welcome, the privacy pledge, and the way into the demo (FR-ONB-001, FR-ONB-004).
  * Why:    the pledge is shown before anything is asked for, because P-01 is the product's premise
  *         and a promise made after the questions is not a promise.
- * Result: the composition. Input: none. Output: the rendered step.
+ *
+ *         The demo entry sits **here, on the first step**, for the same reason: FR-ONB-004 says the
+ *         sample data must be available *without creating a profile*, and an escape hatch placed
+ *         after the questions is one the user has already answered their way past. It is a secondary
+ *         button because setting the app up for real is still the main path.
+ * Result: the composition. Input: [uiState], [onEvent]. Output: the rendered step.
  * Changelog: 2026-07-25 — Created for issue 2.1.
+ *            2026-07-28 — Issue 2.4: the demo entry point.
  */
 @Composable
-internal fun WelcomeStep() {
+internal fun WelcomeStep(
+    uiState: OnboardingUiState,
+    onEvent: (OnboardingEvent) -> Unit,
+) {
     Text(text = stringResource(R.string.onboarding_welcome_title), style = MaterialTheme.typography.headlineSmall)
     Text(text = stringResource(R.string.onboarding_welcome_body))
     CfoCard {
@@ -48,6 +58,20 @@ internal fun WelcomeStep() {
             style = MaterialTheme.typography.titleMedium,
         )
         Text(text = stringResource(R.string.onboarding_welcome_pledge))
+    }
+    CfoCard {
+        Text(
+            text = stringResource(R.string.onboarding_demo_title),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        // Says what the demo is *and* that leaving it erases everything, because the question a
+        // privacy-first user asks before tapping is "what does this leave behind?" (P-02).
+        Text(text = stringResource(R.string.onboarding_demo_body))
+        CfoSecondaryButton(
+            text = stringResource(R.string.onboarding_demo_action),
+            onClick = { onEvent(OnboardingEvent.StartDemo) },
+            enabled = !uiState.isSaving,
+        )
     }
 }
 

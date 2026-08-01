@@ -42,6 +42,7 @@ import com.aicfo.core.designsystem.theme.CfoTheme
 @Composable
 fun OnboardingScreen(
     onFinished: () -> Unit,
+    onDemoStarted: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: OnboardingViewModel = hiltViewModel(),
 ) {
@@ -51,6 +52,12 @@ fun OnboardingScreen(
     // profile was never written.
     LaunchedEffect(uiState.isComplete) {
         if (uiState.isComplete) onFinished()
+    }
+    // A second effect rather than a branch inside the first: the two outcomes are different
+    // destinations in the graph's eyes (issue 2.4 — a demo user has no profile and must be able to
+    // come back to this flow), and one keyed on two flags would re-fire on the wrong one.
+    LaunchedEffect(uiState.isDemoStarted) {
+        if (uiState.isDemoStarted) onDemoStarted()
     }
     OnboardingContent(uiState = uiState, onEvent = viewModel::onEvent, modifier = modifier)
 }
@@ -85,7 +92,7 @@ fun OnboardingContent(
         )
         uiState.errorCode?.let { code -> ErrorBanner(code = code, onEvent = onEvent) }
         when (uiState.step) {
-            OnboardingStep.WELCOME -> WelcomeStep()
+            OnboardingStep.WELCOME -> WelcomeStep(uiState = uiState, onEvent = onEvent)
             OnboardingStep.CONSENT -> ConsentStep(uiState = uiState, onEvent = onEvent)
             OnboardingStep.PROFILE -> ProfileStep(uiState = uiState, onEvent = onEvent)
             OnboardingStep.SECURITY -> SecurityStep(uiState = uiState, onEvent = onEvent)

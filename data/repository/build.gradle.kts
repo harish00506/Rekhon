@@ -19,6 +19,9 @@ dependencies {
     api(project(":core:model"))
     api(project(":core:common"))
     implementation(project(":core:database"))
+    // Issue 2.4: demo mode's on/off flag is a setting, and settings live in Proto DataStore
+    // (§21.3, SharedPreferences banned). data → core is the allowed direction (ARC-001).
+    implementation(project(":core:datastore"))
     implementation(project(":domain:usecase"))
 
     // api: QuickSetupPlan and BudgetEnvelope appear on QuickSetupRepository's public surface, so

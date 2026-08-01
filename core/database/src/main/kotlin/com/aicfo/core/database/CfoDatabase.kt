@@ -6,6 +6,7 @@ import com.aicfo.core.database.dao.AccountDao
 import com.aicfo.core.database.dao.AuditLogDao
 import com.aicfo.core.database.dao.BudgetDao
 import com.aicfo.core.database.dao.CategoryDao
+import com.aicfo.core.database.dao.DemoDao
 import com.aicfo.core.database.dao.ProfileDao
 import com.aicfo.core.database.dao.RecurringRuleDao
 import com.aicfo.core.database.dao.TransactionDao
@@ -70,6 +71,14 @@ abstract class CfoDatabase : RoomDatabase() {
 
     /** Input: none. Output: the recurring-rule DAO (issue 2.3, FR-TXN-006). */
     abstract fun recurringRuleDao(): RecurringRuleDao
+
+    /**
+     * Input:  none. Output: the demo wipe DAO (issue 2.4, FR-ONB-004).
+     *
+     * Adding it needed **no schema change** — a DAO is a set of queries over tables that already
+     * exist, and Room's exported schema describes tables, not queries. [VERSION] stays at 3.
+     */
+    abstract fun demoDao(): DemoDao
 
     companion object {
         /** Bump only alongside a hand-written migration and a test that proves data survives. */

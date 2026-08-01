@@ -60,6 +60,10 @@ class OnboardingFlowTest {
     private val pinVerifier = FakePinVerifier()
     private val clock = FakeClock(initialZone = ZoneId.of("Asia/Kolkata"))
     private var finishedCount = 0
+    private val demoMode = FakeDemoModeRepository()
+
+    /** How many times the screen asked to leave for the demo (issue 2.4). */
+    private var demoStartedCount = 0
 
     private val context: Context get() = ApplicationProvider.getApplicationContext()
 
@@ -89,10 +93,10 @@ class OnboardingFlowTest {
     ) {
         val viewModel =
             OnboardingViewModel(
-                settings,
-                consents,
+                OnboardingWriter(settings, consents),
                 AppLockSetup(pinVerifier, appLock),
                 QuickSetupCoordinator(QuickSetupEngineFactory.create(), FakeQuickSetupRepository(), clock),
+                demoMode,
                 clock,
                 SavedStateHandle(),
             )
@@ -104,7 +108,11 @@ class OnboardingFlowTest {
                 CfoTheme(darkTheme = darkTheme) {
                     // The real screen, given the real ViewModel — so its collect and its
                     // navigate-on-success effect are under test too, not reimplemented here.
-                    OnboardingScreen(onFinished = { finishedCount++ }, viewModel = viewModel)
+                    OnboardingScreen(
+                        onFinished = { finishedCount++ },
+                        onDemoStarted = { demoStartedCount++ },
+                        viewModel = viewModel,
+                    )
                 }
             }
         }
@@ -356,6 +364,28 @@ class OnboardingFlowTest {
             text(R.string.onboarding_quick_setup_summary_obligations, "80.0%") + " " +
                 text(R.string.onboarding_quick_setup_summary_obligations_fail),
         ).assertIsDisplayed()
+    }
+
+    /**
+     * Input:  the welcome step, then a tap on the demo action (issue 2.4, FR-ONB-004).
+     * Output: asserts the offer is on screen at the very first step — the requirement is that the
+     *         sample data be reachable *without creating a profile*, so an offer buried behind the
+     *         questions would not satisfy it — and that tapping loads the data and leaves the flow
+     *         **without writing a profile**.
+     */
+    @Test
+    fun `the welcome step offers the demo and entering it writes no profile`() {
+        compose.showFlow()
+
+        compose.onNodeWithText(text(R.string.onboarding_demo_title)).assertIsDisplayed()
+        node(text(R.string.onboarding_demo_action)).performClick()
+        // The seed is asynchronous and the navigation hangs off a LaunchedEffect on its result.
+        compose.waitForIdle()
+
+        assertEquals(1, demoMode.enterCallCount)
+        assertEquals(1, demoStartedCount)
+        assertEquals("the demo must not complete onboarding", 0, settings.completeCallCount)
+        assertEquals("and must not navigate as though it had", 0, finishedCount)
     }
 
     /**

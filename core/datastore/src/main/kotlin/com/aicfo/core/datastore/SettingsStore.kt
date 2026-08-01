@@ -82,6 +82,21 @@ interface SettingsStore {
      * Input:  [profile] — the captured answers. Output: `Result<Unit, AppError>`.
      */
     suspend fun completeOnboarding(profile: OnboardingProfile): Result<Unit, AppError>
+
+    /**
+     * Turns demo mode on or off (issue 2.4; FR-ONB-004).
+     *
+     * Why:    a setter of its own rather than a field on [completeOnboarding], because demo mode is
+     *         the one path that must write **nothing else**. FR-ONB-004 says the sample data is
+     *         available "without creating a profile", so entering the demo may not set a time zone,
+     *         a currency, a display name or the completion flag — a demo user who exits must land
+     *         back on first-run onboarding, not on an empty dashboard belonging to a profile they
+     *         never made.
+     * Result: `Ok(Unit)` — after which `SettingsSnapshot.demoModeActive` reflects [active] — or
+     *         `Err(Storage)` with nothing written.
+     * Input:  [active] — whether the sample dataset is being shown. Output: `Result<Unit, AppError>`.
+     */
+    suspend fun setDemoModeActive(active: Boolean): Result<Unit, AppError>
 }
 
 /**
@@ -149,6 +164,9 @@ internal class DataStoreSettingsStore(
                 .setOnboardingCompletedAtUtcMillis(clock.nowUtcMillis())
         }
 
+    override suspend fun setDemoModeActive(active: Boolean): Result<Unit, AppError> =
+        update { it.setDemoModeActive(active) }
+
     /**
      * Applies one field change atomically.
      * Result: `Ok(Unit)` or `Err(Storage)` — nothing throws across the boundary (§21.6).
@@ -185,6 +203,7 @@ internal fun CfoSettingsProto.toSnapshot(): SettingsSnapshot =
         profileDisplayName = profileDisplayName.takeIf { it.isNotEmpty() },
         // An unset int64 reads as 0, which here means "onboarding never finished".
         onboardingCompletedAtUtcMillis = onboardingCompletedAtUtcMillis.takeIf { it > 0L },
+        demoModeActive = demoModeActive,
         quickSetup =
             QuickSetupSeeds(
                 monthlyIncome = quickSetupMonthlyIncomeMinor.toSeed(),

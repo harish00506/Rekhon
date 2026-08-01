@@ -74,4 +74,14 @@ message CfoSettingsProto {
   // stolen phone would try. They are cleared on every successful unlock.
   int32 failed_unlock_attempts = 14;
   int64 last_failed_unlock_at_utc_millis = 15;
+
+  // --- Demo mode (issue 2.4; FR-ONB-004) ---
+
+  // Whether the app is currently showing the sample dataset instead of the user's own data.
+  //
+  // On disk rather than in memory because the user can background the app mid-demo, and coming back
+  // to real-looking fake money with no banner is the one outcome this feature must never produce.
+  // Deliberately NOT paired with a timestamp, unlike onboarding and consent: nothing ever needs to
+  // answer "when did the demo start?", and a demo profile is destroyed on exit anyway.
+  bool demo_mode_active = 16;
 }

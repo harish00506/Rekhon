@@ -73,6 +73,8 @@ enum class ThemeSetting {
  *         onboarding finishes; this is what decides the app's start destination.
  *         [quickSetup] — the optional FR-ONB-002 seeds. The app lock's state is **not** here — it
  *         lives behind its own narrow `AppLockStore` (issue 2.2), for the same reason consents do.
+ *         [demoModeActive] — whether the app is showing the sample dataset (issue 2.4, FR-ONB-004);
+ *         **independent of [isOnboarded]**, because the demo is reachable without a profile.
  * Output: an immutable value.
  */
 data class SettingsSnapshot(
@@ -83,6 +85,7 @@ data class SettingsSnapshot(
     val profileDisplayName: String? = null,
     val onboardingCompletedAtUtcMillis: Long? = null,
     val quickSetup: QuickSetupSeeds = QuickSetupSeeds(),
+    val demoModeActive: Boolean = false,
 ) {
     /**
      * Whether first-run onboarding has been completed.

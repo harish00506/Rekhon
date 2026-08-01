@@ -9,12 +9,10 @@ import com.aicfo.core.common.Err
 import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
 import com.aicfo.core.common.flatMap
-import com.aicfo.core.datastore.ConsentFeature
-import com.aicfo.core.datastore.ConsentStore
 import com.aicfo.core.datastore.OnboardingProfile
 import com.aicfo.core.datastore.QuickSetupSeeds
-import com.aicfo.core.datastore.SettingsStore
 import com.aicfo.core.model.MoneyFormatter
+import com.aicfo.data.repository.DemoModeRepository
 import com.aicfo.data.repository.ProfileSeed
 import com.aicfo.domain.engines.quicksetup.QuickSetupPlan
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -33,21 +31,25 @@ import javax.inject.Inject
  *       behind, so every in-flight answer lives in [SavedStateHandle] instead. And the write itself
  *       is one atomic call, because a profile saved without its time zone would leave every date in
  *       the app resolving in the wrong zone (TIM-001) with nothing left to ask again.
- * What: exposes [uiState] and handles [OnboardingEvent]s, ending in one
- *       `SettingsStore.completeOnboarding` call plus the consent decision.
+ * What: exposes [uiState] and handles [OnboardingEvent]s, ending in one [OnboardingWriter] call
+ *       that applies the consent decision and completes onboarding together.
  * Result: a flow whose every state — including a failed save — is reachable in a unit test.
  * Changelog: 2026-07-25 — Created for issue 2.1.
  *            2026-07-26 — Issue 2.2: the SECURITY step ADR-0002 reserved for it.
  *            2026-07-27 — Issue 2.3: the quick-setup seeds are derived live and persisted at Finish.
+ *            2026-07-28 — Issue 2.4: the demo-mode escape hatch, which writes nothing this class does.
  *
  * Nothing here touches the network, and both stores are local: the whole flow works in airplane
  * mode (P-04).
  *
- * Input:  [settingsStore] — where the profile lands; [consentStore] — the P-01 ledger;
+ * Input:  [writer] — the consent decision and the profile, written in the order they must be
+ *         (issue 2.4, extracted from here);
  *         [appLockSetup] — the SEC-002 security step, which owns the order its two writes
  *         must happen in (issue 2.2);
  *         [quickSetup] — derives the budget from the seeds and persists it, so this class parses no
  *         amount and computes no figure of its own (P-03, issue 2.3);
+ *         [demoMode] — loads the sample dataset for the FR-ONB-004 escape hatch, which deliberately
+ *         bypasses every write this class otherwise makes (issue 2.4);
  *         [clock] — supplies the profile zone and the instants, so this never reads
  *         `ZoneId.systemDefault()` or the wall clock itself (TIM-001); [savedState] — survives
  *         process death.
@@ -57,10 +59,10 @@ import javax.inject.Inject
 class OnboardingViewModel
     @Inject
     constructor(
-        private val settingsStore: SettingsStore,
-        private val consentStore: ConsentStore,
+        private val writer: OnboardingWriter,
         private val appLockSetup: AppLockSetup,
         private val quickSetup: QuickSetupCoordinator,
+        private val demoMode: DemoModeRepository,
         private val clock: Clock,
         private val savedState: SavedStateHandle,
     ) : ViewModel() {
@@ -75,16 +77,6 @@ class OnboardingViewModel
         val uiState: StateFlow<OnboardingUiState> = _uiState.asStateFlow()
 
         /**
-         * Whether this session has already written a consent grant.
-         *
-         * Why:  it lets a user who opts in, hits a failed save, then changes their mind be honoured
-         *       exactly. Revoking unconditionally instead would stamp a withdrawal date on a
-         *       consent that was never given — a false entry in a ledger whose whole purpose is
-         *       being able to answer "since when?" truthfully (P-01).
-         */
-        private var consentGrantWritten = false
-
-        /**
          * Handles something the user did.
          * Why:    one entry point, so the sealed interface's exhaustiveness guarantees no
          *         interaction is silently unhandled.
@@ -96,6 +88,7 @@ class OnboardingViewModel
                 OnboardingEvent.Next -> advance()
                 OnboardingEvent.Back -> moveBy(-1)
                 OnboardingEvent.SkipQuickSetup -> finish(withSeeds = false)
+                OnboardingEvent.StartDemo -> startDemo()
                 OnboardingEvent.DismissError -> updateState { it.copy(errorCode = null) }
                 is OnboardingEvent.Answer -> applyAnswer(event)
             }
@@ -209,7 +202,9 @@ class OnboardingViewModel
          * Why:    the consent decision is written **before** the profile so that a failed profile
          *         save leaves nothing marked complete, and the user retries from a clean state. The
          *         profile write carries the completion flag, so it is deliberately last: whatever
-         *         fails, the app is never "onboarded" without a time zone.
+         *         fails, the app is never "onboarded" without a time zone. Both of those now live
+         *         inside [OnboardingWriter], which is the class that can actually guarantee the
+         *         order rather than merely describe it.
          *
          *         Issue 2.3 appends the seeds **after** that flag, and the ordering is the opposite
          *         trade on purpose. Both orders lose something if the second write fails: seeds
@@ -218,8 +213,15 @@ class OnboardingViewModel
          *         Flag first means the worst case is an onboarded user whose budget is missing —
          *         recoverable from Settings, and it leaves no orphan rows behind. The error is
          *         still surfaced either way.
-         * What:   applies the consent decision, then one atomic `completeOnboarding`, then the
-         *         quick-setup rows.
+         *
+         *         **The app lock moved to first in issue 2.4**, when the consent and profile writes
+         *         were extracted together. Nothing depended on it being second: its own internal
+         *         order (a PIN stored before the lock is switched on, issue 2.2) is what matters,
+         *         and that is `AppLockSetup`'s to keep. The worst case it introduces — a lock
+         *         enabled for an onboarding that then failed — leaves the user with a PIN they just
+         *         chose and were shown, not a locked-out app.
+         * What:   sets up the app lock, applies the consent decision and the profile as one ordered
+         *         pair, then writes the quick-setup rows.
          * Result: `isComplete` on success — the screen navigates on that. On failure, `errorCode`
          *         is set and `isComplete` stays false, because navigating away from a save that did
          *         not happen would strand the user on a dashboard with no profile.
@@ -233,9 +235,8 @@ class OnboardingViewModel
             updateState { it.copy(isSaving = true, errorCode = null) }
             viewModelScope.launch {
                 val outcome =
-                    applyConsentDecision(answers.smsConsentGranted)
-                        .flatMap { appLockSetup.apply(answers.appLockEnabled, answers.pinText) }
-                        .flatMap { settingsStore.completeOnboarding(answers.toProfile(withSeeds)) }
+                    appLockSetup.apply(answers.appLockEnabled, answers.pinText)
+                        .flatMap { writer.apply(answers.smsConsentGranted, answers.toProfile(withSeeds)) }
                         .flatMap { applyQuickSetup(answers, withSeeds) }
                 updateState { state ->
                     when (outcome) {
@@ -247,20 +248,33 @@ class OnboardingViewModel
         }
 
         /**
-         * Records the SMS-parsing decision (FR-ONB-003, P-01).
-         * Why:    a decision of "no" needs no write — absence already reads as not granted, and
-         *         writing one would be a revocation of something never granted. The exception is a
-         *         user who opted in, hit a failed save, and changed their mind before retrying;
-         *         [consentGrantWritten] is how that one case is honoured without inventing history.
-         * Result: `Ok(Unit)` when there was nothing to write or the write succeeded; `Err` otherwise.
-         * Input:  [granted] — the toggle's state. Output: `Result<Unit, AppError>`.
+         * Loads the sample dataset and leaves for the dashboard (issue 2.4; FR-ONB-004).
+         *
+         * Why:    **this writes no profile, and that is the requirement, not an optimisation.**
+         *         FR-ONB-004 says the demo is available "without creating a profile", so none of
+         *         what [finish] does happens here — no consent decision, no app lock, no
+         *         `completeOnboarding`. The user is exactly as un-onboarded afterwards as before,
+         *         which is what lets them come back to this flow when they leave the demo.
+         * What:   asks the repository to seed the demo profile and set the flag.
+         * Result: `isDemoStarted` on success, which the screen navigates on. On failure the error is
+         *         surfaced and the user stays on the welcome step, because sending them to a
+         *         dashboard whose sample data was never written would show an empty app labelled as
+         *         a demo.
+         * Input:  none. Output: none (launches on `viewModelScope`).
          */
-        private suspend fun applyConsentDecision(granted: Boolean): Result<Unit, AppError> =
-            when {
-                granted -> consentStore.grant(ConsentFeature.SMS_PARSING).also { consentGrantWritten = it is Ok }
-                consentGrantWritten -> consentStore.revoke(ConsentFeature.SMS_PARSING)
-                else -> Ok(Unit)
+        private fun startDemo() {
+            if (_uiState.value.isSaving) return
+            updateState { it.copy(isSaving = true, errorCode = null) }
+            viewModelScope.launch {
+                val outcome = demoMode.enter()
+                updateState { state ->
+                    when (outcome) {
+                        is Ok -> state.copy(isSaving = false, isDemoStarted = true)
+                        is Err -> state.copy(isSaving = false, errorCode = outcome.error.code)
+                    }
+                }
             }
+        }
 
         /**
          * Persists the quick-setup seeds as real rows (issue 2.3; FR-ONB-002).
