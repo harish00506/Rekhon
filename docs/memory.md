@@ -18,8 +18,9 @@
 ## Current state
 
 - **Version:** `0.2.6` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (Epic 2 under way).
-- **Currently working file:** none — issue 2.6 is implemented and verified on
-  `feature/2-6-net-worth-assets-liabilities-daily-snapshot`, **not yet committed or merged**.
+- **Currently working file:** none — issue 2.6 is **shipped**: committed on
+  `feature/2-6-net-worth-assets-liabilities-daily-snapshot` and merged `--no-ff` into `dev`. Push
+  skipped (no remote).
 - **In progress:** nothing. Last built: **Epic 2 · issue 2.6** — net worth
   ([2.6](issues/2.6-net-worth-assets-liabilities-daily-snapshot.md) ·
   [tracker](issues/2.6-net-worth-assets-liabilities-daily-snapshot-tracker.md)). **578 unit tests +
