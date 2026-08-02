@@ -26,6 +26,25 @@
     <string name="accounts_error_not_found">That account is no longer there.</string>
     <string name="accounts_error_generic">Something went wrong. Try again.</string>
 
+    <!-- Issue 2.7 (FR-ACC-006): reconciling an account against a real statement. The copy has to
+         carry P-02 — the user sees what the app holds, what they typed, and the rule between the
+         two — because the adjustment it posts is a permanent row in their history. -->
+    <string name="accounts_reconcile">Reconcile</string>
+    <string name="accounts_reconcile_title">Reconcile %1$s</string>
+    <string name="accounts_reconcile_app_balance">What the app has</string>
+    <string name="accounts_reconcile_statement">Balance on your statement</string>
+    <string name="accounts_reconcile_statement_help">Enter it exactly as your bank shows it. For a
+        card or a loan, enter what you owe as a negative amount.</string>
+    <string name="accounts_reconcile_adjustment">Adjustment</string>
+    <!-- The rule that fired, in plain language (P-02). Shown even when the delta is zero. -->
+    <string name="accounts_reconcile_rule">Adjustment = statement balance − app balance</string>
+    <string name="accounts_reconcile_explain">This adds one adjustment transaction. Nothing already
+        in your history is changed.</string>
+    <string name="accounts_reconcile_in_step">The app already matches your statement. Nothing will
+        be added.</string>
+    <string name="accounts_reconcile_confirm">Post adjustment</string>
+    <string name="accounts_reconcile_cancel">Cancel</string>
+
     <string name="account_editor_title_new">New account</string>
     <string name="account_editor_title_edit">Edit account</string>
     <string name="account_editor_name">Name</string>

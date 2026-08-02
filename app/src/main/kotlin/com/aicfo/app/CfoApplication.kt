@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import com.aicfo.app.di.ProfileZoneProvider
+import com.aicfo.app.work.BalanceIntegrityWorker
 import com.aicfo.app.work.NetWorthSnapshotWorker
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
@@ -44,14 +45,19 @@ class CfoApplication : Application(), Configuration.Provider {
         get() = Configuration.Builder().setWorkerFactory(workerFactory).build()
 
     /**
-     * Input:  none. Output: none (starts the profile-zone collector and schedules the daily job).
+     * Input:  none. Output: none (starts the profile-zone collector and schedules the daily jobs).
      *
-     * Scheduling on every launch is safe and deliberate: the request is enqueued as unique work with
-     * `KEEP`, so an existing job survives untouched and a user who has never had one gets it.
+     * Scheduling on every launch is safe and deliberate: each request is enqueued as unique work
+     * with `KEEP`, so an existing job survives untouched and a user who has never had one gets it.
+     *
+     * Changelog: 2026-08-02 — Issue 2.7 added the balance-integrity job beside the snapshot one.
+     *            They are independent and carry separate unique names; sharing one would mean only
+     *            whichever was enqueued first ever ran.
      */
     override fun onCreate() {
         super.onCreate()
         profileZoneProvider.start()
         NetWorthSnapshotWorker.schedule(this)
+        BalanceIntegrityWorker.schedule(this)
     }
 }

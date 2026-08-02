@@ -187,7 +187,15 @@ data class TransactionEntity(
     val merchant: String? = null,
     @ColumnInfo(name = "note")
     val note: String? = null,
-    /** `manual` | `ocr` | `sms` | `import`. Provenance, so the UI can show where a row came from (P-02). */
+    /**
+     * `manual` | `ocr` | `sms` | `import` | `reconciliation`. Provenance, so the UI can show where a
+     * row came from (P-02).
+     *
+     * `reconciliation` (issue 2.7, FR-ACC-006) marks an adjustment the app posted to close the gap
+     * between the derived balance and a statement the user typed. **On that row the source is the
+     * rule that fired** — nothing else about it says why it exists, and `note` is deliberately left
+     * null rather than holding an un-localised sentence repeating the amount in the column beside it.
+     */
     @ColumnInfo(name = "source")
     val source: String,
     @ColumnInfo(name = "created_at_utc_millis")

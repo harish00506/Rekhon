@@ -117,3 +117,45 @@ un-removed by issue 2.7.
 engine will ever handle, and "which of these two do I pick?" is a question no user should be asked.
 Nothing in the app had written it — the demo used `cash` for its cash wallet — so dropping it costs
 no data.
+
+---
+
+## Update — 2026-08-02, issue 2.7: the integrity job exists, and the *Bad* consequence is closed
+
+This ADR left one consequence open in as many words:
+
+> **The two figures can disagree**, and until issue 2.7 nothing notices. […] a future reader who
+> trusts the column will be reading a lie.
+
+Issue 2.7 built the job. `AccountDao.refreshCachedBalances` re-derives `current_balance_minor` for
+every live account in a profile in **one `UPDATE`**, using a subquery character-for-character
+identical to `observeWithBalances`'s. `BalanceIntegrityWorker` runs it daily. So the column is now
+either correct or corrected within a day, rather than stale by construction.
+
+Three details are worth recording because they are not obvious from the code:
+
+**The job repairs; it does not merely report.** Drift here was never a symptom of corruption — it
+was the guaranteed state of a column written once and never updated. A job that only flagged it
+would have flagged every account with transactions, every night, and meant nothing.
+
+**The row count is the drift count, and that took a `WHERE` clause.** The `UPDATE` ends with
+`AND current_balance_minor <> opening_balance_minor + COALESCE((…), 0)`. Without it the statement
+matches every row and "rows affected" is just the account count. With it, the figure is exactly how
+many caches were wrong, and nothing is written that was already right.
+
+**Reconciliation refreshes through the same query rather than asserting the answer.** `reconcile`
+knows the new balance — the user just stated it, and the adjustment it writes makes it true — so it
+could set the column directly. It does not: it runs the same profile-wide refresh inside the same
+transaction. Asserting the figure would be true by construction today and quietly wrong the moment
+anything about the derivation changed, and the whole point of this ADR is that there is exactly one
+definition of what a balance means.
+
+**What is still true:** nothing *reads* the column. Every balance the app shows is still derived
+(the *Good* consequences above are unchanged). The job's value is the invariant, not a screen — it
+is the precondition for switching the read path onto the cache if the per-account subquery ever
+stops being cheap enough, which is the *Bad* consequence about read cost, and that one remains open.
+
+**Alternatives reconsidered and still rejected.** "Maintain `current_balance_minor` on every
+transaction write" is still not done — nothing outside the demo dataset and this issue's adjustment
+writes a transaction yet (Epic 3 owns that). When it does, the maintenance becomes worth having, and
+now it would have a check: this job.

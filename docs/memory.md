@@ -17,14 +17,15 @@
 
 ## Current state
 
-- **Version:** `0.2.6` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (Epic 2 under way).
-- **Currently working file:** none — issue 2.6 is **shipped**: committed on
-  `feature/2-6-net-worth-assets-liabilities-daily-snapshot` and merged `--no-ff` into `dev`. Push
-  skipped (no remote).
-- **In progress:** nothing. Last built: **Epic 2 · issue 2.6** — net worth
-  ([2.6](issues/2.6-net-worth-assets-liabilities-daily-snapshot.md) ·
-  [tracker](issues/2.6-net-worth-assets-liabilities-daily-snapshot-tracker.md)). **578 unit tests +
-  10 instrumented, all green.**
+- **Version:** `0.2.7` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (**Epic 2 complete**).
+- **Currently working file:** none — issue 2.7 is **shipped**: committed on
+  `feature/2-7-account-reconciliation-flow` and merged `--no-ff` into `dev`. Push skipped (no remote).
+- **In progress:** nothing. Last built: **Epic 2 · issue 2.7** — account reconciliation + DB-001's
+  integrity job ([2.7](issues/2.7-account-reconciliation-flow.md) ·
+  [tracker](issues/2.7-account-reconciliation-flow-tracker.md)). **622 unit tests, all green.**
+- **Epic 2 is done.** Onboarding, the app lock, accounts, net worth and reconciliation all ship.
+  **Next is Epic 3 — transactions**, which finally gives the `transactions` table a real writer;
+  reconciliation is currently the only thing outside the demo dataset that writes one.
 - **Run `./gradlew unitTests`. Never `testDebugUnitTest`.** The latter is an Android *variant* task,
   so it skips the pure-Kotlin modules (`:core:model`, `:core:common`, `:domain:engines:*`) **and
   never reached `:lint` at all** — whose fourteen tests are the only thing checking the five custom
@@ -67,12 +68,28 @@
   v2→v3 Room migrations** ran against real SQLite and preserved their rows, and **SEC-002's Keystore
   PIN round trip** executed on a real TEE. Both had previously only ever been exercised by JVM
   stand-ins.
-- **Next up:** **2.7** (account reconciliation, FR-ACC-006) — the last issue in Epic 2. It builds
-  DB-001's integrity job, which is what finally gives `account.current_balance_minor` a reader:
-  today it is a cache nothing checks ([ADR-0007](adr/0007-account-balances-derived-not-stored.md)).
-  Then Epic 3 opens with transactions, and **issue 3.4 (future-dated) is already accounted for** —
-  net worth's as-of query bounds by `booked_on_iso_date`, so a scheduled payment will not be
-  subtracted from today's figure.
+- **Next up: Epic 3 — transactions.** **Issue 3.4 (future-dated) is already accounted for** — net
+  worth's as-of query bounds by `booked_on_iso_date`, so a scheduled payment will not be subtracted
+  from today's figure. Epic 3 also inherits two things from 2.7: a real `TransactionRepository`
+  should absorb `writeAdjustment`'s ~10-line insert unchanged, and `transactions.source` now has a
+  fifth value, `reconciliation`, that any transaction list must render distinguishably (P-02 — on
+  that row the source *is* the rule that fired, and `note` is deliberately null).
+- **`account.current_balance_minor` is no longer a lie.** 2.7 built DB-001's integrity job
+  (`BalanceIntegrityWorker`, daily). Nothing *reads* the column yet — every balance is still derived
+  — so the value is the invariant, not a screen; it is the precondition for switching the read path
+  onto the cache if the per-account subquery ever gets expensive
+  ([ADR-0007](adr/0007-account-balances-derived-not-stored.md), now with a 2.7 update section).
+- **This project has a `Dialog`-shaped hole in its test setup.** 2.7's reconcile UI began as an
+  `AlertDialog` — the app's first — and **all four rendered tests hung for 60 s each**: a `Dialog`
+  opens its own window and Robolectric never drives it to idle. Rebuilt as an inline `CfoCard`
+  panel, which was the better design anyway (a modal with a field, five lines of copy and two
+  buttons is 2.5's clipping defect waiting to happen at 200% font). **Prefer inline surfaces; any
+  future modal needs an instrumented test and a tracker note saying so.**
+- **`adb shell cmd jobscheduler run -f` does not work for WorkManager jobs here** — the ids in
+  `dumpsys jobscheduler` are renumbered on every reschedule, so the id is stale by the time the
+  command runs. What does work, and is how 2.7 proved `RETRY → SUCCESS` on hardware: **move the
+  device clock forward a day** (`adb root`, `adb shell date MMDDhhmmYYYY.ss`), force-stop, relaunch;
+  restore with `settings put global auto_time 1`.
 - **Still the largest gap:** CI has never run — there is no git remote, so every green is a local
   green on one Windows machine. **Second:** nothing in the app loads `ai/` yet, so the first engine's
   thresholds are Kotlin constants guarded by a drift test rather than rulebook rows — a deliberate,
@@ -117,6 +134,14 @@
 - **Epic 2 — issue 2.1 (v0.2.1, 2026-07-25):** the 4-step first-run onboarding. First screen that
   writes; closes the "nothing sets the profile time zone" seam from Epic 1 and gives the consent
   ledger its first caller.
+- **Epic 2 — issue 2.7 (v0.2.7, 2026-08-02):** account reconciliation (FR-ACC-006) — **the last
+  issue in Epic 2**. A balance the app got wrong is corrected by *adding* an adjustment transaction
+  (`source = "reconciliation"`), never by editing history; a zero delta writes nothing at all. The
+  screen previews the delta, the repository re-derives it inside its own transaction and decides
+  (P-03). Also **DB-001's integrity job** — `BalanceIntegrityWorker`, the app's second background
+  work, closing ADR-0007's open *"nothing notices"* consequence. **No schema change** (v5 stands):
+  the first Epic 2 issue needing no migration. The emulator gate found a real defect for the third
+  issue running — an untouched form promising an adjustment it could not make.
 - **Epic 2 — issue 2.6 (v0.2.6, 2026-08-02):** net worth (FR-ACC-005). The project's **second
   engine** (`:domain:engines:networth`, pure Kotlin) and its **first background work** — a daily
   WorkManager snapshot that backfills missed days, at schema **v5** (`net_worth_snapshot`,

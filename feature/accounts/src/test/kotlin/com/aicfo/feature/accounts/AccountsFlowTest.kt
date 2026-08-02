@@ -2,6 +2,8 @@ package com.aicfo.feature.accounts
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -276,6 +278,139 @@ class AccountsFlowTest {
         }
 
         compose.onNodeWithText(text(R.string.account_editor_title_edit)).assertIsDisplayed()
+    }
+
+    // --- the reconciliation panel (issue 2.7; FR-ACC-006) ----------------------------------------
+
+    @Test
+    fun `tapping reconcile opens the panel for that account`() {
+        val events = mutableListOf<AccountsEvent>()
+        compose.setContent {
+            CfoTheme {
+                AccountsContent(
+                    uiState =
+                        AccountsUiState(
+                            isLoading = false,
+                            accounts = listOf(account { copy(id = "account:7", name = "HDFC Savings") }),
+                        ),
+                    onEvent = { events += it },
+                    onAddAccount = {},
+                    onEditAccount = {},
+                )
+            }
+        }
+
+        compose.onNodeWithText(text(R.string.accounts_reconcile)).performScrollTo().performClick()
+
+        assertEquals(listOf(AccountsEvent.OpenReconcile("account:7")), events)
+    }
+
+    @Test
+    fun `the panel shows the app balance, the adjustment and the rule that produced it`() {
+        // P-02 as pixels. All three have to be on screen *before* the user commits, because the
+        // adjustment becomes a permanent row in their history.
+        compose.setContent {
+            CfoTheme {
+                AccountsContent(
+                    uiState =
+                        AccountsUiState(
+                            isLoading = false,
+                            accounts = listOf(account()),
+                            reconciling =
+                                ReconcileState(
+                                    account = account { copy(balance = Money(92_500_00L)) },
+                                    statementText = "93000",
+                                ),
+                        ),
+                    onEvent = {},
+                    onAddAccount = {},
+                    onEditAccount = {},
+                )
+            }
+        }
+
+        compose.onNodeWithText("₹92,500.00", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("+₹500.00", substring = true).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.accounts_reconcile_rule)).assertIsDisplayed()
+    }
+
+    @Test
+    fun `an empty statement leaves the confirm button disabled and promises nothing`() {
+        // **Found by driving the app on a device, not by a test.** The panel used to announce
+        // "this adds one adjustment transaction" on an untouched form, while Confirm was disabled
+        // and nothing could be added. Every existing test had already typed an amount, so the state
+        // a user actually sees first was the one state nothing asserted.
+        compose.setContent {
+            CfoTheme {
+                AccountsContent(
+                    uiState =
+                        AccountsUiState(
+                            isLoading = false,
+                            accounts = listOf(account()),
+                            reconciling = ReconcileState(account = account()),
+                        ),
+                    onEvent = {},
+                    onAddAccount = {},
+                    onEditAccount = {},
+                )
+            }
+        }
+
+        compose.onNodeWithText(text(R.string.accounts_reconcile_confirm)).assertIsNotEnabled()
+        compose.onNodeWithText(text(R.string.accounts_reconcile_explain)).assertDoesNotExistSafely()
+        compose.onNodeWithText(text(R.string.accounts_reconcile_in_step)).assertDoesNotExistSafely()
+        // The rule itself stays: it explains the field the user is about to fill in.
+        compose.onNodeWithText(text(R.string.accounts_reconcile_rule)).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a statement that already matches says so rather than showing a dead button`() {
+        compose.setContent {
+            CfoTheme {
+                AccountsContent(
+                    uiState =
+                        AccountsUiState(
+                            isLoading = false,
+                            accounts = listOf(account()),
+                            reconciling =
+                                ReconcileState(
+                                    account = account { copy(balance = Money(92_500_00L)) },
+                                    statementText = "92500",
+                                ),
+                        ),
+                    onEvent = {},
+                    onAddAccount = {},
+                    onEditAccount = {},
+                )
+            }
+        }
+
+        compose.onNodeWithText(text(R.string.accounts_reconcile_in_step)).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.accounts_reconcile_confirm)).assertIsEnabled()
+    }
+
+    @Test
+    fun `typing in the panel sends the text up`() {
+        val events = mutableListOf<AccountsEvent>()
+        compose.setContent {
+            CfoTheme {
+                AccountsContent(
+                    uiState =
+                        AccountsUiState(
+                            isLoading = false,
+                            accounts = listOf(account()),
+                            reconciling = ReconcileState(account = account()),
+                        ),
+                    onEvent = { events += it },
+                    onAddAccount = {},
+                    onEditAccount = {},
+                )
+            }
+        }
+
+        compose.onNodeWithText(text(R.string.accounts_reconcile_statement)).performTextInput("93000")
+
+        assertEquals(listOf(AccountsEvent.StatementChanged("93000")), events)
     }
 }
 
