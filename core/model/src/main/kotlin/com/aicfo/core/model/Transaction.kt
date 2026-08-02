@@ -70,6 +70,85 @@ enum class TransactionSource(val storedValue: String) {
 }
 
 /**
+ * What kind of movement a transaction is (issue 3.2; §20.2, FR-TXN-003, FR-TXN-001).
+ *
+ * Why:  a transfer leg has to be excluded from income and expense totals, and the amount's sign
+ *       cannot tell a `TRANSFER_OUT` from an `EXPENSE` — both are negative. §20.2's `type` column is
+ *       the SRS's own answer, so this adopts it rather than inventing a parallel convention.
+ * What: §20.2's five values, each carrying the exact string the column stores.
+ * Result: "money the user actually spent" is `type IN ('expense','income')`, a filter that cannot be
+ *       got wrong the way a sign-plus-null-check convention can.
+ * Changelog: 2026-08-02 — Created for issue 3.2 (FR-TXN-003).
+ *
+ * **Direction is now recorded twice — here and in the amount's sign — and that is a real hazard.**
+ * The rule is [matches], and three things keep the two in step: nothing outside `:data:repository`
+ * supplies a type (it is derived at one mapping site from the amount and the write path), [matches]
+ * states the rule exactly once, and a test asserts it holds for every row every write path produces.
+ * §20.2 puts a `CHECK` constraint on this column; SQLite's `ALTER TABLE … ADD COLUMN` cannot add
+ * one, so on an upgraded database that constraint lives in the test suite instead of in the schema.
+ */
+enum class TransactionType(val storedValue: String) {
+    /** Money leaving an account and leaving the user's control. Negative. */
+    EXPENSE("expense"),
+
+    /** Money arriving from outside. Positive. */
+    INCOME("income"),
+
+    /** The outgoing leg of a transfer (FR-TXN-003). Negative, and **not** spending. */
+    TRANSFER_OUT("transfer_out"),
+
+    /** The incoming leg of a transfer (FR-TXN-003). Positive, and **not** income. */
+    TRANSFER_IN("transfer_in"),
+
+    /**
+     * A balance correction the app posted (issue 2.7; FR-ACC-006).
+     *
+     * The only type whose sign is genuinely free: an adjustment closes the gap between the derived
+     * balance and a statement, and that gap runs in whichever direction the user's records were
+     * wrong in.
+     */
+    ADJUSTMENT("adjustment"),
+    ;
+
+    /** Whether this type is one leg of a transfer, and so must be kept out of spend totals. */
+    val isTransfer: Boolean get() = this == TRANSFER_OUT || this == TRANSFER_IN
+
+    /**
+     * Whether an amount's sign agrees with this type.
+     *
+     * Why:    the single statement of the invariant that stops the `type` column and the amount's
+     *         sign drifting apart. Every write path is asserted against it, so a future author who
+     *         builds an inflow and labels it `EXPENSE` fails a test rather than shipping a row that
+     *         two different readers disagree about.
+     *
+     *         Zero belongs to no direction and is rejected for every type except [ADJUSTMENT] — the
+     *         repository refuses zero-amount rows anyway, and a zero adjustment writes nothing.
+     * Result: `true` when the sign is the one this type requires.
+     * Input:  [amount] — the signed amount, MNY-001 paise. Output: [Boolean].
+     * Changelog: 2026-08-02 — Created for issue 3.2.
+     */
+    fun matches(amount: Money): Boolean =
+        when (this) {
+            EXPENSE, TRANSFER_OUT -> amount < Money.ZERO
+            INCOME, TRANSFER_IN -> amount > Money.ZERO
+            ADJUSTMENT -> amount != Money.ZERO
+        }
+
+    companion object {
+        /**
+         * Parses a stored type string.
+         * Why:    the same forward-compatible shape [TransactionSource.fromStored] and
+         *         [AccountType.fromStored] use — an old build reading a database a newer one wrote
+         *         shows fewer rows rather than throwing.
+         * Result: the matching type, or `null` when the value is unknown or malformed.
+         * Input:  [stored] — the value from `transactions.type`. Output: `TransactionType?`.
+         * Changelog: 2026-08-02 — Created for issue 3.2.
+         */
+        fun fromStored(stored: String): TransactionType? = entries.firstOrNull { it.storedValue == stored }
+    }
+}
+
+/**
  * One transaction, as everything above the data layer sees it (issue 3.1; FR-TXN-001, ARC-005).
  *
  * Why:  ARC-005 forbids a ViewModel from ever holding a Room type, so the transactions screens need
@@ -79,13 +158,18 @@ enum class TransactionSource(val storedValue: String) {
  * What: the fields FR-TXN-001 requires that issue 3.1 actually captures.
  * Result: a screen can render a transaction, and a test can construct one, without Room.
  * Changelog: 2026-08-02 — Created for issue 3.1 (FR-TXN-001).
+ *            2026-08-02 — Issue 3.2: [type] and [transferId], so a transfer is one logical record
+ *            across two rows (FR-TXN-003) and can be kept out of spend totals.
  *
  * **[amount] is signed, and the sign is the direction** (MNY-001): negative is money leaving the
  * account, positive is money arriving. This mirrors `transactions.amount_minor` exactly, which is
- * what lets an account's balance be a plain `SUM` over its rows (DB-001, ADR-0007). There is no
- * separate `type` field for expense/income — the sign *is* the type, and storing both would let the
- * two disagree. Transfers (issue 3.2) are the case that needs more than a sign, and they get their
- * own representation rather than a third value here.
+ * what lets an account's balance be a plain `SUM` over its rows (DB-001, ADR-0007).
+ *
+ * **[type] records that direction a second time**, because the sign alone cannot separate a transfer
+ * leg from ordinary spending, and FR-TXN-003 requires exactly that separation. Issue 3.1 deliberately
+ * had no such field; 3.2 adopts §20.2's column and pays for it with [TransactionType.matches], which
+ * is asserted over every write path so the two can never disagree. **For arithmetic, [amount] is
+ * still the authority** — nothing should ever compute a figure by branching on [type].
  *
  * **[occurredAtUtcMillis] and [bookedOn] are both stored, and they are not redundant.** The first is
  * the instant (TIM-001), which orders the list; the second is the profile-zone calendar day
@@ -100,7 +184,8 @@ enum class TransactionSource(val storedValue: String) {
  * Input:  [id]; [accountId] — which account moved; [amount] — signed paise; [occurredAtUtcMillis];
  *         [bookedOn] — ISO `yyyy-MM-dd` in the profile zone; [categoryId] — `null` until the user
  *         has categories at all (issue 4.1) or chooses not to pick one; [merchant]; [note];
- *         [source] — FR-TXN-009.
+ *         [source] — FR-TXN-009; [type] — §20.2; [transferId] — the id both legs of a transfer
+ *         share, `null` on every other row.
  * Output: an immutable value.
  */
 data class Transaction(
@@ -113,6 +198,40 @@ data class Transaction(
     val merchant: String?,
     val note: String?,
     val source: TransactionSource,
+    val type: TransactionType,
+    val transferId: String? = null,
+)
+
+/**
+ * A transfer, as one logical record (issue 3.2; FR-TXN-003).
+ *
+ * Why:  FR-TXN-003 calls a transfer "a single logical record affecting two accounts". It is *stored*
+ *       as two rows, because that is what makes each account's balance a plain `SUM` over its own
+ *       transactions (DB-001) — but nothing above the data layer should have to know that. This is
+ *       the shape the list renders and the shape a caller gets back from creating one.
+ * What: the pair, collapsed: where the money came from, where it went, and how much.
+ * Result: a screen can show "HDFC Savings → Cash Wallet ₹5,000" without pairing rows itself.
+ * Changelog: 2026-08-02 — Created for issue 3.2.
+ *
+ * **[amount] is positive, always.** It is the size of the movement, not a signed entry — the signs
+ * live on the two legs, where they belong. Asking a screen to render `-₹5,000` for a transfer would
+ * be asking which leg it was looking at, which is the question this type exists to remove.
+ *
+ * **Not a stored row.** §20.1 lists a `transfers` table; this app does not have one, because a parent
+ * row would carry no fact the legs do not already hold — see `docs/adr/0008-transfers-as-linked-legs.md`.
+ *
+ * Input:  [id] — the shared `transfer_id`; [fromAccountId]; [toAccountId]; [amount] — positive paise;
+ *         [bookedOn] — the profile-zone day **both** legs share (TIM-002); [note] — optional, and
+ *         held on both legs so either one explains itself.
+ * Output: an immutable value.
+ */
+data class Transfer(
+    val id: String,
+    val fromAccountId: String,
+    val toAccountId: String,
+    val amount: Money,
+    val bookedOn: String,
+    val note: String? = null,
 )
 
 /**

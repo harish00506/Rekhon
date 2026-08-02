@@ -13,13 +13,25 @@
     <string name="transactions_uncategorised">Uncategorised</string>
     <!-- Content description on a day header's total, so a screen reader says what the figure is. -->
     <string name="transactions_day_total">Total for the day</string>
+    <!--
+      FR-TXN-003: a transfer is one row, not two. The two account names are substituted in, so this
+      reads "Transfer · HDFC Savings → Cash Wallet". The arrow is the direction, which is why it is
+      not left to the amount's sign — a collapsed row has no single sign.
+    -->
+    <string name="transactions_transfer">Transfer · %1$s → %2$s</string>
+    <!-- Icon-only, so this is what a screen reader announces for the delete action. -->
+    <string name="transactions_delete">Delete transaction</string>
 
     <string name="add_txn_title">Add transaction</string>
     <string name="add_txn_amount">Amount</string>
     <string name="add_txn_amount_hint">0.00</string>
     <string name="add_txn_expense">Expense</string>
     <string name="add_txn_income">Income</string>
+    <!-- FR-TXN-003. Disabled until the profile has two accounts — there is nowhere to move money to. -->
+    <string name="add_txn_transfer">Transfer</string>
     <string name="add_txn_account">Account</string>
+    <string name="add_txn_from_account">From</string>
+    <string name="add_txn_to_account">To</string>
     <string name="add_txn_category">Category</string>
     <string name="add_txn_note">Note (optional)</string>
     <string name="add_txn_save">Save</string>

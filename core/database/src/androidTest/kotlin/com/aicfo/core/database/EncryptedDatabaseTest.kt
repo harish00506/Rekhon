@@ -97,6 +97,7 @@ class EncryptedDatabaseTest {
                     occurredAtUtcMillis = 1_767_312_000_000L,
                     bookedOnIsoDate = "2026-01-02",
                     source = "manual",
+                    type = "expense",
                     createdAtUtcMillis = profile.createdAtUtcMillis,
                     updatedAtUtcMillis = profile.createdAtUtcMillis,
                 )

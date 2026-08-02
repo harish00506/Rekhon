@@ -1,8 +1,10 @@
 package com.aicfo.core.model
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -133,5 +135,146 @@ class TransactionTest {
         merchant = null,
         note = null,
         source = TransactionSource.MANUAL,
+        type = TransactionType.EXPENSE,
     )
+}
+
+/**
+ * Locks [TransactionType] to §20.2 and pins the type/sign invariant (issue 3.2; FR-TXN-003).
+ *
+ * Why:  this enum makes the app store **direction twice** — once here and once in the amount's sign —
+ *       which is a hazard the codebase did not have before issue 3.2. §20.2 puts a `CHECK` constraint
+ *       on the column, but SQLite cannot add one through `ALTER TABLE … ADD COLUMN`, so on every
+ *       upgraded database **this file is the constraint**. A build that lets a positive amount be an
+ *       `EXPENSE` should fail here, not in front of a user reading a balance that disagrees with its
+ *       own transaction list.
+ * What: the type vocabulary, the round trip, forward compatibility, [TransactionType.matches], and
+ *       [Transfer] — the collapsed view the two legs are read back as.
+ * Result: a change that lets the two representations drift cannot ship.
+ * Changelog: 2026-08-02 — Created for issue 3.2.
+ */
+class TransactionTypeTest {
+    /**
+     * §20.2's `CHECK(type IN (…))` list, copied by hand from the SRS.
+     * Derived expectations prove nothing — this is transcribed from the blueprint, not from the enum.
+     */
+    private val storedValues = listOf("expense", "income", "transfer_out", "transfer_in", "adjustment")
+
+    @Test
+    fun `every type SS20-2 names exists, and no others`() {
+        assertEquals(storedValues.sorted(), TransactionType.entries.map { it.storedValue }.sorted())
+    }
+
+    @Test
+    fun `every type round-trips through its stored value`() {
+        TransactionType.entries.forEach { assertEquals(it, TransactionType.fromStored(it.storedValue)) }
+    }
+
+    @Test
+    fun `an unknown type is null rather than an exception`() {
+        // An old build reading a newer database drops the row; it never crashes the list.
+        assertNull(TransactionType.fromStored("refund"))
+        assertNull(TransactionType.fromStored(""))
+        assertNull(TransactionType.fromStored("EXPENSE"))
+        // The persisted contract is storedValue, never name — TRANSFER_OUT vs transfer_out.
+        assertNull(TransactionType.fromStored(TransactionType.TRANSFER_OUT.name))
+    }
+
+    @Test
+    fun `only the two transfer legs are transfers`() {
+        // What keeps a transfer out of spend totals. Getting ADJUSTMENT in here would hide issue
+        // 2.7's balance corrections from every report.
+        assertEquals(
+            listOf(TransactionType.TRANSFER_OUT, TransactionType.TRANSFER_IN),
+            TransactionType.entries.filter { it.isTransfer },
+        )
+    }
+
+    @Test
+    fun `outflow types require a negative amount and reject a positive one`() {
+        listOf(TransactionType.EXPENSE, TransactionType.TRANSFER_OUT).forEach { type ->
+            assertTrue("$type must accept an outflow", type.matches(Money(-1L)))
+            assertFalse("$type must reject an inflow", type.matches(Money(1L)))
+            assertFalse("$type must reject zero", type.matches(Money.ZERO))
+        }
+    }
+
+    @Test
+    fun `inflow types require a positive amount and reject a negative one`() {
+        listOf(TransactionType.INCOME, TransactionType.TRANSFER_IN).forEach { type ->
+            assertTrue("$type must accept an inflow", type.matches(Money(1L)))
+            assertFalse("$type must reject an outflow", type.matches(Money(-1L)))
+            assertFalse("$type must reject zero", type.matches(Money.ZERO))
+        }
+    }
+
+    @Test
+    fun `an adjustment may run either way but not to zero`() {
+        // FR-ACC-006 corrections go in whichever direction the user's records were wrong in, so this
+        // is the one type whose sign is genuinely free. Zero still writes nothing (issue 2.7).
+        assertTrue(TransactionType.ADJUSTMENT.matches(Money(-5_000L)))
+        assertTrue(TransactionType.ADJUSTMENT.matches(Money(5_000L)))
+        assertFalse(TransactionType.ADJUSTMENT.matches(Money.ZERO))
+    }
+
+    @Test
+    fun `a transfer carries both accounts and a positive amount`() {
+        // [Transfer] is the collapsed view of two stored legs. **The amount is positive by
+        // contract** — the signs live on the legs — so a screen never has to ask which side it is
+        // looking at, and a caller that handed this a negative would be describing one leg while
+        // claiming to describe the pair.
+        val transfer =
+            Transfer(
+                id = "tfr:1",
+                fromAccountId = "account:1",
+                toAccountId = "account:2",
+                amount = Money(5_000_00L),
+                bookedOn = "2026-08-02",
+                note = "Rent float",
+            )
+
+        assertEquals("tfr:1", transfer.id)
+        assertEquals("account:1", transfer.fromAccountId)
+        assertEquals("account:2", transfer.toAccountId)
+        assertTrue("the collapsed amount is the size of the movement", transfer.amount > Money.ZERO)
+        // TIM-002: one profile-zone day shared by both legs, never a midnight timestamp.
+        assertEquals("2026-08-02", transfer.bookedOn)
+        assertEquals("Rent float", transfer.note)
+    }
+
+    @Test
+    fun `a transfer needs no note`() {
+        val transfer =
+            Transfer(
+                id = "tfr:1",
+                fromAccountId = "account:1",
+                toAccountId = "account:2",
+                amount = Money(5_000_00L),
+                bookedOn = "2026-08-02",
+            )
+
+        assertNull(transfer.note)
+    }
+
+    @Test
+    fun `exactly one non-adjustment type accepts any given non-zero amount`() {
+        // The property that makes the invariant usable: for a signed amount there is one correct
+        // outflow type and one correct inflow type, never both and never neither. Walks a spread of
+        // magnitudes including the Long extremes, where a sign check written as `-amount > 0` breaks.
+        val amounts =
+            listOf(1L, 25_000L, 1_23_456_78L, Long.MAX_VALUE)
+                .flatMap { listOf(Money(it), Money(-it)) } + Money(Long.MIN_VALUE)
+
+        amounts.forEach { amount ->
+            val accepting =
+                TransactionType.entries.filterNot { it == TransactionType.ADJUSTMENT }
+                    .filter { it.matches(amount) }
+            assertEquals("exactly two types accept $amount", 2, accepting.size)
+            assertEquals(
+                "the accepting types must be one transfer leg and one non-transfer",
+                1,
+                accepting.count { it.isTransfer },
+            )
+        }
+    }
 }

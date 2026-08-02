@@ -127,7 +127,7 @@ class AddTransactionViewModelTest {
     fun `an income is handed to the store as a positive amount`() =
         runTest {
             val viewModel = savableViewModel(amount = "60000")
-            viewModel.onEvent(AddTransactionEvent.ExpenseChanged(false))
+            viewModel.onEvent(AddTransactionEvent.DirectionChanged(TransactionDirection.INCOME))
 
             viewModel.onEvent(AddTransactionEvent.Save)
 
@@ -311,10 +311,172 @@ class AddTransactionViewModelTest {
             }
         }
 
+    // --- transfers (issue 3.2; FR-TXN-003) ---------------------------------------------------------
+
+    @Test
+    fun `a transfer is handed to the store as a positive amount and two accounts`() =
+        runTest {
+            // The transfer path must not go through `create`: one signed row would move one account
+            // and invent the money at the other end.
+            val viewModel = transferViewModel(amount = "5000")
+
+            viewModel.onEvent(AddTransactionEvent.Save)
+
+            val draft = transactions.transfersCreated.single()
+            assertEquals("account:1", draft.fromAccountId)
+            assertEquals("account:2", draft.toAccountId)
+            // Positive: the signs belong to the two legs, and the repository applies them.
+            assertEquals(Money(5_000_00L), draft.amount)
+            assertTrue("a transfer must not be written as a plain transaction", transactions.created.isEmpty())
+        }
+
+    @Test
+    fun `a transfer without a destination cannot be saved`() =
+        runTest {
+            accounts.setAccounts(account { copy(id = "account:1") }, account { copy(id = "account:2") })
+            val viewModel = viewModel()
+            viewModel.onEvent(AddTransactionEvent.AmountChanged("5000"))
+            viewModel.onEvent(AddTransactionEvent.DirectionChanged(TransactionDirection.TRANSFER))
+
+            viewModel.onEvent(AddTransactionEvent.Save)
+
+            viewModel.uiState.test {
+                assertFalse(awaitItem().canSave)
+                cancelAndIgnoreRemainingEvents()
+            }
+            assertTrue(transactions.transfersCreated.isEmpty())
+        }
+
+    @Test
+    fun `a transfer to the source account cannot be saved`() =
+        runTest {
+            // The repository refuses it too, but a disabled button explains it before the user
+            // commits rather than after.
+            val viewModel = transferViewModel(amount = "5000")
+            viewModel.onEvent(AddTransactionEvent.AccountSelected("account:2"))
+
+            viewModel.uiState.test {
+                val state = awaitItem()
+                // Picking the source that was already the destination clears the destination, so the
+                // form asks again instead of holding an invalid pair.
+                assertNull(state.toAccountId)
+                assertFalse(state.canSave)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `the destination picker never offers the source account`() =
+        runTest {
+            accounts.setAccounts(
+                account { copy(id = "account:1") },
+                account { copy(id = "account:2") },
+                account { copy(id = "account:3") },
+            )
+
+            viewModel().uiState.test {
+                val state = awaitItem()
+                assertEquals(
+                    listOf("account:2", "account:3"),
+                    state.destinationChoices.map { it.id },
+                )
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `a profile with one account cannot transfer at all`() =
+        runTest {
+            // There is nowhere to move money to. The toggle disables the option rather than
+            // accepting a tap and then refusing to save.
+            accounts.setAccounts(account())
+
+            viewModel().uiState.test {
+                assertFalse(awaitItem().canTransfer)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `switching to transfer clears a category picked as an expense`() =
+        runTest {
+            // FR-TXN-003: a transfer is not spending. A stale category would be silently dropped by
+            // the store, which is worse than clearing it where the user can see.
+            accounts.setAccounts(account { copy(id = "account:1") }, account { copy(id = "account:2") })
+            transactions.setCategories(Category("category:fuel", "Fuel"))
+            val viewModel = viewModel()
+            viewModel.onEvent(AddTransactionEvent.CategorySelected("category:fuel"))
+
+            viewModel.onEvent(AddTransactionEvent.DirectionChanged(TransactionDirection.TRANSFER))
+
+            viewModel.uiState.test {
+                val state = awaitItem()
+                assertNull(state.selectedCategoryId)
+                assertFalse("the category row must be hidden for a transfer", state.hasCategories)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `switching away from transfer clears the destination`() =
+        runTest {
+            val viewModel = transferViewModel(amount = "5000")
+
+            viewModel.onEvent(AddTransactionEvent.DirectionChanged(TransactionDirection.EXPENSE))
+
+            viewModel.uiState.test {
+                assertNull(awaitItem().toAccountId)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `a refused transfer reports the code and stays on the screen`() =
+        runTest {
+            transactions.failWith = AppError.Validation("toAccountId")
+            val viewModel = transferViewModel(amount = "5000")
+
+            viewModel.onEvent(AddTransactionEvent.Save)
+
+            viewModel.uiState.test {
+                val state = awaitItem()
+                assertFalse(state.isSaved)
+                assertEquals(AppError.Validation("toAccountId").code, state.errorCode)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `a successful transfer asks the screen to leave`() =
+        runTest {
+            val viewModel = transferViewModel(amount = "5000")
+
+            viewModel.onEvent(AddTransactionEvent.Save)
+
+            viewModel.uiState.test {
+                assertTrue(awaitItem().isSaved)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
     // --- fixtures ----------------------------------------------------------------------------------
 
     /** Result: a ViewModel over the two fakes. Input: none. Output: [AddTransactionViewModel]. */
     private fun viewModel() = AddTransactionViewModel(transactions, accounts)
+
+    /**
+     * Result: a ViewModel with two accounts, [amount] typed, Transfer chosen and a destination
+     *         picked — the state a transfer Save test starts from.
+     * Input:  [amount]. Output: [AddTransactionViewModel].
+     */
+    private fun transferViewModel(amount: String): AddTransactionViewModel {
+        accounts.setAccounts(account { copy(id = "account:1") }, account { copy(id = "account:2") })
+        return viewModel().apply {
+            onEvent(AddTransactionEvent.AmountChanged(amount))
+            onEvent(AddTransactionEvent.DirectionChanged(TransactionDirection.TRANSFER))
+            onEvent(AddTransactionEvent.DestinationSelected("account:2"))
+        }
+    }
 
     /**
      * Result: a ViewModel with one account and [amount] typed — the state a Save test starts from.

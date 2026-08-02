@@ -3,10 +3,15 @@ package com.aicfo.feature.transactions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -22,7 +27,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.aicfo.core.designsystem.component.CfoAmountText
 import com.aicfo.core.designsystem.component.CfoListRow
 import com.aicfo.core.designsystem.theme.CfoDimens
-import com.aicfo.core.model.Transaction
+import com.aicfo.core.model.Money
 
 /**
  * The recent transactions, grouped by the day they were booked on (issue 3.1; ARC-004).
@@ -48,7 +53,7 @@ fun TransactionsScreen(
     viewModel: TransactionsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    TransactionsContent(uiState = uiState, modifier = modifier)
+    TransactionsContent(uiState = uiState, onEvent = viewModel::onEvent, modifier = modifier)
 }
 
 /**
@@ -62,6 +67,7 @@ fun TransactionsScreen(
 @Composable
 fun TransactionsContent(
     uiState: TransactionsUiState,
+    onEvent: (TransactionsEvent) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -88,7 +94,13 @@ fun TransactionsContent(
                 // `key` on both, so a save that prepends a row does not re-render every row below it
                 // and does not lose scroll position.
                 item(key = day.isoDate) { DayHeader(day = day) }
-                items(items = day.transactions, key = { it.id }) { TransactionRow(transaction = it) }
+                items(items = day.rows, key = { it.id }) { row ->
+                    ListRow(
+                        row = row,
+                        accountNames = uiState.accountNames,
+                        onDelete = { onEvent(TransactionsEvent.Delete(row.id)) },
+                    )
+                }
             }
         }
     }
@@ -120,18 +132,75 @@ private fun DayHeader(day: TransactionDay) {
 }
 
 /**
- * One transaction.
- * Why:    the title falls back through note → merchant → "Uncategorised" rather than rendering a
- *         blank line: every field but the amount is optional (FR-TXN-001), and a row a user cannot
- *         identify is a row they cannot decide to delete. The amount goes through [CfoAmountText],
- *         which formats it with Indian digit grouping and colours it by sign (P-06).
- * Result: the composition. Input: [transaction]. Output: none.
- * Changelog: 2026-08-02 — Created for issue 3.1.
+ * One line: either a plain transaction or a whole transfer (issue 3.2; FR-TXN-003).
+ * Why:    the `when` is exhaustive over [TransactionRow], so a future row kind cannot be added
+ *         without deciding how it renders. Both kinds carry the same delete action, and neither
+ *         passes a transfer id to it — the row hands over the transaction it was built from and the
+ *         repository works out whether a sibling goes too.
+ * Result: the composition. Input: [row], [accountNames], [onDelete]. Output: none.
+ * Changelog: 2026-08-02 — Created for issue 3.2, replacing issue 3.1's single-row composable.
  */
 @Composable
-private fun TransactionRow(transaction: Transaction) {
-    CfoListRow(
-        title = transaction.note ?: transaction.merchant ?: stringResource(R.string.transactions_uncategorised),
-        trailing = { CfoAmountText(amount = transaction.amount) },
-    )
+private fun ListRow(
+    row: TransactionRow,
+    accountNames: Map<String, String>,
+    onDelete: () -> Unit,
+) {
+    when (row) {
+        is TransactionRow.Single ->
+            CfoListRow(
+                // Falls back through note → merchant → "Uncategorised" rather than rendering a blank
+                // line: every field but the amount is optional (FR-TXN-001), and a row a user cannot
+                // identify is a row they cannot decide to delete.
+                title =
+                    row.transaction.note
+                        ?: row.transaction.merchant
+                        ?: stringResource(R.string.transactions_uncategorised),
+                trailing = { RowTrailing(amount = row.transaction.amount, onDelete = onDelete) },
+            )
+
+        is TransactionRow.TransferPair ->
+            CfoListRow(
+                // The two account names carry the direction, because a collapsed pair has no single
+                // sign to colour. An id that no longer resolves to a name falls back to the id
+                // rather than rendering an empty arrow.
+                title =
+                    stringResource(
+                        R.string.transactions_transfer,
+                        accountNames[row.outAccountId] ?: row.outAccountId,
+                        accountNames[row.inAccountId] ?: row.inAccountId,
+                    ),
+                // `showSign = false`: the amount is the size of the movement, and a leading "+" would
+                // claim the user gained money they only moved.
+                trailing = { RowTrailing(amount = row.amount, showSign = false, onDelete = onDelete) },
+            )
+    }
+}
+
+/**
+ * A row's amount and its delete action.
+ * Why:    shared by both row kinds so the delete affordance cannot end up on one and not the other.
+ *         The icon is icon-only, so the content description is what a screen reader announces —
+ *         without it the app's only destructive control reads as "button" (§21.6).
+ * Result: the composition. Input: [amount]; [showSign]; [onDelete]. Output: none.
+ * Changelog: 2026-08-02 — Created for issue 3.2.
+ */
+@Composable
+private fun RowTrailing(
+    amount: Money,
+    showSign: Boolean = true,
+    onDelete: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(CfoDimens.spaceSm),
+    ) {
+        CfoAmountText(amount = amount, showSign = showSign)
+        IconButton(onClick = onDelete, modifier = Modifier.defaultMinSize(CfoDimens.minTouchTarget)) {
+            Icon(
+                imageVector = Icons.Filled.Delete,
+                contentDescription = stringResource(R.string.transactions_delete),
+            )
+        }
+    }
 }

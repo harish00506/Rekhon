@@ -12,6 +12,46 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > reach writing to it; this epic makes a transaction theirs to create — by hand first, then by
 > transfer, split, receipt and SMS.
 
+### [0.3.2] — Issue 3.2: Transfers as a single logical record  (2026-08-02)
+
+- **Implemented:** moving money between two of your own accounts, as **one** record
+  (**FR-TXN-003**; DB-003, DB-004, MNY-001, TIM-002, ARC-004, ARC-005, P-02, P-03, P-04).
+  - **Schema v5 → v6** — the first schema change since issue 1.6, and the **first migration that
+    rewrites existing rows** rather than only adding empty columns. Adds §20.2's
+    `transactions.type` and `transactions.transfer_id` + index, then backfills every existing row:
+    `source = 'reconciliation'` → `adjustment`, otherwise the sign decides. Without that backfill a
+    user's salary credits would all have read as spending.
+  - **`TransactionRepository.createTransfer`** writes both legs inside one `withTransaction`
+    (DB-004), sharing one `transfer_id`, one instant and one booked day. Neither leg carries a
+    category — a transfer is not spending. Cross-currency transfers are **refused**, not converted:
+    that needs FX rates no issue has built, and inventing one would be the app making up a number.
+  - **`delete` removes both legs atomically** in a single `UPDATE` (FR-TXN-003's second clause), so
+    there is no window where one leg is gone and the other is not. The screen passes whichever row
+    the user tapped; the repository decides whether a sibling goes with it.
+  - **The list collapses a transfer into one row** — "Transfer · HDFC Savings → Cash Wallet" — paired
+    by `transfer_id`, never by matching amounts and dates. The day total is unaffected because the
+    legs net to zero. A lone leg (its sibling outside the 30-day window) still renders.
+  - **The add screen gained a third direction**, Expense · Income · **Transfer**, with a To-account
+    picker that excludes the source and hides the category row. Expense remains the default, so
+    FR-TXN-002's two-tap common expense is unchanged.
+  - **A delete action on every row**, which is what makes the atomic both-legs delete observable.
+- **Deviations recorded** in [ADR-0008](docs/adr/0008-transfers-as-linked-legs.md): no `transfers`
+  parent table (§20.1) because it would hold no fact the legs don't; `source` carries
+  `reconciliation` and `demo`, which §20.2's CHECK list omits; and §20.2's `CHECK(type IN …)` cannot
+  exist on an upgraded SQLite table, so the invariant lives in a test instead.
+- **Known cost, accepted:** `type` records direction a second time alongside the amount's sign. No
+  caller supplies a type — it is derived at one site per write path — and a test walks every path
+  asserting the two agree.
+- **Fixed:** `TransactionDao.softDelete` had no `AND deleted_at_utc_millis IS NULL` guard, so a
+  second delete matched the same row and reported success twice. Harmless until this issue added the
+  delete UI that would have exposed it.
+- **Tests:** 70 new, 0 skipped (10 model · 27 repository · 32 feature · 1 instrumented migration).
+  **Verified on a device**: installed the v5 build, added a transaction, then installed v6 over it —
+  every row survived with identical amounts and the salary credit backfilled as `income`, not
+  `expense`. Then, in **airplane mode**: a ₹5,000 transfer moved HDFC ₹3,82,800 → ₹3,77,800 and Cash
+  −₹4,236 → +₹764, rendered as one row leaving the day total unchanged, and deleting it reverted
+  both balances exactly. `:core:database:connectedDebugAndroidTest` — 10/10 on the emulator.
+
 ### [0.3.1] — Issue 3.1: Add transaction ≤ 3 taps (FAB)  (2026-08-02)
 
 - **Implemented:** the app's most-used flow — capture a transaction in **two taps** (FAB → Save)

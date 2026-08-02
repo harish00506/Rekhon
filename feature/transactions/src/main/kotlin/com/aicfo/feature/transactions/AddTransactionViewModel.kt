@@ -4,10 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aicfo.core.common.Err
 import com.aicfo.core.common.Ok
+import com.aicfo.core.common.Result
 import com.aicfo.core.common.toAppError
 import com.aicfo.data.repository.AccountRepository
 import com.aicfo.data.repository.TransactionDraft
 import com.aicfo.data.repository.TransactionRepository
+import com.aicfo.data.repository.TransferDraft
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -115,8 +117,9 @@ class AddTransactionViewModel
         fun onEvent(event: AddTransactionEvent) {
             when (event) {
                 is AddTransactionEvent.AmountChanged -> _uiState.update { it.copy(amountText = event.value) }
-                is AddTransactionEvent.ExpenseChanged -> _uiState.update { it.copy(isExpense = event.isExpense) }
-                is AddTransactionEvent.AccountSelected -> _uiState.update { it.copy(selectedAccountId = event.id) }
+                is AddTransactionEvent.DirectionChanged -> _uiState.update { it.withDirection(event.direction) }
+                is AddTransactionEvent.AccountSelected -> _uiState.update { it.withSource(event.id) }
+                is AddTransactionEvent.DestinationSelected -> _uiState.update { it.copy(toAccountId = event.id) }
                 is AddTransactionEvent.CategorySelected -> _uiState.update { it.copy(selectedCategoryId = event.id) }
                 is AddTransactionEvent.NoteChanged -> _uiState.update { it.copy(note = event.value) }
                 AddTransactionEvent.Save -> save()
@@ -125,22 +128,33 @@ class AddTransactionViewModel
         }
 
         /**
-         * Writes the transaction.
+         * Writes the transaction, or the transfer.
          *
          * Why:    the draft is rebuilt from the state rather than trusting the button's `enabled`
          *         flag — a disabled button is a rendering, and an accessibility service or a fast
-         *         double-tap can still deliver the event. [toDraftOrNull] is where every reason not
-         *         to write is decided. The repository validates again independently; that is not
-         *         duplication but the layer boundary doing its job (§5).
+         *         double-tap can still deliver the event. [toDraftOrNull] and [toTransferDraftOrNull]
+         *         are where every reason not to write is decided. The repository validates again
+         *         independently; that is not duplication but the layer boundary doing its job (§5).
+         *
+         *         The two branches converge immediately: whichever call is made, the outcome is
+         *         handled identically, because "did it save?" is the only thing the screen needs to
+         *         know (issue 3.2).
          * Result: sets `isSaved` so the screen leaves, or `errorCode` and stays. Never both.
          * Input:  none. Output: none (launches on `viewModelScope`).
          */
         private fun save() {
-            val draft = _uiState.value.toDraftOrNull() ?: return
+            val state = _uiState.value
+            val write: (suspend () -> Result<Any, com.aicfo.core.common.AppError>)? =
+                if (state.isTransfer) {
+                    state.toTransferDraftOrNull()?.let { draft -> { transactions.createTransfer(draft) } }
+                } else {
+                    state.toDraftOrNull()?.let { draft -> { transactions.create(draft) } }
+                }
+            if (write == null) return
 
             _uiState.update { it.copy(isSaving = true, errorCode = null) }
             viewModelScope.launch {
-                val outcome = transactions.create(draft)
+                val outcome = write()
                 _uiState.update {
                     when (outcome) {
                         is Ok -> it.copy(isSaving = false, isSaved = true)
@@ -150,6 +164,57 @@ class AddTransactionViewModel
             }
         }
     }
+
+/**
+ * Applies a change of direction, clearing what no longer applies (issue 3.2).
+ * Why:    the three directions do not share every field, and leaving a stale one set is how a
+ *         transfer gets saved with a category the user picked while it was an expense — which
+ *         FR-TXN-003 forbids and the repository would silently drop. Switching *away* from a
+ *         transfer clears the destination for the same reason.
+ * Result: the state with [direction] applied and the now-irrelevant selections cleared.
+ * Input:  the receiver; [direction] — what the user chose. Output: [AddTransactionUiState].
+ * Changelog: 2026-08-02 — Created for issue 3.2.
+ */
+internal fun AddTransactionUiState.withDirection(direction: TransactionDirection): AddTransactionUiState =
+    copy(
+        direction = direction,
+        selectedCategoryId = if (direction == TransactionDirection.TRANSFER) null else selectedCategoryId,
+        toAccountId = if (direction == TransactionDirection.TRANSFER) toAccountId else null,
+    )
+
+/**
+ * Applies a change of source account (issue 3.2).
+ * Why:    picking the source that is already the destination would leave a transfer pointing at one
+ *         account, which the repository refuses. Clearing the destination in that case makes the
+ *         form ask again rather than presenting an invalid pair with Save quietly disabled.
+ * Result: the state with the new source, and the destination cleared if it collided.
+ * Input:  the receiver; [id] — the chosen account. Output: [AddTransactionUiState].
+ * Changelog: 2026-08-02 — Created for issue 3.2.
+ */
+internal fun AddTransactionUiState.withSource(id: String): AddTransactionUiState =
+    copy(selectedAccountId = id, toAccountId = toAccountId?.takeIf { it != id })
+
+/**
+ * Turns the screen's state into a transfer draft, or refuses (issue 3.2; FR-TXN-003).
+ * Why:    the transfer counterpart of [toDraftOrNull], and it exists for the same reason — one place
+ *         that decides not to write. **The amount is positive here**, unlike the signed amount an
+ *         expense carries: the two legs' signs are the repository's to apply, and a screen that
+ *         guessed one would be answering "signed which way?" for a movement that is both.
+ * Result: the [TransferDraft] to write, or `null` when the state is not one that should write.
+ * Input:  the receiver. Output: `TransferDraft?`.
+ * Changelog: 2026-08-02 — Created for issue 3.2.
+ */
+internal fun AddTransactionUiState.toTransferDraftOrNull(): TransferDraft? {
+    if (!canSave) return null
+    val amount = amount
+    val from = selectedAccountId
+    val to = toAccountId
+    return if (amount != null && from != null && to != null) {
+        TransferDraft(fromAccountId = from, toAccountId = to, amount = amount, note = note)
+    } else {
+        null
+    }
+}
 
 /**
  * Turns the screen's state into a draft, or refuses.
@@ -175,7 +240,8 @@ class AddTransactionViewModel
  */
 internal fun AddTransactionUiState.toDraftOrNull(): TransactionDraft? {
     // Read into locals so the compiler can smart-cast them past the null checks below.
-    val signedAmount = amount
+    // `signedAmount` is null for a transfer, which is what keeps this path from writing one.
+    val signedAmount = signedAmount
     val accountId = selectedAccountId
     return if (canSave && signedAmount != null && accountId != null) {
         TransactionDraft(

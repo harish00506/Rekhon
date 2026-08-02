@@ -3,9 +3,12 @@ package com.aicfo.feature.transactions
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import com.aicfo.core.designsystem.theme.CfoTheme
 import com.aicfo.core.model.Money
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -96,12 +99,104 @@ class TransactionsFlowTest {
         compose.onNodeWithText(text(R.string.transactions_empty)).assertDoesNotExist()
     }
 
-    /** Result: the composition is set. Input: [state]. Output: none. */
-    private fun setContent(state: TransactionsUiState) {
-        compose.setContent { CfoTheme { TransactionsContent(uiState = state) } }
+    // --- transfers and delete (issue 3.2; FR-TXN-003) ----------------------------------------------
+
+    @Test
+    fun `a transfer renders as one row naming both accounts`() {
+        // FR-TXN-003's "single logical record", as pixels: one line, not two, and the two account
+        // names carry the direction because a collapsed pair has no single sign to colour.
+        setContent(
+            TransactionsUiState(
+                isLoading = false,
+                days = listOf(TransactionDay("2026-08-02", listOf(transferRow()))),
+                accountNames = mapOf("account:1" to "HDFC Savings", "account:2" to "Cash Wallet"),
+            ),
+        )
+
+        compose.onNodeWithText("HDFC Savings", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("Cash Wallet", substring = true).assertIsDisplayed()
     }
 
-    /** Result: one day holding [transactions]. Input: [transactions]. Output: [TransactionDay]. */
+    @Test
+    fun `a transfer's amount carries no plus sign`() {
+        // A leading "+" would claim the user gained money they only moved between their own accounts.
+        setContent(
+            TransactionsUiState(
+                isLoading = false,
+                days = listOf(TransactionDay("2026-08-02", listOf(transferRow()))),
+                accountNames = mapOf("account:1" to "HDFC Savings", "account:2" to "Cash Wallet"),
+            ),
+        )
+
+        compose.onNodeWithText("₹5,000.00", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("+₹5,000.00", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun `an account id with no name falls back to the id rather than an empty arrow`() {
+        setContent(
+            TransactionsUiState(
+                isLoading = false,
+                days = listOf(TransactionDay("2026-08-02", listOf(transferRow()))),
+            ),
+        )
+
+        compose.onNodeWithText("account:1", substring = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `tapping delete on a transfer hands up one of its leg ids`() {
+        val events = mutableListOf<TransactionsEvent>()
+        setContent(
+            state =
+                TransactionsUiState(
+                    isLoading = false,
+                    days = listOf(TransactionDay("2026-08-02", listOf(transferRow()))),
+                ),
+            onEvent = { events += it },
+        )
+
+        compose.onNodeWithContentDescription(text(R.string.transactions_delete)).performClick()
+
+        // A transaction id, not the transfer id: the repository decides whether a sibling goes too.
+        assertEquals(listOf(TransactionsEvent.Delete("tfr:1:out")), events)
+    }
+
+    @Test
+    fun `an ordinary row has a delete action too`() {
+        val events = mutableListOf<TransactionsEvent>()
+        setContent(
+            state = TransactionsUiState(isLoading = false, days = listOf(day(transaction()))),
+            onEvent = { events += it },
+        )
+
+        compose.onNodeWithContentDescription(text(R.string.transactions_delete)).performClick()
+
+        assertEquals(listOf(TransactionsEvent.Delete("txn:1")), events)
+    }
+
+    /** Result: the composition is set. Input: [state], [onEvent]. Output: none. */
+    private fun setContent(
+        state: TransactionsUiState,
+        onEvent: (TransactionsEvent) -> Unit = {},
+    ) {
+        compose.setContent { CfoTheme { TransactionsContent(uiState = state, onEvent = onEvent) } }
+    }
+
+    /** Result: one day holding [transactions] as ordinary rows. Input: [transactions]. Output: a day. */
     private fun day(vararg transactions: com.aicfo.core.model.Transaction) =
-        TransactionDay(isoDate = "2026-08-02", transactions = transactions.toList())
+        TransactionDay(
+            isoDate = "2026-08-02",
+            rows = transactions.map { TransactionRow.Single(it) },
+        )
+
+    /** Result: a collapsed ₹5,000 transfer row. Input: none. Output: [TransactionRow.TransferPair]. */
+    private fun transferRow() =
+        TransactionRow.TransferPair(
+            transferId = "tfr:1",
+            id = "tfr:1:out",
+            outAccountId = "account:1",
+            inAccountId = "account:2",
+            amount = Money(5_000_00L),
+        )
 }

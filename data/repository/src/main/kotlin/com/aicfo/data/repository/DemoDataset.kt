@@ -11,6 +11,7 @@ import com.aicfo.core.database.entity.RecurringRuleEntity
 import com.aicfo.core.database.entity.TransactionEntity
 import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Money
+import com.aicfo.core.model.TransactionType
 import com.aicfo.domain.engines.quicksetup.QuickSetupEngineFactory
 import com.aicfo.domain.engines.quicksetup.QuickSetupInput
 import com.aicfo.domain.engines.quicksetup.QuickSetupPlan
@@ -275,6 +276,10 @@ internal object DemoDataset {
             merchant = spec.merchant,
             note = null,
             source = SOURCE_DEMO,
+            // Issue 3.2: derived from the sign, never stated separately — the sample dataset holds no
+            // transfers, so every row is a plain expense or a salary credit. `TransactionType.matches`
+            // is what stops this drifting from `amountMinor`.
+            type = (if (amountMinor < 0L) TransactionType.EXPENSE else TransactionType.INCOME).storedValue,
             createdAtUtcMillis = nowUtcMillis,
             updatedAtUtcMillis = nowUtcMillis,
         )

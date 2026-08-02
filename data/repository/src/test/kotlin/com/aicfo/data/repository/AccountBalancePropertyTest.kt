@@ -298,6 +298,8 @@ class AccountBalancePropertyTest {
                 occurredAtUtcMillis = clock.nowUtcMillis(),
                 bookedOnIsoDate = clock.today().toString(),
                 source = "manual",
+                // Issue 3.2: the fixture writes plain outflows, so they are expenses.
+                type = "expense",
                 createdAtUtcMillis = clock.nowUtcMillis(),
                 updatedAtUtcMillis = clock.nowUtcMillis(),
                 deletedAtUtcMillis = deletedAtUtcMillis,

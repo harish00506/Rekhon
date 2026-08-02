@@ -1,11 +1,14 @@
 package com.aicfo.feature.transactions
 
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -199,7 +202,107 @@ class AddTransactionFlowTest {
         assertTrue(events.isEmpty())
     }
 
+    // --- transfers (issue 3.2; FR-TXN-003) ---------------------------------------------------------
+
+    @Test
+    fun `the transfer option is offered, and does not disturb the expense default`() {
+        // FR-TXN-002 is specified "for a common expense", so the third option must not change what
+        // the form does when the user just wants to record spending.
+        setContent(state = twoAccountState())
+
+        compose.onNodeWithText(text(R.string.add_txn_transfer)).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.add_txn_expense)).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.add_txn_to_account)).assertDoesNotExist()
+    }
+
+    @Test
+    fun `choosing transfer reveals a To picker and hides categories`() {
+        val state =
+            twoAccountState(amountText = "5000")
+                .copy(
+                    direction = TransactionDirection.TRANSFER,
+                    categories = listOf(Category("category:fuel", "Fuel")),
+                )
+        setContent(state = state)
+
+        compose.onNodeWithText(text(R.string.add_txn_to_account)).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.add_txn_from_account)).assertIsDisplayed()
+        // A transfer is not spending, so it has no category to pick (FR-TXN-003).
+        compose.onNodeWithText(text(R.string.add_txn_category)).assertDoesNotExist()
+        compose.onNodeWithText("Fuel").assertDoesNotExist()
+    }
+
+    @Test
+    fun `the To picker does not offer the account the money is leaving`() {
+        setContent(
+            state = twoAccountState(amountText = "5000").copy(direction = TransactionDirection.TRANSFER),
+        )
+
+        // Both names appear under "From"; only the other one appears under "To". Asserting the
+        // source is offered exactly once is what shows it was filtered out of the destinations.
+        compose.onAllNodesWithText("HDFC Savings").assertCountEquals(1)
+        compose.onAllNodesWithText("Cash Wallet").assertCountEquals(2)
+    }
+
+    @Test
+    fun `picking a destination is one tap`() {
+        val events = mutableListOf<AddTransactionEvent>()
+        setContent(
+            state = twoAccountState(amountText = "5000").copy(direction = TransactionDirection.TRANSFER),
+            onEvent = { events += it },
+        )
+
+        compose.onAllNodesWithText("Cash Wallet").onLast().performClick()
+
+        assertEquals(AddTransactionEvent.DestinationSelected("account:2"), events.single())
+    }
+
+    @Test
+    fun `Save stays disabled until a transfer has a destination`() {
+        setContent(
+            state = twoAccountState(amountText = "5000").copy(direction = TransactionDirection.TRANSFER),
+        )
+
+        compose.onNodeWithText(text(R.string.add_txn_save)).assertIsNotEnabled()
+    }
+
+    @Test
+    fun `Save is enabled once a transfer has both accounts and an amount`() {
+        setContent(
+            state =
+                twoAccountState(amountText = "5000")
+                    .copy(direction = TransactionDirection.TRANSFER, toAccountId = "account:2"),
+        )
+
+        compose.onNodeWithText(text(R.string.add_txn_save)).assertIsEnabled()
+    }
+
+    @Test
+    fun `transfer is not offered to a profile with one account`() {
+        // There is nowhere to move money to. Disabled rather than absent, so the option is
+        // discoverable and its unavailability is explained by the account list beside it.
+        setContent(state = loadedState(amountText = "250"))
+
+        compose.onNodeWithText(text(R.string.add_txn_transfer)).assertIsNotEnabled()
+    }
+
     // --- fixtures ----------------------------------------------------------------------------------
+
+    /**
+     * Result: the loaded state for a profile with two accounts — the minimum a transfer needs.
+     * Input:  [amountText]. Output: [AddTransactionUiState].
+     */
+    private fun twoAccountState(amountText: String = "") =
+        AddTransactionUiState(
+            amountText = amountText,
+            isLoading = false,
+            accounts =
+                listOf(
+                    account { copy(id = "account:1", name = "HDFC Savings") },
+                    account { copy(id = "account:2", name = "Cash Wallet") },
+                ),
+            selectedAccountId = "account:1",
+        )
 
     /**
      * Renders the stateless body.
