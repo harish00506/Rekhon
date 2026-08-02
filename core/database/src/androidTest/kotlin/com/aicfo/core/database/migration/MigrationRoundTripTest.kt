@@ -37,6 +37,9 @@ import org.junit.runner.RunWith
  *            2026-07-28 — Issue 2.5: added the 3 → 4 case — **the first migration that alters an
  *            existing table rather than creating new ones**, so the first with a row that has to
  *            survive a change to its own definition.
+ *            2026-08-02 — Issue 3.2: added the 5 → 6 case — **the first migration that rewrites the
+ *            content of existing rows** rather than only adding empty columns, so the first where
+ *            the SQL can be structurally valid and still leave the data saying the wrong thing.
  */
 @RunWith(AndroidJUnit4::class)
 class MigrationRoundTripTest {
@@ -289,6 +292,74 @@ class MigrationRoundTripTest {
             assertEquals(29200000L, cursor.getLong(0))
             assertEquals("AI-ARC-006: the row remembers which formula produced it", "1.0", cursor.getString(1))
         }
+        migrated.close()
+    }
+
+    /**
+     * Input:  a v5 database holding one ordinary expense, one salary credit, and one FR-ACC-006
+     *         adjustment — the three shapes of row that exist before transfers do.
+     * Output: asserts all three survive **and that the backfill classified each correctly**.
+     *
+     * **The backfill is what this case exists for.** SQLite can only add a `NOT NULL` column with a
+     * `DEFAULT`, so without the `UPDATE` every pre-upgrade row would read as an `expense` — the
+     * user's salary would be typed as spending and issue 2.7's adjustments would be indistinguishable
+     * from things they bought. Nothing about that is visible in the schema shape, so
+     * `MigrationSafetyTest` cannot catch it; only running the SQL can.
+     */
+    @Test
+    fun migrate5To6_preservesTransactionsAndClassifiesThemByTypeAndSign() {
+        helper.createDatabase(TEST_DB, 5).use { db ->
+            db.execSQL(
+                "INSERT INTO transactions (id, profile_id, account_id, amount_minor, currency_code, " +
+                    "occurred_at_utc_millis, booked_on_iso_date, source, created_at_utc_millis, " +
+                    "updated_at_utc_millis) VALUES " +
+                    "('t1','p1','a1',-12345678,'INR',1767312000000,'2026-01-02','manual'," +
+                    "1767312000000,1767312000000)," +
+                    "('t2','p1','a1',9500000,'INR',1767312000000,'2026-01-01','manual'," +
+                    "1767312000000,1767312000000)," +
+                    "('t3','p1','a1',-250000,'INR',1767312000000,'2026-01-03','reconciliation'," +
+                    "1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 6, true, Migrations.MIGRATION_5_6)
+
+        migrated.query("SELECT id, amount_minor, type, transfer_id FROM transactions ORDER BY id")
+            .use { cursor ->
+                assertTrue("the pre-migration expense must still be there", cursor.moveToFirst())
+                assertEquals("t1", cursor.getString(0))
+                assertEquals("MNY-001: the amount must survive byte for byte", -12345678L, cursor.getLong(1))
+                assertEquals("a negative row is an expense", "expense", cursor.getString(2))
+                assertTrue("no pre-existing row can be part of a transfer", cursor.isNull(3))
+
+                assertTrue(cursor.moveToNext())
+                assertEquals("t2", cursor.getString(0))
+                assertEquals(9500000L, cursor.getLong(1))
+                assertEquals("a positive row is income, not an expense", "income", cursor.getString(2))
+
+                assertTrue(cursor.moveToNext())
+                assertEquals("t3", cursor.getString(0))
+                // Source wins over the sign: FR-ACC-006 corrections are §20.2's `adjustment`, and
+                // classifying them as spending would put every balance correction into spend totals.
+                assertEquals("a reconciliation row is an adjustment", "adjustment", cursor.getString(2))
+            }
+
+        // The columns must be writable, not merely present: a transfer's two legs share one id.
+        migrated.execSQL(
+            "INSERT INTO transactions (id, profile_id, account_id, amount_minor, currency_code, " +
+                "occurred_at_utc_millis, booked_on_iso_date, source, type, transfer_id, " +
+                "created_at_utc_millis, updated_at_utc_millis) VALUES " +
+                "('t4','p1','a1',-500000,'INR',1767312000000,'2026-01-04','manual','transfer_out'," +
+                "'tfr1',1767312000000,1767312000000)," +
+                "('t5','p1','a2',500000,'INR',1767312000000,'2026-01-04','manual','transfer_in'," +
+                "'tfr1',1767312000000,1767312000000)",
+        )
+        migrated.query("SELECT SUM(amount_minor), COUNT(*) FROM transactions WHERE transfer_id = 'tfr1'")
+            .use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("FR-TXN-003: a transfer's legs must balance exactly", 0L, cursor.getLong(0))
+                assertEquals("both legs must be findable by the shared id", 2, cursor.getInt(1))
+            }
         migrated.close()
     }
 

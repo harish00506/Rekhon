@@ -40,9 +40,10 @@ import com.aicfo.core.model.Transaction
 @Immutable
 data class AddTransactionUiState(
     val amountText: String = "",
-    val isExpense: Boolean = true,
+    val direction: TransactionDirection = TransactionDirection.EXPENSE,
     val accounts: List<Account> = emptyList(),
     val selectedAccountId: String? = null,
+    val toAccountId: String? = null,
     val categories: List<Category> = emptyList(),
     val selectedCategoryId: String? = null,
     val note: String = "",
@@ -52,18 +53,49 @@ data class AddTransactionUiState(
     val errorCode: String? = null,
 ) {
     /**
-     * The signed amount the draft would carry, or `null` while the field is not yet an amount.
+     * The amount as typed, once it is a representable non-zero figure.
      *
-     * Why: the one place the toggle becomes a sign. `MoneyFormatter.parse` returns `null` for
-     *      anything it cannot represent exactly rather than rounding it (MNY-001), and a zero is
-     *      rejected here as well as in the repository — not to duplicate the rule but so that Save
-     *      is *disabled* on an empty form rather than tapped and refused.
+     * Why: `MoneyFormatter.parse` returns `null` for anything it cannot represent exactly rather
+     *      than rounding it (MNY-001), and a zero is rejected here as well as in the repository —
+     *      not to duplicate the rule but so that Save is *disabled* on an empty form rather than
+     *      tapped and refused. **Unsigned**: the sign is applied by [signedAmount] for the two
+     *      one-account directions, and by the repository for a transfer's two legs.
      */
-    val amount: Money?
+    val amount: Money? get() = MoneyFormatter.parse(amountText)?.takeIf { it != Money.ZERO }
+
+    /**
+     * The signed amount an expense or income would be saved with, or `null` for a transfer.
+     *
+     * Why: the one place the toggle becomes a sign. A transfer has no single signed amount — it has
+     *      two, one per leg — so this is deliberately `null` there rather than guessing which side
+     *      the screen means. `TransferDraft` takes a positive [amount] instead.
+     */
+    val signedAmount: Money?
         get() =
-            MoneyFormatter.parse(amountText)
-                ?.takeIf { it != Money.ZERO }
-                ?.let { if (isExpense) Money.ZERO - it else it }
+            when (direction) {
+                TransactionDirection.EXPENSE -> amount?.let { Money.ZERO - it }
+                TransactionDirection.INCOME -> amount
+                TransactionDirection.TRANSFER -> null
+            }
+
+    /** Whether the user is moving money between their own accounts (FR-TXN-003). */
+    val isTransfer: Boolean get() = direction == TransactionDirection.TRANSFER
+
+    /**
+     * The accounts offered as a transfer destination.
+     *
+     * The source is excluded, because a transfer to the account the money is leaving moves nothing
+     * — the repository refuses it, and offering it in the picker would be inviting the mistake.
+     */
+    val destinationChoices: List<Account> get() = accounts.filterNot { it.id == selectedAccountId }
+
+    /**
+     * Whether a transfer has somewhere to go.
+     *
+     * Two accounts are the minimum. A user with one account cannot transfer at all, and the screen
+     * says so rather than showing an empty destination picker.
+     */
+    val canTransfer: Boolean get() = accounts.size >= 2
 
     /**
      * Whether the user has no account to spend from.
@@ -80,18 +112,56 @@ data class AddTransactionUiState(
      * False for every real profile until issue 4.1 seeds a taxonomy — only demo mode has categories
      * today. The row is hidden rather than shown empty, because an empty picker reads as a broken
      * one, and because FR-TXN-002's tap budget must not be spent on a control with no options.
+     *
+     * **Always false for a transfer** (FR-TXN-003): a transfer is not spending, so it has no category
+     * to pick. Hiding the row is how the screen says so.
      */
-    val hasCategories: Boolean get() = categories.isNotEmpty()
+    val hasCategories: Boolean get() = categories.isNotEmpty() && !isTransfer
 
     /**
      * Whether Save may proceed.
      *
-     * A representable non-zero amount, an account to spend from, and no write already done or in
-     * flight. **[isSaved] is part of it**, not only [isSaving]: the write completes fast enough that
-     * a double-tap's second event usually arrives after [isSaving] has gone false again, while the
-     * screen is still on its way out — and booking the spend twice is money the user never spent.
+     * A representable non-zero amount, an account, and no write already done or in flight. **A
+     * transfer additionally needs a destination that is not the source** — the repository refuses
+     * that anyway, but a disabled button explains it before the user commits.
+     *
+     * **[isSaved] is part of it**, not only [isSaving]: the write completes fast enough that a
+     * double-tap's second event usually arrives after [isSaving] has gone false again, while the
+     * screen is still on its way out — and booking the movement twice is money the user never moved.
      */
-    val canSave: Boolean get() = amount != null && selectedAccountId != null && !isSaving && !isSaved
+    val canSave: Boolean
+        get() =
+            amount != null &&
+                selectedAccountId != null &&
+                !isSaving &&
+                !isSaved &&
+                (!isTransfer || (toAccountId != null && toAccountId != selectedAccountId))
+}
+
+/**
+ * Which way money is moving, as the add screen asks it (issue 3.2; FR-TXN-003).
+ *
+ * Why:  issue 3.1 had a boolean, because there were two answers. FR-TXN-003 adds a third that is not
+ *       a direction at all — a transfer leaves one account *and* arrives in another — so a boolean
+ *       can no longer carry it. A closed set means the compiler lists every case the screen and the
+ *       ViewModel must handle.
+ * What: the three things the user can be recording.
+ * Result: adding a fourth kind of capture is a compile error until every `when` handles it.
+ * Changelog: 2026-08-02 — Created for issue 3.2, replacing issue 3.1's `isExpense` boolean.
+ *
+ * **Not [com.aicfo.core.model.TransactionType].** That enum is the *stored* vocabulary and has five
+ * values, two of which — the transfer legs — are a consequence of saving, not a thing the user picks.
+ * This is the question the form asks; the repository decides which stored types answer it.
+ */
+enum class TransactionDirection {
+    /** Money leaving, the common case and the default. */
+    EXPENSE,
+
+    /** Money arriving from outside. */
+    INCOME,
+
+    /** Money moving between two of the user's own accounts (FR-TXN-003). */
+    TRANSFER,
 }
 
 /**
@@ -106,11 +176,14 @@ sealed interface AddTransactionEvent {
     /** The user typed in the amount field. */
     data class AmountChanged(val value: String) : AddTransactionEvent
 
-    /** The user switched between expense and income. */
-    data class ExpenseChanged(val isExpense: Boolean) : AddTransactionEvent
+    /** The user switched between expense, income and transfer. */
+    data class DirectionChanged(val direction: TransactionDirection) : AddTransactionEvent
 
-    /** The user picked which account the money moved in. */
+    /** The user picked which account the money moved in — the source, for a transfer. */
     data class AccountSelected(val id: String) : AddTransactionEvent
+
+    /** The user picked where a transfer's money is going (FR-TXN-003). */
+    data class DestinationSelected(val id: String) : AddTransactionEvent
 
     /** The user picked a category, or tapped the selected one again to clear it. */
     data class CategorySelected(val id: String?) : AddTransactionEvent
@@ -126,6 +199,28 @@ sealed interface AddTransactionEvent {
 }
 
 /**
+ * Everything the user can do on the transactions list (issue 3.2; ARC-004).
+ *
+ * Why:  the list held no state and needed no events until FR-TXN-003 required "deleting one side
+ *       deletes both" to be something a user can actually do.
+ * Result: the list's complete input surface.
+ * Changelog: 2026-08-02 — Created for issue 3.2.
+ */
+sealed interface TransactionsEvent {
+    /**
+     * The user deleted a row.
+     *
+     * Carries **a transaction id**, not a transfer id, even for a transfer row — the screen passes
+     * the leg it was rendering and the repository decides whether a sibling goes with it. A screen
+     * that had to know which case it held would be a screen that can get it wrong.
+     */
+    data class Delete(val transactionId: String) : TransactionsEvent
+
+    /** The user dismissed the error banner. */
+    data object DismissError : TransactionsEvent
+}
+
+/**
  * Everything the recent-transactions list renders, as one value (issue 3.1; ARC-004).
  *
  * Why:  the save has to be *observable* — a capture path whose result the user cannot see is one
@@ -138,7 +233,8 @@ sealed interface AddTransactionEvent {
  * 3.6's, and the repository behind this deliberately reads a fixed 30-day window rather than
  * everything. Growing this class is how 3.6 gets built early and badly.
  *
- * Input:  [isLoading]; [days] — newest day first, each with its transactions newest first;
+ * Input:  [isLoading]; [days] — newest day first, each with its rows newest first; [accountNames] —
+ *         id → display name, so a transfer row can say "HDFC Savings → Cash Wallet" (issue 3.2);
  *         [errorCode] — an `AppError.code`, never a message.
  * Output: an immutable snapshot for the composable.
  */
@@ -146,6 +242,7 @@ sealed interface AddTransactionEvent {
 data class TransactionsUiState(
     val isLoading: Boolean = true,
     val days: List<TransactionDay> = emptyList(),
+    val accountNames: Map<String, String> = emptyMap(),
     val errorCode: String? = null,
 ) {
     /**
@@ -177,8 +274,64 @@ data class TransactionsUiState(
 @Immutable
 data class TransactionDay(
     val isoDate: String,
-    val transactions: List<Transaction>,
+    val rows: List<TransactionRow>,
 ) {
-    /** The day's net movement: outflows are negative, so this is a signed total, not a spend figure. */
-    val total: Money get() = transactions.fold(Money.ZERO) { running, txn -> running + txn.amount }
+    /**
+     * The day's net movement: outflows are negative, so this is a signed total, not a spend figure.
+     *
+     * **A transfer contributes nothing**, which is arithmetically true — its legs are `-X` and `+X` —
+     * and is why collapsing the pair into one row does not change this figure (issue 3.2).
+     */
+    val total: Money get() = rows.fold(Money.ZERO) { running, row -> running + row.netAmount }
+}
+
+/**
+ * One line in the transactions list (issue 3.2; FR-TXN-003).
+ *
+ * Why:  FR-TXN-003 calls a transfer "a single logical record ... not two unlinked transactions", so
+ *       the list cannot simply render every row the repository returns — a ₹5,000 transfer would
+ *       appear twice and read as ₹10,000 of activity. A closed set of row kinds means the screen
+ *       handles both and the compiler checks it did.
+ * Result: a transfer occupies one line; everything else is unchanged from issue 3.1.
+ * Changelog: 2026-08-02 — Created for issue 3.2.
+ */
+@Immutable
+sealed interface TransactionRow {
+    /** The id the delete action carries — for a transfer, either leg will do (the store decides). */
+    val id: String
+
+    /** What this row contributes to its day's total. Zero for a transfer, by construction. */
+    val netAmount: Money
+
+    /**
+     * An ordinary one-account movement: an expense, an income, or a balance adjustment.
+     *
+     * Input: [transaction] — the row as stored. Output: an immutable value.
+     */
+    @Immutable
+    data class Single(val transaction: Transaction) : TransactionRow {
+        override val id: String get() = transaction.id
+        override val netAmount: Money get() = transaction.amount
+    }
+
+    /**
+     * Both legs of a transfer, as one line (FR-TXN-003).
+     *
+     * **[amount] is positive** — the size of the movement, matching `Transfer`. [netAmount] is zero
+     * because the legs cancel, which is what keeps the day total honest when a pair is collapsed.
+     *
+     * Input:  [transferId] — the shared link; [id] — the leg the delete action names; [outAccountId]
+     *         and [inAccountId] — where the money left and arrived; [amount] — positive paise.
+     * Output: an immutable value.
+     */
+    @Immutable
+    data class TransferPair(
+        val transferId: String,
+        override val id: String,
+        val outAccountId: String,
+        val inAccountId: String,
+        val amount: Money,
+    ) : TransactionRow {
+        override val netAmount: Money get() = Money.ZERO
+    }
 }

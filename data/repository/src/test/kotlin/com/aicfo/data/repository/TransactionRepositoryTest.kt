@@ -14,6 +14,7 @@ import com.aicfo.core.database.entity.TransactionEntity
 import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.TransactionSource
+import com.aicfo.core.model.TransactionType
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -472,6 +473,7 @@ class TransactionRepositoryTest {
         id: String,
         accountId: String,
         source: String,
+        type: String = TransactionType.EXPENSE.storedValue,
     ) = TransactionEntity(
         id = id,
         profileId = REAL_PROFILE,
@@ -481,6 +483,7 @@ class TransactionRepositoryTest {
         occurredAtUtcMillis = clock.nowUtcMillis(),
         bookedOnIsoDate = clock.today().toString(),
         source = source,
+        type = type,
         createdAtUtcMillis = clock.nowUtcMillis(),
         updatedAtUtcMillis = clock.nowUtcMillis(),
     )
@@ -505,6 +508,11 @@ class TransactionRepositoryTest {
                 occurredAtUtcMillis = cursor.getLong(cursor.getColumnIndexOrThrow("occurred_at_utc_millis")),
                 bookedOnIsoDate = cursor.getString(cursor.getColumnIndexOrThrow("booked_on_iso_date")),
                 source = cursor.getString(cursor.getColumnIndexOrThrow("source")),
+                type = cursor.getString(cursor.getColumnIndexOrThrow("type")),
+                transferId =
+                    cursor.getColumnIndexOrThrow("transfer_id").let { index ->
+                        if (cursor.isNull(index)) null else cursor.getString(index)
+                    },
                 createdAtUtcMillis = cursor.getLong(cursor.getColumnIndexOrThrow("created_at_utc_millis")),
                 updatedAtUtcMillis = cursor.getLong(cursor.getColumnIndexOrThrow("updated_at_utc_millis")),
             )

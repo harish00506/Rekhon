@@ -17,12 +17,16 @@
 
 ## Current state
 
-- **Version:** `0.3.1` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (**Epic 3 open**).
-- **Currently working file:** issue 3.1 on `feature/3-1-add-transaction-3-taps-fab` — implemented,
-  every gate green, emulator-verified. **Not committed, merged or pushed** (the user has not asked).
-- **In progress:** **Epic 3 · issue 3.1** — add transaction in ≤ 3 taps
-  ([3.1](issues/3.1-add-transaction-3-taps-fab.md) ·
-  [tracker](issues/3.1-add-transaction-3-taps-fab-tracker.md)). **85 new tests; the whole suite green.**
+- **Version:** `0.3.2` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (**Epic 3 open**).
+  **Schema is now v6.**
+- **Currently working file:** none — issue 3.2 is **shipped**: committed on
+  `feature/3-2-transfers-single-logical-record` and merged `--no-ff` into `dev`. Push skipped (no remote).
+- **Shipped to `dev`:** 3.1 add-transaction ≤ 3 taps (`61568c9`, merged `06375da`) · 3.2 transfers as
+  one logical record ([3.2](issues/3.2-transfers-single-logical-record.md) ·
+  [tracker](issues/3.2-transfers-single-logical-record-tracker.md)) — **70 new tests, suite green,
+  the v5 → v6 upgrade path verified on a device.**
+- **In progress:** nothing. **Next: 3.3 splits** (depends on 3.1 + 1.2), or 3.4/3.5/3.6 — all of
+  which depend only on 3.1 and are now unblocked.
 - **Epic 2 is done.** Onboarding, the app lock, accounts, net worth and reconciliation all ship.
 - **The `transactions` table finally has a real writer** (3.1's `TransactionRepository`), so
   reconciliation is no longer the only non-demo thing that writes one. **Nothing writes a balance** —
@@ -41,6 +45,22 @@
 - **Screens that take text input need `imePadding()`.** The app is edge-to-edge, so the keyboard
   overlays rather than resizes: without it a scrollable form thinks it has the full screen, has
   nothing to scroll, and its Save button is stranded behind the keypad.
+- **Verify a migration by upgrading, never by installing fresh.** Issue 3.2's real risk was the
+  5 → 6 backfill, and a clean install exercises none of it. The check that means something: build the
+  *previous* commit's APK, install it, put real data in, then `adb install -r` the new one over it.
+  A destructive migration shows as a blank app; a missing backfill shows as every salary credit
+  typed `expense`. **Use a short worktree path** (`git worktree add /c/<short> dev`): the scratchpad
+  path breaks Windows' 260-char limit on the Paparazzi snapshot filenames, on both checkout *and*
+  removal — cleanup needs `Remove-Item -LiteralPath '\\?\C:\<short>' -Recurse -Force` after
+  `git worktree remove` deregisters it.
+- **`ALTER TABLE … ADD COLUMN` cannot carry a `CHECK` constraint, and can only add `NOT NULL` with a
+  `DEFAULT`.** So (a) a `NOT NULL` column needs `@ColumnInfo(defaultValue = …)` on the entity too or
+  Room's schema validation fails at open time on every upgraded install, (b) the default is a
+  placeholder the migration must then `UPDATE` into real values, and (c) any §20.2 `CHECK` has to be
+  re-expressed as a test. See [ADR-0008](adr/0008-transfers-as-linked-legs.md).
+- **A new required entity column with no Kotlin default is a feature, not a nuisance.** `transactions.type`
+  deliberately has none, so the compiler lists every write site — `writeAdjustment`, `DemoDataset`,
+  the encrypted-DB test — and each has to state its own value rather than silently inheriting a wrong one.
 - **Run `./gradlew unitTests`. Never `testDebugUnitTest`.** The latter is an Android *variant* task,
   so it skips the pure-Kotlin modules (`:core:model`, `:core:common`, `:domain:engines:*`) **and
   never reached `:lint` at all** — whose fourteen tests are the only thing checking the five custom

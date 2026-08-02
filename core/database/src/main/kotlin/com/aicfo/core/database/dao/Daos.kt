@@ -365,11 +365,43 @@ interface TransactionDao {
 
     /**
      * Marks a transaction deleted without removing the row.
-     * Result: it disappears from reads and totals. Input: [id], [deletedAtUtcMillis]. Output: rows affected.
+     *
+     * **`AND deleted_at_utc_millis IS NULL` is the guard that makes the returned count mean
+     * something** (issue 3.2). Without it a second delete of the same id matches the row again and
+     * returns 1, so the caller reports success for something that did not happen — the class of bug
+     * where a user taps Delete twice and is lied to the second time. `AccountDao.softDelete` has had
+     * this clause since issue 2.5; this one was written without it in issue 1.6 and nothing called
+     * it until now.
+     * Result: it disappears from reads and totals. `0` when the id names nothing live.
+     * Input:  [id], [deletedAtUtcMillis]. Output: rows affected.
      */
-    @Query("UPDATE transactions SET deleted_at_utc_millis = :deletedAtUtcMillis WHERE id = :id")
+    @Query(
+        "UPDATE transactions SET deleted_at_utc_millis = :deletedAtUtcMillis " +
+            "WHERE id = :id AND deleted_at_utc_millis IS NULL",
+    )
     suspend fun softDelete(
         id: String,
+        deletedAtUtcMillis: Long,
+    ): Int
+
+    /**
+     * Marks every live leg of a transfer deleted (issue 3.2; FR-TXN-003, DB-004).
+     *
+     * Why:    FR-TXN-003 is explicit that "deleting one side deletes both". Doing it in **one
+     *         statement** rather than reading the legs and deleting each is what makes that
+     *         atomic — there is no window in which one leg is gone and the other is not, and a
+     *         transfer that somehow had three legs would still be fully removed.
+     * Result: both legs disappear from reads and balances; the rows survive as tombstones (DB-002).
+     *         Returns how many legs were actually touched, so a caller can tell a real delete from
+     *         a repeat.
+     * Input:  [transferId], [deletedAtUtcMillis]. Output: rows affected.
+     */
+    @Query(
+        "UPDATE transactions SET deleted_at_utc_millis = :deletedAtUtcMillis " +
+            "WHERE transfer_id = :transferId AND deleted_at_utc_millis IS NULL",
+    )
+    suspend fun softDeleteTransfer(
+        transferId: String,
         deletedAtUtcMillis: Long,
     ): Int
 }

@@ -11,10 +11,13 @@ import com.aicfo.core.model.Money
 import com.aicfo.core.model.Reconciliation
 import com.aicfo.core.model.Transaction
 import com.aicfo.core.model.TransactionSource
+import com.aicfo.core.model.TransactionType
+import com.aicfo.core.model.Transfer
 import com.aicfo.data.repository.AccountDraft
 import com.aicfo.data.repository.AccountRepository
 import com.aicfo.data.repository.TransactionDraft
 import com.aicfo.data.repository.TransactionRepository
+import com.aicfo.data.repository.TransferDraft
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
@@ -46,6 +49,18 @@ internal class FakeTransactionRepository(
 
     /** Every draft passed to [create], in order. */
     val created: MutableList<TransactionDraft> = mutableListOf()
+
+    /**
+     * Every draft passed to [createTransfer], in order (issue 3.2).
+     *
+     * The **draft**, not the resulting transfer: what these tests check is what the ViewModel *asks
+     * for*, and a transfer whose source and destination were swapped would be a real bug that
+     * recording the outcome would hide.
+     */
+    val transfersCreated: MutableList<TransferDraft> = mutableListOf()
+
+    /** Every transaction id passed to [delete], in order (issue 3.2). */
+    val deleted: MutableList<String> = mutableListOf()
 
     /**
      * When non-null, **both** observation flows throw this instead of emitting.
@@ -92,9 +107,66 @@ internal class FakeTransactionRepository(
                 merchant = draft.merchant,
                 note = draft.note,
                 source = TransactionSource.MANUAL,
+                type = if (draft.amount < Money.ZERO) TransactionType.EXPENSE else TransactionType.INCOME,
             )
         transactions.value = transactions.value + transaction
         return Ok(transaction)
+    }
+
+    override suspend fun createTransfer(draft: TransferDraft): Result<Transfer, AppError> {
+        transfersCreated += draft
+        failWith?.let { return Err(it) }
+        // Both legs, as the real store writes them: the fake holds the same two rows so a list test
+        // can assert the collapsing without a database.
+        val transferId = "tfr:${transfersCreated.size}"
+        val legs =
+            listOf(
+                draft.fromAccountId to Money.ZERO - draft.amount,
+                draft.toAccountId to draft.amount,
+            ).mapIndexed { index, (accountId, amount) ->
+                Transaction(
+                    id = "txn:${transactions.value.size + index + 1}",
+                    accountId = accountId,
+                    amount = amount,
+                    occurredAtUtcMillis = 0L,
+                    bookedOn = "2026-08-02",
+                    categoryId = null,
+                    merchant = null,
+                    note = draft.note,
+                    source = TransactionSource.MANUAL,
+                    type = if (amount < Money.ZERO) TransactionType.TRANSFER_OUT else TransactionType.TRANSFER_IN,
+                    transferId = transferId,
+                )
+            }
+        transactions.value = transactions.value + legs
+        return Ok(
+            Transfer(
+                id = transferId,
+                fromAccountId = draft.fromAccountId,
+                toAccountId = draft.toAccountId,
+                amount = draft.amount,
+                bookedOn = "2026-08-02",
+                note = draft.note,
+            ),
+        )
+    }
+
+    override suspend fun delete(transactionId: String): Result<Unit, AppError> {
+        deleted += transactionId
+        val target = transactions.value.firstOrNull { it.id == transactionId }
+        return when {
+            failWith != null -> Err(failWith!!)
+            target == null -> Err(AppError.NotFound)
+            else -> {
+                // Mirrors the real store: a transfer leg takes its sibling with it (FR-TXN-003), so
+                // a list test sees the whole row disappear rather than half of it.
+                transactions.value =
+                    target.transferId
+                        ?.let { id -> transactions.value.filterNot { it.transferId == id } }
+                        ?: transactions.value.filterNot { it.id == transactionId }
+                Ok(Unit)
+            }
+        }
     }
 }
 
@@ -201,4 +273,45 @@ private val BASE_TRANSACTION =
         merchant = null,
         note = null,
         source = TransactionSource.MANUAL,
+        type = TransactionType.EXPENSE,
+    )
+
+/**
+ * A pair of transfer legs for a list test to seed (issue 3.2; FR-TXN-003).
+ * Why:    a transfer is two rows sharing an id, and building them by hand in each test invites the
+ *         one mistake the collapsing logic must never make — legs that do not actually balance.
+ *         Here the second leg is derived from the first, so they always do.
+ * Result: the outgoing leg then the incoming one, both booked on the same day.
+ * Input:  [transferId]; [amount] — positive; [from], [to] — the two accounts; [bookedOn].
+ * Output: `List<Transaction>`.
+ * Changelog: 2026-08-02 — Created for issue 3.2.
+ */
+internal fun transferLegs(
+    transferId: String = "tfr:1",
+    amount: Money = Money(5_000_00L),
+    from: String = "account:1",
+    to: String = "account:2",
+    bookedOn: String = "2026-08-02",
+): List<Transaction> =
+    listOf(
+        transaction {
+            copy(
+                id = "$transferId:out",
+                accountId = from,
+                amount = Money.ZERO - amount,
+                bookedOn = bookedOn,
+                type = TransactionType.TRANSFER_OUT,
+                transferId = transferId,
+            )
+        },
+        transaction {
+            copy(
+                id = "$transferId:in",
+                accountId = to,
+                amount = amount,
+                bookedOn = bookedOn,
+                type = TransactionType.TRANSFER_IN,
+                transferId = transferId,
+            )
+        },
     )

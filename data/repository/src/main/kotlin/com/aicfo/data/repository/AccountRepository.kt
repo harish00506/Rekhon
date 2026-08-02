@@ -17,6 +17,7 @@ import com.aicfo.core.model.Account
 import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.Reconciliation
+import com.aicfo.core.model.TransactionType
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -452,6 +453,10 @@ private suspend fun CfoDatabase.writeAdjustment(
             occurredAtUtcMillis = now,
             bookedOnIsoDate = bookedOn,
             source = AccountRepository.SOURCE_RECONCILIATION,
+            // Issue 3.2: §20.2's `adjustment` — the one type whose sign is genuinely free, because a
+            // correction runs in whichever direction the user's records were wrong in. Typing it as
+            // an expense would put every balance correction into spend totals.
+            type = TransactionType.ADJUSTMENT.storedValue,
             createdAtUtcMillis = now,
             updatedAtUtcMillis = now,
         ),
@@ -550,8 +555,10 @@ internal fun <T : Any> Result<T?, AppError>.flatMapPresent(): Result<T, AppError
  * Result: `Ok(Unit)` when a row was touched, `Err(NotFound)` when none was.
  * Input:  the receiver — the DAO's affected-row count. Output: `Result<Unit, AppError>`.
  * Changelog: 2026-07-28 — Created for issue 2.5.
+ *            2026-08-02 — Made `internal` for issue 3.2, whose `delete` needs the same
+ *            "the UPDATE matched nothing" → `NotFound` rule for both a plain row and a transfer pair.
  */
-private fun Result<Int, AppError>.requireRowTouched(): Result<Unit, AppError> =
+internal fun Result<Int, AppError>.requireRowTouched(): Result<Unit, AppError> =
     when (this) {
         is Ok -> if (value > 0) Ok(Unit) else Err(AppError.NotFound)
         is Err -> this

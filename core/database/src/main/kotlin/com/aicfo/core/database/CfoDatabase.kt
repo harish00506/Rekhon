@@ -93,9 +93,10 @@ abstract class CfoDatabase : RoomDatabase() {
          * History: 1 — issue 1.6 (profile, account, transactions, category) · 2 — issue 2.2
          * (`audit_log`) · 3 — issue 2.3 (`budget`, `recurring_rule`) · 4 — issue 2.5
          * (`account.institution`, `account.archived_at_utc_millis`; FR-ACC-007) · 5 — issue 2.6
-         * (`net_worth_snapshot`, `account.include_in_networth`; FR-ACC-005).
+         * (`net_worth_snapshot`, `account.include_in_networth`; FR-ACC-005) · 6 — issue 3.2
+         * (`transactions.type`, `transactions.transfer_id`; FR-TXN-003).
          */
-        const val VERSION = 5
+        const val VERSION = 6
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"

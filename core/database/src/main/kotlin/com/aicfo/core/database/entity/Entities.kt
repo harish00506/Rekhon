@@ -151,6 +151,8 @@ data class AccountEntity(
  * Result: a Room row in `transactions`.
  * Input:  see the constructor. Output: a Room row.
  * Changelog: 2026-07-25 — Created for issue 1.6.
+ *            2026-08-02 — Issue 3.2: `type` and `transfer_id`, so a transfer is one logical record
+ *            across two rows (FR-TXN-003) and so transfers can be excluded from spend totals.
  *
  * Table named `transactions`: `transaction` is a reserved SQL keyword.
  */
@@ -160,6 +162,9 @@ data class AccountEntity(
         Index("profile_id", "booked_on_iso_date"),
         Index("account_id"),
         Index("category_id"),
+        // Issue 3.2: every read of a transfer starts from this column — collapsing the pair for the
+        // list, and finding the sibling leg to delete alongside it.
+        Index("transfer_id"),
     ],
 )
 data class TransactionEntity(
@@ -198,6 +203,31 @@ data class TransactionEntity(
      */
     @ColumnInfo(name = "source")
     val source: String,
+    /**
+     * `expense` | `income` | `transfer_out` | `transfer_in` | `adjustment` (issue 3.2; §20.2).
+     *
+     * **Direction is stored twice — here and as [amountMinor]'s sign — and they must never
+     * disagree.** The guard is that nothing outside `:data:repository` ever supplies this: it is
+     * derived at one mapping site from the amount and the write path, and `TransactionType.matches`
+     * states the rule once. SQLite cannot carry §20.2's `CHECK` constraint here because `ALTER TABLE
+     * … ADD COLUMN` cannot add one, so the invariant lives in a test instead of in the schema.
+     *
+     * **`defaultValue` is not decoration.** The 5 → 6 migration must add a `NOT NULL` column, which
+     * SQLite only permits with a `DEFAULT`; if this annotation omitted it, Room's schema validation
+     * would fail against the committed `6.json` at open time on every upgraded install. The
+     * migration then rewrites the placeholder into the right value per row.
+     */
+    @ColumnInfo(name = "type", defaultValue = "'expense'")
+    val type: String,
+    /**
+     * Links the two legs of a transfer (issue 3.2; FR-TXN-003). Null on every other row.
+     *
+     * Two rows share one id: the outflow from the source account and the inflow to the destination.
+     * That is what makes a transfer "a single logical record affecting two accounts atomically" —
+     * the pair is found, rendered and deleted by this column, never by matching amounts and dates.
+     */
+    @ColumnInfo(name = "transfer_id")
+    val transferId: String? = null,
     @ColumnInfo(name = "created_at_utc_millis")
     val createdAtUtcMillis: Long,
     @ColumnInfo(name = "updated_at_utc_millis")

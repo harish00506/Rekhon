@@ -119,7 +119,7 @@ fun AddTransactionContent(
         }
 
         AmountField(uiState = uiState, onEvent = onEvent)
-        DirectionToggle(isExpense = uiState.isExpense, onEvent = onEvent)
+        DirectionToggle(uiState = uiState, onEvent = onEvent)
 
         if (uiState.hasNoAccount) {
             Text(
@@ -129,6 +129,7 @@ fun AddTransactionContent(
             )
         }
         AccountPicker(uiState = uiState, onEvent = onEvent)
+        DestinationPicker(uiState = uiState, onEvent = onEvent)
         CategoryPicker(uiState = uiState, onEvent = onEvent)
         NoteFieldAndActions(uiState = uiState, onEvent = onEvent, onCancel = onCancel)
     }
@@ -194,37 +195,104 @@ private fun AmountField(
 }
 
 /**
- * Expense or income, as a two-option single choice.
- * Why:    a toggle rather than asking the user to type a minus sign. Below the UI the direction is
- *         the amount's *sign* and nothing else, so this control is where "250, expense" becomes
- *         −25000 paise — and it defaults to expense because that is what the common path is.
+ * Expense, income or transfer, as a three-option single choice.
+ * Why:    a toggle rather than asking the user to type a minus sign. For the two one-account
+ *         directions this is where "250, expense" becomes −25000 paise; for a transfer it is where
+ *         the form changes shape, because a transfer needs a second account and has no category.
+ *         Expense stays the default and stays first, so FR-TXN-002's common path is untouched.
+ *
+ *         **Transfer is disabled with one account** (issue 3.2): there is nowhere to move money to,
+ *         and a control that accepts a tap and then refuses to save explains nothing. `FlowRow`
+ *         because three labels do not fit on one line at 200% font.
  *
  *         `selectable` on the **Row**, not the `RadioButton`: a 20dp control beside inert text is
  *         under the 48dp minimum and is announced to a screen reader as two unrelated things.
- * Result: the composition. Input: [isExpense], [onEvent]. Output: none.
+ * Result: the composition. Input: [uiState], [onEvent]. Output: none.
  * Changelog: 2026-08-02 — Created for issue 3.1.
+ *            2026-08-02 — Issue 3.2: a third option, and the boolean became `TransactionDirection`.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DirectionToggle(
-    isExpense: Boolean,
+    uiState: AddTransactionUiState,
     onEvent: (AddTransactionEvent) -> Unit,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(CfoDimens.spaceMd)) {
-        listOf(true to R.string.add_txn_expense, false to R.string.add_txn_income).forEach { (expense, label) ->
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(CfoDimens.spaceMd)) {
+        DIRECTION_LABELS.forEach { (direction, label) ->
+            val enabled = direction != TransactionDirection.TRANSFER || uiState.canTransfer
             Row(
                 modifier =
                     Modifier
                         .selectable(
-                            selected = isExpense == expense,
+                            selected = uiState.direction == direction,
+                            enabled = enabled,
                             role = Role.RadioButton,
-                            onClick = { onEvent(AddTransactionEvent.ExpenseChanged(expense)) },
+                            onClick = { onEvent(AddTransactionEvent.DirectionChanged(direction)) },
                         )
                         .padding(vertical = CfoDimens.spaceXs),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(CfoDimens.spaceSm),
             ) {
-                RadioButton(selected = isExpense == expense, onClick = null)
+                RadioButton(selected = uiState.direction == direction, onClick = null, enabled = enabled)
                 Text(text = stringResource(label), style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
+}
+
+/**
+ * The three directions in the order the toggle offers them.
+ *
+ * Expense first because it is the default and the common case; a list rather than three copies of
+ * the same `Row` so adding a direction cannot leave one of them styled differently.
+ */
+private val DIRECTION_LABELS =
+    listOf(
+        TransactionDirection.EXPENSE to R.string.add_txn_expense,
+        TransactionDirection.INCOME to R.string.add_txn_income,
+        TransactionDirection.TRANSFER to R.string.add_txn_transfer,
+    )
+
+/**
+ * Where a transfer's money is going (issue 3.2; FR-TXN-003).
+ * Why:    shown **only for a transfer**, because it is the one direction with a second account. The
+ *         source is absent from the options — the repository refuses a transfer to the account the
+ *         money is leaving, and offering it here would invite the mistake rather than prevent it.
+ *
+ *         Nothing is preselected. Unlike the source account, there is no defensible default: the
+ *         whole point of the choice is which of the user's other accounts the money lands in, and
+ *         guessing would be as likely to be wrong as right.
+ * Result: the composition, or nothing. Input: [uiState], [onEvent]. Output: none.
+ * Changelog: 2026-08-02 — Created for issue 3.2.
+ */
+@Composable
+private fun DestinationPicker(
+    uiState: AddTransactionUiState,
+    onEvent: (AddTransactionEvent) -> Unit,
+) {
+    if (!uiState.isTransfer) return
+
+    Column(verticalArrangement = Arrangement.spacedBy(CfoDimens.spaceXs)) {
+        Text(
+            text = stringResource(R.string.add_txn_to_account),
+            style = MaterialTheme.typography.titleSmall,
+        )
+        uiState.destinationChoices.forEach { account ->
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .selectable(
+                            selected = account.id == uiState.toAccountId,
+                            role = Role.RadioButton,
+                            onClick = { onEvent(AddTransactionEvent.DestinationSelected(account.id)) },
+                        )
+                        .padding(vertical = CfoDimens.spaceXs),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(CfoDimens.spaceSm),
+            ) {
+                RadioButton(selected = account.id == uiState.toAccountId, onClick = null)
+                Text(text = account.name, style = MaterialTheme.typography.bodyMedium)
             }
         }
     }
@@ -236,18 +304,28 @@ private fun DirectionToggle(
  *         FR-ONB-001's fourth step. A picker with a single option costs a tap of FR-TXN-002's budget
  *         and answers a question the user has no choice about. The ViewModel has preselected the
  *         first account either way, so hiding this changes nothing about what is saved.
+ *         **A transfer always shows it**, even with one account visible in the list, because "which
+ *         account is this leaving?" is half the question a transfer asks and an unlabelled implicit
+ *         source would make the destination picker meaningless (issue 3.2).
  * Result: the composition, or nothing. Input: [uiState], [onEvent]. Output: none.
  * Changelog: 2026-08-02 — Created for issue 3.1.
+ *            2026-08-02 — Issue 3.2: always shown for a transfer, and labelled "From" there.
  */
 @Composable
 private fun AccountPicker(
     uiState: AddTransactionUiState,
     onEvent: (AddTransactionEvent) -> Unit,
 ) {
-    if (uiState.accounts.size <= 1) return
+    if (uiState.accounts.size <= 1 && !uiState.isTransfer) return
 
     Column(verticalArrangement = Arrangement.spacedBy(CfoDimens.spaceXs)) {
-        Text(text = stringResource(R.string.add_txn_account), style = MaterialTheme.typography.titleSmall)
+        Text(
+            text =
+                stringResource(
+                    if (uiState.isTransfer) R.string.add_txn_from_account else R.string.add_txn_account,
+                ),
+            style = MaterialTheme.typography.titleSmall,
+        )
         uiState.accounts.forEach { account ->
             Row(
                 modifier =

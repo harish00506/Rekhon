@@ -228,8 +228,57 @@ internal object Migrations {
             }
         }
 
+    /**
+     * 5 → 6: adds `transactions.type` and `transactions.transfer_id` (issue 3.2; FR-TXN-003, §20.2).
+     *
+     * Why:    FR-TXN-003 requires a transfer to be "a single logical record affecting two accounts
+     *         atomically", which needs somewhere to record that two rows are one thing —
+     *         `transfer_id`. `type` arrives with it because a transfer leg must be excluded from
+     *         income and expense totals, and the amount's sign alone cannot tell a transfer_out from
+     *         an ordinary expense. Both columns are §20.2's own.
+     * What:   two `ALTER TABLE … ADD COLUMN`, one `UPDATE` that classifies the rows that already
+     *         exist, and one index. **Additive**: no column is dropped or narrowed and no row is
+     *         deleted (DB-003). The `UPDATE` rewrites only the column being introduced.
+     * Result: an existing installation keeps every transaction, each correctly typed, and gains the
+     *         ability to hold transfers.
+     * Input:  [SupportSQLiteDatabase] — the database mid-upgrade. Output: none (executes DDL).
+     *
+     * **The `UPDATE` is the load-bearing part, not the `ADD COLUMN`s.** SQLite can only add a
+     * `NOT NULL` column with a `DEFAULT`, so every pre-existing row would otherwise read as an
+     * `expense` — including the user's salary credits and every FR-ACC-006 adjustment issue 2.7
+     * wrote. The `CASE` restores what the row already implies: `source = 'reconciliation'` is
+     * §20.2's `adjustment`, and for everything else the sign is the direction, exactly as it has
+     * been since issue 1.6. Nothing is guessed — `transfer_id` stays null because no transfer could
+     * have been created before this migration existed.
+     *
+     * `'expense'` as the SQL default rather than `''`: if a future row somehow escapes the `UPDATE`,
+     * a valid value that reads oddly is recoverable, while an empty string parses to `null` in
+     * `TransactionType.fromStored` and would make the row invisible to every list.
+     *
+     * The types match what Room generates for `TransactionEntity`; the committed `schemas/6.json` is
+     * the reference, and `MigrationRoundTripTest` fails on a device if the two drift.
+     */
+    val MIGRATION_5_6 =
+        object : Migration(VERSION_5, VERSION_6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `transactions` ADD COLUMN `type` TEXT NOT NULL DEFAULT 'expense'")
+                db.execSQL("ALTER TABLE `transactions` ADD COLUMN `transfer_id` TEXT")
+                db.execSQL(
+                    "UPDATE `transactions` SET `type` = CASE " +
+                        "WHEN `source` = 'reconciliation' THEN 'adjustment' " +
+                        "WHEN `amount_minor` >= 0 THEN 'income' " +
+                        "ELSE 'expense' END",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_transactions_transfer_id` " +
+                        "ON `transactions` (`transfer_id`)",
+                )
+            }
+        }
+
     /** Every migration, in order, for `CfoDatabaseFactory` to register. */
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+    val ALL: Array<Migration> =
+        arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
 
     /** Named so the version pair reads as a schema version rather than an unexplained literal. */
     private const val VERSION_2 = 2
@@ -240,6 +289,9 @@ internal object Migrations {
     /** The version issue 2.5 introduced, and the one issue 2.6 upgrades from. */
     private const val VERSION_4 = 4
 
-    /** Matches `CfoDatabase.VERSION` at the time this migration was written (issue 2.6). */
+    /** The version issue 2.6 introduced, and the one issue 3.2 upgrades from. */
     private const val VERSION_5 = 5
+
+    /** Matches `CfoDatabase.VERSION` at the time this migration was written (issue 3.2). */
+    private const val VERSION_6 = 6
 }
