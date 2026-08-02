@@ -194,15 +194,6 @@ interface AccountRepository {
         const val ID_PREFIX = "account"
 
         /**
-         * The [IdGenerator] prefix for transaction ids (issue 2.7).
-         *
-         * Here rather than in a transactions repository because none exists yet — Epic 3 owns that,
-         * and reconciliation is the first thing in the app to write a transaction outside the demo
-         * dataset. It moves there unchanged when that repository lands.
-         */
-        const val TRANSACTION_ID_PREFIX = "txn"
-
-        /**
          * The `transactions.source` value marking an adjustment this flow wrote (issue 2.7).
          *
          * **This is the rule that fired** (P-02). A row indistinguishable from something the user
@@ -445,7 +436,10 @@ private suspend fun CfoDatabase.writeAdjustment(
     if (delta == Money.ZERO) {
         return Reconciliation(account.id, account.balance, statementBalance, delta, null, bookedOn)
     }
-    val adjustmentId = ids.newId(AccountRepository.TRANSACTION_ID_PREFIX)
+    // The prefix lives on TransactionRepository since issue 3.1, which is where this comment's
+    // predecessor always said it would move. The literal is unchanged, so ids already written by
+    // this flow still read the same way.
+    val adjustmentId = ids.newId(TransactionRepository.ID_PREFIX)
     transactionDao().upsert(
         TransactionEntity(
             id = adjustmentId,
@@ -539,8 +533,10 @@ private fun Result<AccountWithBalance?, AppError>.flatMapToAccount(): Result<Acc
  * Input:  the receiver. Output: `Result<T, AppError>`.
  * Changelog: 2026-07-28 — Created for issue 2.5.
  *            2026-08-02 — Made generic for issue 2.7, whose `reconcile` returns a `Reconciliation`.
+ *            2026-08-02 — Made `internal` for issue 3.1, so `TransactionRepository` reuses it rather
+ *            than declaring a second identical helper in the same package.
  */
-private fun <T : Any> Result<T?, AppError>.flatMapPresent(): Result<T, AppError> =
+internal fun <T : Any> Result<T?, AppError>.flatMapPresent(): Result<T, AppError> =
     when (this) {
         is Ok -> value?.let { Ok(it) } ?: Err(AppError.NotFound)
         is Err -> this

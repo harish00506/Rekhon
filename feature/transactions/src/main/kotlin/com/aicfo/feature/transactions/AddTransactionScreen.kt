@@ -1,0 +1,336 @@
+package com.aicfo.feature.transactions
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.aicfo.core.designsystem.component.CfoButton
+import com.aicfo.core.designsystem.component.CfoCard
+import com.aicfo.core.designsystem.component.CfoSecondaryButton
+import com.aicfo.core.designsystem.theme.CfoDimens
+
+/**
+ * Capture one transaction (issue 3.1; FR-TXN-002, FR-TXN-001, ARC-004).
+ *
+ * Why:  FR-TXN-002 is a MUST with a number in it — reachable in one tap, completable in ≤ 3 for a
+ *       common expense. **The layout is arranged around that budget, not around the fields.** The
+ *       amount field takes focus on entry so the keypad is already up; the account is preselected by
+ *       the ViewModel and its picker is hidden entirely when there is only one; the category row is
+ *       hidden when the profile has no categories. What is left for the common expense is: type the
+ *       amount, tap Save. One tap on the FAB to get here makes two.
+ * What: a stateful entry point and a stateless body.
+ * Result: a transaction is captured in two taps, and the third is spare for a category or income.
+ * Changelog: 2026-08-02 — Created for issue 3.1.
+ *
+ * Input:  [onDone] — where to go once saved or cancelled; [modifier]; [viewModel].
+ * Output: the rendered screen.
+ */
+@Composable
+fun AddTransactionScreen(
+    onDone: () -> Unit,
+    modifier: Modifier = Modifier,
+    viewModel: AddTransactionViewModel = hiltViewModel(),
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    // Navigation is a side effect of state, not of the tap: a save that failed must not leave the
+    // screen, and the ViewModel is the only thing that knows whether it succeeded.
+    LaunchedEffect(uiState.isSaved) {
+        if (uiState.isSaved) onDone()
+    }
+
+    AddTransactionContent(
+        uiState = uiState,
+        onEvent = viewModel::onEvent,
+        onCancel = onDone,
+        modifier = modifier,
+    )
+}
+
+/**
+ * The add screen's body, with no dependencies of its own.
+ * Why:    stateless so the tap-count test can drive it without Hilt, a database or a navigator —
+ *         FR-TXN-002's budget is asserted against this function.
+ * Result: the rendered content.
+ * Input:  [uiState]; [onEvent] — events up (ARC-004); [onCancel]; [modifier].
+ * Output: the composition.
+ * Changelog: 2026-08-02 — Created for issue 3.1.
+ */
+@Composable
+fun AddTransactionContent(
+    uiState: AddTransactionUiState,
+    onEvent: (AddTransactionEvent) -> Unit,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                // **`imePadding` before `verticalScroll`, and it is load-bearing.** The app draws
+                // edge-to-edge, so the keypad overlays the window rather than resizing it: without
+                // this the Column still believes it has the full screen, finds nothing to scroll,
+                // and Save sits *behind* the keypad with no way to reach it. Found on the emulator
+                // on a profile with four accounts and twelve categories — the short form a new user
+                // sees hid the bug completely.
+                .imePadding()
+                // Scrollable because at 200% font the form is taller than any phone, and the keypad
+                // takes half of what is left (§21.6's accessibility line).
+                .verticalScroll(rememberScrollState())
+                .padding(CfoDimens.spaceMd),
+        verticalArrangement = Arrangement.spacedBy(CfoDimens.spaceMd),
+    ) {
+        Text(
+            text = stringResource(R.string.add_txn_title),
+            style = MaterialTheme.typography.headlineSmall,
+        )
+
+        uiState.errorCode?.let { code ->
+            AddTransactionErrorBanner(code = code, onDismiss = { onEvent(AddTransactionEvent.DismissError) })
+        }
+
+        AmountField(uiState = uiState, onEvent = onEvent)
+        DirectionToggle(isExpense = uiState.isExpense, onEvent = onEvent)
+
+        if (uiState.hasNoAccount) {
+            Text(
+                text = stringResource(R.string.add_txn_no_account),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
+        }
+        AccountPicker(uiState = uiState, onEvent = onEvent)
+        CategoryPicker(uiState = uiState, onEvent = onEvent)
+        NoteFieldAndActions(uiState = uiState, onEvent = onEvent, onCancel = onCancel)
+    }
+}
+
+/**
+ * The optional note and the two buttons.
+ * Why:    split from [AddTransactionContent] to stay within detekt's 40-line function limit (§21.6).
+ *         The seam is a real one: everything above it is a decision that affects what is saved, and
+ *         these two are the free-text afterthought and the commit.
+ * Result: the composition. Input: [uiState], [onEvent], [onCancel]. Output: none.
+ * Changelog: 2026-08-02 — Created for issue 3.1.
+ */
+@Composable
+private fun NoteFieldAndActions(
+    uiState: AddTransactionUiState,
+    onEvent: (AddTransactionEvent) -> Unit,
+    onCancel: () -> Unit,
+) {
+    OutlinedTextField(
+        value = uiState.note,
+        onValueChange = { onEvent(AddTransactionEvent.NoteChanged(it)) },
+        label = { Text(stringResource(R.string.add_txn_note)) },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(CfoDimens.spaceSm)) {
+        CfoButton(
+            text = stringResource(R.string.add_txn_save),
+            onClick = { onEvent(AddTransactionEvent.Save) },
+            enabled = uiState.canSave,
+        )
+        CfoSecondaryButton(text = stringResource(R.string.add_txn_cancel), onClick = onCancel)
+    }
+}
+
+/**
+ * The amount field, focused on entry.
+ * Why:    **the autofocus is load-bearing for FR-TXN-002**, not a nicety — without it the user's
+ *         first tap goes on the field and the budget is three taps before they have chosen anything.
+ *         `KeyboardType.Decimal` rather than `Number` because paise are entered after a decimal
+ *         point; the sign is the toggle's job, so no minus key is needed here.
+ * Result: the composition. Input: [uiState], [onEvent]. Output: none.
+ * Changelog: 2026-08-02 — Created for issue 3.1.
+ */
+@Composable
+private fun AmountField(
+    uiState: AddTransactionUiState,
+    onEvent: (AddTransactionEvent) -> Unit,
+) {
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
+    OutlinedTextField(
+        value = uiState.amountText,
+        onValueChange = { onEvent(AddTransactionEvent.AmountChanged(it)) },
+        label = { Text(stringResource(R.string.add_txn_amount)) },
+        placeholder = { Text(stringResource(R.string.add_txn_amount_hint)) },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+    )
+}
+
+/**
+ * Expense or income, as a two-option single choice.
+ * Why:    a toggle rather than asking the user to type a minus sign. Below the UI the direction is
+ *         the amount's *sign* and nothing else, so this control is where "250, expense" becomes
+ *         −25000 paise — and it defaults to expense because that is what the common path is.
+ *
+ *         `selectable` on the **Row**, not the `RadioButton`: a 20dp control beside inert text is
+ *         under the 48dp minimum and is announced to a screen reader as two unrelated things.
+ * Result: the composition. Input: [isExpense], [onEvent]. Output: none.
+ * Changelog: 2026-08-02 — Created for issue 3.1.
+ */
+@Composable
+private fun DirectionToggle(
+    isExpense: Boolean,
+    onEvent: (AddTransactionEvent) -> Unit,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(CfoDimens.spaceMd)) {
+        listOf(true to R.string.add_txn_expense, false to R.string.add_txn_income).forEach { (expense, label) ->
+            Row(
+                modifier =
+                    Modifier
+                        .selectable(
+                            selected = isExpense == expense,
+                            role = Role.RadioButton,
+                            onClick = { onEvent(AddTransactionEvent.ExpenseChanged(expense)) },
+                        )
+                        .padding(vertical = CfoDimens.spaceXs),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(CfoDimens.spaceSm),
+            ) {
+                RadioButton(selected = isExpense == expense, onClick = null)
+                Text(text = stringResource(label), style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
+}
+
+/**
+ * Which account the money moved in.
+ * Why:    **hidden entirely when there is one account**, which is the state most users are in after
+ *         FR-ONB-001's fourth step. A picker with a single option costs a tap of FR-TXN-002's budget
+ *         and answers a question the user has no choice about. The ViewModel has preselected the
+ *         first account either way, so hiding this changes nothing about what is saved.
+ * Result: the composition, or nothing. Input: [uiState], [onEvent]. Output: none.
+ * Changelog: 2026-08-02 — Created for issue 3.1.
+ */
+@Composable
+private fun AccountPicker(
+    uiState: AddTransactionUiState,
+    onEvent: (AddTransactionEvent) -> Unit,
+) {
+    if (uiState.accounts.size <= 1) return
+
+    Column(verticalArrangement = Arrangement.spacedBy(CfoDimens.spaceXs)) {
+        Text(text = stringResource(R.string.add_txn_account), style = MaterialTheme.typography.titleSmall)
+        uiState.accounts.forEach { account ->
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .selectable(
+                            selected = account.id == uiState.selectedAccountId,
+                            role = Role.RadioButton,
+                            onClick = { onEvent(AddTransactionEvent.AccountSelected(account.id)) },
+                        )
+                        .padding(vertical = CfoDimens.spaceXs),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(CfoDimens.spaceSm),
+            ) {
+                RadioButton(selected = account.id == uiState.selectedAccountId, onClick = null)
+                Text(text = account.name, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
+}
+
+/**
+ * FR-TXN-002's middle step — the category chips.
+ * Why:    **hidden when the profile has no categories**, which is every real profile until issue 4.1
+ *         seeds a taxonomy; only demo mode has any today. An empty picker reads as a broken one, and
+ *         a control with no options must not sit in the tap budget. Tapping the selected chip again
+ *         clears it, because a category chosen by mistake would otherwise be unclearable without
+ *         leaving the screen.
+ *
+ *         Chips rather than a list: this is one tap of the three, so the options have to be visible
+ *         and reachable without opening anything. `FlowRow` wraps them at any font scale.
+ * Result: the composition, or nothing. Input: [uiState], [onEvent]. Output: none.
+ * Changelog: 2026-08-02 — Created for issue 3.1.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CategoryPicker(
+    uiState: AddTransactionUiState,
+    onEvent: (AddTransactionEvent) -> Unit,
+) {
+    if (!uiState.hasCategories) return
+
+    Column(verticalArrangement = Arrangement.spacedBy(CfoDimens.spaceXs)) {
+        Text(text = stringResource(R.string.add_txn_category), style = MaterialTheme.typography.titleSmall)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(CfoDimens.spaceSm)) {
+            uiState.categories.forEach { category ->
+                val selected = category.id == uiState.selectedCategoryId
+                FilterChip(
+                    selected = selected,
+                    onClick = {
+                        onEvent(AddTransactionEvent.CategorySelected(if (selected) null else category.id))
+                    },
+                    label = { Text(category.name) },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The add screen's error banner.
+ * Why:    `liveRegion` so a screen reader announces a failure the user did not go looking for. The
+ *         banner shows a message looked up from the code (§21.6) — never the code, and never
+ *         anything the throwable said (P-01).
+ * Result: the composition. Input: [code] — an `AppError.code`; [onDismiss]. Output: none.
+ * Changelog: 2026-08-02 — Created for issue 3.1.
+ */
+@Composable
+private fun AddTransactionErrorBanner(
+    code: String,
+    onDismiss: () -> Unit,
+) {
+    CfoCard {
+        Column(
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            verticalArrangement = Arrangement.spacedBy(CfoDimens.spaceSm),
+        ) {
+            Text(
+                text = stringResource(TransactionLabels.errorMessage(code)),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+            CfoSecondaryButton(text = stringResource(R.string.add_txn_error_dismiss), onClick = onDismiss)
+        }
+    }
+}

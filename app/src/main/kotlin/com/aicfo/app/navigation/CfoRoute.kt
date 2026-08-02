@@ -28,9 +28,23 @@ sealed interface CfoRoute {
     @Serializable
     data object Dashboard : CfoRoute
 
-    /** The transaction list (issue 3.6). Present here to prove cross-feature navigation works. */
+    /** The transaction list (issue 3.1's recent window; issue 3.6 adds search, filters and paging). */
     @Serializable
     data object Transactions : CfoRoute
+
+    /**
+     * Capture one transaction (issue 3.1; FR-TXN-002).
+     *
+     * A destination rather than a bottom sheet inside a screen, though §5 calls add-transaction a
+     * "modal flow": the FAB that opens it is global, so a sheet would have to be hoisted above the
+     * whole graph and would then survive navigation it should not. A destination gets the back stack,
+     * Back, and process-death restoration for free — and it costs the same one tap.
+     *
+     * No arguments: everything the screen needs it reads from the active profile. Issue 3.8's
+     * "review this scanned receipt" is the case that will need one, and it can add it then.
+     */
+    @Serializable
+    data object AddTransaction : CfoRoute
 
     /** The accounts list (issue 2.5; FR-ACC-001). */
     @Serializable

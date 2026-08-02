@@ -101,4 +101,25 @@ object RepositoryFactory {
         dispatchers: DispatcherProvider,
         activeProfileId: Flow<String>,
     ): NetWorthRepository = RoomNetWorthRepository(database, engine, clock, dispatchers, activeProfileId)
+
+    /**
+     * Builds the transactions store (issue 3.1, FR-TXN-002).
+     * Why:    takes the whole [database] like the four above it — `create` reads `account` and writes
+     *         `transactions`, and the recent list reads `transactions` and `category`, so three DAOs
+     *         are already in play and a DAO-per-argument signature would grow with every Epic-3 issue.
+     * Result: a [TransactionRepository] over the encrypted database.
+     * Input:  [database]; [clock] — TIM-001, and the profile-zone day the row is booked on (TIM-002);
+     *         [ids] — mints transaction ids from an injected source rather than `UUID.randomUUID()`,
+     *         so the write stays reproducible in a test (P-08); [dispatchers]; [activeProfileId] —
+     *         which profile the reads resolve to, so the list follows the demo without knowing it
+     *         exists.
+     * Output: [TransactionRepository].
+     */
+    fun transactions(
+        database: CfoDatabase,
+        clock: Clock,
+        ids: IdGenerator,
+        dispatchers: DispatcherProvider,
+        activeProfileId: Flow<String>,
+    ): TransactionRepository = RoomTransactionRepository(database, clock, ids, dispatchers, activeProfileId)
 }

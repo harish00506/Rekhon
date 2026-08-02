@@ -1,8 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Transactions copy (§21.6). See the dashboard strings for why literals never live in composables.
+  Transactions copy (§21.6). Every user-visible string lives here, never in a composable — the
+  `CfoHardcodedUiString` lint detector fails the build on a literal in a :feature:* module, because a
+  string baked into Kotlin cannot be translated (issue 10.8 ships Hindi) and cannot be reviewed.
+
+  Amounts are never interpolated into these strings: they are rendered by `CfoAmountText` through
+  `MoneyFormatter`, so Indian digit grouping (₹1,23,456.78) stays in one place (P-06).
 -->
 <resources>
     <string name="transactions_title">Transactions</string>
-    <string name="transactions_empty">No transactions yet.</string>
+    <string name="transactions_empty">No transactions yet. Tap + to add your first one.</string>
+    <string name="transactions_uncategorised">Uncategorised</string>
+    <!-- Content description on a day header's total, so a screen reader says what the figure is. -->
+    <string name="transactions_day_total">Total for the day</string>
+
+    <string name="add_txn_title">Add transaction</string>
+    <string name="add_txn_amount">Amount</string>
+    <string name="add_txn_amount_hint">0.00</string>
+    <string name="add_txn_expense">Expense</string>
+    <string name="add_txn_income">Income</string>
+    <string name="add_txn_account">Account</string>
+    <string name="add_txn_category">Category</string>
+    <string name="add_txn_note">Note (optional)</string>
+    <string name="add_txn_save">Save</string>
+    <string name="add_txn_cancel">Cancel</string>
+    <!-- Shown when the user has no account to spend from — a real state, not an error (FR-ONB-001). -->
+    <string name="add_txn_no_account">Add an account before recording a transaction.</string>
+    <string name="add_txn_error_dismiss">Dismiss</string>
+
+    <!--
+      One line per AppError.code the add screen can surface. The state carries the code, never a
+      message, so the wording is reviewable and translatable here rather than assembled in Kotlin.
+    -->
+    <string name="add_txn_error_validation">Check the amount and try again.</string>
+    <string name="add_txn_error_not_found">That account is no longer available.</string>
+    <string name="add_txn_error_storage">Couldn\'t save that. Please try again.</string>
+    <string name="add_txn_error_unknown">Something went wrong. Please try again.</string>
 </resources>

@@ -6,6 +6,51 @@ Single source of truth for the version number is the repo-root [`VERSION`](VERSI
 `app/build.gradle.kts` `versionName` equal to it. Epics map to the SRS roadmap (§26); every
 entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`](docs/issues/00-issue-workflow.md).
 
+## [0.3.0] — Epic 3: Transactions & Capture
+
+> The capture path. The `transactions` table has existed since issue 1.6 with nothing the user could
+> reach writing to it; this epic makes a transaction theirs to create — by hand first, then by
+> transfer, split, receipt and SMS.
+
+### [0.3.1] — Issue 3.1: Add transaction ≤ 3 taps (FAB)  (2026-08-02)
+
+- **Implemented:** the app's most-used flow — capture a transaction in **two taps** (FAB → Save)
+  (**FR-TXN-002**, FR-TXN-001, FR-TXN-009; MNY-001, TIM-001, TIM-002, DB-001, DB-002, ARC-001,
+  ARC-003, ARC-004, ARC-005, P-01, P-04, P-08).
+  - **`TransactionRepository`** (`:data:repository`) — `create`, a 30-day `observeRecent`, and the
+    categories the add screen offers. Amounts are signed `Money` paise and **nothing writes a
+    balance**: the row it inserts *is* the balance update (DB-001, ADR-0007). The account is verified
+    live before the write, so no orphan row can be stored. `TRANSACTION_ID_PREFIX` moved here from
+    `AccountRepository`, unchanged, as that class's comment said it would.
+  - **A global FAB** above the nav graph, hidden on onboarding and on the capture screen itself, so
+    add-transaction is one tap from anywhere — FR-TXN-002's literal wording, without building the
+    bottom nav (issue 5.1 owns that).
+  - **The add screen** preselects the first account and autofocuses the amount, which is what makes
+    the two taps real; the account picker hides when there is one account and the category row hides
+    when the profile has none. The expense/income toggle becomes a **sign** before it reaches the
+    store, so direction has exactly one representation below the UI.
+  - **A recent-transactions list** replacing issue 1.10's placeholder — day-grouped with daily totals
+    (FR-TXN-007's grouping half only; search, filters, paging and bulk edit remain issue 3.6's).
+- **Corrected:** this issue's requirement id. The backlog cited **FR-TXN-004**, which is *split
+  transactions* (issue 3.3); the ≤ 3-tap rule is **FR-TXN-002**. Fixed at source in
+  `scripts/gen_issue_docs.py` and regenerated.
+- **Fixed (found on the emulator, not by the build):**
+  - Every **demo** transaction was invisible in the new list — `transactions.source` has held
+    `"demo"` since issue 2.4, the first `TransactionSource` enum omitted it, and the mapper's
+    forward-compatible `mapNotNull` silently dropped all of them. Regression test:
+    `the demo's own history is inside the window`.
+  - **Save was unreachable behind the keypad** on a profile with several accounts and categories —
+    the screen drew edge-to-edge without consuming IME insets, so the form had nothing to scroll.
+    Fixed with `imePadding()`.
+  - A **double-tap booked the spend twice**: the write finishes fast enough that the second event
+    arrives after `isSaving` clears, so `isSaved` is now guarded too.
+- **Tests:** 85 passed, 0 skipped (11 model · 27 repository · 45 feature · 2 app) — repository
+  (Room in-memory, profile isolation, the derived
+  balance moving by exactly the amount, the profile-zone booked day), ViewModels (Turbine), and
+  Compose tap-count tests split across `:feature:transactions` and `:app` that pin FR-TXN-002's
+  budget at 1 + 1 = 2. Emulator run in **airplane mode** (P-04): ₹250 expense moved the balance
+  −₹3,459 → −₹3,709; ₹60,000 income moved net worth +₹4,17,262 → +₹4,77,262.
+
 ## [0.2.0] — Epic 2: Onboarding, Security & Accounts
 
 > First-run onboarding, the biometric app lock, and the accounts + net-worth core. Epic 1 built

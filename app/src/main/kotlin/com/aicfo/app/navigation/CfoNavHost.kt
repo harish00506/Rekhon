@@ -11,6 +11,7 @@ import com.aicfo.feature.accounts.AccountEditorScreen
 import com.aicfo.feature.accounts.AccountsScreen
 import com.aicfo.feature.dashboard.DashboardScreen
 import com.aicfo.feature.onboarding.OnboardingScreen
+import com.aicfo.feature.transactions.AddTransactionScreen
 import com.aicfo.feature.transactions.TransactionsScreen
 
 /**
@@ -28,6 +29,7 @@ import com.aicfo.feature.transactions.TransactionsScreen
  *            install must land on onboarding rather than an empty dashboard.
  *            2026-07-28 — Issue 2.4: onboarding gained a second exit — into the demo.
  *            2026-07-28 — Issue 2.5: accounts, and the first destination that takes an argument.
+ *            2026-08-02 — Issue 3.1: the add-transaction destination the global FAB opens.
  *
  * Input:  [startDestination] — decided by `MainViewModel` from the stored onboarding flag;
  *         [modifier]; [navController] — hoisted so a test or a preview can supply its own.
@@ -53,6 +55,12 @@ fun CfoNavHost(
         }
         composable<CfoRoute.Transactions> {
             TransactionsScreen()
+        }
+        composable<CfoRoute.AddTransaction> {
+            // popBackStack for the same reason the editor below does: the capture screen was pushed
+            // on top of whatever the user was looking at, and saving must return them there — the FAB
+            // is global, so "wherever they were" is genuinely any destination.
+            AddTransactionScreen(onDone = { navController.popBackStack() })
         }
         composable<CfoRoute.Accounts> {
             AccountsScreen(

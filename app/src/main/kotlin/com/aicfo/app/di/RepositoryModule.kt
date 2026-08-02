@@ -10,6 +10,7 @@ import com.aicfo.data.repository.DemoModeRepository
 import com.aicfo.data.repository.NetWorthRepository
 import com.aicfo.data.repository.QuickSetupRepository
 import com.aicfo.data.repository.RepositoryFactory
+import com.aicfo.data.repository.TransactionRepository
 import com.aicfo.domain.engines.networth.NetWorthEngine
 import dagger.Module
 import dagger.Provides
@@ -111,4 +112,23 @@ object RepositoryModule {
         dispatchers: DispatcherProvider,
         demoMode: DemoModeRepository,
     ): NetWorthRepository = RepositoryFactory.netWorth(database, engine, clock, dispatchers, demoMode.activeProfileId)
+
+    /**
+     * The transactions store (issue 3.1; FR-TXN-002, FR-TXN-009).
+     * Why:    follows the demo like every binding above it, so a transaction added while exploring
+     *         the sample data lands under the demo profile and leaves with it (ADR-0006).
+     * Result: a [TransactionRepository]. Input: [database], [clock], [ids] — the injected id source
+     *         (P-08), [dispatchers], [demoMode]. Output: the repository.
+     * Changelog: 2026-08-02 — Created for issue 3.1.
+     */
+    @Provides
+    @Singleton
+    fun provideTransactionRepository(
+        database: CfoDatabase,
+        clock: Clock,
+        ids: IdGenerator,
+        dispatchers: DispatcherProvider,
+        demoMode: DemoModeRepository,
+    ): TransactionRepository =
+        RepositoryFactory.transactions(database, clock, ids, dispatchers, demoMode.activeProfileId)
 }
