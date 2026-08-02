@@ -19,16 +19,14 @@
 
 - **Version:** `0.3.3` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (**Epic 3 open**).
   **Schema is now v7.**
-- **Currently working file:** issue 3.3 splits — **implemented and verified, uncommitted** on
-  `feature/3-3-split-transactions-n-lines`. Everything but workflow step 12 is done; the commit and
-  the merge to `dev` wait on an explicit instruction.
+- **Currently working file:** none — issue 3.3 is **shipped**: committed on
+  `feature/3-3-split-transactions-n-lines` and merged `--no-ff` into `dev`. Push skipped (no remote).
 - **Shipped to `dev`:** 3.1 add-transaction ≤ 3 taps (`61568c9`, merged `06375da`) · 3.2 transfers as
-  one logical record ([3.2](issues/3.2-transfers-single-logical-record.md) ·
-  [tracker](issues/3.2-transfers-single-logical-record-tracker.md)) — **70 new tests, suite green,
-  the v5 → v6 upgrade path verified on a device.**
-- **In progress:** 3.3 splits ([3.3](issues/3.3-split-transactions-n-lines.md) ·
-  [tracker](issues/3.3-split-transactions-n-lines-tracker.md)) — **62 new tests, suite green, the
-  v6 → v7 upgrade path verified on a device.** **Next: 3.4/3.5/3.6**, all unblocked by 3.1.
+  one logical record (`66189fc`, merged `20ebbfb`) · 3.3 splits across N category lines
+  ([3.3](issues/3.3-split-transactions-n-lines.md) ·
+  [tracker](issues/3.3-split-transactions-n-lines-tracker.md)) — `7de4944`, merged `f3afaec`;
+  **62 new tests, suite green, the v6 → v7 upgrade path verified on a device.**
+- **In progress:** nothing. **Next: 3.4/3.5/3.6**, all unblocked by 3.1 and none of them needing 3.3.
 - **Epic 2 is done.** Onboarding, the app lock, accounts, net worth and reconciliation all ship.
 - **The `transactions` table finally has a real writer** (3.1's `TransactionRepository`), so
   reconciliation is no longer the only non-demo thing that writes one. **Nothing writes a balance** —
@@ -196,6 +194,17 @@
 - **Epic 2 — issue 2.1 (v0.2.1, 2026-07-25):** the 4-step first-run onboarding. First screen that
   writes; closes the "nothing sets the profile time zone" seam from Epic 1 and gives the consent
   ledger its first caller.
+- **Epic 3 — issues 3.1, 3.2, 3.3 (v0.3.1 → v0.3.3, 2026-08-02):** the transactions table got its
+  first real writer and then its two hard shapes. **3.1** — add a transaction in ≤ 3 taps
+  (FR-TXN-002, *not* FR-TXN-004 as the backlog claimed) behind a global FAB, no schema change.
+  **3.2** — a transfer is **one logical record rendered from two linked legs**, schema **v6**
+  (`transactions.type`, `transfer_id`) with the app's first backfilling migration
+  ([ADR-0008](adr/0008-transfers-as-linked-legs.md)). **3.3** — splits across N category lines,
+  schema **v7** (`transaction_splits`), where the parent holds the money and the lines hold only the
+  categories, so **no balance code was written at all**
+  ([ADR-0009](adr/0009-splits-as-a-child-table.md)). The two ADRs answer the same structural question
+  in opposite directions, on purpose: transfer legs both move money, split lines move none. Still
+  create-and-delete only — **there is no edit path anywhere** (issue 3.6).
 - **Epic 2 — issue 2.7 (v0.2.7, 2026-08-02):** account reconciliation (FR-ACC-006) — **the last
   issue in Epic 2**. A balance the app got wrong is corrected by *adding* an adjustment transaction
   (`source = "reconciliation"`), never by editing history; a zero delta writes nothing at all. The
