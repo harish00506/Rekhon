@@ -292,7 +292,7 @@ EPICS: dict[int, dict] = {
         "title": "Transactions & Capture",
         "phase": "SRS Phase 0/1 (SS5.3, SS5.4, SS18)",
         "summary": "<=3-tap transaction entry plus automated capture - transfers, splits, recurring detection, OCR receipts, and opt-in SMS parsing - all provenance-tagged.",
-        "rules": ["Add-txn stays <= 3 taps; every captured record is provenance-tagged by source (FR-TXN-004/AI-ARC-003)."],
+        "rules": ["Add-txn stays <= 3 taps; every captured record is provenance-tagged by source (FR-TXN-002/FR-TXN-009/AI-ARC-003)."],
     },
     4: {
         "title": "Categorisation & Budgets",
@@ -555,12 +555,16 @@ ISSUES: list[Issue] = [
 
     # ---------------- Epic 3 - Transactions & Capture ---------------- #
     I("3.1", 3, "Add transaction <= 3 taps (FAB)", "transactions;ui", "H", "2.5",
-      "SS5.3, SS18; FR-TXN-004", "SS6 Module Structure",
+      # FR-TXN-002, not -004. The SRS's -004 is *split transactions*, which is issue 3.3; this
+      # issue's requirement is "Add-transaction MUST be reachable in one tap (FAB) and completable
+      # in <= 3 taps for a common expense (amount -> category suggestion -> save)". Corrected while
+      # implementing 3.1 - the generated doc had cited the wrong id since the backlog was written.
+      "SS5.3, SS18; FR-TXN-002, FR-TXN-001, FR-TXN-009", "SS6 Module Structure",
       "The core capture path: add a transaction in <= 3 taps from the FAB - amount, category, account - the app's most-used flow.",
       ["Add-txn is reachable and completable in <= 3 taps (a Compose UI test asserts the tap count).",
        "Amount is `Money` paise; date via the injected `Clock`; the write goes through the repository.",
        "Validation for empty/invalid amount; fully offline."],
-      ["<= 3 taps is a hard requirement (FR-TXN-004); amounts are `Money` (MNY-001)."]),
+      ["<= 3 taps is a hard requirement (FR-TXN-002); amounts are `Money` (MNY-001)."]),
     I("3.2", 3, "Transfers (single logical record)", "transactions", "H", "3.1",
       "SS5.3; FR-TXN-*", "SS5 Data Model",
       "Account-to-account transfers modelled as one logical record (not two unlinked transactions) so net worth and category totals stay correct.",

@@ -14,7 +14,7 @@ android {
 
     defaultConfig {
         applicationId = "com.aicfo.personalcfo"
-        versionCode = 8
+        versionCode = 9
         versionName = rootProject.file("VERSION").readText().trim()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -25,7 +25,20 @@ android {
             isMinifyEnabled = false
         }
     }
+
+    testOptions {
+        // Issue 3.1: Robolectric renders this module's strings.xml and theme for the FAB test;
+        // without the real resources the content description would come back blank.
+        unitTests.isIncludeAndroidResources = true
+    }
 }
+
+// The Compose UI test launches a ComponentActivity, which only exists in the merged manifest of the
+// debug variant — `androidx.compose.ui:ui-test-manifest` is a `debugImplementation` dependency by
+// design. The same exclusion :feature:accounts and :feature:transactions carry.
+tasks.withType<Test>()
+    .matching { it.name.contains("Release") }
+    .configureEach { exclude("**/AddTransactionFabTest.class") }
 
 dependencies {
     implementation(project(":core:designsystem"))
@@ -70,6 +83,11 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.junit)
     testImplementation(libs.work.testing)
+    // Issue 3.1: FR-TXN-002's first tap — the global FAB — lives in this module, so the half of the
+    // tap budget that :feature:transactions cannot see is asserted here, on the JVM.
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
     // FakeClock (issue 1.3) — the app lock's timeout and lockout are clock-driven.
     testImplementation(testFixtures(project(":core:common")))
 }

@@ -17,15 +17,30 @@
 
 ## Current state
 
-- **Version:** `0.2.7` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (**Epic 2 complete**).
-- **Currently working file:** none — issue 2.7 is **shipped**: committed on
-  `feature/2-7-account-reconciliation-flow` and merged `--no-ff` into `dev`. Push skipped (no remote).
-- **In progress:** nothing. Last built: **Epic 2 · issue 2.7** — account reconciliation + DB-001's
-  integrity job ([2.7](issues/2.7-account-reconciliation-flow.md) ·
-  [tracker](issues/2.7-account-reconciliation-flow-tracker.md)). **622 unit tests, all green.**
+- **Version:** `0.3.1` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (**Epic 3 open**).
+- **Currently working file:** issue 3.1 on `feature/3-1-add-transaction-3-taps-fab` — implemented,
+  every gate green, emulator-verified. **Not committed, merged or pushed** (the user has not asked).
+- **In progress:** **Epic 3 · issue 3.1** — add transaction in ≤ 3 taps
+  ([3.1](issues/3.1-add-transaction-3-taps-fab.md) ·
+  [tracker](issues/3.1-add-transaction-3-taps-fab-tracker.md)). **85 new tests; the whole suite green.**
 - **Epic 2 is done.** Onboarding, the app lock, accounts, net worth and reconciliation all ship.
-  **Next is Epic 3 — transactions**, which finally gives the `transactions` table a real writer;
-  reconciliation is currently the only thing outside the demo dataset that writes one.
+- **The `transactions` table finally has a real writer** (3.1's `TransactionRepository`), so
+  reconciliation is no longer the only non-demo thing that writes one. **Nothing writes a balance** —
+  inserting the row *is* the balance update (DB-001, ADR-0007).
+- **`FR-TXN-004` in the backlog was wrong for 3.1** — that id is *split transactions* (issue 3.3).
+  The ≤ 3-tap rule is **FR-TXN-002**. Fixed at source in `scripts/gen_issue_docs.py`. Worth
+  distrusting the generated FR ids on other issues too.
+- **Regenerating issue docs overwrites hand-completed ones.** `gen_issue_docs.py` rewrote 2.7's
+  finished file (Files Changed, Verification); it was restored with `git checkout`. Check
+  `git diff docs/issues/` after every run and restore any shipped issue it touched.
+- **Model a stored column as a closed set only after grepping what the app actually writes to it.**
+  `TransactionSource` first modelled the SRS's list plus `reconciliation` and missed `"demo"`, which
+  `DemoDataset` has written since issue 2.4 — so the mapper's forward-compatible `mapNotNull` silently
+  dropped **every** sample transaction, and the new list rendered empty on a demo profile whose
+  balances plainly came from those rows. The build was green throughout; only running the app caught it.
+- **Screens that take text input need `imePadding()`.** The app is edge-to-edge, so the keyboard
+  overlays rather than resizes: without it a scrollable form thinks it has the full screen, has
+  nothing to scroll, and its Save button is stranded behind the keypad.
 - **Run `./gradlew unitTests`. Never `testDebugUnitTest`.** The latter is an Android *variant* task,
   so it skips the pure-Kotlin modules (`:core:model`, `:core:common`, `:domain:engines:*`) **and
   never reached `:lint` at all** — whose fourteen tests are the only thing checking the five custom
@@ -68,12 +83,20 @@
   v2→v3 Room migrations** ran against real SQLite and preserved their rows, and **SEC-002's Keystore
   PIN round trip** executed on a real TEE. Both had previously only ever been exercised by JVM
   stand-ins.
-- **Next up: Epic 3 — transactions.** **Issue 3.4 (future-dated) is already accounted for** — net
-  worth's as-of query bounds by `booked_on_iso_date`, so a scheduled payment will not be subtracted
-  from today's figure. Epic 3 also inherits two things from 2.7: a real `TransactionRepository`
-  should absorb `writeAdjustment`'s ~10-line insert unchanged, and `transactions.source` now has a
-  fifth value, `reconciliation`, that any transaction list must render distinguishably (P-02 — on
-  that row the source *is* the rule that fired, and `note` is deliberately null).
+- **Next up after 3.1: 3.2 transfers, 3.5 source tracking, 3.6 the real list.** **Issue 3.4
+  (future-dated) is already accounted for** — net worth's as-of query bounds by
+  `booked_on_iso_date`, so a scheduled payment will not be subtracted from today's figure. **3.1's
+  recent list does not bound that way** (it is a plain 30-day window), so 3.4 must revisit
+  `observeRecent` when future dates become possible. `transactions.source` now has values
+  `reconciliation` (2.7) and `demo` (2.4) that a list must render distinguishably (P-02 — on the
+  adjustment row the source *is* the rule that fired, and `note` is deliberately null); **3.5 owns
+  surfacing them, 3.1 only made them parseable.** 3.1 left `writeAdjustment` in `AccountRepository`
+  rather than absorbing it — it writes under the *account's* profile inside reconciliation's own
+  transaction, which the create path does not need.
+- **`TransactionDao.softDelete` lacks the `AND deleted_at_utc_millis IS NULL` guard** that
+  `AccountDao.softDelete` has, so a double-delete returns 1 both times and would report success
+  twice. Harmless today (3.1 is create-only and nothing calls it), but 3.6's delete-with-undo must
+  fix it or it will lie to the user.
 - **`account.current_balance_minor` is no longer a lie.** 2.7 built DB-001's integrity job
   (`BalanceIntegrityWorker`, daily). Nothing *reads* the column yet — every balance is still derived
   — so the value is the invariant, not a screen; it is the precondition for switching the read path

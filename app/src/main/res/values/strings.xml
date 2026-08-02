@@ -15,6 +15,12 @@
     <string name="demo_banner_message">Sample data — none of this is yours</string>
     <string name="demo_banner_exit">Exit demo</string>
 
+    <!--
+      The global add-transaction FAB (issue 3.1, FR-TXN-002). Icon-only, so this is what a screen
+      reader announces — without it the button reads as "button" and is unusable.
+    -->
+    <string name="add_transaction">Add transaction</string>
+
     <!-- App lock (issue 2.2, SEC-002) -->
     <string name="lock_title">Locked</string>
     <string name="lock_body">Enter your PIN to open your finances.</string>

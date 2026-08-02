@@ -7,19 +7,28 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavDestination.Companion.hasRoute
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.aicfo.app.lock.AppLockGate
 import com.aicfo.app.navigation.CfoNavHost
 import com.aicfo.app.navigation.CfoRoute
 import com.aicfo.core.designsystem.component.CfoDemoBanner
+import com.aicfo.core.designsystem.theme.CfoDimens
 import com.aicfo.core.designsystem.theme.CfoTheme
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -97,6 +106,8 @@ class MainActivity : FragmentActivity() {
  * Result: the app is unmistakable as a demo while one is loaded, and one tap from leaving it.
  * Changelog: 2026-07-28 — Created for issue 2.4.
  *
+ * Changelog: 2026-08-02 — Issue 3.1: the global add-transaction FAB sits here, over the graph.
+ *
  * Input:  [startDestination] — decided by [MainViewModel]; [viewModel] — supplies the demo flag and
  *         the wipe. Output: the rendered app.
  */
@@ -107,6 +118,7 @@ private fun AppContent(
 ) {
     val navController = rememberNavController()
     val isDemoActive by viewModel.isDemoActive.collectAsStateWithLifecycle()
+    val currentEntry by navController.currentBackStackEntryAsState()
 
     Column(modifier = Modifier.fillMaxSize()) {
         if (isDemoActive) {
@@ -124,6 +136,65 @@ private fun AppContent(
                 },
             )
         }
-        CfoNavHost(startDestination = startDestination, navController = navController)
+        // A Box rather than a second Scaffold: MainActivity's already owns the window insets, and
+        // nesting one inside it would apply them twice and push the FAB above the gesture bar.
+        Box(modifier = Modifier.weight(1f)) {
+            CfoNavHost(startDestination = startDestination, navController = navController)
+            if (currentEntry.showsAddTransactionFab()) {
+                CfoAddTransactionFab(
+                    onClick = { navController.navigate(CfoRoute.AddTransaction) },
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(CfoDimens.spaceMd),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Whether the add-transaction FAB belongs over the current destination (issue 3.1; FR-TXN-002).
+ *
+ * Why:    FR-TXN-002 says add-transaction is reachable in **one tap**, and the honest reading of
+ *         that is a FAB the user does not first have to navigate to — so it lives above the graph
+ *         rather than inside one screen. Two destinations have to opt out. **Onboarding**, because a
+ *         user who has no profile yet has no account to spend from and the flow must not be
+ *         escapable sideways. **The capture screen itself**, because a FAB that reopens the screen
+ *         it is already on is a button that does nothing, and it would sit over the Save button.
+ *
+ *         It needs no check for the lock screen: this whole composable is inside `AppLockGate`, so a
+ *         locked session never composes it at all.
+ * Result: `true` on the dashboard, the transaction list, accounts and the account editor; `false` on
+ *         onboarding, on the capture screen, and before the first destination has resolved.
+ * Input:  the receiver — the current back-stack entry, `null` until the graph settles.
+ * Output: [Boolean].
+ * Changelog: 2026-08-02 — Created for issue 3.1.
+ */
+private fun NavBackStackEntry?.showsAddTransactionFab(): Boolean {
+    val destination = this?.destination ?: return false
+    // `NavDestination.Companion.hasRoute` — the typed overload. Without that import it resolves to
+    // the String one and the check silently compares a route object against a path.
+    return !destination.hasRoute(CfoRoute.Onboarding::class) &&
+        !destination.hasRoute(CfoRoute.AddTransaction::class)
+}
+
+/**
+ * The one-tap entry to capture (issue 3.1; FR-TXN-002).
+ *
+ * Why:    a named composable rather than a `FloatingActionButton` inline in [AppContent], so a test
+ *         can render and click it without standing up the whole app — half of FR-TXN-002's tap
+ *         budget is asserted against this function, and the other half against
+ *         `AddTransactionContent`.
+ *
+ *         The content description is what a screen reader announces; an icon-only button without one
+ *         is announced as "button" and is unusable (§21.6's accessibility line).
+ * Result: the composition. Input: [onClick]; [modifier]. Output: none.
+ * Changelog: 2026-08-02 — Created for issue 3.1.
+ */
+@Composable
+internal fun CfoAddTransactionFab(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    FloatingActionButton(onClick = onClick, modifier = modifier) {
+        Icon(imageVector = Icons.Filled.Add, contentDescription = stringResource(R.string.add_transaction))
     }
 }
