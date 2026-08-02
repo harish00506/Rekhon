@@ -46,6 +46,8 @@ data class AddTransactionUiState(
     val toAccountId: String? = null,
     val categories: List<Category> = emptyList(),
     val selectedCategoryId: String? = null,
+    val isSplit: Boolean = false,
+    val splitLines: List<SplitLineInput> = emptyList(),
     val note: String = "",
     val isLoading: Boolean = true,
     val isSaving: Boolean = false,
@@ -114,9 +116,54 @@ data class AddTransactionUiState(
      * one, and because FR-TXN-002's tap budget must not be spent on a control with no options.
      *
      * **Always false for a transfer** (FR-TXN-003): a transfer is not spending, so it has no category
-     * to pick. Hiding the row is how the screen says so.
+     * to pick. **And false for a split** (FR-TXN-004): the lines carry the categories, and one on the
+     * parent as well would be a second, contradictory answer.
      */
-    val hasCategories: Boolean get() = categories.isNotEmpty() && !isTransfer
+    val hasCategories: Boolean get() = categories.isNotEmpty() && !isTransfer && !isSplit
+
+    /**
+     * Whether splitting is offered at all (issue 3.3; FR-TXN-004).
+     *
+     * Needs an amount to divide, and is meaningless for a transfer — moving money between your own
+     * accounts is not spending, so there is nothing to attribute across categories.
+     */
+    val canSplit: Boolean get() = !isTransfer && amount != null
+
+    /**
+     * What the split lines currently add up to (FR-TXN-004).
+     *
+     * Lines that are not yet a figure contribute nothing, so a half-typed line reads as still owing
+     * rather than as zero — which is what makes [splitRemainder] usable while the user is typing.
+     */
+    val splitTotal: Money
+        get() = splitLines.fold(Money.ZERO) { running, line -> running + (line.amount ?: Money.ZERO) }
+
+    /**
+     * How much of the parent is still unattributed — **the running remainder** (FR-TXN-004).
+     *
+     * Why: the AC asks for it on screen, and it is the whole feedback loop of the editor: the user
+     *      types, this moves, and Save unlocks exactly when it reaches zero.
+     *
+     *      **Unsigned, like everything else in this editor.** [amount] and each line's amount are
+     *      both magnitudes — the direction belongs to the parent and is applied once, at save, by
+     *      `toSplitDraftOrNull`. Mixing a signed parent with unsigned lines here is exactly how this
+     *      first read as double the amount. `null` while the amount itself is not yet a figure.
+     */
+    val splitRemainder: Money? get() = amount?.let { it - splitTotal }
+
+    /**
+     * Whether the split lines are ready to write (FR-TXN-004).
+     *
+     * The same three rules the repository enforces — at least two lines, every one a real figure, and
+     * a remainder of exactly zero. Duplicated here **only to disable the button**, so the user is
+     * told before they commit rather than after; the store validates independently and is the
+     * authority (§5).
+     */
+    val isSplitBalanced: Boolean
+        get() =
+            splitLines.size >= MIN_SPLIT_LINES &&
+                splitLines.all { it.amount != null } &&
+                splitRemainder == Money.ZERO
 
     /**
      * Whether Save may proceed.
@@ -135,8 +182,47 @@ data class AddTransactionUiState(
                 selectedAccountId != null &&
                 !isSaving &&
                 !isSaved &&
-                (!isTransfer || (toAccountId != null && toAccountId != selectedAccountId))
+                (!isTransfer || (toAccountId != null && toAccountId != selectedAccountId)) &&
+                (!isSplit || isSplitBalanced)
 }
+
+/**
+ * One split line as the user is entering it (issue 3.3; FR-TXN-004).
+ *
+ * Why:  the amount is **text**, not [Money], for the reason the parent amount is: `"1."` is a
+ *       legitimate thing to have on screen mid-typing and is not an amount yet. Parsing once, here,
+ *       through `MoneyFormatter.parse` keeps every money value in the screen coming from one place
+ *       (MNY-001) — the screen still does no money math beyond adding parsed values.
+ * What: what the user typed, and which category they picked for it.
+ * Result: the editor can hold a half-finished line without pretending it is worth zero.
+ * Changelog: 2026-08-02 — Created for issue 3.3.
+ *
+ * Input:  [amountText] — as typed, **unsigned**; [categoryId] — optional, `null` for every real
+ *         profile until issue 4.1.
+ * Output: an immutable value.
+ */
+@Immutable
+data class SplitLineInput(
+    val amountText: String = "",
+    val categoryId: String? = null,
+) {
+    /**
+     * The line's amount once it is a representable non-zero figure, else `null`.
+     *
+     * **Unsigned here.** The direction belongs to the parent, and the ViewModel applies its sign to
+     * every line at save — so a user typing "600" into a line of an expense never has to think about
+     * a minus, and one line can never end up signed against its siblings.
+     */
+    val amount: Money? get() = MoneyFormatter.parse(amountText)?.takeIf { it != Money.ZERO }
+}
+
+/**
+ * The fewest lines a split may have (FR-TXN-004).
+ *
+ * Mirrors `TransactionRepository.MIN_SPLIT_LINES`. One line is not a split — it is the transaction it
+ * already was.
+ */
+internal const val MIN_SPLIT_LINES = 2
 
 /**
  * Which way money is moving, as the add screen asks it (issue 3.2; FR-TXN-003).
@@ -196,6 +282,43 @@ sealed interface AddTransactionEvent {
 
     /** The user dismissed the error banner. */
     data object DismissError : AddTransactionEvent
+}
+
+/**
+ * The six things a user can do to a split (issue 3.3; FR-TXN-004).
+ *
+ * Why:  a nested sealed interface rather than six more members of [AddTransactionEvent] directly.
+ *       They arrived together and they are all handled together — one `is SplitEvent ->` branch in
+ *       `onEvent`, delegating to `applySplit`. Flattened into the parent they pushed `onEvent` past
+ *       detekt's cyclomatic-complexity ceiling, which was a fair complaint: the split editor is its
+ *       own mode, and grouping its events says so.
+ * Result: adding a split interaction cannot silently grow the screen's main event handler.
+ * Changelog: 2026-08-02 — Created for issue 3.3.
+ */
+sealed interface SplitEvent : AddTransactionEvent {
+    /** The user turned splitting on or off. */
+    data class SplitToggled(val isSplit: Boolean) : SplitEvent
+
+    /** The user typed in one line's amount field. */
+    data class SplitLineAmountChanged(val index: Int, val value: String) : SplitEvent
+
+    /** The user picked, or cleared, one line's category. */
+    data class SplitLineCategorySelected(val index: Int, val categoryId: String?) : SplitEvent
+
+    /** The user added an empty line. */
+    data object SplitLineAdded : SplitEvent
+
+    /** The user removed one line. */
+    data class SplitLineRemoved(val index: Int) : SplitEvent
+
+    /**
+     * The user asked for the parent to be divided equally.
+     *
+     * The one action that can always produce an exact division, because it goes through
+     * `Money.split` — which is what makes ₹1,000 over three lines land as 333.34 / 333.33 / 333.33
+     * rather than three amounts that quietly lose a paise.
+     */
+    data object SplitEvenly : SplitEvent
 }
 
 /**
@@ -312,6 +435,15 @@ sealed interface TransactionRow {
     data class Single(val transaction: Transaction) : TransactionRow {
         override val id: String get() = transaction.id
         override val netAmount: Money get() = transaction.amount
+
+        /**
+         * How many categories this one amount is attributed across, or `null` when it is not split
+         * (issue 3.3).
+         *
+         * The **amount is unchanged** by splitting — the parent still holds all of it — so the row
+         * says how many lines there are rather than showing them, which would repeat the money.
+         */
+        val splitLineCount: Int? get() = transaction.splits.size.takeIf { transaction.isSplit }
     }
 
     /**

@@ -177,9 +177,9 @@ enum class TransactionType(val storedValue: String) {
  * 23:30 IST is 18:00Z on the same date — deriving one from the other at a call site without the
  * profile zone is how a day's spend lands in the wrong day, so both travel together.
  *
- * **FR-TXN-001's remaining fields are deliberately absent.** Tags and attachments have no table yet,
- * subcategory belongs to issue 4.1's taxonomy, and split lines are issue 3.3. Adding empty fields
- * for them now would be scaffolding no code reads.
+ * **FR-TXN-001's remaining fields are deliberately absent.** Tags and attachments have no table yet
+ * and subcategory belongs to issue 4.1's taxonomy. Adding empty fields for them now would be
+ * scaffolding no code reads.
  *
  * Input:  [id]; [accountId] — which account moved; [amount] — signed paise; [occurredAtUtcMillis];
  *         [bookedOn] — ISO `yyyy-MM-dd` in the profile zone; [categoryId] — `null` until the user
@@ -200,7 +200,63 @@ data class Transaction(
     val source: TransactionSource,
     val type: TransactionType,
     val transferId: String? = null,
+    /**
+     * How this one amount is attributed across categories (issue 3.3; FR-TXN-004).
+     *
+     * Empty for an ordinary transaction, and **empty is the normal case**. When it is not empty the
+     * lines sum to exactly [amount] — the repository refuses to write any other combination — so
+     * this never changes what the transaction is worth, only what it is *about*.
+     */
+    val splits: List<TransactionSplit> = emptyList(),
+) {
+    /** Whether this transaction's amount is attributed across more than one category. */
+    val isSplit: Boolean get() = splits.isNotEmpty()
+}
+
+/**
+ * One line of a split transaction (issue 3.3; FR-TXN-004).
+ *
+ * Why:  FR-TXN-004 requires "N lines with independent categories" whose amounts "sum exactly to the
+ *       parent amount". A single `categoryId` on [Transaction] cannot say that a ₹1,000 supermarket
+ *       trip was ₹600 of groceries and ₹400 of household, so the lines get their own type.
+ * What: an amount and the category it belongs to.
+ * Result: a screen can show what a purchase was actually made of, and budgets (issue 4.4) can count
+ *       each part against the right envelope.
+ * Changelog: 2026-08-02 — Created for issue 3.3 (FR-TXN-004).
+ *
+ * **[amount] is signed the same way as the parent**, not a magnitude. A line of an expense is
+ * negative like the expense. That is what makes "the lines sum to the parent" a plain comparison of
+ * two signed [Money] values rather than a rule about absolute values and directions — and it is the
+ * comparison the repository validates before writing anything.
+ *
+ * **A line does not move money.** The parent holds the amount and is what every balance sums
+ * (DB-001, ADR-0007); these only divide it. Summing lines *and* parents would double-count every
+ * split — see `docs/adr/0009-splits-as-a-child-table.md`.
+ *
+ * Input:  [id]; [transactionId] — the parent; [amount] — signed paise; [categoryId] — `null` until
+ *         issue 4.1 gives a real profile any categories; [note] — optional free text.
+ * Output: an immutable value.
+ */
+data class TransactionSplit(
+    val id: String,
+    val transactionId: String,
+    val amount: Money,
+    val categoryId: String? = null,
+    val note: String? = null,
 )
+
+/**
+ * The total of a set of split lines.
+ * Why:    "do these lines sum to their parent?" is asked by the repository before every split write
+ *         and by the add screen on every keystroke, and both must compute it the same way. It reuses
+ *         [Iterable.sum], so the arithmetic is [Money]'s overflow-checked addition (MNY-001) and not
+ *         a second implementation that could round differently.
+ * Result: the signed total; [Money.ZERO] for an empty list, which is what makes "no lines yet" read
+ *         as a full remainder rather than as a balanced split.
+ * Input:  the receiver. Output: [Money].
+ * Changelog: 2026-08-02 — Created for issue 3.3.
+ */
+fun Iterable<TransactionSplit>.total(): Money = map { it.amount }.sum()
 
 /**
  * A transfer, as one logical record (issue 3.2; FR-TXN-003).

@@ -161,6 +161,9 @@ internal class RoomDemoModeRepository(
                     // wipe does not reach is the residue ADR-0006 forbids.
                     demo.deleteNetWorthSnapshots(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteRecurringRules(DemoModeRepository.DEMO_PROFILE_ID)
+                    // Issue 3.3: lines before their parents, for the same reason the profile row
+                    // goes last — a failure in between must not strand children behind (ADR-0006).
+                    demo.deleteTransactionSplits(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteTransactions(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteCategories(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteAccounts(DemoModeRepository.DEMO_PROFILE_ID)

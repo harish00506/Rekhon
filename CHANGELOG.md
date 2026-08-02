@@ -12,6 +12,49 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > reach writing to it; this epic makes a transaction theirs to create — by hand first, then by
 > transfer, split, receipt and SMS.
 
+### [0.3.3] — Issue 3.3: Split transactions across N category lines  (2026-08-02)
+
+- **Implemented:** one purchase attributed across several categories — a ₹1,000 supermarket trip is
+  groceries *and* household (**FR-TXN-004**; DB-002, DB-003, DB-004, MNY-001, ARC-004, ARC-005,
+  P-03, P-04).
+  - **Schema v6 → v7** — the new `transaction_splits` table. Purely additive, so unlike 5 → 6 there
+    is nothing to backfill: every existing transaction is simply unsplit, which is the truth about it.
+  - **`TransactionRepository.createSplit`** writes the parent and all its lines in one
+    `withTransaction` (DB-004). **The exact-sum rule is enforced by refusal, never by adjustment** —
+    lines that miss the parent by a single paise are rejected outright, because an app that quietly
+    moves a user's figure to make a form balance is worse than one that says no. A single line, a
+    zero line, and a line signed against its parent are refused too.
+  - **A split moves the balance once.** The parent holds the amount and the lines only attribute it,
+    so no balance query changed and no balance code was written. Verified on the emulator: a
+    three-line ₹1,000 split moved Cash Wallet by ₹1,000, and deleting it moved it back by ₹1,000.
+  - **Deleting a parent takes its lines** in the same transaction — a line whose parent is gone
+    attributes an amount that no longer exists.
+  - **The add screen gained an opt-in "Split into lines"** with a live **running remainder**: Save
+    unlocks exactly when it reaches ₹0.00. **"Split evenly"** goes through `Money.split`, the one
+    action that can always divide exactly — ₹1,000 across three lines is 333.34 / 333.33 / 333.33.
+    The parent's category row is hidden while splitting; each line carries its own.
+  - **The list marks a split parent** with its line count and one unchanged amount, so the money is
+    never shown twice.
+- **Corrected two stale instructions** in the generated backlog, at source in
+  `scripts/gen_issue_docs.py`: `Money.splitExact` does not exist (the API is `split`/`allocate`), and
+  **"distribute the remainder via HALF_EVEN" is wrong in principle** — HALF_EVEN rounds one value and
+  cannot make N parts sum to a whole (three HALF_EVEN thirds of ₹1,000 give ₹999.99, the exact
+  "rounding drift" FR-TXN-004 forbids). The existing largest-remainder rule is what satisfies it.
+- **Recorded in [ADR-0009](docs/adr/0009-splits-as-a-child-table.md)** why splits are a child table
+  while transfers are linked legs (ADR-0008): a transfer's legs both move money, so a parent row
+  would hold no fact; split lines move none, so a child table keeps them out of every balance.
+- **Refactors the structure forced, and they were fair:** the split editor became its own file when
+  `AddTransactionScreen.kt` passed detekt's function ceiling, the split drafts and rules likewise
+  left `TransactionRepository.kt`, and the six split interactions became a nested `SplitEvent` so the
+  screen's main event handler stayed inside its complexity budget.
+- **Tests:** 62 new, 0 skipped (6 model · 24 repository · 31 feature · 1 instrumented migration).
+  The repository property test asserts the sum **on rows read back out of SQLite** rather than
+  re-proving `Money` — `MoneySplitPropertyTest` already owns the in-memory guarantee.
+  **FR-TXN-002's two-tap expense is untouched**: 3.1's tap-count assertions still pass unmodified.
+  Verified by **upgrading, not installing fresh** — the v6 build was installed, given data, and v7
+  installed over it, with net worth unchanged at ₹4,16,485 afterwards.
+  `:core:database:connectedDebugAndroidTest` — 11/11 on the emulator, in airplane mode throughout.
+
 ### [0.3.2] — Issue 3.2: Transfers as a single logical record  (2026-08-02)
 
 - **Implemented:** moving money between two of your own accounts, as **one** record

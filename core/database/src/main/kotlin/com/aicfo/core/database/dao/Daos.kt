@@ -6,6 +6,8 @@ import androidx.room.Embedded
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Relation
+import androidx.room.Transaction
 import androidx.room.Update
 import com.aicfo.core.database.entity.AccountEntity
 import com.aicfo.core.database.entity.AuditLogEntity
@@ -15,6 +17,7 @@ import com.aicfo.core.database.entity.NetWorthSnapshotEntity
 import com.aicfo.core.database.entity.ProfileEntity
 import com.aicfo.core.database.entity.RecurringRuleEntity
 import com.aicfo.core.database.entity.TransactionEntity
+import com.aicfo.core.database.entity.TransactionSplitEntity
 import kotlinx.coroutines.flow.Flow
 
 /*
@@ -357,6 +360,31 @@ interface TransactionDao {
     ): Flow<List<TransactionEntity>>
 
     /**
+     * Observes a profile's transactions in a date range **with their split lines** (issue 3.3).
+     *
+     * Why:    the same window and ordering as [observeBookedBetween], but each row arrives with its
+     *         lines attached. `@Transaction` is what makes that consistent: Room runs the parent
+     *         query and the relation query inside one database transaction, so the list can never
+     *         show a parent whose lines were written a moment later.
+     * Result: emits when **either** table changes; newest first; soft-deleted parents excluded.
+     *         Soft-deleted *lines* are not — `@Relation` cannot carry a `WHERE`, so the repository's
+     *         mapper drops them.
+     * Input:  [profileId], [fromIsoDate], [toIsoDate] — inclusive ISO `yyyy-MM-dd` bounds.
+     * Output: `Flow<List<TransactionWithSplits>>`.
+     */
+    @Transaction
+    @Query(
+        "SELECT * FROM transactions WHERE profile_id = :profileId " +
+            "AND booked_on_iso_date BETWEEN :fromIsoDate AND :toIsoDate " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY occurred_at_utc_millis DESC",
+    )
+    fun observeBookedBetweenWithSplits(
+        profileId: String,
+        fromIsoDate: String,
+        toIsoDate: String,
+    ): Flow<List<TransactionWithSplits>>
+
+    /**
      * Fetches one transaction.
      * Result: the row, or `null`. Input: [id]. Output: `TransactionEntity?`.
      */
@@ -402,6 +430,70 @@ interface TransactionDao {
     )
     suspend fun softDeleteTransfer(
         transferId: String,
+        deletedAtUtcMillis: Long,
+    ): Int
+}
+
+/**
+ * A transaction with its split lines, as one row (issue 3.3; FR-TXN-004).
+ *
+ * Why:  the recent list needs every transaction's lines, and the alternatives are both worse than
+ *       this. A query per transaction is N+1. **Combining two `Flow`s in the repository is what this
+ *       replaced**: `combine` calls `yield()` internally, which `UnconfinedTestDispatcher` refuses,
+ *       so every repository test that read the list died on the dispatcher rather than on anything
+ *       about the data. Room's `@Relation` does the join itself and observes both tables, so one
+ *       flow emits when either changes.
+ * Result: a parent and its lines, arriving together and invalidating together.
+ * Changelog: 2026-08-02 — Created for issue 3.3.
+ *
+ * **[splits] includes tombstones.** `@Relation` cannot carry a `WHERE`, so soft-deleted lines are
+ * filtered once in the repository's mapper rather than pretended away here.
+ */
+data class TransactionWithSplits(
+    @Embedded val transaction: TransactionEntity,
+    @Relation(parentColumn = "id", entityColumn = "transaction_id")
+    val splits: List<TransactionSplitEntity>,
+)
+
+/** Reads and writes the lines of split transactions (issue 3.3; FR-TXN-004). */
+@Dao
+interface TransactionSplitDao {
+    /**
+     * Inserts many lines at once, replacing any with the same id.
+     * Why:    a split is written as one parent plus all of its lines inside a single database
+     *         transaction (DB-004); inserting them one at a time would be the same number of
+     *         statements with more chances for a caller to stop half-way.
+     * Result: the lines exist. Input: [splits]. Output: none.
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(splits: List<TransactionSplitEntity>)
+
+    /**
+     * Fetches one transaction's live lines.
+     * Result: the lines, oldest first; empty when the transaction is not split.
+     * Input:  [transactionId]. Output: `List<TransactionSplitEntity>`.
+     */
+    @Query(
+        "SELECT * FROM transaction_splits WHERE transaction_id = :transactionId " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY created_at_utc_millis",
+    )
+    suspend fun findForTransaction(transactionId: String): List<TransactionSplitEntity>
+
+    /**
+     * Marks every live line of a transaction deleted (issue 3.3; DB-002).
+     *
+     * Why:    deleting a split parent must take its lines with it, in the same database transaction.
+     *         A line whose parent is gone attributes an amount that no longer exists — and the
+     *         windowed read above would still have to filter it out for ever.
+     * Result: the lines disappear from every read; the rows survive as tombstones.
+     * Input:  [transactionId], [deletedAtUtcMillis]. Output: rows affected.
+     */
+    @Query(
+        "UPDATE transaction_splits SET deleted_at_utc_millis = :deletedAtUtcMillis " +
+            "WHERE transaction_id = :transactionId AND deleted_at_utc_millis IS NULL",
+    )
+    suspend fun softDeleteForTransaction(
+        transactionId: String,
         deletedAtUtcMillis: Long,
     ): Int
 }
@@ -591,6 +683,16 @@ interface DemoDao {
     @Query("DELETE FROM recurring_rule WHERE profile_id = :profileId")
     suspend fun deleteRecurringRules(profileId: String): Int
 
+    /**
+     * Result: rows removed from `transaction_splits`. Input: [profileId]. Output: the count.
+     *
+     * Added by issue 3.3, which introduced the table. Called **before** [deleteTransactions]: the
+     * lines are children, and clearing the parents first would leave them orphaned if the caller
+     * failed in between — the same ordering argument [deleteProfile] makes for going last.
+     */
+    @Query("DELETE FROM transaction_splits WHERE profile_id = :profileId")
+    suspend fun deleteTransactionSplits(profileId: String): Int
+
     /** Result: rows removed from `transactions`. Input: [profileId]. Output: the count. */
     @Query("DELETE FROM transactions WHERE profile_id = :profileId")
     suspend fun deleteTransactions(profileId: String): Int
@@ -621,12 +723,13 @@ interface DemoDao {
      *         Deliberately **not** filtered by `deleted_at_utc_millis`: a soft-deleted row is
      *         precisely the residue being looked for, so it must count.
      * Result: `0` once the profile has been erased.
-     * Input:  [profileId]. Output: the total row count across all seven tables.
+     * Input:  [profileId]. Output: the total row count across all eight tables.
      */
     @Query(
         "SELECT (SELECT COUNT(*) FROM profile WHERE id = :profileId) + " +
             "(SELECT COUNT(*) FROM account WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM transactions WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM transaction_splits WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM category WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM budget WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM recurring_rule WHERE profile_id = :profileId) + " +

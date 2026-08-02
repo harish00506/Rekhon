@@ -7,7 +7,9 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -286,7 +288,153 @@ class AddTransactionFlowTest {
         compose.onNodeWithText(text(R.string.add_txn_transfer)).assertIsNotEnabled()
     }
 
+    // --- splits (issue 3.3; FR-TXN-004) ------------------------------------------------------------
+
+    @Test
+    fun `the split toggle is absent until there is an amount to divide`() {
+        // FR-TXN-002's two-tap expense is asserted above; a split control the user must scroll past
+        // before there is anything to split would be clutter in the middle of that budget.
+        setContent(state = loadedState())
+
+        compose.onNodeWithText(text(R.string.add_txn_split)).assertDoesNotExist()
+    }
+
+    @Test
+    fun `the split toggle is never offered for a transfer`() {
+        // Moving money between your own accounts is not spending, so there is nothing to attribute
+        // across categories (FR-TXN-003 vs FR-TXN-004).
+        setContent(
+            state = twoAccountState(amountText = "1000").copy(direction = TransactionDirection.TRANSFER),
+        )
+
+        compose.onNodeWithText(text(R.string.add_txn_split)).assertDoesNotExist()
+    }
+
+    @Test
+    fun `the split toggle appears once an amount is entered`() {
+        setContent(state = loadedState(amountText = "1000"))
+
+        compose.onNodeWithText(text(R.string.add_txn_split)).assertIsDisplayed()
+        // Off by default — splitting is opt-in, so the common expense is untouched.
+        compose.onNodeWithText(text(R.string.add_txn_split_remaining)).assertDoesNotExist()
+    }
+
+    @Test
+    fun `turning splitting on is one tap and reveals the editor`() {
+        val events = mutableListOf<AddTransactionEvent>()
+        setContent(state = loadedState(amountText = "1000"), onEvent = { events += it })
+
+        compose.onNodeWithText(text(R.string.add_txn_split)).performClick()
+
+        assertEquals(SplitEvent.SplitToggled(true), events.single())
+    }
+
+    @Test
+    fun `the editor shows a line per input, the running remainder, and both actions`() {
+        setContent(state = splitState(lines = listOf("600", "")))
+
+        compose.onAllNodesWithText(text(R.string.add_txn_split_line_amount)).assertCountEquals(2)
+        compose.onNodeWithText(text(R.string.add_txn_split_remaining)).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.add_txn_split_add_line)).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.add_txn_split_evenly)).assertIsDisplayed()
+    }
+
+    @Test
+    fun `the remainder is rendered as a formatted amount, not a raw figure`() {
+        // P-06: Indian digit grouping stays in MoneyFormatter, and the remainder is a label plus a
+        // CfoAmountText rather than an amount interpolated into a sentence.
+        setContent(state = splitState(amountText = "123456.78", lines = listOf("", "")))
+
+        compose.onNodeWithText("₹1,23,456.78", substring = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a balanced split shows nothing remaining and enables Save`() {
+        setContent(state = splitState(lines = listOf("600", "400")))
+
+        compose.onNodeWithText("₹0.00", substring = true).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.add_txn_save)).assertIsEnabled()
+    }
+
+    @Test
+    fun `an unbalanced split disables Save`() {
+        setContent(state = splitState(lines = listOf("600", "300")))
+
+        compose.onNodeWithText(text(R.string.add_txn_save)).assertIsNotEnabled()
+        compose.onNodeWithText("₹100.00", substring = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `typing in a line hands up its index`() {
+        val events = mutableListOf<AddTransactionEvent>()
+        setContent(state = splitState(lines = listOf("600", "")), onEvent = { events += it })
+
+        compose.onAllNodesWithText(text(R.string.add_txn_split_line_amount)).onLast().performTextInput("4")
+
+        assertEquals(SplitEvent.SplitLineAmountChanged(1, "4"), events.single())
+    }
+
+    @Test
+    fun `each action on the editor is one tap`() {
+        val events = mutableListOf<AddTransactionEvent>()
+        setContent(state = splitState(lines = listOf("600", "400")), onEvent = { events += it })
+
+        compose.onNodeWithText(text(R.string.add_txn_split_add_line)).performClick()
+        compose.onNodeWithText(text(R.string.add_txn_split_evenly)).performClick()
+        compose.onAllNodesWithContentDescription(text(R.string.add_txn_split_remove_line)).onFirst().performClick()
+
+        assertEquals(
+            listOf(
+                SplitEvent.SplitLineAdded,
+                SplitEvent.SplitEvenly,
+                SplitEvent.SplitLineRemoved(0),
+            ),
+            events,
+        )
+    }
+
+    @Test
+    fun `splitting hides the parent's category row and gives each line its own`() {
+        // The lines carry the categories now (FR-TXN-004). One chip row per line, and none for the
+        // parent — which for two lines and one category means the chip appears exactly twice.
+        setContent(
+            state =
+                splitState(lines = listOf("600", "400"))
+                    .copy(categories = listOf(Category("category:fuel", "Fuel"))),
+        )
+
+        compose.onNodeWithText(text(R.string.add_txn_category)).assertDoesNotExist()
+        compose.onAllNodesWithText("Fuel").assertCountEquals(2)
+    }
+
+    @Test
+    fun `picking a category on a line hands up that line's index`() {
+        val events = mutableListOf<AddTransactionEvent>()
+        setContent(
+            state =
+                splitState(lines = listOf("600", "400"))
+                    .copy(categories = listOf(Category("category:fuel", "Fuel"))),
+            onEvent = { events += it },
+        )
+
+        compose.onAllNodesWithText("Fuel").onLast().performClick()
+
+        assertEquals(SplitEvent.SplitLineCategorySelected(1, "category:fuel"), events.single())
+    }
+
     // --- fixtures ----------------------------------------------------------------------------------
+
+    /**
+     * Result: a loaded state with splitting on and [lines] typed into the editor.
+     * Input:  [amountText]; [lines] — one entry per line. Output: [AddTransactionUiState].
+     */
+    private fun splitState(
+        amountText: String = "1000",
+        lines: List<String>,
+    ) = loadedState(amountText = amountText).copy(
+        isSplit = true,
+        splitLines = lines.map { SplitLineInput(amountText = it) },
+    )
 
     /**
      * Result: the loaded state for a profile with two accounts — the minimum a transfer needs.

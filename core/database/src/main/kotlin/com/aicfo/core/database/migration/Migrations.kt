@@ -276,9 +276,74 @@ internal object Migrations {
             }
         }
 
+    /**
+     * 6 → 7: adds `transaction_splits` (issue 3.3; FR-TXN-004, §20.1).
+     *
+     * Why:    FR-TXN-004 requires "N lines with independent categories" summing exactly to the
+     *         parent, and one `category_id` on `transactions` cannot express that. §20.1 names this
+     *         table in the inventory; §20.2 never gives it a DDL, so the columns are this issue's to
+     *         choose (recorded in `docs/adr/0009-splits-as-a-child-table.md`).
+     * What:   one `CREATE TABLE` and its three indices. **Purely additive** — no existing table,
+     *         column or row is read or rewritten, so unlike 5 → 6 there is nothing to backfill and
+     *         nothing that can lose data (DB-003).
+     * Result: an existing installation gains an empty table and keeps everything it had; every
+     *         transaction that already exists is simply unsplit, which is the truth about it.
+     * Input:  [SupportSQLiteDatabase] — the database mid-upgrade. Output: none (executes DDL).
+     *
+     * **`profile_id` on a child row, duplicating its parent's.** Not redundant: `DemoDao`'s wipe and
+     * its residue count are single-table, profile-scoped queries (ADR-0006), and a table they could
+     * not reach directly would leave rows behind when a demo is exited. `MigrationSafetyTest`
+     * enforces the same rule on every table but `audit_log`.
+     *
+     * **No foreign key on `transaction_id`.** No other table in this schema declares one either —
+     * §20.3 wants FKs eventually, but adding one here alone would make this the only table where a
+     * delete order is enforced by SQLite rather than by the repository, and DB-002 means parents are
+     * soft-deleted anyway, so the constraint would never fire on the case that matters.
+     *
+     * The DDL matches what Room generates for `TransactionSplitEntity`; the committed
+     * `schemas/7.json` is the reference, and `MigrationRoundTripTest` fails on a device if they drift.
+     */
+    val MIGRATION_6_7 =
+        object : Migration(VERSION_6, VERSION_7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `transaction_splits` (" +
+                        "`id` TEXT NOT NULL, " +
+                        "`profile_id` TEXT NOT NULL, " +
+                        "`transaction_id` TEXT NOT NULL, " +
+                        "`amount_minor` INTEGER NOT NULL, " +
+                        "`category_id` TEXT, " +
+                        "`note` TEXT, " +
+                        "`created_at_utc_millis` INTEGER NOT NULL, " +
+                        "`updated_at_utc_millis` INTEGER NOT NULL, " +
+                        "`deleted_at_utc_millis` INTEGER, " +
+                        "PRIMARY KEY(`id`))",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_transaction_splits_transaction_id` " +
+                        "ON `transaction_splits` (`transaction_id`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_transaction_splits_profile_id` " +
+                        "ON `transaction_splits` (`profile_id`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_transaction_splits_category_id` " +
+                        "ON `transaction_splits` (`category_id`)",
+                )
+            }
+        }
+
     /** Every migration, in order, for `CfoDatabaseFactory` to register. */
     val ALL: Array<Migration> =
-        arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+        arrayOf(
+            MIGRATION_1_2,
+            MIGRATION_2_3,
+            MIGRATION_3_4,
+            MIGRATION_4_5,
+            MIGRATION_5_6,
+            MIGRATION_6_7,
+        )
 
     /** Named so the version pair reads as a schema version rather than an unexplained literal. */
     private const val VERSION_2 = 2
@@ -292,6 +357,9 @@ internal object Migrations {
     /** The version issue 2.6 introduced, and the one issue 3.2 upgrades from. */
     private const val VERSION_5 = 5
 
-    /** Matches `CfoDatabase.VERSION` at the time this migration was written (issue 3.2). */
+    /** The version issue 3.2 introduced, and the one issue 3.3 upgrades from. */
     private const val VERSION_6 = 6
+
+    /** Matches `CfoDatabase.VERSION` at the time this migration was written (issue 3.3). */
+    private const val VERSION_7 = 7
 }

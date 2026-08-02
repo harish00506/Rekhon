@@ -21,6 +21,15 @@
     <string name="transactions_transfer">Transfer · %1$s → %2$s</string>
     <!-- Icon-only, so this is what a screen reader announces for the delete action. -->
     <string name="transactions_delete">Delete transaction</string>
+    <!--
+      FR-TXN-004: the row's amount is unchanged by splitting, so it says how many categories the
+      amount is attributed across rather than repeating the money. ICU plural — "1 line" must not
+      read as "1 lines" (§21.6).
+    -->
+    <plurals name="transactions_split_lines">
+        <item quantity="one">%1$d line</item>
+        <item quantity="other">%1$d lines</item>
+    </plurals>
 
     <string name="add_txn_title">Add transaction</string>
     <string name="add_txn_amount">Amount</string>
@@ -33,6 +42,22 @@
     <string name="add_txn_from_account">From</string>
     <string name="add_txn_to_account">To</string>
     <string name="add_txn_category">Category</string>
+    <!--
+      Splits (FR-TXN-004). The remainder is a label plus a CfoAmountText, never an amount
+      interpolated into a string — Indian digit grouping belongs to MoneyFormatter (P-06).
+    -->
+    <string name="add_txn_split">Split into lines</string>
+    <!--
+      "Line amount", not "Amount": the parent's field is already labelled "Amount", and two
+      identically-labelled inputs on one form are announced identically by a screen reader.
+    -->
+    <string name="add_txn_split_line_amount">Line amount</string>
+    <string name="add_txn_split_remaining">Remaining</string>
+    <string name="add_txn_split_add_line">Add line</string>
+    <string name="add_txn_split_remove_line">Remove line</string>
+    <string name="add_txn_split_evenly">Split evenly</string>
+    <string name="add_txn_error_lines">The lines must add up to the amount.</string>
+
     <string name="add_txn_note">Note (optional)</string>
     <string name="add_txn_save">Save</string>
     <string name="add_txn_cancel">Cancel</string>

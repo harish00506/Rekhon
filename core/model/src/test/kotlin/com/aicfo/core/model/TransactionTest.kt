@@ -243,6 +243,90 @@ class TransactionTypeTest {
     }
 
     @Test
+    fun `a transaction is not split until it has lines`() {
+        // Empty is the normal case, and `isSplit` is what the list reads to decide whether to say so.
+        val plain =
+            Transaction(
+                id = "txn:1",
+                accountId = "account:1",
+                amount = Money(-1_00_000L),
+                occurredAtUtcMillis = 1_785_000_000_000L,
+                bookedOn = "2026-08-02",
+                categoryId = null,
+                merchant = null,
+                note = null,
+                source = TransactionSource.MANUAL,
+                type = TransactionType.EXPENSE,
+            )
+
+        assertFalse(plain.isSplit)
+        assertTrue(plain.copy(splits = listOf(split(Money(-1_00_000L)))).isSplit)
+    }
+
+    @Test
+    fun `split lines are signed like their parent and total to it`() {
+        // FR-TXN-004's requirement expressed as it is actually checked: a plain comparison of two
+        // signed Money values, which only works because a line of an expense is negative like the
+        // expense. Magnitudes plus a direction flag would need two comparisons and could disagree.
+        val lines = listOf(split(Money(-60_000L)), split(Money(-40_000L)))
+
+        assertEquals(Money(-1_00_000L), lines.total())
+        assertTrue("a line of an expense is negative", lines.all { it.amount < Money.ZERO })
+    }
+
+    @Test
+    fun `an income splits into positive lines`() {
+        val lines = listOf(split(Money(30_000L)), split(Money(70_000L)))
+
+        assertEquals(Money(1_00_000L), lines.total())
+    }
+
+    @Test
+    fun `no lines total to zero, so an unsplit amount is entirely unattributed`() {
+        // What makes "no lines yet" read as a full remaining amount on the add screen rather than as
+        // a balanced split with nothing in it.
+        assertEquals(Money.ZERO, emptyList<TransactionSplit>().total())
+    }
+
+    @Test
+    fun `a line carries its own category, independently of its siblings`() {
+        // "N lines with independent categories" (FR-TXN-004). One uncategorised line beside a
+        // categorised one is legal — a real profile has no categories at all until issue 4.1.
+        val lines =
+            listOf(
+                split(Money(-60_000L), categoryId = "category:groceries"),
+                split(Money(-40_000L)),
+            )
+
+        assertEquals("category:groceries", lines.first().categoryId)
+        assertNull(lines.last().categoryId)
+    }
+
+    @Test
+    fun `total uses checked arithmetic rather than wrapping`() {
+        // MNY-001: `total` delegates to Money's addition, so an absurd pair throws instead of
+        // silently wrapping to a small positive number.
+        val lines = listOf(split(Money(Long.MAX_VALUE)), split(Money(1L)))
+
+        try {
+            lines.total()
+            error("expected the overflow to be refused")
+        } catch (expected: ArithmeticException) {
+            assertNotNull(expected)
+        }
+    }
+
+    /**
+     * Result: a split line with everything but the field under test defaulted.
+     * Input: [amount], [categoryId]. Output: [TransactionSplit].
+     * Changelog: 2026-08-02 — Created for issue 3.3.
+     */
+    private fun split(
+        amount: Money,
+        categoryId: String? = null,
+    ) = TransactionSplit(id = "spl:1", transactionId = "txn:1", amount = amount, categoryId = categoryId)
+
+    @Test
     fun `a transfer needs no note`() {
         val transfer =
             Transfer(

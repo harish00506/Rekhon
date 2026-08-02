@@ -11,6 +11,7 @@ import com.aicfo.core.database.dao.NetWorthSnapshotDao
 import com.aicfo.core.database.dao.ProfileDao
 import com.aicfo.core.database.dao.RecurringRuleDao
 import com.aicfo.core.database.dao.TransactionDao
+import com.aicfo.core.database.dao.TransactionSplitDao
 import com.aicfo.core.database.entity.AccountEntity
 import com.aicfo.core.database.entity.AuditLogEntity
 import com.aicfo.core.database.entity.BudgetEntity
@@ -19,6 +20,7 @@ import com.aicfo.core.database.entity.NetWorthSnapshotEntity
 import com.aicfo.core.database.entity.ProfileEntity
 import com.aicfo.core.database.entity.RecurringRuleEntity
 import com.aicfo.core.database.entity.TransactionEntity
+import com.aicfo.core.database.entity.TransactionSplitEntity
 
 /**
  * The encrypted on-device database — every rupee the user owns lives here (SRS §20, DB-003).
@@ -44,6 +46,7 @@ import com.aicfo.core.database.entity.TransactionEntity
         ProfileEntity::class,
         AccountEntity::class,
         TransactionEntity::class,
+        TransactionSplitEntity::class,
         CategoryEntity::class,
         AuditLogEntity::class,
         BudgetEntity::class,
@@ -62,6 +65,9 @@ abstract class CfoDatabase : RoomDatabase() {
 
     /** Input: none. Output: the transaction DAO. */
     abstract fun transactionDao(): TransactionDao
+
+    /** Input: none. Output: the split-line DAO (issue 3.3). */
+    abstract fun transactionSplitDao(): TransactionSplitDao
 
     /** Input: none. Output: the category DAO. */
     abstract fun categoryDao(): CategoryDao
@@ -94,9 +100,10 @@ abstract class CfoDatabase : RoomDatabase() {
          * (`audit_log`) · 3 — issue 2.3 (`budget`, `recurring_rule`) · 4 — issue 2.5
          * (`account.institution`, `account.archived_at_utc_millis`; FR-ACC-007) · 5 — issue 2.6
          * (`net_worth_snapshot`, `account.include_in_networth`; FR-ACC-005) · 6 — issue 3.2
-         * (`transactions.type`, `transactions.transfer_id`; FR-TXN-003).
+         * (`transactions.type`, `transactions.transfer_id`; FR-TXN-003) · 7 — issue 3.3
+         * (`transaction_splits`; FR-TXN-004).
          */
-        const val VERSION = 6
+        const val VERSION = 7
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"

@@ -11,10 +11,12 @@ import com.aicfo.core.model.Money
 import com.aicfo.core.model.Reconciliation
 import com.aicfo.core.model.Transaction
 import com.aicfo.core.model.TransactionSource
+import com.aicfo.core.model.TransactionSplit
 import com.aicfo.core.model.TransactionType
 import com.aicfo.core.model.Transfer
 import com.aicfo.data.repository.AccountDraft
 import com.aicfo.data.repository.AccountRepository
+import com.aicfo.data.repository.SplitDraft
 import com.aicfo.data.repository.TransactionDraft
 import com.aicfo.data.repository.TransactionRepository
 import com.aicfo.data.repository.TransferDraft
@@ -61,6 +63,15 @@ internal class FakeTransactionRepository(
 
     /** Every transaction id passed to [delete], in order (issue 3.2). */
     val deleted: MutableList<String> = mutableListOf()
+
+    /**
+     * Every draft passed to [createSplit], in order (issue 3.3).
+     *
+     * The **draft**, because what these tests check is what the ViewModel *asks for* — lines that
+     * arrived unsigned, or not summing to their parent, would be a real bug that recording the
+     * outcome would hide.
+     */
+    val splitsCreated: MutableList<SplitDraft> = mutableListOf()
 
     /**
      * When non-null, **both** observation flows throw this instead of emitting.
@@ -149,6 +160,38 @@ internal class FakeTransactionRepository(
                 note = draft.note,
             ),
         )
+    }
+
+    override suspend fun createSplit(draft: SplitDraft): Result<Transaction, AppError> {
+        splitsCreated += draft
+        failWith?.let { return Err(it) }
+        val parentId = "txn:${transactions.value.size + 1}"
+        val parent =
+            Transaction(
+                id = parentId,
+                accountId = draft.accountId,
+                amount = draft.amount,
+                occurredAtUtcMillis = 0L,
+                bookedOn = "2026-08-02",
+                // The lines carry the categories; the parent deliberately carries none.
+                categoryId = null,
+                merchant = draft.merchant,
+                note = draft.note,
+                source = TransactionSource.MANUAL,
+                type = if (draft.amount < Money.ZERO) TransactionType.EXPENSE else TransactionType.INCOME,
+                splits =
+                    draft.lines.mapIndexed { index, line ->
+                        TransactionSplit(
+                            id = "spl:$parentId:$index",
+                            transactionId = parentId,
+                            amount = line.amount,
+                            categoryId = line.categoryId,
+                            note = line.note,
+                        )
+                    },
+            )
+        transactions.value = transactions.value + parent
+        return Ok(parent)
     }
 
     override suspend fun delete(transactionId: String): Result<Unit, AppError> {

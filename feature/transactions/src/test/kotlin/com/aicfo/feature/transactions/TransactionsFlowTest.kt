@@ -175,6 +175,50 @@ class TransactionsFlowTest {
         assertEquals(listOf(TransactionsEvent.Delete("txn:1")), events)
     }
 
+    // --- splits (issue 3.3; FR-TXN-004) ------------------------------------------------------------
+
+    @Test
+    fun `a split row says how many lines it has, and still shows one amount`() {
+        // The parent holds all the money, so listing the lines here would show it twice. The row
+        // says how many categories the amount is spread across instead.
+        // A second row so the day total differs from the split's amount — with one row the header
+        // would render the same figure and the assertion could not tell them apart.
+        setContent(
+            TransactionsUiState(
+                isLoading = false,
+                days = listOf(day(splitTransaction(lines = 2), transaction())),
+            ),
+        )
+
+        compose.onNodeWithText("2 lines", substring = true).assertIsDisplayed()
+        // Once, not twice: splitting does not change what the transaction is worth.
+        compose.onNodeWithText("-₹1,000.00", substring = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `an unsplit row says nothing about lines`() {
+        setContent(TransactionsUiState(isLoading = false, days = listOf(day(transaction()))))
+
+        compose.onNodeWithText("line", substring = true).assertDoesNotExist()
+    }
+
+    /** Result: a ₹1,000 expense split across [lines] lines. Input: [lines]. Output: [Transaction]. */
+    private fun splitTransaction(lines: Int) =
+        transaction {
+            copy(
+                id = "txn:split",
+                amount = Money(-1_000_00L),
+                splits =
+                    Money(-1_000_00L).split(lines).mapIndexed { index, share ->
+                        com.aicfo.core.model.TransactionSplit(
+                            id = "spl:$index",
+                            transactionId = "txn:split",
+                            amount = share,
+                        )
+                    },
+            )
+        }
+
     /** Result: the composition is set. Input: [state], [onEvent]. Output: none. */
     private fun setContent(
         state: TransactionsUiState,

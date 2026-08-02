@@ -131,6 +131,8 @@ fun AddTransactionContent(
         AccountPicker(uiState = uiState, onEvent = onEvent)
         DestinationPicker(uiState = uiState, onEvent = onEvent)
         CategoryPicker(uiState = uiState, onEvent = onEvent)
+        SplitToggle(uiState = uiState, onEvent = onEvent)
+        SplitEditor(uiState = uiState, onEvent = onEvent)
         NoteFieldAndActions(uiState = uiState, onEvent = onEvent, onCancel = onCancel)
     }
 }
