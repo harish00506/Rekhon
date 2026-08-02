@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aicfo.core.common.AppError
 import com.aicfo.core.common.Err
+import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
 import com.aicfo.core.common.toAppError
 import com.aicfo.data.repository.AccountRepository
@@ -91,7 +92,59 @@ class AccountsViewModel
                 is AccountsEvent.ToggleArchived -> _uiState.update { it.copy(showArchived = event.show) }
                 is AccountsEvent.SetArchived -> write { repository.setArchived(event.id, event.archived) }
                 is AccountsEvent.Delete -> write { repository.delete(event.id) }
+                is AccountsEvent.OpenReconcile -> openReconcile(event.id)
+                is AccountsEvent.StatementChanged ->
+                    _uiState.update { state ->
+                        state.copy(reconciling = state.reconciling?.copy(statementText = event.value))
+                    }
+                AccountsEvent.ConfirmReconcile -> confirmReconcile()
+                AccountsEvent.CancelReconcile -> _uiState.update { it.copy(reconciling = null) }
                 AccountsEvent.DismissError -> _uiState.update { it.copy(errorCode = null) }
+            }
+        }
+
+        /**
+         * Opens FR-ACC-006's panel on one account (issue 2.7).
+         * Why:    the account is taken from the list already in state rather than re-read, because
+         *         the list *is* the live read — it re-emits on every change to an account or a
+         *         transaction. Fetching again would only add a second source of truth for the same
+         *         row, and the figure the panel shows is a preview either way: the repository
+         *         re-derives it inside its own transaction before writing anything.
+         * Result: sets `reconciling`, or does nothing when the id names no row on screen.
+         * Input:  [id] — the account. Output: none.
+         * Changelog: 2026-08-02 — Created for issue 2.7.
+         */
+        private fun openReconcile(id: String) {
+            val account = _uiState.value.accounts.firstOrNull { it.id == id } ?: return
+            _uiState.update { it.copy(reconciling = ReconcileState(account = account), errorCode = null) }
+        }
+
+        /**
+         * Posts the adjustment (issue 2.7; FR-ACC-006).
+         * Why:    hands the repository the **statement balance**, never the delta the panel
+         *         previewed — the subtraction is the store's to do against a freshly derived
+         *         balance, so a transaction landing while the panel was open cannot be silently
+         *         absorbed into the correction (P-03: the number comes from one place).
+         * Result: closes the panel on success and lets the list's `Flow` re-emit the new balance;
+         *         on failure keeps it open with `errorCode` set, so the user's typing survives.
+         * Input:  none. Output: none (launches on `viewModelScope`).
+         * Changelog: 2026-08-02 — Created for issue 2.7.
+         */
+        private fun confirmReconcile() {
+            val reconciling = _uiState.value.reconciling ?: return
+            val statement = reconciling.statement ?: return
+            _uiState.update { it.copy(reconciling = reconciling.copy(isSaving = true), errorCode = null) }
+            viewModelScope.launch {
+                when (val outcome = repository.reconcile(reconciling.account.id, statement)) {
+                    is Ok -> _uiState.update { it.copy(reconciling = null) }
+                    is Err ->
+                        _uiState.update { state ->
+                            state.copy(
+                                reconciling = state.reconciling?.copy(isSaving = false),
+                                errorCode = outcome.error.code,
+                            )
+                        }
+                }
             }
         }
 

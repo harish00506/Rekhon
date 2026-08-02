@@ -23,6 +23,7 @@ import com.aicfo.core.datastore.DEFAULT_AUTO_LOCK_SECONDS
 import com.aicfo.core.designsystem.theme.CfoTheme
 import com.aicfo.core.model.Account
 import com.aicfo.core.model.Money
+import com.aicfo.core.model.Reconciliation
 import com.aicfo.data.repository.AccountDraft
 import com.aicfo.data.repository.AccountRepository
 import com.aicfo.data.repository.DemoModeRepository
@@ -249,6 +250,15 @@ private class NoOpAccountRepository : AccountRepository {
     ): Result<Unit, AppError> = Ok(Unit)
 
     override suspend fun delete(id: String): Result<Unit, AppError> = Ok(Unit)
+
+    /** Never reached: reconciling belongs to the accounts screen, not onboarding (issue 2.7). */
+    override suspend fun reconcile(
+        accountId: String,
+        statementBalance: Money,
+    ): Result<Reconciliation, AppError> = Err(AppError.NotFound)
+
+    /** Never reached: DB-001's integrity job is a background worker's (issue 2.7). */
+    override suspend fun refreshCachedBalances(): Result<Int, AppError> = Ok(0)
 }
 
 /**

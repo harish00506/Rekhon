@@ -11,6 +11,55 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > First-run onboarding, the biometric app lock, and the accounts + net-worth core. Epic 1 built
 > foundations; this is the first epic a user can see.
 
+### [0.2.7] — Issue 2.7: Account reconciliation + the DB-001 integrity job  (2026-08-02)
+
+- **Implemented:** a balance the app got wrong can finally be corrected — by *adding* to history,
+  never by editing it (**FR-ACC-006**; DB-001, DB-002, MNY-001, TIM-001, TIM-002, SEC-002, ARC-004,
+  ARC-005, P-02, P-03, P-04, P-08). **The last issue in Epic 2.**
+  - **`AccountRepository.reconcile(accountId, statementBalance)`.** The user states what their bank
+    says; the app derives what it holds, subtracts, and posts the difference as one adjustment
+    transaction tagged `source = "reconciliation"`. The opening balance and every existing
+    transaction are untouched — FR-ACC-006's words are "never silently mutated", and the only way
+    to honour that is for the correction to be a new row the user can see and soft-delete like any
+    other.
+  - **A zero delta writes nothing**, and says so on screen. A zero-amount transaction records no
+    fact and would have to be filtered by every engine downstream, so `adjustmentId` is `null` and
+    the row is never minted — not even an id is drawn from the generator.
+  - **The screen previews; the store decides.** The panel shows a delta computed against the balance
+    the list last emitted, but `reconcile` re-derives the balance inside its own transaction and
+    computes the delta again there. A transaction landing while the panel is open therefore cannot
+    be absorbed into the correction — the same stale-versus-live split 2.6 shipped a defect on.
+  - **The adjustment carries the account's own profile, not the active one.** Reconciling inside the
+    demo must leave a row `DemoDao.deleteTransactions` can reach; the opposite is the residue
+    ADR-0006 forbids, and it is the exact trap 2.6 fell into with `net_worth_snapshot`.
+  - **DB-001's integrity job now exists** — `BalanceIntegrityWorker`, daily, the app's **second**
+    background work. `account.current_balance_minor` had been a cache written once at create and
+    never again, stale on every account with transactions; ADR-0007 said so in as many words —
+    *"the two figures can disagree, and until issue 2.7 nothing notices."* One `UPDATE` re-derives
+    every cache in the profile, and its trailing `<>` clause is what makes the row count mean
+    something: it is how many were wrong, not how many exist. Nothing is written that was already
+    correct.
+  - **The new worker cannot crash a locked app either.** Same shape as 2.6's: `SessionLock` checked
+    before anything injects, repository behind a `Provider`. Observed on hardware, by moving the
+    device clock forward a day: `RETRY (locked) → SUCCESS` 30 seconds later.
+  - **An inline panel, not a modal dialog.** It began as an `AlertDialog` and was changed for two
+    reasons pointing the same way: Robolectric never drives a `Dialog`'s own window to idle, so all
+    four rendered tests hung for sixty seconds each and the screen would have been covered only when
+    an emulator happened to be attached; and a modal holding a field, five lines of copy and two
+    buttons is the shape that gets clipped at 200% font — the defect class 2.5 found on a device and
+    could not reproduce. Inline, it is checked on every `unitTests` run.
+- **No schema change.** `transactions.source` and `account.current_balance_minor` both already
+  existed; the database stays at **v5**. The first issue in Epic 2 needing neither a migration nor a
+  migration test.
+- **Found by running it, again.** On an untouched form the panel announced *"this adds one
+  adjustment transaction"* while Confirm was disabled and nothing could be added — a promise about
+  an action the screen was simultaneously refusing. No test caught it because every one had already
+  typed an amount. Fixed, and now gated.
+- **Verified on a device** (demo household, hand-checked arithmetic): HDFC `+₹3,82,800 → +₹3,83,300`
+  and net worth `+₹4,17,262 → +₹4,17,762`, both exactly the ₹500 posted; the same statement a second
+  time adjusted nothing; a credit card corrected *downwards* by `−₹1,250`; an overdrawn cash wallet
+  corrected `−₹3,459 → −₹3,000` **with the radio off** (P-04). 622 unit tests across 21 modules.
+
 ### [0.2.6] — Issue 2.6: Net worth = assets − liabilities + daily snapshot  (2026-08-02)
 
 - **Implemented:** the app's headline figure is computed rather than invented (**FR-ACC-005**;

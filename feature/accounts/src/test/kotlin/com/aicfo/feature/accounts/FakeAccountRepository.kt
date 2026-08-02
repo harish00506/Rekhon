@@ -7,6 +7,7 @@ import com.aicfo.core.common.Result
 import com.aicfo.core.model.Account
 import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Money
+import com.aicfo.core.model.Reconciliation
 import com.aicfo.data.repository.AccountDraft
 import com.aicfo.data.repository.AccountRepository
 import kotlinx.coroutines.flow.Flow
@@ -41,6 +42,15 @@ internal class FakeAccountRepository(
 
     /** Ids passed to [delete], in order. */
     val deletedIds: MutableList<String> = mutableListOf()
+
+    /**
+     * What [reconcile] was asked to do, in order (issue 2.7).
+     *
+     * The **statement**, not the delta: the ViewModel must hand the store what the user typed and
+     * let it do the subtraction, so recording the delta here would hide the mistake this exists to
+     * catch.
+     */
+    val reconciled: MutableList<Pair<String, Money>> = mutableListOf()
 
     /**
      * When non-null, the observation flow throws this instead of emitting.
@@ -107,6 +117,50 @@ internal class FakeAccountRepository(
         deletedIds += id
         accounts.value = accounts.value.filterNot { it.id == id }
         return Ok(Unit)
+    }
+
+    override suspend fun reconcile(
+        accountId: String,
+        statementBalance: Money,
+    ): Result<Reconciliation, AppError> {
+        val account = accounts.value.firstOrNull { it.id == accountId }
+        return when {
+            failWith != null -> Err(failWith!!)
+            account == null -> Err(AppError.NotFound)
+            else -> Ok(applyReconciliation(account, statementBalance))
+        }
+    }
+
+    /**
+     * Records the call and moves the balance to the statement.
+     * Why:    the fake applies the correction the way the real store does, so a test can assert what
+     *         the *list* shows afterwards rather than only that a call happened. The adjustment row
+     *         itself is `AccountReconciliationTest`'s to prove, against real SQL.
+     * Result: the [Reconciliation] the ViewModel receives; mutates the held accounts.
+     * Input:  [account] — the row; [statementBalance] — what the user typed. Output: [Reconciliation].
+     * Changelog: 2026-08-02 — Created for issue 2.7.
+     */
+    private fun applyReconciliation(
+        account: Account,
+        statementBalance: Money,
+    ): Reconciliation {
+        reconciled += account.id to statementBalance
+        val delta = statementBalance - account.balance
+        accounts.value =
+            accounts.value.map { if (it.id == account.id) it.copy(balance = statementBalance) else it }
+        return Reconciliation(
+            accountId = account.id,
+            before = account.balance,
+            statement = statementBalance,
+            delta = delta,
+            adjustmentId = if (delta == Money.ZERO) null else "txn:1",
+            bookedOnIsoDate = "2026-08-02",
+        )
+    }
+
+    override suspend fun refreshCachedBalances(): Result<Int, AppError> {
+        failWith?.let { return Err(it) }
+        return Ok(0)
     }
 }
 

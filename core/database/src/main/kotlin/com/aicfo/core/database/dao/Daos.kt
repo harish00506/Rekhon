@@ -279,6 +279,54 @@ interface AccountDao {
         id: String,
         deletedAtUtcMillis: Long,
     ): Int
+
+    /**
+     * Repairs every cached balance that disagrees with the derivation (issue 2.7; DB-001).
+     *
+     * Why:    `current_balance_minor` has been a cache nothing reads and nothing maintains since
+     *         issue 1.6 — seeded at create and stale from the first transaction onwards
+     *         ([ADR-0007](../../../../../../../../docs/adr/0007-account-balances-derived-not-stored.md)).
+     *         DB-001 says the balance is derivable and "never mutated ad hoc"; this is the nightly
+     *         job that sentence implies.
+     *
+     *         **One `UPDATE`, not a read-then-write loop in Kotlin.** A loop would be N+1 queries
+     *         and, worse, would compute each figure at a slightly different moment — the window
+     *         where a transaction landing mid-pass leaves one account repaired to a balance that was
+     *         already out of date. SQLite evaluates the correlated subquery per row inside a single
+     *         statement, so the whole profile is repaired against one consistent view.
+     *
+     *         **The trailing `<>` clause is what makes the return value mean something.** Without it
+     *         every row matches and "rows affected" is just the account count; with it, the figure
+     *         is exactly how many caches were wrong — the observation the job exists to make — and
+     *         nothing is written that was already correct.
+     *
+     *         **The subquery is character-for-character the one [observeWithBalances] uses**, down
+     *         to the `deleted_at_utc_millis IS NULL` filter. That is deliberate and it is the whole
+     *         safety property: if this derivation and the read derivation ever disagree, the job
+     *         "repairs" the cache to a figure no screen would ever show, which is strictly worse
+     *         than leaving it stale. Any change to one must be made to the other.
+     * Result: `current_balance_minor` equals the derived balance for every live account in the
+     *         profile; returns **how many were out of step**, zero on a healthy profile.
+     *         Soft-deleted accounts are skipped — a tombstone's cache is nobody's to maintain.
+     * Input:  [profileId]; [updatedAtUtcMillis] — from the injected `Clock` (TIM-001).
+     * Output: rows repaired.
+     * Changelog: 2026-08-02 — Created for issue 2.7.
+     */
+    @Query(
+        "UPDATE account SET current_balance_minor = opening_balance_minor + COALESCE((" +
+            "SELECT SUM(t.amount_minor) FROM transactions t " +
+            "WHERE t.account_id = account.id AND t.deleted_at_utc_millis IS NULL" +
+            "), 0), updated_at_utc_millis = :updatedAtUtcMillis " +
+            "WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
+            "AND current_balance_minor <> opening_balance_minor + COALESCE((" +
+            "SELECT SUM(t.amount_minor) FROM transactions t " +
+            "WHERE t.account_id = account.id AND t.deleted_at_utc_millis IS NULL" +
+            "), 0)",
+    )
+    suspend fun refreshCachedBalances(
+        profileId: String,
+        updatedAtUtcMillis: Long,
+    ): Int
 }
 
 /** Reads and writes transactions. */

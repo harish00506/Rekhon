@@ -104,6 +104,12 @@ fun AccountsContent(
             onCheckedChange = { onEvent(AccountsEvent.ToggleArchived(it)) },
         )
 
+        // Above the list rather than over it: the panel is where the user's attention has to be,
+        // and the row it came from stays visible and stays live underneath (issue 2.7).
+        uiState.reconciling?.let { reconciling ->
+            ReconcilePanel(state = reconciling, onEvent = onEvent)
+        }
+
         if (uiState.isEmpty) {
             EmptyState()
         } else {
@@ -146,12 +152,19 @@ private fun AccountRow(
             // FlowRow, not Row: three buttons do not fit one line once the archive action reads
             // "Reopen account" rather than "Close account", and a plain Row pushes Delete off the
             // right edge with nothing to scroll. Found on a device, not in a test — at 200% font
-            // even the shorter labels wrap.
+            // even the shorter labels wrap. Issue 2.7's Reconcile makes it four, so the wrapping
+            // this already did is now load-bearing rather than a precaution.
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(CfoDimens.spaceSm),
                 verticalArrangement = Arrangement.spacedBy(CfoDimens.spaceXs),
             ) {
                 CfoSecondaryButton(text = stringResource(R.string.account_editor_title_edit), onClick = onEdit)
+                CfoSecondaryButton(
+                    // Offered on a closed account too: recording its final statement balance is
+                    // exactly when a user reaches for this (FR-ACC-006 with FR-ACC-007).
+                    text = stringResource(R.string.accounts_reconcile),
+                    onClick = { onEvent(AccountsEvent.OpenReconcile(account.id)) },
+                )
                 CfoSecondaryButton(
                     text =
                         stringResource(

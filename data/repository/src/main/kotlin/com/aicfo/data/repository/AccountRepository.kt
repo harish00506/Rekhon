@@ -1,5 +1,6 @@
 package com.aicfo.data.repository
 
+import androidx.room.withTransaction
 import com.aicfo.core.common.AppError
 import com.aicfo.core.common.Clock
 import com.aicfo.core.common.DispatcherProvider
@@ -11,9 +12,11 @@ import com.aicfo.core.common.runCatchingToResult
 import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.database.dao.AccountWithBalance
 import com.aicfo.core.database.entity.AccountEntity
+import com.aicfo.core.database.entity.TransactionEntity
 import com.aicfo.core.model.Account
 import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Money
+import com.aicfo.core.model.Reconciliation
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -135,9 +138,78 @@ interface AccountRepository {
      */
     suspend fun delete(id: String): Result<Unit, AppError>
 
+    /**
+     * Aligns an account with a real statement balance (issue 2.7; FR-ACC-006, P-02).
+     *
+     * Why:    the balance is derived and the user cannot state it — [AccountDraft] has no field for
+     *         one, deliberately (DB-001, ADR-0007). This is the sanctioned way to correct it, and
+     *         it corrects it **by adding a transaction, never by editing the past**: FR-ACC-006's
+     *         words are "never silently mutated". The opening balance and every existing
+     *         transaction are left exactly as they were; the difference is posted as one new
+     *         adjustment row the user can see, question, and soft-delete like any other.
+     *
+     *         **The delta is computed here, against a balance read inside the same transaction** —
+     *         not against whatever the screen last rendered. A caller that passed its own figure
+     *         would be reconciling against a snapshot that may be seconds old, which is the exact
+     *         stale-versus-live split issue 2.6 shipped a defect on.
+     *
+     *         **A zero delta writes nothing.** The app already agreed with the statement; a
+     *         zero-amount transaction would record no fact and would have to be filtered by every
+     *         engine downstream.
+     * Result: `Ok(Reconciliation)` carrying before, statement, delta and the adjustment's id —
+     *         `null` when there was nothing to adjust. `Err(NotFound)` when the id names nothing
+     *         live, or `Err(Storage)`. An archived account **can** be reconciled: recording a closed
+     *         account's final statement balance is precisely when a user needs this (FR-ACC-007).
+     * Input:  [accountId]; [statementBalance] — what the statement says, MNY-001 paise, signed the
+     *         same way the account's balance is (negative for a liability).
+     * Output: `Result<Reconciliation, AppError>`.
+     */
+    suspend fun reconcile(
+        accountId: String,
+        statementBalance: Money,
+    ): Result<Reconciliation, AppError>
+
+    /**
+     * Rewrites every cached balance in the active profile from the derivation (issue 2.7; DB-001).
+     *
+     * Why:    `account.current_balance_minor` has been a cache nothing maintains since issue 1.6 —
+     *         ADR-0007's own *Bad* consequence says "the two figures can disagree, and until issue
+     *         2.7 nothing notices". This is what notices. It is called from a daily background job,
+     *         not from a screen: no read depends on it today, so nothing should wait on it.
+     *
+     *         **It repairs rather than merely reporting.** Drift here is not a symptom of
+     *         corruption — it is the guaranteed state of a column that is written once and never
+     *         updated, so a job that only flagged it would flag every account with transactions
+     *         every night and mean nothing. The count it returns is the observation; the repair is
+     *         the point.
+     * Result: `Ok(n)` where `n` is how many accounts were out of step **before** the repair — zero
+     *         on a healthy profile. `Err(Storage)` if the database could not be written.
+     * Input:  none — the active profile, like every other unqualified read here.
+     * Output: `Result<Int, AppError>`.
+     */
+    suspend fun refreshCachedBalances(): Result<Int, AppError>
+
     companion object {
         /** The [IdGenerator] prefix for account ids, so a database dump reads as itself. */
         const val ID_PREFIX = "account"
+
+        /**
+         * The [IdGenerator] prefix for transaction ids (issue 2.7).
+         *
+         * Here rather than in a transactions repository because none exists yet — Epic 3 owns that,
+         * and reconciliation is the first thing in the app to write a transaction outside the demo
+         * dataset. It moves there unchanged when that repository lands.
+         */
+        const val TRANSACTION_ID_PREFIX = "txn"
+
+        /**
+         * The `transactions.source` value marking an adjustment this flow wrote (issue 2.7).
+         *
+         * **This is the rule that fired** (P-02). A row indistinguishable from something the user
+         * typed by hand could never explain itself, and the alternative — an English sentence in
+         * `note` — would be un-localised and would repeat the amount in the column beside it.
+         */
+        const val SOURCE_RECONCILIATION = "reconciliation"
     }
 }
 
@@ -294,6 +366,35 @@ internal class RoomAccountRepository(
             }.requireRowTouched()
         }
 
+    override suspend fun reconcile(
+        accountId: String,
+        statementBalance: Money,
+    ): Result<Reconciliation, AppError> =
+        withContext(dispatchers.io) {
+            runCatchingToResult {
+                // One transaction around read-compute-write: the balance the delta is measured
+                // against and the adjustment that closes the gap must describe the same instant, or
+                // a transaction landing between the two would be silently absorbed into the
+                // correction and the user would have "fixed" a figure that was already right.
+                database.withTransaction {
+                    val existing = database.accountDao().findWithBalance(accountId) ?: return@withTransaction null
+                    val account = existing.toAccount() ?: return@withTransaction null
+                    database.writeAdjustment(account, statementBalance, clock, ids)
+                }
+            }.flatMapPresent()
+        }
+
+    override suspend fun refreshCachedBalances(): Result<Int, AppError> =
+        withContext(dispatchers.io) {
+            runCatchingToResult {
+                // No `withTransaction`: it is a single statement, which SQLite is already atomic
+                // about. Wrapping it would suggest there is a second write to keep it consistent
+                // with, and there is not. The row count is the drift count — the DAO's `<>` clause
+                // is what makes that true.
+                database.accountDao().refreshCachedBalances(activeProfileIdNow(), clock.nowUtcMillis())
+            }
+        }
+
     /**
      * Reads the profile the write should land under, right now.
      * Why:    a write needs one value, not a stream. Taking the first emission is safe here because
@@ -305,6 +406,64 @@ internal class RoomAccountRepository(
      * Input:  none. Output: [String].
      */
     private suspend fun activeProfileIdNow(): String = activeProfileId.first()
+}
+
+/**
+ * Posts the adjustment, or decides none is needed (issue 2.7; FR-ACC-006).
+ *
+ * Why:    a top-level function rather than a method, for the same reason [toAccount] and
+ *         [requireRowTouched] below are: `RoomAccountRepository` is at detekt's function ceiling,
+ *         and this is a pure step over the database it is handed rather than a piece of the
+ *         repository's own state. Split out of `reconcile` so the transactional boundary there
+ *         reads as one thing without folding the *why* comments away.
+ *
+ *         **Assumes it is already inside `withTransaction`.** Every write below has to land or none
+ *         of them can — an adjustment written without its cache refresh would leave the integrity
+ *         job reporting drift the user had just fixed.
+ *
+ *         **The cache is re-derived, not asserted.** Setting the column to the statement figure
+ *         would be true by construction today and quietly wrong the moment anything else about the
+ *         derivation changes; running the same `UPDATE` DB-001's nightly job runs means there is
+ *         exactly one definition of what the cached balance means.
+ * Result: the [Reconciliation] describing what happened; writes one transaction row and refreshes
+ *         the profile's cached balances, unless the app already agreed with the statement.
+ * Input:  the receiver — the database, inside a transaction; [account] — with its balance freshly
+ *         derived; [statementBalance] — what the user typed; [clock] — TIM-001; [ids] — P-08.
+ * Output: [Reconciliation].
+ * Changelog: 2026-08-02 — Created for issue 2.7.
+ */
+private suspend fun CfoDatabase.writeAdjustment(
+    account: Account,
+    statementBalance: Money,
+    clock: Clock,
+    ids: IdGenerator,
+): Reconciliation {
+    val now = clock.nowUtcMillis()
+    val bookedOn = clock.today().toString()
+    // Money's checked arithmetic (MNY-001): an absurd statement throws rather than wrapping.
+    val delta = statementBalance - account.balance
+    if (delta == Money.ZERO) {
+        return Reconciliation(account.id, account.balance, statementBalance, delta, null, bookedOn)
+    }
+    val adjustmentId = ids.newId(AccountRepository.TRANSACTION_ID_PREFIX)
+    transactionDao().upsert(
+        TransactionEntity(
+            id = adjustmentId,
+            // The **account's** profile, not the active one. Reconciling while the demo is on must
+            // leave the row where `DemoDao.deleteTransactions` can reach it (ADR-0006).
+            profileId = account.profileId,
+            accountId = account.id,
+            amountMinor = delta.minor,
+            currencyCode = account.currencyCode,
+            occurredAtUtcMillis = now,
+            bookedOnIsoDate = bookedOn,
+            source = AccountRepository.SOURCE_RECONCILIATION,
+            createdAtUtcMillis = now,
+            updatedAtUtcMillis = now,
+        ),
+    )
+    accountDao().refreshCachedBalances(account.profileId, now)
+    return Reconciliation(account.id, account.balance, statementBalance, delta, adjustmentId, bookedOn)
 }
 
 /**
@@ -375,12 +534,13 @@ private fun Result<AccountWithBalance?, AppError>.flatMapToAccount(): Result<Acc
     }
 
 /**
- * Turns a nullable creation result into a `NotFound` rather than a null.
- * Result: `Ok(account)`, or `Err(NotFound)` when the row could not be modelled.
- * Input:  the receiver. Output: `Result<Account, AppError>`.
+ * Turns a nullable success value into a `NotFound` rather than a null.
+ * Result: `Ok(value)`, or `Err(NotFound)` when the row could not be modelled or did not exist.
+ * Input:  the receiver. Output: `Result<T, AppError>`.
  * Changelog: 2026-07-28 — Created for issue 2.5.
+ *            2026-08-02 — Made generic for issue 2.7, whose `reconcile` returns a `Reconciliation`.
  */
-private fun Result<Account?, AppError>.flatMapPresent(): Result<Account, AppError> =
+private fun <T : Any> Result<T?, AppError>.flatMapPresent(): Result<T, AppError> =
     when (this) {
         is Ok -> value?.let { Ok(it) } ?: Err(AppError.NotFound)
         is Err -> this

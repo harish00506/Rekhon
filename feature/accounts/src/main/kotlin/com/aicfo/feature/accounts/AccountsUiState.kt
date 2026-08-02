@@ -3,6 +3,8 @@ package com.aicfo.feature.accounts
 import androidx.compose.runtime.Immutable
 import com.aicfo.core.model.Account
 import com.aicfo.core.model.AccountType
+import com.aicfo.core.model.Money
+import com.aicfo.core.model.MoneyFormatter
 
 /**
  * Everything the accounts list renders, as one value (ARC-004).
@@ -19,7 +21,8 @@ import com.aicfo.core.model.AccountType
  * Input:  [isLoading]; [accounts] — name-ordered, empty for a user with none, which the screen
  *         renders as an empty state; [showArchived] — FR-ACC-007's toggle, off by default so
  *         closed accounts stay out of the way; [errorCode] — an `AppError.code`, never a message,
- *         so the wording stays in `strings.xml` (§21.6).
+ *         so the wording stays in `strings.xml` (§21.6); [reconciling] — FR-ACC-006's panel when
+ *         one is open, `null` when it is not (issue 2.7).
  * Output: an immutable snapshot for the composable.
  */
 @Immutable
@@ -28,6 +31,14 @@ data class AccountsUiState(
     val accounts: List<Account> = emptyList(),
     val showArchived: Boolean = false,
     val errorCode: String? = null,
+    /**
+     * The open reconciliation panel, or `null` (issue 2.7; FR-ACC-006).
+     *
+     * A nullable member of this state rather than a second screen: reconciling is a two-field
+     * decision *about a row already on screen*, and the list behind it must keep updating while it
+     * is open — the balance it shows is the one the delta is measured against.
+     */
+    val reconciling: ReconcileState? = null,
 ) {
     /**
      * Whether to show the "no accounts yet" invitation rather than a list.
@@ -59,8 +70,69 @@ sealed interface AccountsEvent {
     /** The user deleted one account. Soft, per DB-002. */
     data class Delete(val id: String) : AccountsEvent
 
+    /** The user opened FR-ACC-006's reconciliation panel on one account (issue 2.7). */
+    data class OpenReconcile(val id: String) : AccountsEvent
+
+    /** The user typed the balance from their statement (issue 2.7). */
+    data class StatementChanged(val value: String) : AccountsEvent
+
+    /** The user confirmed the adjustment (issue 2.7). */
+    data object ConfirmReconcile : AccountsEvent
+
+    /** The user closed the panel without adjusting anything (issue 2.7). */
+    data object CancelReconcile : AccountsEvent
+
     /** The user dismissed the error banner. */
     data object DismissError : AccountsEvent
+}
+
+/**
+ * The reconciliation panel's state (issue 2.7; FR-ACC-006, P-02, ARC-004).
+ *
+ * Why:  FR-ACC-006 corrects a balance by posting an adjustment, so the user has to be shown the
+ *       three figures the adjustment is made of *before* they commit to it — what the app holds,
+ *       what they typed, and the difference. Holding them together in one value is what stops the
+ *       panel rendering a delta that belongs to a different balance than the one above it.
+ * What: the account being reconciled, the text as it is being typed, and the write's progress.
+ * Result: every state the panel can be in is nameable in a test.
+ * Changelog: 2026-08-02 — Created for issue 2.7.
+ *
+ * **[statementText] is text, not [Money]** — the same reasoning [AccountEditorUiState] gives for
+ * its amounts: `"1."` and `"-"` are legitimate things to have on screen mid-typing and are not
+ * amounts yet. It is parsed by `MoneyFormatter.parse` (MNY-001), which returns `null` rather than
+ * rounding anything it cannot represent exactly.
+ *
+ * **[delta] is a preview, and the repository does not trust it.** `AccountRepository.reconcile`
+ * re-derives the balance inside its own transaction and computes the delta again there. Showing a
+ * figure here and writing a different one would be indefensible — but so would writing the one
+ * shown, because the list behind this panel is live and [account] may be seconds old. The screen
+ * explains; the store decides.
+ *
+ * Input:  [account] — the row being reconciled, carrying its derived balance; [statementText] —
+ *         what the user is typing; [isSaving] — the write is in flight, so confirm is disabled.
+ * Output: an immutable value.
+ */
+@Immutable
+data class ReconcileState(
+    val account: Account,
+    val statementText: String = "",
+    val isSaving: Boolean = false,
+) {
+    /**
+     * The statement balance, once it is a representable amount.
+     *
+     * Blank is `null` rather than zero, unlike the editor's opening-balance field: there, an
+     * account opened at nothing is ordinary and a blank field has an obvious meaning. Here a blank
+     * field means the user has not answered yet, and treating it as ₹0 would offer to wipe the
+     * account's balance on an empty form.
+     */
+    val statement: Money? get() = MoneyFormatter.parse(statementText)
+
+    /** The adjustment that would be posted, or `null` while the statement is not yet an amount. */
+    val delta: Money? get() = statement?.let { it - account.balance }
+
+    /** Whether confirming would post anything — a matching statement needs no adjustment. */
+    val canConfirm: Boolean get() = !isSaving && delta != null
 }
 
 /**
