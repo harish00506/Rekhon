@@ -18,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
@@ -156,6 +157,13 @@ private fun ListRow(
                     row.transaction.note
                         ?: row.transaction.merchant
                         ?: stringResource(R.string.transactions_uncategorised),
+                // Issue 3.3: a split says how many categories its one amount is spread across. The
+                // amount itself is unchanged — the parent still holds all of it — so listing the
+                // lines here would show the same money twice.
+                supporting =
+                    row.splitLineCount?.let { count ->
+                        pluralStringResource(R.plurals.transactions_split_lines, count, count)
+                    },
                 trailing = { RowTrailing(amount = row.transaction.amount, onDelete = onDelete) },
             )
 

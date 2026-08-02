@@ -9,9 +9,11 @@ import com.aicfo.core.common.IdGenerator
 import com.aicfo.core.common.Result
 import com.aicfo.core.common.runCatchingToResult
 import com.aicfo.core.database.CfoDatabase
+import com.aicfo.core.database.dao.TransactionWithSplits
 import com.aicfo.core.database.entity.AccountEntity
 import com.aicfo.core.database.entity.CategoryEntity
 import com.aicfo.core.database.entity.TransactionEntity
+import com.aicfo.core.database.entity.TransactionSplitEntity
 import com.aicfo.core.model.Category
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.Transaction
@@ -126,13 +128,40 @@ interface TransactionRepository {
     suspend fun createTransfer(draft: TransferDraft): Result<Transfer, AppError>
 
     /**
-     * Soft-deletes a transaction, **and its sibling leg when it is half of a transfer** (FR-TXN-003).
+     * Records one transaction attributed across N category lines (issue 3.3; FR-TXN-004, DB-004).
+     *
+     * Why:    FR-TXN-004 is a MUST: "N lines with independent categories; lines MUST sum exactly to
+     *         the parent amount (validated, no rounding drift)". **The validation is the feature** —
+     *         lines that do not sum are refused outright rather than silently adjusted, because an
+     *         app that quietly moves a user's figures to make them add up is worse than one that
+     *         says no.
+     *
+     *         **The parent is an ordinary transaction and the lines move no money.** One row holds
+     *         the amount and every balance sums it exactly as before (DB-001, ADR-0007); the lines
+     *         only say what it was *about*. That is why this needs no balance code at all, and why
+     *         splits live in their own table — see `docs/adr/0009-splits-as-a-child-table.md`.
+     * Result: `Ok(transaction)` with its lines attached; the account's derived balance moves by
+     *         [SplitDraft.amount] **once**. `Err(Validation)` with **nothing written** when there are
+     *         fewer than two lines, when a line is zero or signed against the parent, or when the
+     *         lines do not sum to the parent. `Err(NotFound)` when the account names nothing live,
+     *         or `Err(Storage)`.
+     * Input:  [draft] — what the user entered. Output: `Result<Transaction, AppError>`.
+     */
+    suspend fun createSplit(draft: SplitDraft): Result<Transaction, AppError>
+
+    /**
+     * Soft-deletes a transaction, its split lines, **and its sibling leg when it is half of a
+     * transfer** (FR-TXN-003, FR-TXN-004).
      *
      * Why:    FR-TXN-003's second clause is "deleting one side deletes both". Deleting one leg of a
      *         transfer and leaving the other would leave money that came from nowhere sitting in the
      *         destination account, and no screen would show why. The caller does not say which case
      *         it is — it passes the row the user tapped, and this decides — because a UI that had to
      *         know would be a UI that can get it wrong.
+     *
+     *         **Split lines go with their parent** (issue 3.3), in the same database transaction. A
+     *         line whose parent is gone attributes an amount that no longer exists, and every read
+     *         downstream would have to filter it out for ever.
      *
      *         Soft, per DB-002: the rows stay as tombstones and simply leave every read and every
      *         balance.
@@ -171,6 +200,22 @@ interface TransactionRepository {
          * transaction id, which matters when the only thing tying two rows together is this value.
          */
         const val TRANSFER_ID_PREFIX = "tfr"
+
+        /**
+         * The [IdGenerator] prefix for split-line ids (issue 3.3).
+         *
+         * Distinct from [ID_PREFIX] so a database dump reads as itself: `spl:4` is plainly a line,
+         * not a transaction, which matters when the two tables are read side by side.
+         */
+        const val SPLIT_ID_PREFIX = "spl"
+
+        /**
+         * The fewest lines a split may have (FR-TXN-004).
+         *
+         * One line is not a split — it is the transaction it already was, with an extra row saying
+         * so. Refusing it keeps "is this split?" a question with one answer.
+         */
+        const val MIN_SPLIT_LINES = 2
     }
 }
 
@@ -258,8 +303,10 @@ internal class RoomTransactionRepository(
         // and the screen showing the transactions it was already showing.
         activeProfileId.flatMapLatest { profileId ->
             val today = clock.today()
+            // One query, not two combined: Room's `@Relation` fetches each transaction's lines
+            // inside the same database transaction and invalidates on either table (issue 3.3).
             database.transactionDao()
-                .observeBookedBetween(
+                .observeBookedBetweenWithSplits(
                     profileId = profileId,
                     fromIsoDate = today.minusDays(TransactionRepository.RECENT_WINDOW_DAYS).toString(),
                     toIsoDate = today.toString(),
@@ -402,6 +449,79 @@ internal class RoomTransactionRepository(
         )
     }
 
+    override suspend fun createSplit(draft: SplitDraft): Result<Transaction, AppError> {
+        val validated = draft.validated() ?: return Err(AppError.Validation(draft.invalidField()))
+        return withContext(dispatchers.io) {
+            runCatchingToResult {
+                val account =
+                    database.accountDao().findWithBalance(validated.accountId)?.account
+                        ?: return@runCatchingToResult null
+                // One transaction around the parent and every line (DB-004): a parent without its
+                // lines is a miscategorised amount, and lines without a parent attribute nothing.
+                database.withTransaction { writeSplit(validated, account) }
+            }.flatMapPresent()
+        }
+    }
+
+    /**
+     * Writes the parent transaction and its lines, and returns them assembled.
+     * Why:    split out of [createSplit] so the part that must run inside `withTransaction` is one
+     *         readable block, and so the values the parent and its lines share — the instant, the
+     *         booked day, the profile — are visibly computed **once**.
+     *
+     *         **The parent carries no `categoryId`.** The lines carry the categories; a category on
+     *         the parent as well would be a second, contradictory answer to "what was this?".
+     * Result: both writes done; the [Transaction] with its lines attached.
+     * Input:  [draft] — already validated; [account] — the verified live account.
+     * Output: [Transaction].
+     * Changelog: 2026-08-02 — Created for issue 3.3.
+     */
+    private suspend fun writeSplit(
+        draft: SplitDraft,
+        account: AccountEntity,
+    ): Transaction? {
+        val now = clock.nowUtcMillis()
+        val parentId = ids.newId(TransactionRepository.ID_PREFIX)
+        val parent =
+            TransactionEntity(
+                id = parentId,
+                // The account's profile, not the active one — the choice ADR-0006 requires so a row
+                // lands where the demo wipe can reach it.
+                profileId = account.profileId,
+                accountId = account.id,
+                amountMinor = draft.amount.minor,
+                currencyCode = account.currencyCode,
+                occurredAtUtcMillis = now,
+                bookedOnIsoDate = clock.today().toString(),
+                categoryId = null,
+                merchant = draft.merchant,
+                note = draft.note,
+                source = TransactionSource.MANUAL.storedValue,
+                type = draft.amount.directionType().storedValue,
+                createdAtUtcMillis = now,
+                updatedAtUtcMillis = now,
+            )
+        val lines =
+            draft.lines.map { line ->
+                TransactionSplitEntity(
+                    id = ids.newId(TransactionRepository.SPLIT_ID_PREFIX),
+                    profileId = account.profileId,
+                    transactionId = parentId,
+                    amountMinor = line.amount.minor,
+                    categoryId = line.categoryId,
+                    note = line.note,
+                    createdAtUtcMillis = now,
+                    updatedAtUtcMillis = now,
+                )
+            }
+
+        database.transactionDao().upsert(parent)
+        database.transactionSplitDao().upsertAll(lines)
+        // No balance write: the parent row *is* the balance change (DB-001, ADR-0007), and the lines
+        // deliberately contribute nothing to it.
+        return parent.toTransaction()?.copy(splits = lines.map { it.toSplit() })
+    }
+
     override suspend fun delete(transactionId: String): Result<Unit, AppError> =
         withContext(dispatchers.io) {
             runCatchingToResult {
@@ -409,11 +529,22 @@ internal class RoomTransactionRepository(
                     database.transactionDao().findById(transactionId)
                         ?: return@runCatchingToResult 0
                 val now = clock.nowUtcMillis()
-                // The transfer case is one statement, not a read-then-delete-each loop, so there is
-                // no window in which one leg is gone and the other is not (DB-004, FR-TXN-003).
-                existing.transferId
-                    ?.let { database.transactionDao().softDeleteTransfer(it, now) }
-                    ?: database.transactionDao().softDelete(transactionId, now)
+                // One transaction around every row that goes (DB-004): a parent gone without its
+                // lines, or one transfer leg without the other, is a half-deleted record.
+                database.withTransaction {
+                    // The transfer case is one statement, not a read-then-delete-each loop, so there
+                    // is no window in which one leg is gone and the other is not (FR-TXN-003).
+                    val touched =
+                        existing.transferId
+                            ?.let { database.transactionDao().softDeleteTransfer(it, now) }
+                            ?: database.transactionDao().softDelete(transactionId, now)
+                    // Only when the parent actually went: a repeated delete must stay a no-op all
+                    // the way down rather than quietly re-stamping the lines' tombstones.
+                    if (touched > 0) {
+                        database.transactionSplitDao().softDeleteForTransaction(transactionId, now)
+                    }
+                    touched
+                }
             }.requireRowTouched()
         }
 }
@@ -585,6 +716,22 @@ internal fun TransactionEntity.toTransaction(): Transaction? {
         transferId = transferId,
     )
 }
+
+/**
+ * Converts a parent and its lines into the domain model (issue 3.3; FR-TXN-004).
+ * Why:    the single place a stored split becomes a [Transaction] with [Transaction.splits] on it.
+ *         **Tombstoned lines are dropped here**, because Room's `@Relation` cannot carry a `WHERE`;
+ *         doing it once, at the one mapping site, is what stops a deleted line reappearing in some
+ *         later read.
+ * Result: a [Transaction] carrying its live lines, or `null` when the parent's stored `source` or
+ *         `type` is one this build does not know.
+ * Input:  the receiver. Output: `Transaction?`.
+ * Changelog: 2026-08-02 — Created for issue 3.3.
+ */
+internal fun TransactionWithSplits.toTransaction(): Transaction? =
+    transaction.toTransaction()?.copy(
+        splits = splits.filter { it.deletedAtUtcMillis == null }.map { it.toSplit() },
+    )
 
 /**
  * Converts a category row into the domain model.

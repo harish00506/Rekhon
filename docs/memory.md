@@ -17,16 +17,18 @@
 
 ## Current state
 
-- **Version:** `0.3.2` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (**Epic 3 open**).
-  **Schema is now v6.**
-- **Currently working file:** none — issue 3.2 is **shipped**: committed on
-  `feature/3-2-transfers-single-logical-record` and merged `--no-ff` into `dev`. Push skipped (no remote).
+- **Version:** `0.3.3` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (**Epic 3 open**).
+  **Schema is now v7.**
+- **Currently working file:** issue 3.3 splits — **implemented and verified, uncommitted** on
+  `feature/3-3-split-transactions-n-lines`. Everything but workflow step 12 is done; the commit and
+  the merge to `dev` wait on an explicit instruction.
 - **Shipped to `dev`:** 3.1 add-transaction ≤ 3 taps (`61568c9`, merged `06375da`) · 3.2 transfers as
   one logical record ([3.2](issues/3.2-transfers-single-logical-record.md) ·
   [tracker](issues/3.2-transfers-single-logical-record-tracker.md)) — **70 new tests, suite green,
   the v5 → v6 upgrade path verified on a device.**
-- **In progress:** nothing. **Next: 3.3 splits** (depends on 3.1 + 1.2), or 3.4/3.5/3.6 — all of
-  which depend only on 3.1 and are now unblocked.
+- **In progress:** 3.3 splits ([3.3](issues/3.3-split-transactions-n-lines.md) ·
+  [tracker](issues/3.3-split-transactions-n-lines-tracker.md)) — **62 new tests, suite green, the
+  v6 → v7 upgrade path verified on a device.** **Next: 3.4/3.5/3.6**, all unblocked by 3.1.
 - **Epic 2 is done.** Onboarding, the app lock, accounts, net worth and reconciliation all ship.
 - **The `transactions` table finally has a real writer** (3.1's `TransactionRepository`), so
   reconciliation is no longer the only non-demo thing that writes one. **Nothing writes a balance** —
@@ -117,6 +119,23 @@
   `AccountDao.softDelete` has, so a double-delete returns 1 both times and would report success
   twice. Harmless today (3.1 is create-only and nothing calls it), but 3.6's delete-with-undo must
   fix it or it will lie to the user.
+- **Do not `combine` two Room `Flow`s in a repository — use `@Relation`.** `combine` calls `yield()`
+  internally and `UnconfinedTestDispatcher` refuses it, so 3.3's first `observeRecent` killed **20**
+  repository tests on the dispatcher rather than on anything about the data. Room's `@Relation`
+  (`TransactionWithSplits`) is one `@Transaction` query that invalidates on either table — simpler,
+  and it made the failure disappear rather than be worked around. Caveat: **`@Relation` cannot carry
+  a `WHERE`**, so soft-deleted children arrive from the DAO and are filtered in the mapper.
+- **Pick one sign convention per layer and convert at exactly one point.** 3.3's running remainder
+  read as *double* the amount because it compared a signed parent against unsigned lines. The fix was
+  to make the whole editor unsigned and apply the parent's sign only in `toSplitDraftOrNull` — the
+  store stays signed, the UI stays unsigned, and one function is the border.
+- **A duplicated field label is an accessibility defect, not a test nuisance.** A Compose count
+  assertion caught two inputs both labelled "Amount"; a screen reader would announce them
+  identically. Renaming to "Line amount" fixed the test *and* the app.
+- **detekt's structural limits are a design signal worth obeying literally.** 3.3 hit LongMethod,
+  TooManyFunctions twice and CyclomaticComplexMethod; each was answered with a real extraction
+  (`SplitEditor.kt`, `SplitDrafts.kt`, a nested `SplitEvent` + its own reducer), never a suppression.
+  The seams it forced are the same ones the feature actually has.
 - **`account.current_balance_minor` is no longer a lie.** 2.7 built DB-001's integrity job
   (`BalanceIntegrityWorker`, daily). Nothing *reads* the column yet — every balance is still derived
   — so the value is the invariant, not a screen; it is the precondition for switching the read path

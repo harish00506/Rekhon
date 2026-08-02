@@ -459,10 +459,329 @@ class AddTransactionViewModelTest {
             }
         }
 
+    // --- splits (issue 3.3; FR-TXN-004) ------------------------------------------------------------
+
+    @Test
+    fun `splitting is not offered until there is an amount to divide`() =
+        runTest {
+            accounts.setAccounts(account())
+            val viewModel = viewModel()
+
+            viewModel.uiState.test {
+                assertFalse("nothing to split yet", awaitItem().canSplit)
+                cancelAndIgnoreRemainingEvents()
+            }
+
+            viewModel.onEvent(AddTransactionEvent.AmountChanged("1000"))
+
+            viewModel.uiState.test {
+                assertTrue(awaitItem().canSplit)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `splitting is never offered for a transfer`() =
+        runTest {
+            // Moving money between your own accounts is not spending, so there is nothing to
+            // attribute across categories (FR-TXN-003 vs FR-TXN-004).
+            val viewModel = transferViewModel(amount = "5000")
+
+            viewModel.uiState.test {
+                assertFalse(awaitItem().canSplit)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `turning splitting on seeds two empty lines`() =
+        runTest {
+            // One line is not a split, and an editor that opens empty asks the user to find an
+            // "add line" button before it does anything.
+            val viewModel = splitViewModel()
+
+            viewModel.uiState.test {
+                val state = awaitItem()
+                assertEquals(MIN_SPLIT_LINES, state.splitLines.size)
+                assertTrue(state.splitLines.all { it.amountText.isEmpty() })
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `the remainder starts at the full amount and falls to zero as lines are entered`() =
+        runTest {
+            // The running remainder the AC asks for, as a sequence rather than a single reading.
+            val viewModel = splitViewModel()
+
+            viewModel.onEvent(SplitEvent.SplitLineAmountChanged(0, "600"))
+            viewModel.uiState.test {
+                assertEquals(Money(400_00L), awaitItem().splitRemainder)
+                cancelAndIgnoreRemainingEvents()
+            }
+
+            viewModel.onEvent(SplitEvent.SplitLineAmountChanged(1, "400"))
+            viewModel.uiState.test {
+                assertEquals(Money.ZERO, awaitItem().splitRemainder)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `Save is blocked until the lines balance exactly`() =
+        runTest {
+            // One paise out is out — no tolerance, because paise are integers.
+            val viewModel = splitViewModel()
+            viewModel.onEvent(SplitEvent.SplitLineAmountChanged(0, "600"))
+            viewModel.onEvent(SplitEvent.SplitLineAmountChanged(1, "399.99"))
+
+            viewModel.uiState.test {
+                val state = awaitItem()
+                assertEquals(Money(1L), state.splitRemainder)
+                assertFalse(state.canSave)
+                cancelAndIgnoreRemainingEvents()
+            }
+            viewModel.onEvent(AddTransactionEvent.Save)
+            assertTrue(transactions.splitsCreated.isEmpty())
+        }
+
+    @Test
+    fun `a half-typed line leaves the remainder owing rather than counting as zero`() =
+        runTest {
+            val viewModel = splitViewModel()
+            viewModel.onEvent(SplitEvent.SplitLineAmountChanged(0, "600"))
+            // "4.999" is over-precise for paise, so MoneyFormatter.parse refuses it rather than
+            // rounding — the line is not a figure yet and must not count as zero.
+            viewModel.onEvent(SplitEvent.SplitLineAmountChanged(1, "4.999"))
+
+            viewModel.uiState.test {
+                val state = awaitItem()
+                assertEquals(Money(400_00L), state.splitRemainder)
+                assertFalse(state.canSave)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `split evenly always balances, including when it does not divide cleanly`() =
+        runTest {
+            // ₹1,000 over three is the case that exposes rounding drift: 333.33 three times loses a
+            // paise. `Money.split`'s largest-remainder rule gives the spare to the first line.
+            val viewModel = splitViewModel()
+            viewModel.onEvent(SplitEvent.SplitLineAdded)
+
+            viewModel.onEvent(SplitEvent.SplitEvenly)
+
+            viewModel.uiState.test {
+                val state = awaitItem()
+                assertEquals(listOf("333.34", "333.33", "333.33"), state.splitLines.map { it.amountText })
+                assertEquals(Money.ZERO, state.splitRemainder)
+                assertTrue(state.canSave)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `split evenly keeps the categories already chosen`() =
+        runTest {
+            // The user usually decides what each line is *for* before deciding the amounts are equal.
+            transactions.setCategories(Category("category:fuel", "Fuel"))
+            val viewModel = splitViewModel()
+            viewModel.onEvent(SplitEvent.SplitLineCategorySelected(0, "category:fuel"))
+
+            viewModel.onEvent(SplitEvent.SplitEvenly)
+
+            viewModel.uiState.test {
+                assertEquals("category:fuel", awaitItem().splitLines.first().categoryId)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `lines reach the store signed like their parent`() =
+        runTest {
+            // The user types unsigned figures; below the UI a line of an expense is negative like its
+            // parent, which is what lets the repository check the sum as one comparison.
+            val viewModel = balancedSplitViewModel()
+
+            viewModel.onEvent(AddTransactionEvent.Save)
+
+            val draft = transactions.splitsCreated.single()
+            assertEquals(Money(-1_000_00L), draft.amount)
+            assertEquals(listOf(Money(-600_00L), Money(-400_00L)), draft.lines.map { it.amount })
+            assertTrue("a split must not be written as a plain transaction", transactions.created.isEmpty())
+        }
+
+    @Test
+    fun `an income splits into positive lines`() =
+        runTest {
+            accounts.setAccounts(account())
+            val viewModel = viewModel()
+            viewModel.onEvent(AddTransactionEvent.AmountChanged("1000"))
+            viewModel.onEvent(AddTransactionEvent.DirectionChanged(TransactionDirection.INCOME))
+            viewModel.onEvent(SplitEvent.SplitToggled(true))
+            viewModel.onEvent(SplitEvent.SplitLineAmountChanged(0, "600"))
+            viewModel.onEvent(SplitEvent.SplitLineAmountChanged(1, "400"))
+
+            viewModel.onEvent(AddTransactionEvent.Save)
+
+            assertEquals(
+                listOf(Money(600_00L), Money(400_00L)),
+                transactions.splitsCreated.single().lines.map { it.amount },
+            )
+        }
+
+    @Test
+    fun `each line carries its own category`() =
+        runTest {
+            transactions.setCategories(
+                Category("category:groceries", "Groceries"),
+                Category("category:household", "Household"),
+            )
+            val viewModel = balancedSplitViewModel()
+            viewModel.onEvent(SplitEvent.SplitLineCategorySelected(0, "category:groceries"))
+            viewModel.onEvent(SplitEvent.SplitLineCategorySelected(1, "category:household"))
+
+            viewModel.onEvent(AddTransactionEvent.Save)
+
+            assertEquals(
+                listOf("category:groceries", "category:household"),
+                transactions.splitsCreated.single().lines.map { it.categoryId },
+            )
+        }
+
+    @Test
+    fun `splitting hides the parent's category picker and clears any choice`() =
+        runTest {
+            // The lines carry the categories now; one on the parent as well would contradict them.
+            transactions.setCategories(Category("category:fuel", "Fuel"))
+            accounts.setAccounts(account())
+            val viewModel = viewModel()
+            viewModel.onEvent(AddTransactionEvent.AmountChanged("1000"))
+            viewModel.onEvent(AddTransactionEvent.CategorySelected("category:fuel"))
+
+            viewModel.onEvent(SplitEvent.SplitToggled(true))
+
+            viewModel.uiState.test {
+                val state = awaitItem()
+                assertNull(state.selectedCategoryId)
+                assertFalse(state.hasCategories)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `turning splitting off clears the lines rather than hiding them`() =
+        runTest {
+            // A stale set of lines reappearing later, half-matching a different amount, is a worse
+            // surprise than retyping two figures.
+            val viewModel = balancedSplitViewModel()
+
+            viewModel.onEvent(SplitEvent.SplitToggled(false))
+
+            viewModel.uiState.test {
+                val state = awaitItem()
+                assertTrue(state.splitLines.isEmpty())
+                assertTrue("a plain expense must be savable again", state.canSave)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `adding and removing lines re-opens the remainder`() =
+        runTest {
+            val viewModel = balancedSplitViewModel()
+
+            viewModel.onEvent(SplitEvent.SplitLineAdded)
+
+            viewModel.uiState.test {
+                val state = awaitItem()
+                assertEquals(3, state.splitLines.size)
+                // The new line is empty, so the sum is unchanged but the form is not ready.
+                assertEquals(Money.ZERO, state.splitRemainder)
+                assertFalse("an empty line is not a figure", state.canSave)
+                cancelAndIgnoreRemainingEvents()
+            }
+
+            viewModel.onEvent(SplitEvent.SplitLineRemoved(2))
+
+            viewModel.uiState.test {
+                assertTrue(awaitItem().canSave)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `removing a line leaves the rest in order`() =
+        runTest {
+            val viewModel = balancedSplitViewModel()
+            viewModel.onEvent(SplitEvent.SplitLineAdded)
+            viewModel.onEvent(SplitEvent.SplitLineAmountChanged(2, "1"))
+
+            viewModel.onEvent(SplitEvent.SplitLineRemoved(0))
+
+            viewModel.uiState.test {
+                assertEquals(listOf("400", "1"), awaitItem().splitLines.map { it.amountText })
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `an edit to a line that no longer exists is ignored`() =
+        runTest {
+            // A stale recomposition can genuinely deliver an index that has just been removed.
+            val viewModel = balancedSplitViewModel()
+
+            viewModel.onEvent(SplitEvent.SplitLineAmountChanged(9, "1"))
+
+            viewModel.uiState.test {
+                assertEquals(listOf("600", "400"), awaitItem().splitLines.map { it.amountText })
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `a refused split reports the code and stays on the screen`() =
+        runTest {
+            transactions.failWith = AppError.Validation("lines")
+            val viewModel = balancedSplitViewModel()
+
+            viewModel.onEvent(AddTransactionEvent.Save)
+
+            viewModel.uiState.test {
+                val state = awaitItem()
+                assertFalse(state.isSaved)
+                assertEquals(AppError.Validation("lines").code, state.errorCode)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
     // --- fixtures ----------------------------------------------------------------------------------
 
     /** Result: a ViewModel over the two fakes. Input: none. Output: [AddTransactionViewModel]. */
     private fun viewModel() = AddTransactionViewModel(transactions, accounts)
+
+    /**
+     * Result: a ViewModel with one account, ₹1,000 typed and splitting on — two empty lines.
+     * Input:  none. Output: [AddTransactionViewModel].
+     */
+    private fun splitViewModel(): AddTransactionViewModel {
+        accounts.setAccounts(account())
+        return viewModel().apply {
+            onEvent(AddTransactionEvent.AmountChanged("1000"))
+            onEvent(SplitEvent.SplitToggled(true))
+        }
+    }
+
+    /**
+     * Result: [splitViewModel] with the two lines filled to 600/400 — a balanced, savable split.
+     * Input:  none. Output: [AddTransactionViewModel].
+     */
+    private fun balancedSplitViewModel(): AddTransactionViewModel =
+        splitViewModel().apply {
+            onEvent(SplitEvent.SplitLineAmountChanged(0, "600"))
+            onEvent(SplitEvent.SplitLineAmountChanged(1, "400"))
+        }
 
     /**
      * Result: a ViewModel with two accounts, [amount] typed, Transfer chosen and a destination

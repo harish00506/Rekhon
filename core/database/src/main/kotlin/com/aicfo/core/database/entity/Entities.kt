@@ -237,6 +237,71 @@ data class TransactionEntity(
 )
 
 /**
+ * One line of a split transaction (issue 3.3; FR-TXN-004, §20.1).
+ *
+ * Why:    a ₹1,000 supermarket trip is groceries *and* household *and* a bottle of wine, and
+ *         FR-TXN-004 requires "N lines with independent categories" whose amounts "sum exactly to
+ *         the parent amount". One `category_id` on the parent cannot express that, so the lines get
+ *         their own rows.
+ *
+ *         **A line does not move money.** The parent transaction holds the amount and is what every
+ *         balance sums (DB-001, ADR-0007); these rows only say how that one amount is *attributed*.
+ *         That is the whole reason this is a child table rather than more rows in `transactions`,
+ *         where the parent and its lines would both land in the balance and double-count it —
+ *         see `docs/adr/0009-splits-as-a-child-table.md`.
+ * Result: a Room row in `transaction_splits`.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-08-02 — Created for issue 3.3 (FR-TXN-004).
+ *
+ * **`profile_id` is denormalised onto the line**, duplicating the parent's. It is not redundant
+ * bookkeeping: `DemoDao`'s wipe and its residue count are both profile-scoped single-table queries
+ * (ADR-0006), and a table they cannot reach by `profile_id` alone would leave residue behind when a
+ * demo is exited. `MigrationSafetyTest` enforces the same rule on every table but `audit_log`.
+ */
+@Entity(
+    tableName = "transaction_splits",
+    indices = [
+        // Every read starts from the parent: "what are this transaction's lines?".
+        Index("transaction_id"),
+        // The demo wipe and the residue count both scope by profile.
+        Index("profile_id"),
+        Index("category_id"),
+    ],
+)
+data class TransactionSplitEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    @ColumnInfo(name = "transaction_id")
+    val transactionId: String,
+    /**
+     * MNY-001: paise, signed **the same way as the parent**.
+     *
+     * A line of an expense is negative like its parent, so `SUM(lines) = parent.amount_minor` is a
+     * plain comparison of two signed figures rather than a rule about magnitudes — which is exactly
+     * what FR-TXN-004's "sum exactly to the parent amount" asks to be checkable.
+     */
+    @ColumnInfo(name = "amount_minor")
+    val amountMinor: Long,
+    /**
+     * The category this line is attributed to. Null until issue 4.1 gives a real profile any
+     * categories at all — the same state `transactions.category_id` is in.
+     */
+    @ColumnInfo(name = "category_id")
+    val categoryId: String? = null,
+    @ColumnInfo(name = "note")
+    val note: String? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+)
+
+/**
  * A spending category, optionally nested one level under a parent.
  * Why:    categorisation drives budgets and every insight, and `nature` is what separates a need
  *         from a want from an investment — the distinction the advice layer is built on.

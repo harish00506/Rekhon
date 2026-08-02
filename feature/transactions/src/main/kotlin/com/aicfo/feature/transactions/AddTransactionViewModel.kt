@@ -6,7 +6,11 @@ import com.aicfo.core.common.Err
 import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
 import com.aicfo.core.common.toAppError
+import com.aicfo.core.model.Money
+import com.aicfo.core.model.MoneyFormatter
 import com.aicfo.data.repository.AccountRepository
+import com.aicfo.data.repository.SplitDraft
+import com.aicfo.data.repository.SplitLineDraft
 import com.aicfo.data.repository.TransactionDraft
 import com.aicfo.data.repository.TransactionRepository
 import com.aicfo.data.repository.TransferDraft
@@ -122,6 +126,7 @@ class AddTransactionViewModel
                 is AddTransactionEvent.DestinationSelected -> _uiState.update { it.copy(toAccountId = event.id) }
                 is AddTransactionEvent.CategorySelected -> _uiState.update { it.copy(selectedCategoryId = event.id) }
                 is AddTransactionEvent.NoteChanged -> _uiState.update { it.copy(note = event.value) }
+                is SplitEvent -> _uiState.update { it.applySplit(event) }
                 AddTransactionEvent.Save -> save()
                 AddTransactionEvent.DismissError -> _uiState.update { it.copy(errorCode = null) }
             }
@@ -145,10 +150,14 @@ class AddTransactionViewModel
         private fun save() {
             val state = _uiState.value
             val write: (suspend () -> Result<Any, com.aicfo.core.common.AppError>)? =
-                if (state.isTransfer) {
-                    state.toTransferDraftOrNull()?.let { draft -> { transactions.createTransfer(draft) } }
-                } else {
-                    state.toDraftOrNull()?.let { draft -> { transactions.create(draft) } }
+                when {
+                    state.isTransfer ->
+                        state.toTransferDraftOrNull()?.let { draft -> { transactions.createTransfer(draft) } }
+
+                    state.isSplit ->
+                        state.toSplitDraftOrNull()?.let { draft -> { transactions.createSplit(draft) } }
+
+                    else -> state.toDraftOrNull()?.let { draft -> { transactions.create(draft) } }
                 }
             if (write == null) return
 
@@ -193,6 +202,145 @@ internal fun AddTransactionUiState.withDirection(direction: TransactionDirection
  */
 internal fun AddTransactionUiState.withSource(id: String): AddTransactionUiState =
     copy(selectedAccountId = id, toAccountId = toAccountId?.takeIf { it != id })
+
+/**
+ * Applies one split interaction to the state (issue 3.3; FR-TXN-004).
+ * Why:    every split event resolves to a pure state transition, so they are handled in one
+ *         exhaustive `when` here rather than as six more branches of the screen's main `onEvent` —
+ *         which is both what detekt's complexity ceiling was objecting to and the honest shape: the
+ *         split editor is a mode, and this is its reducer.
+ * Result: the state with [event] applied. Input: the receiver; [event]. Output: [AddTransactionUiState].
+ * Changelog: 2026-08-02 — Created for issue 3.3.
+ */
+internal fun AddTransactionUiState.applySplit(event: SplitEvent): AddTransactionUiState =
+    when (event) {
+        is SplitEvent.SplitToggled -> withSplit(event.isSplit)
+        is SplitEvent.SplitLineAmountChanged ->
+            withLine(event.index) { it.copy(amountText = event.value) }
+
+        is SplitEvent.SplitLineCategorySelected ->
+            withLine(event.index) { it.copy(categoryId = event.categoryId) }
+
+        SplitEvent.SplitLineAdded -> copy(splitLines = splitLines + SplitLineInput())
+        is SplitEvent.SplitLineRemoved ->
+            copy(splitLines = splitLines.filterIndexed { index, _ -> index != event.index })
+
+        SplitEvent.SplitEvenly -> splitEvenly()
+    }
+
+/**
+ * Turns splitting on or off (issue 3.3; FR-TXN-004).
+ * Why:    turning it **on** seeds [MIN_SPLIT_LINES] empty lines, because an editor that opens with
+ *         nothing in it asks the user to discover an "add line" button before it does anything —
+ *         and one line is not a split anyway. Turning it **off** clears them rather than keeping
+ *         them hidden: a stale set of lines that reappeared later, half-matching a different amount,
+ *         is a worse surprise than retyping two figures.
+ *
+ *         Splitting also clears any category picked on the parent — the lines carry the categories
+ *         now, and two answers would contradict each other.
+ * Result: the state with [AddTransactionUiState.isSplit] applied and the lines seeded or cleared.
+ * Input:  the receiver; [isSplit]. Output: [AddTransactionUiState].
+ * Changelog: 2026-08-02 — Created for issue 3.3.
+ */
+internal fun AddTransactionUiState.withSplit(isSplit: Boolean): AddTransactionUiState =
+    copy(
+        isSplit = isSplit,
+        selectedCategoryId = if (isSplit) null else selectedCategoryId,
+        splitLines = if (isSplit) List(MIN_SPLIT_LINES) { SplitLineInput() } else emptyList(),
+    )
+
+/**
+ * Applies a change to one split line.
+ * Why:    one helper for every per-line edit, so an out-of-range index — which a stale recomposition
+ *         can genuinely deliver after a line is removed — is ignored in **one** place rather than
+ *         crashing the screen from whichever event handler happened to receive it.
+ * Result: the state with the line at [index] transformed, or unchanged when there is no such line.
+ * Input:  the receiver; [index]; [change] — applied to that line. Output: [AddTransactionUiState].
+ * Changelog: 2026-08-02 — Created for issue 3.3.
+ */
+internal fun AddTransactionUiState.withLine(
+    index: Int,
+    change: (SplitLineInput) -> SplitLineInput,
+): AddTransactionUiState =
+    if (index !in splitLines.indices) {
+        this
+    } else {
+        copy(splitLines = splitLines.mapIndexed { at, line -> if (at == index) change(line) else line })
+    }
+
+/**
+ * Divides the parent equally across the current lines (issue 3.3; FR-TXN-004).
+ *
+ * Why:    **this is the one action that can always produce an exact division**, because it goes
+ *         through `Money.split`, whose largest-remainder rule hands the spare paise to the earliest
+ *         parts — ₹1,000 over three lines becomes 333.34 / 333.33 / 333.33, summing to exactly the
+ *         parent. Dividing by hand and rounding each part is precisely the "rounding drift"
+ *         FR-TXN-004 forbids, and no amount of HALF_EVEN on individual parts would fix it.
+ *
+ *         Categories are kept: the user has usually chosen what each line is *for* before deciding
+ *         the amounts should be equal.
+ * Result: every line's text set to its share, leaving the remainder at zero. Unchanged when there is
+ *         no amount yet or no lines to divide across.
+ * Input:  the receiver. Output: [AddTransactionUiState].
+ * Changelog: 2026-08-02 — Created for issue 3.3.
+ */
+internal fun AddTransactionUiState.splitEvenly(): AddTransactionUiState {
+    val total = amount
+    if (total == null || splitLines.isEmpty()) return this
+    val shares = total.split(splitLines.size)
+    return copy(
+        splitLines =
+            splitLines.mapIndexed { index, line ->
+                line.copy(amountText = MoneyFormatter.format(shares[index]).stripCurrency())
+            },
+    )
+}
+
+/**
+ * Removes the currency symbol and grouping from a formatted amount.
+ * Why:    `MoneyFormatter.format` produces `₹333.34`, which is right for display and wrong to put
+ *         back into an input the user then edits — `MoneyFormatter.parse` accepts it, but the field
+ *         would read as though the app had typed a currency symbol on their behalf. Stripping to
+ *         bare digits keeps the field looking like something a person typed.
+ * Result: the amount as plain digits and a decimal point.
+ * Input:  the receiver — a formatted amount. Output: [String].
+ * Changelog: 2026-08-02 — Created for issue 3.3.
+ */
+private fun String.stripCurrency(): String = filter { it.isDigit() || it == '.' }
+
+/**
+ * Turns the screen's state into a split draft, or refuses (issue 3.3; FR-TXN-004).
+ * Why:    the split counterpart of [toDraftOrNull], and the place the **parent's sign is applied to
+ *         every line**. The user types unsigned figures into the editor; below this point a line of
+ *         an expense is negative like its parent, which is what lets the repository check "the lines
+ *         sum to the parent" as one comparison of two signed values.
+ * Result: the [SplitDraft] to write, or `null` when the state is not one that should write.
+ * Input:  the receiver. Output: `SplitDraft?`.
+ * Changelog: 2026-08-02 — Created for issue 3.3.
+ */
+internal fun AddTransactionUiState.toSplitDraftOrNull(): SplitDraft? {
+    if (!canSave) return null
+    val signed = signedAmount
+    val accountId = selectedAccountId
+    val lines = splitLines.map { it.amount }
+    return if (signed != null && accountId != null && lines.none { it == null }) {
+        SplitDraft(
+            accountId = accountId,
+            amount = signed,
+            lines =
+                splitLines.mapIndexed { index, line ->
+                    val magnitude = requireNotNull(lines[index])
+                    SplitLineDraft(
+                        amount = if (signed < Money.ZERO) Money.ZERO - magnitude else magnitude,
+                        categoryId = line.categoryId,
+                    )
+                },
+            note = note,
+        )
+    } else {
+        null
+    }
+}
 
 /**
  * Turns the screen's state into a transfer draft, or refuses (issue 3.2; FR-TXN-003).

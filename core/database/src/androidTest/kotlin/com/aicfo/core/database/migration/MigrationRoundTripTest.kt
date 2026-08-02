@@ -40,6 +40,9 @@ import org.junit.runner.RunWith
  *            2026-08-02 — Issue 3.2: added the 5 → 6 case — **the first migration that rewrites the
  *            content of existing rows** rather than only adding empty columns, so the first where
  *            the SQL can be structurally valid and still leave the data saying the wrong thing.
+ *            2026-08-02 — Issue 3.3: added the 6 → 7 case (`transaction_splits`). Additive again,
+ *            so the risk here is the opposite one: a migration that quietly recreates the table it
+ *            was meant to leave alone would validate perfectly and lose every row.
  */
 @RunWith(AndroidJUnit4::class)
 class MigrationRoundTripTest {
@@ -360,6 +363,64 @@ class MigrationRoundTripTest {
                 assertEquals("FR-TXN-003: a transfer's legs must balance exactly", 0L, cursor.getLong(0))
                 assertEquals("both legs must be findable by the shared id", 2, cursor.getInt(1))
             }
+        migrated.close()
+    }
+
+    /**
+     * Input:  a v6 database holding one ordinary transaction.
+     * Output: asserts it survives untouched and that the new `transaction_splits` table accepts
+     *         lines that sum exactly to their parent (FR-TXN-004).
+     *
+     * **The parent row is the point of the first half.** 6 → 7 adds a table and touches nothing, so
+     * the risk is not corruption but a migration that accidentally recreates `transactions` — which
+     * would look identical in the schema and lose every row. Asserting the pre-existing amount
+     * byte-for-byte is what separates the two.
+     */
+    @Test
+    fun migrate6To7_preservesTransactionsAndAcceptsSplitLines() {
+        helper.createDatabase(TEST_DB, 6).use { db ->
+            db.execSQL(
+                "INSERT INTO transactions (id, profile_id, account_id, amount_minor, currency_code, " +
+                    "occurred_at_utc_millis, booked_on_iso_date, source, type, created_at_utc_millis, " +
+                    "updated_at_utc_millis) VALUES " +
+                    "('t1','p1','a1',-100000,'INR',1767312000000,'2026-01-02','manual','expense'," +
+                    "1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 7, true, Migrations.MIGRATION_6_7)
+
+        migrated.query("SELECT amount_minor, type FROM transactions WHERE id = 't1'").use { cursor ->
+            assertTrue("the pre-migration transaction must still be there", cursor.moveToFirst())
+            assertEquals("MNY-001: the amount must survive byte for byte", -100000L, cursor.getLong(0))
+            assertEquals("expense", cursor.getString(1))
+        }
+
+        // Every existing transaction is simply unsplit, which is the truth about it.
+        migrated.query("SELECT COUNT(*) FROM transaction_splits").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("a migration cannot invent split lines", 0, cursor.getInt(0))
+        }
+
+        migrated.execSQL(
+            "INSERT INTO transaction_splits (id, profile_id, transaction_id, amount_minor, " +
+                "category_id, note, created_at_utc_millis, updated_at_utc_millis) VALUES " +
+                "('spl1','p1','t1',-60000,'cat:groceries',NULL,1767312000000,1767312000000)," +
+                "('spl2','p1','t1',-40000,NULL,NULL,1767312000000,1767312000000)",
+        )
+        migrated.query(
+            "SELECT SUM(s.amount_minor), COUNT(*) FROM transaction_splits s WHERE s.transaction_id = 't1'",
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            // FR-TXN-004's whole requirement, expressed in SQL: the lines sum to the parent exactly.
+            assertEquals("lines must sum exactly to the parent", -100000L, cursor.getLong(0))
+            assertEquals(2, cursor.getInt(1))
+        }
+        // A line with no category is legal - a real profile has none until issue 4.1.
+        migrated.query("SELECT category_id FROM transaction_splits WHERE id = 'spl2'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertTrue(cursor.isNull(0))
+        }
         migrated.close()
     }
 
