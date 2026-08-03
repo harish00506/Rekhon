@@ -22,10 +22,12 @@ import com.aicfo.core.model.TransactionType
 import com.aicfo.core.model.Transfer
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import java.time.LocalDate
 
 /**
  * Creates and reads transactions (issue 3.1; FR-TXN-002, FR-TXN-001, FR-TXN-009).
@@ -68,8 +70,50 @@ interface TransactionRepository {
      * Result: emits on every change; soft-deleted rows excluded. An empty list is a real state the
      *         screen must render as an empty state.
      * Input:  none — the active profile. Output: `Flow<List<Transaction>>`.
+     *
+     * **The upper bound is today, and since issue 3.4 that is load-bearing.** Until future dating
+     * existed no row could be booked past today, so the bound was true by accident; now it is what
+     * keeps a scheduled payment out of the actuals half of the list and out of every day total
+     * (FR-TXN-010). Scheduled rows are read by [observeUpcoming] instead.
      */
     fun observeRecent(): Flow<List<Transaction>>
+
+    /**
+     * Observes the active profile's **future-dated** transactions, soonest first (issue 3.4).
+     *
+     * Why:    FR-TXN-010's second clause — future-dated rows are "excluded from actuals but included
+     *         in forecasts". This is the read that makes the second half possible: the cash-flow
+     *         forecast (Epic 6) and FR-HOME-001's "upcoming obligations (next 14 days)" card both
+     *         need the obligations the user has already told the app about, and neither can find
+     *         them in [observeRecent], which stops at today by design.
+     *
+     *         **A separate flow rather than a widened window**, so the two halves cannot be summed
+     *         by accident. A caller that wants actuals gets actuals; nothing has to remember to
+     *         filter. The bounds are tomorrow to today + [UPCOMING_WINDOW_DAYS], both computed from
+     *         the injected `Clock`, so the split moves at the profile's midnight (TIM-001) — a row
+     *         leaves this flow and enters [observeRecent] on its own date, with no write.
+     * Result: emits on every change, soonest date first; soft-deleted rows excluded. Empty is the
+     *         normal state — most users schedule nothing.
+     * Input:  none — the active profile. Output: `Flow<List<Transaction>>`.
+     */
+    fun observeUpcoming(): Flow<List<Transaction>>
+
+    /**
+     * Stamps every scheduled row whose day has arrived, and reports how many (issue 3.4).
+     *
+     * Why:    `ScheduledTransactionWorker` calls this once a day. FR-TXN-010 asks for future-dated
+     *         transactions to post when their date arrives; this is the app **recording** that,
+     *         idempotently — a second call on the same day stamps nothing and returns `0`.
+     *
+     *         **It moves no money, and nothing should ever make it.** Balances derive from
+     *         `booked_on_iso_date`, so a row counts from its own date whether or not this has run;
+     *         if posting were gated on the stamp instead, a device that was switched off would show
+     *         its user the wrong balance. See `docs/adr/0010-future-dated-posting.md`.
+     * Result: `Ok(n)` — the rows stamped, **`0` being a success** and not a failure. `Err(Storage)`
+     *         when the write fails, which the worker retries.
+     * Input:  none — the active profile. Output: `Result<Int, AppError>`.
+     */
+    suspend fun postDueTransactions(): Result<Int, AppError>
 
     /**
      * Observes the categories the active profile can pick from (FR-TXN-002).
@@ -194,6 +238,18 @@ interface TransactionRepository {
         const val RECENT_WINDOW_DAYS = 30L
 
         /**
+         * How far ahead [observeUpcoming] looks, in profile-zone days (issue 3.4).
+         *
+         * Not a financial threshold either, so §29's data-not-code rule does not reach it. A quarter
+         * is chosen because it comfortably covers the two consumers this read exists for —
+         * FR-HOME-001's fourteen-day obligations card and a monthly cash-flow forecast — while still
+         * bounding the query, so a user who schedules something for 2031 does not make every list
+         * read scan to it. A row past the window is not lost: it simply arrives in the window as its
+         * date approaches.
+         */
+        const val UPCOMING_WINDOW_DAYS = 90L
+
+        /**
          * The [IdGenerator] prefix for the id a transfer's two legs share (issue 3.2).
          *
          * Distinct from [ID_PREFIX] so a database dump reads as itself: `tfr:4` is plainly not a
@@ -236,7 +292,8 @@ interface TransactionRepository {
  *
  * Input:  [fromAccountId] — the account money leaves, required; [toAccountId] — the account it
  *         arrives in, required and different; [amount] — MNY-001 paise, strictly positive;
- *         [note] — optional free text, held on **both** legs so either one explains itself.
+ *         [note] — optional free text, held on **both** legs so either one explains itself;
+ *         [bookedOn] — the day it is booked on, today or later, `null` meaning today (issue 3.4).
  * Output: an immutable value.
  */
 data class TransferDraft(
@@ -244,6 +301,14 @@ data class TransferDraft(
     val toAccountId: String,
     val amount: Money,
     val note: String? = null,
+    /**
+     * The day this transfer is booked on (issue 3.4; FR-TXN-010). `null` means today.
+     *
+     * **Both legs take it**, resolved once by [Clock.stampsFor] — a scheduled transfer whose legs
+     * landed on different days would leave money missing from one account for the days in between,
+     * which is exactly what `writeTransferLegs` computing the day twice would have caused.
+     */
+    val bookedOn: LocalDate? = null,
 )
 
 /**
@@ -264,7 +329,8 @@ data class TransferDraft(
  *
  * Input:  [accountId] — which account moved, required; [amount] — MNY-001 paise, signed, non-zero;
  *         [categoryId] — optional, and `null` for every real profile until issue 4.1; [merchant] —
- *         optional free text; [note] — optional free text.
+ *         optional free text; [note] — optional free text; [bookedOn] — the day it is booked on,
+ *         today or later, `null` meaning today (issue 3.4).
  * Output: an immutable value.
  */
 data class TransactionDraft(
@@ -273,6 +339,15 @@ data class TransactionDraft(
     val categoryId: String? = null,
     val merchant: String? = null,
     val note: String? = null,
+    /**
+     * The day this transaction is booked on (issue 3.4; FR-TXN-010). `null` means today.
+     *
+     * **A date, not an instant** (TIM-002): "next Tuesday" is a calendar answer in the profile zone,
+     * and a midnight timestamp would shift under a zone change. `null` rather than defaulting to
+     * `LocalDate.now()` in the constructor, because a draft may not read a clock at all — the
+     * repository's injected one resolves it (TIM-001).
+     */
+    val bookedOn: LocalDate? = null,
 )
 
 /**
@@ -318,6 +393,38 @@ internal class RoomTransactionRepository(
                 .flowOn(dispatchers.io)
         }
 
+    override fun observeUpcoming(): Flow<List<Transaction>> =
+        activeProfileId.flatMapLatest { profileId ->
+            val today = clock.today()
+            database.transactionDao()
+                .observeBookedBetweenWithSplits(
+                    profileId = profileId,
+                    // Tomorrow, not today: today's rows are actuals and belong to `observeRecent`.
+                    // The two windows abut exactly, so no row can appear in both or in neither.
+                    fromIsoDate = today.plusDays(1).toString(),
+                    toIsoDate = today.plusDays(TransactionRepository.UPCOMING_WINDOW_DAYS).toString(),
+                )
+                // Reversed rather than a second DAO query: the shared one orders newest-instant
+                // first, which is the right end for history and the wrong one for a schedule — the
+                // next thing due should read first. Over a window bounded at 90 days this is a
+                // trivial cost, and it keeps one `@Transaction` query serving both reads.
+                .map { rows -> rows.mapNotNull { it.toTransaction() }.asReversed() }
+                .flowOn(dispatchers.io)
+        }
+
+    override suspend fun postDueTransactions(): Result<Int, AppError> =
+        withContext(dispatchers.io) {
+            runCatchingToResult {
+                // One statement, so there is no window in which a row is due, unstamped and being
+                // read. `first()` rather than collecting: this is a one-shot job, not an observer.
+                database.transactionDao().postDue(
+                    profileId = activeProfileId.first(),
+                    todayIsoDate = clock.today().toString(),
+                    nowUtcMillis = clock.nowUtcMillis(),
+                )
+            }
+        }
+
     override fun observeCategories(): Flow<List<Category>> =
         activeProfileId.flatMapLatest { profileId ->
             database.categoryDao().observeForProfile(profileId)
@@ -329,6 +436,12 @@ internal class RoomTransactionRepository(
         // Validated before `withContext`, so a rejected draft costs no thread switch and — more to
         // the point — cannot have written anything by the time it is rejected.
         val validated = draft.validated() ?: return Err(AppError.Validation(draft.invalidField()))
+        // Issue 3.4: the booked day and the three stamps it implies, resolved once (FR-TXN-010).
+        // `null` means the date is in the past, which this issue does not support — see `stampsFor`.
+        val stamps = clock.stampsFor(validated.bookedOn) ?: return Err(AppError.Validation("bookedOn"))
+        // Today, not the booked day: the account lookup only proves the account is live, and its
+        // balance is read as at now (issue 3.4 bounded `findWithBalance` by date).
+        val today = clock.today().toString()
         return withContext(dispatchers.io) {
             runCatchingToResult {
                 // The account is read for three things at once: proof it exists and is live, the
@@ -336,9 +449,9 @@ internal class RoomTransactionRepository(
                 // without it SQLite would happily store a transaction against an id that names
                 // nothing, and it would then count towards no balance and show in no history.
                 val account =
-                    database.accountDao().findWithBalance(validated.accountId)?.account
+                    database.accountDao().findWithBalance(validated.accountId, today)?.account
                         ?: return@runCatchingToResult null
-                val now = clock.nowUtcMillis()
+                val now = stamps.nowUtcMillis
                 val entity =
                     TransactionEntity(
                         id = ids.newId(TransactionRepository.ID_PREFIX),
@@ -349,8 +462,8 @@ internal class RoomTransactionRepository(
                         accountId = account.id,
                         amountMinor = validated.amount.minor,
                         currencyCode = account.currencyCode,
-                        occurredAtUtcMillis = now,
-                        bookedOnIsoDate = clock.today().toString(),
+                        occurredAtUtcMillis = stamps.occurredAtUtcMillis,
+                        bookedOnIsoDate = stamps.bookedOnIsoDate,
                         categoryId = validated.categoryId,
                         merchant = validated.merchant,
                         note = validated.note,
@@ -360,6 +473,9 @@ internal class RoomTransactionRepository(
                         // Derived from the sign, never taken from the caller — the whole of the
                         // type/sign invariant is this one expression plus the transfer legs below.
                         type = validated.amount.directionType().storedValue,
+                        // Null for a future-dated row: `ScheduledTransactionWorker` stamps it when
+                        // the day arrives (FR-TXN-010). It does not decide any balance.
+                        postedAtUtcMillis = stamps.postedAtUtcMillis,
                         createdAtUtcMillis = now,
                         updatedAtUtcMillis = now,
                     )
@@ -373,13 +489,18 @@ internal class RoomTransactionRepository(
 
     override suspend fun createTransfer(draft: TransferDraft): Result<Transfer, AppError> {
         val validated = draft.validated() ?: return Err(AppError.Validation(draft.invalidField()))
+        // Issue 3.4: resolved once, before the write, so **both legs** are stamped from one value.
+        val stamps = clock.stampsFor(validated.bookedOn) ?: return Err(AppError.Validation("bookedOn"))
+        // Today, not the booked day: the account lookup only proves the account is live, and its
+        // balance is read as at now (issue 3.4 bounded `findWithBalance` by date).
+        val today = clock.today().toString()
         return withContext(dispatchers.io) {
             runCatchingToResult {
                 val from =
-                    database.accountDao().findWithBalance(validated.fromAccountId)?.account
+                    database.accountDao().findWithBalance(validated.fromAccountId, today)?.account
                         ?: return@runCatchingToResult null
                 val to =
-                    database.accountDao().findWithBalance(validated.toAccountId)?.account
+                    database.accountDao().findWithBalance(validated.toAccountId, today)?.account
                         ?: return@runCatchingToResult null
                 // Currencies must match. Converting would need the FX rates §20.1 reserves a table
                 // for and no issue has built; guessing a rate would be the app inventing a number
@@ -389,7 +510,7 @@ internal class RoomTransactionRepository(
                 }
                 // One transaction around both writes (DB-004). Nothing may ever observe one leg
                 // without the other — a half-transfer is money created or destroyed.
-                database.withTransaction { writeTransferLegs(validated, from, to) }
+                database.withTransaction { writeTransferLegs(validated, from, to, stamps) }
             }.flatMapPresent()
         }
     }
@@ -399,19 +520,22 @@ internal class RoomTransactionRepository(
      * Why:    split out of [createTransfer] so the part that must run inside `withTransaction` is one
      *         readable block, and so the shared values — the id, the instant, the booked day — are
      *         visibly computed **once** and used twice. Computing `clock.today()` per leg would be
-     *         the bug that splits a transfer across midnight.
+     *         the bug that splits a transfer across midnight; issue 3.4 moved that computation out
+     *         to [BookingStamps] entirely, so this function can no longer read a clock at all.
      * Result: both rows written; the [Transfer] describing them.
-     * Input:  [draft] — already validated; [from], [to] — the verified live accounts.
+     * Input:  [draft] — already validated; [from], [to] — the verified live accounts; [stamps] — the
+     *         booked day and instants both legs share (issue 3.4).
      * Output: [Transfer].
      * Changelog: 2026-08-02 — Created for issue 3.2.
+     *            2026-08-03 — Issue 3.4: takes [stamps] instead of reading the clock (FR-TXN-010).
      */
     private suspend fun writeTransferLegs(
         draft: TransferDraft,
         from: AccountEntity,
         to: AccountEntity,
+        stamps: BookingStamps,
     ): Transfer {
-        val now = clock.nowUtcMillis()
-        val bookedOn = clock.today().toString()
+        val bookedOn = stamps.bookedOnIsoDate
         val transferId = ids.newId(TransactionRepository.TRANSFER_ID_PREFIX)
         val dao = database.transactionDao()
 
@@ -424,8 +548,7 @@ internal class RoomTransactionRepository(
                 type = TransactionType.TRANSFER_OUT,
                 id = ids.newId(TransactionRepository.ID_PREFIX),
                 transferId = transferId,
-                now = now,
-                bookedOn = bookedOn,
+                stamps = stamps,
             ),
         )
         dao.upsert(
@@ -435,8 +558,7 @@ internal class RoomTransactionRepository(
                 type = TransactionType.TRANSFER_IN,
                 id = ids.newId(TransactionRepository.ID_PREFIX),
                 transferId = transferId,
-                now = now,
-                bookedOn = bookedOn,
+                stamps = stamps,
             ),
         )
         return Transfer(
@@ -451,14 +573,19 @@ internal class RoomTransactionRepository(
 
     override suspend fun createSplit(draft: SplitDraft): Result<Transaction, AppError> {
         val validated = draft.validated() ?: return Err(AppError.Validation(draft.invalidField()))
+        // Issue 3.4: the parent's day. The lines take no date of their own (FR-TXN-010).
+        val stamps = clock.stampsFor(validated.bookedOn) ?: return Err(AppError.Validation("bookedOn"))
+        // Today, not the booked day: the account lookup only proves the account is live, and its
+        // balance is read as at now (issue 3.4 bounded `findWithBalance` by date).
+        val today = clock.today().toString()
         return withContext(dispatchers.io) {
             runCatchingToResult {
                 val account =
-                    database.accountDao().findWithBalance(validated.accountId)?.account
+                    database.accountDao().findWithBalance(validated.accountId, today)?.account
                         ?: return@runCatchingToResult null
                 // One transaction around the parent and every line (DB-004): a parent without its
                 // lines is a miscategorised amount, and lines without a parent attribute nothing.
-                database.withTransaction { writeSplit(validated, account) }
+                database.withTransaction { writeSplit(validated, account, stamps) }
             }.flatMapPresent()
         }
     }
@@ -472,15 +599,18 @@ internal class RoomTransactionRepository(
      *         **The parent carries no `categoryId`.** The lines carry the categories; a category on
      *         the parent as well would be a second, contradictory answer to "what was this?".
      * Result: both writes done; the [Transaction] with its lines attached.
-     * Input:  [draft] — already validated; [account] — the verified live account.
+     * Input:  [draft] — already validated; [account] — the verified live account; [stamps] — the
+     *         parent's booked day and instants (issue 3.4).
      * Output: [Transaction].
      * Changelog: 2026-08-02 — Created for issue 3.3.
+     *            2026-08-03 — Issue 3.4: takes [stamps] instead of reading the clock (FR-TXN-010).
      */
     private suspend fun writeSplit(
         draft: SplitDraft,
         account: AccountEntity,
+        stamps: BookingStamps,
     ): Transaction? {
-        val now = clock.nowUtcMillis()
+        val now = stamps.nowUtcMillis
         val parentId = ids.newId(TransactionRepository.ID_PREFIX)
         val parent =
             TransactionEntity(
@@ -491,13 +621,15 @@ internal class RoomTransactionRepository(
                 accountId = account.id,
                 amountMinor = draft.amount.minor,
                 currencyCode = account.currencyCode,
-                occurredAtUtcMillis = now,
-                bookedOnIsoDate = clock.today().toString(),
+                occurredAtUtcMillis = stamps.occurredAtUtcMillis,
+                bookedOnIsoDate = stamps.bookedOnIsoDate,
                 categoryId = null,
                 merchant = draft.merchant,
                 note = draft.note,
                 source = TransactionSource.MANUAL.storedValue,
                 type = draft.amount.directionType().storedValue,
+                // On the parent only: the lines divide an amount, and it is the parent that moves.
+                postedAtUtcMillis = stamps.postedAtUtcMillis,
                 createdAtUtcMillis = now,
                 updatedAtUtcMillis = now,
             )
@@ -629,19 +761,21 @@ internal fun TransferDraft.invalidField(): String =
  * Result: the [TransactionEntity] for that side of the movement.
  * Input:  the receiver — the validated draft; [account] — the verified live account this leg belongs
  *         to; [amount] — already signed for this side; [type] — `TRANSFER_OUT` or `TRANSFER_IN`;
- *         [id]; [transferId] — shared with the sibling; [now]; [bookedOn].
+ *         [id]; [transferId] — shared with the sibling; [stamps] — the day and instants both legs
+ *         share (issue 3.4).
  * Output: [TransactionEntity].
  * Changelog: 2026-08-02 — Created for issue 3.2.
+ *            2026-08-03 — Issue 3.4: `now` and `bookedOn` became one [BookingStamps], which is what
+ *            makes "both legs share one booked day" impossible to get wrong at this call site.
  */
-@Suppress("LongParameterList") // Seven values, all of them one leg's identity; a wrapper would hide it.
+@Suppress("LongParameterList") // Six values, all of them one leg's identity; a wrapper would hide it.
 internal fun TransferDraft.leg(
     account: AccountEntity,
     amount: Money,
     type: TransactionType,
     id: String,
     transferId: String,
-    now: Long,
-    bookedOn: String,
+    stamps: BookingStamps,
 ): TransactionEntity =
     TransactionEntity(
         id = id,
@@ -651,16 +785,18 @@ internal fun TransferDraft.leg(
         accountId = account.id,
         amountMinor = amount.minor,
         currencyCode = account.currencyCode,
-        occurredAtUtcMillis = now,
-        bookedOnIsoDate = bookedOn,
+        occurredAtUtcMillis = stamps.occurredAtUtcMillis,
+        bookedOnIsoDate = stamps.bookedOnIsoDate,
         categoryId = null,
         merchant = null,
         note = note,
         source = TransactionSource.MANUAL.storedValue,
         type = type.storedValue,
         transferId = transferId,
-        createdAtUtcMillis = now,
-        updatedAtUtcMillis = now,
+        // Both legs are scheduled or both are posted — they share one day, so they cannot differ.
+        postedAtUtcMillis = stamps.postedAtUtcMillis,
+        createdAtUtcMillis = stamps.nowUtcMillis,
+        updatedAtUtcMillis = stamps.nowUtcMillis,
     )
 
 /**
@@ -714,6 +850,7 @@ internal fun TransactionEntity.toTransaction(): Transaction? {
         source = parsedSource,
         type = parsedType,
         transferId = transferId,
+        postedAtUtcMillis = postedAtUtcMillis,
     )
 }
 

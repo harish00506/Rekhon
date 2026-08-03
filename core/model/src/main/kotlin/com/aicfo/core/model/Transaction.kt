@@ -160,6 +160,8 @@ enum class TransactionType(val storedValue: String) {
  * Changelog: 2026-08-02 — Created for issue 3.1 (FR-TXN-001).
  *            2026-08-02 — Issue 3.2: [type] and [transferId], so a transfer is one logical record
  *            across two rows (FR-TXN-003) and can be kept out of spend totals.
+ *            2026-08-03 — Issue 3.4: [postedAtUtcMillis] and [isScheduledOn], so a future-dated row
+ *            can be told from an actual one (FR-TXN-010).
  *
  * **[amount] is signed, and the sign is the direction** (MNY-001): negative is money leaving the
  * account, positive is money arriving. This mirrors `transactions.amount_minor` exactly, which is
@@ -208,9 +210,46 @@ data class Transaction(
      * this never changes what the transaction is worth, only what it is *about*.
      */
     val splits: List<TransactionSplit> = emptyList(),
+    /**
+     * When the app recorded this row's booked day as having arrived (issue 3.4; FR-TXN-010).
+     * `null` while it is still future-dated.
+     *
+     * **There is deliberately no `isScheduled` property here, and it must stay that way.**
+     * Answering "is this scheduled?" means comparing [bookedOn] with *today*, and today is a
+     * profile-zone question only the injected `Clock` can answer — which `:core:model` may not
+     * read (TIM-001, and `CfoWallClockInDomain` fails the build on it). The comparison lives in
+     * `TransactionsViewModel`, which has the `Clock`.
+     *
+     * **Nor is this field that comparison.** Balances bound on [bookedOn], so a row starts counting
+     * the moment its date arrives whether or not `ScheduledTransactionWorker` has run; between
+     * midnight and the worker's next run this is still `null` on a row that is already in the
+     * user's balance. Read it as "the post was recorded", never as "this is scheduled" —
+     * `docs/adr/0010-future-dated-posting.md`.
+     */
+    val postedAtUtcMillis: Long? = null,
 ) {
     /** Whether this transaction's amount is attributed across more than one category. */
     val isSplit: Boolean get() = splits.isNotEmpty()
+
+    /**
+     * Whether this transaction is booked in the future, given today's date (issue 3.4; FR-TXN-010).
+     *
+     * Why:    FR-TXN-010 splits the list in two — actuals and scheduled — and the split has to be
+     *         made against the *same* value the balance queries use, which is [bookedOn], not
+     *         [postedAtUtcMillis]. Taking today as a parameter is what keeps that rule stated once
+     *         here while the clock stays outside this module (TIM-001).
+     *
+     *         **String comparison is correct here, not a shortcut.** ISO `yyyy-MM-dd` orders
+     *         lexicographically exactly as it orders chronologically — the reason TIM-002 mandates
+     *         that format — and it is the same comparison SQLite performs in the balance queries.
+     *         Parsing to `LocalDate` first would give the identical answer more slowly, and would
+     *         throw on a malformed stored value where this simply reports "not scheduled".
+     * Result: `true` when this row's day has not arrived yet; `false` on the day itself.
+     * Input:  [todayIsoDate] — today in the profile zone, ISO `yyyy-MM-dd`, from `Clock.today()`.
+     * Output: [Boolean].
+     * Changelog: 2026-08-03 — Created for issue 3.4 (FR-TXN-010).
+     */
+    fun isScheduledOn(todayIsoDate: String): Boolean = bookedOn > todayIsoDate
 }
 
 /**

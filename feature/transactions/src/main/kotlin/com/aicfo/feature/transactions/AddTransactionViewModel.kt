@@ -2,6 +2,7 @@ package com.aicfo.feature.transactions
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.aicfo.core.common.Clock
 import com.aicfo.core.common.Err
 import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
@@ -47,7 +48,13 @@ import javax.inject.Inject
  * `MoneyFormatter.parse` (MNY-001). Nothing in the UI layer does money arithmetic, and the
  * expense/income toggle becomes a *sign* before it crosses into `:data:repository`.
  *
- * Input:  [transactions] — the store that writes; [accounts] — the store the picker reads.
+ * **The `Clock` is here and nowhere above it** (issue 3.4). The date picker must not offer a day
+ * before today, and "today" is a profile-zone question — TIM-001 makes the injected clock the only
+ * sanctioned answer, and `CfoWallClockInDomain` would fail the build on a composable reaching for
+ * `LocalDate.now()`. So the bound travels down in the state.
+ *
+ * Input:  [transactions] — the store that writes; [accounts] — the store the picker reads;
+ *         [clock] — today, in the profile zone (issue 3.4).
  * Output: an observable screen state.
  */
 @HiltViewModel
@@ -56,8 +63,9 @@ class AddTransactionViewModel
     constructor(
         private val transactions: TransactionRepository,
         private val accounts: AccountRepository,
+        private val clock: Clock,
     ) : ViewModel() {
-        private val _uiState = MutableStateFlow(AddTransactionUiState())
+        private val _uiState = MutableStateFlow(AddTransactionUiState(earliestBookableDate = clock.today()))
 
         /**
          * The screen's state.
@@ -101,6 +109,10 @@ class AddTransactionViewModel
                                     ?: accts.firstOrNull()?.id,
                             selectedCategoryId =
                                 state.selectedCategoryId?.takeIf { id -> cats.any { it.id == id } },
+                            // Re-read on every emission (issue 3.4): a form left open across
+                            // midnight would otherwise keep offering yesterday as selectable, and
+                            // the repository would refuse the save the picker had just allowed.
+                            earliestBookableDate = clock.today(),
                         )
                     }
                 }
@@ -127,6 +139,7 @@ class AddTransactionViewModel
                 is AddTransactionEvent.CategorySelected -> _uiState.update { it.copy(selectedCategoryId = event.id) }
                 is AddTransactionEvent.NoteChanged -> _uiState.update { it.copy(note = event.value) }
                 is SplitEvent -> _uiState.update { it.applySplit(event) }
+                is ScheduleEvent -> _uiState.update { it.applySchedule(event) }
                 AddTransactionEvent.Save -> save()
                 AddTransactionEvent.DismissError -> _uiState.update { it.copy(errorCode = null) }
             }
@@ -336,6 +349,8 @@ internal fun AddTransactionUiState.toSplitDraftOrNull(): SplitDraft? {
                     )
                 },
             note = note,
+            // Issue 3.4: on the parent only — the lines divide one amount that moves on one day.
+            bookedOn = bookedOn,
         )
     } else {
         null
@@ -358,7 +373,14 @@ internal fun AddTransactionUiState.toTransferDraftOrNull(): TransferDraft? {
     val from = selectedAccountId
     val to = toAccountId
     return if (amount != null && from != null && to != null) {
-        TransferDraft(fromAccountId = from, toAccountId = to, amount = amount, note = note)
+        TransferDraft(
+            fromAccountId = from,
+            toAccountId = to,
+            amount = amount,
+            note = note,
+            // Issue 3.4: both legs take it, so a scheduled transfer cannot straddle two days.
+            bookedOn = bookedOn,
+        )
     } else {
         null
     }
@@ -397,6 +419,8 @@ internal fun AddTransactionUiState.toDraftOrNull(): TransactionDraft? {
             amount = signedAmount,
             categoryId = selectedCategoryId,
             note = note,
+            // Issue 3.4: `null` means today, which is what every path before it meant (FR-TXN-010).
+            bookedOn = bookedOn,
         )
     } else {
         null

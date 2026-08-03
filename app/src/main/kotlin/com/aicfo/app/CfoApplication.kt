@@ -6,6 +6,7 @@ import androidx.work.Configuration
 import com.aicfo.app.di.ProfileZoneProvider
 import com.aicfo.app.work.BalanceIntegrityWorker
 import com.aicfo.app.work.NetWorthSnapshotWorker
+import com.aicfo.app.work.ScheduledTransactionWorker
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 
@@ -53,11 +54,15 @@ class CfoApplication : Application(), Configuration.Provider {
      * Changelog: 2026-08-02 — Issue 2.7 added the balance-integrity job beside the snapshot one.
      *            They are independent and carry separate unique names; sharing one would mean only
      *            whichever was enqueued first ever ran.
+     *            2026-08-03 — Issue 3.4 added the scheduled-transaction posting job (FR-TXN-010).
+     *            Unlike the other two it is not load-bearing: balances derive from the booked date,
+     *            so if this job never ran the figures would still be right.
      */
     override fun onCreate() {
         super.onCreate()
         profileZoneProvider.start()
         NetWorthSnapshotWorker.schedule(this)
         BalanceIntegrityWorker.schedule(this)
+        ScheduledTransactionWorker.schedule(this)
     }
 }

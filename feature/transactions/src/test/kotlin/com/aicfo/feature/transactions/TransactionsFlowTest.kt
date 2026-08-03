@@ -202,6 +202,79 @@ class TransactionsFlowTest {
         compose.onNodeWithText("line", substring = true).assertDoesNotExist()
     }
 
+    // --- future-dated transactions (issue 3.4; FR-TXN-010) -----------------------------------------
+
+    @Test
+    fun `a scheduled row is labelled, so no user has to guess whether the money has gone`() {
+        setContent(
+            TransactionsUiState(
+                isLoading = false,
+                days = listOf(day(transaction { copy(note = "Chai") })),
+                upcoming = listOf(scheduledDay()),
+            ),
+        )
+
+        compose.onNodeWithText(text(R.string.transactions_scheduled)).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.transactions_posted)).assertIsDisplayed()
+        compose.onNodeWithText("Rent", substring = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a scheduled day carries no total`() {
+        // A day total is a statement about money that has moved. Printing one over rows that have
+        // not moved would invite exactly the reading FR-TXN-010 exists to prevent, and it would
+        // reconcile with no balance on any other screen.
+        setContent(TransactionsUiState(isLoading = false, upcoming = listOf(scheduledDay())))
+
+        compose.onNodeWithContentDescription(text(R.string.transactions_day_total)).assertDoesNotExist()
+        // The row's own amount is still shown — it is the aggregate that is withheld, not the figure.
+        compose.onNodeWithText("-₹25,000.00", substring = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `neither section heading appears when nothing is scheduled`() {
+        // The common case: most users schedule nothing, and a "Posted" heading over the only list on
+        // screen would be noise that says nothing.
+        setContent(TransactionsUiState(isLoading = false, days = listOf(day(transaction()))))
+
+        compose.onNodeWithText(text(R.string.transactions_scheduled)).assertDoesNotExist()
+        compose.onNodeWithText(text(R.string.transactions_posted)).assertDoesNotExist()
+    }
+
+    @Test
+    fun `a scheduled row can still be deleted`() {
+        // A payment scheduled by mistake must be removable before it ever counts, without waiting
+        // for its date to arrive.
+        val events = mutableListOf<TransactionsEvent>()
+        setContent(
+            state = TransactionsUiState(isLoading = false, upcoming = listOf(scheduledDay())),
+            onEvent = { events += it },
+        )
+
+        compose.onNodeWithContentDescription(text(R.string.transactions_delete)).performClick()
+
+        assertEquals(listOf(TransactionsEvent.Delete("txn:rent")), events)
+    }
+
+    /** Result: one future day holding a ₹25,000 rent payment. Input: none. Output: a day. */
+    private fun scheduledDay() =
+        TransactionDay(
+            isoDate = "2026-08-10",
+            rows =
+                listOf(
+                    TransactionRow.Single(
+                        transaction {
+                            copy(
+                                id = "txn:rent",
+                                note = "Rent",
+                                amount = Money(-25_000_00L),
+                                bookedOn = "2026-08-10",
+                            )
+                        },
+                    ),
+                ),
+        )
+
     /** Result: a ₹1,000 expense split across [lines] lines. Input: [lines]. Output: [Transaction]. */
     private fun splitTransaction(lines: Int) =
         transaction {

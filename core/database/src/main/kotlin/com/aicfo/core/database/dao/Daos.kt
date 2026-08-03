@@ -127,16 +127,30 @@ interface AccountDao {
      *         **`archived_at_utc_millis` is filtered separately from `deleted_at_utc_millis`.**
      *         FR-ACC-007 wants a closed account excluded from *active* totals while its history
      *         survives, which is a different question from whether the row was deleted.
+     *
+     *         **`booked_on_iso_date <= :asOfIsoDate` (issue 3.4).** FR-TXN-010 requires a
+     *         future-dated transaction to be "excluded from actuals", and a balance is the actual
+     *         this matters most for. Until issue 3.4 no row could be booked past today, so the sum
+     *         was already correct without the clause and [balancesForNetWorth]'s doc comment
+     *         predicted exactly this: "the current-balance query sums every live transaction
+     *         whenever it happened … wrong here the moment issue 3.4 lands future-dated
+     *         transactions". **It was wrong the moment it landed** — a rent payment scheduled for
+     *         next week was subtracted from the balance on the accounts screen while net worth,
+     *         which had the clause, showed a different figure for the same money. Found by a test
+     *         asserting the balance the screen renders, not by reading the query.
      * Result: emits on every change to `account` **or** `transactions`, name-ordered. Each row's
-     *         balance is `opening_balance_minor + movement_minor`.
-     * Input:  [profileId]; [includeArchived] — `false` for active totals, `true` for the full list.
+     *         balance is `opening_balance_minor + movement_minor` as at [asOfIsoDate].
+     * Input:  [profileId]; [includeArchived] — `false` for active totals, `true` for the full list;
+     *         [asOfIsoDate] — inclusive ISO `yyyy-MM-dd` bound (TIM-002), normally today.
      * Output: `Flow<List<AccountWithBalance>>`.
      * Changelog: 2026-07-28 — Created for issue 2.5.
+     *            2026-08-03 — Issue 3.4: bounded by [asOfIsoDate] (FR-TXN-010).
      */
     @Query(
         "SELECT a.*, COALESCE((" +
             "SELECT SUM(t.amount_minor) FROM transactions t " +
-            "WHERE t.account_id = a.id AND t.deleted_at_utc_millis IS NULL" +
+            "WHERE t.account_id = a.id AND t.deleted_at_utc_millis IS NULL " +
+            "AND t.booked_on_iso_date <= :asOfIsoDate" +
             "), 0) AS movement_minor " +
             "FROM account a " +
             "WHERE a.profile_id = :profileId AND a.deleted_at_utc_millis IS NULL " +
@@ -146,6 +160,7 @@ interface AccountDao {
     fun observeWithBalances(
         profileId: String,
         includeArchived: Boolean,
+        asOfIsoDate: String,
     ): Flow<List<AccountWithBalance>>
 
     /**
@@ -153,17 +168,27 @@ interface AccountDao {
      * Why:    the editor loads the account it is about to change, and it must show the same balance
      *         the list showed — so it uses the same derivation rather than reading the cached
      *         column (DB-001). Archived accounts are found too: editing is how a user un-archives.
+     *         **Bounded by [asOfIsoDate] since issue 3.4**, for the reason [observeWithBalances]
+     *         gives: the editor must show the figure the list shows, and reconciliation (FR-ACC-006)
+     *         computes its adjustment from this — an adjustment sized against a balance that
+     *         included next week's rent would post a correction for money the user still has.
      * Result: the row, or `null` if it does not exist or was soft-deleted.
-     * Input:  [id]. Output: `AccountWithBalance?`.
+     * Input:  [id]; [asOfIsoDate] — inclusive ISO `yyyy-MM-dd` bound (TIM-002), normally today.
+     * Output: `AccountWithBalance?`.
+     * Changelog: 2026-08-03 — Issue 3.4: bounded by [asOfIsoDate] (FR-TXN-010).
      */
     @Query(
         "SELECT a.*, COALESCE((" +
             "SELECT SUM(t.amount_minor) FROM transactions t " +
-            "WHERE t.account_id = a.id AND t.deleted_at_utc_millis IS NULL" +
+            "WHERE t.account_id = a.id AND t.deleted_at_utc_millis IS NULL " +
+            "AND t.booked_on_iso_date <= :asOfIsoDate" +
             "), 0) AS movement_minor " +
             "FROM account a WHERE a.id = :id AND a.deleted_at_utc_millis IS NULL",
     )
-    suspend fun findWithBalance(id: String): AccountWithBalance?
+    suspend fun findWithBalance(
+        id: String,
+        asOfIsoDate: String,
+    ): AccountWithBalance?
 
     /**
      * The accounts and balances that count towards net worth on one day (issue 2.6; FR-ACC-005).
@@ -431,6 +456,44 @@ interface TransactionDao {
     suspend fun softDeleteTransfer(
         transferId: String,
         deletedAtUtcMillis: Long,
+    ): Int
+
+    /**
+     * Stamps every scheduled row whose booked day has arrived (issue 3.4; FR-TXN-010).
+     *
+     * Why:    `ScheduledTransactionWorker`'s entire job, as **one statement**. Reading the due rows
+     *         and updating each would open a window in which a row is due, unstamped, and being
+     *         read; a single `UPDATE` has no such window and needs no transaction around it.
+     *
+     *         **`posted_at_utc_millis IS NULL` is what makes the job idempotent**, which the
+     *         requirement asks for directly. A second run on the same day matches nothing and
+     *         returns `0`, so a worker retried by WorkManager, run twice after a reboot, or racing
+     *         a manual enqueue cannot stamp a row twice or move a stamp already written.
+     *
+     *         **`<= :todayIsoDate`, not `= :todayIsoDate`.** A device switched off for a week must
+     *         catch up on every day it missed, not only the day it woke on. This is the same
+     *         backfilling shape `NetWorthRepository.snapshotUpToToday` uses, and for the same
+     *         reason: deferring is only safe when the deferred run does all the work.
+     *
+     *         **This does not move money.** Balances bound on `booked_on_iso_date`, so a row starts
+     *         counting the moment its date arrives whether or not this ever runs — see
+     *         `TransactionEntity.postedAtUtcMillis` and `docs/adr/0010-future-dated-posting.md`.
+     * Result: the number of rows stamped — `0` when there was nothing due, which is a success and
+     *         not a failure.
+     * Input:  [profileId]; [todayIsoDate] — today in the profile zone (TIM-002), from the injected
+     *         `Clock`; [nowUtcMillis] — the instant to stamp (TIM-001).
+     * Output: rows affected.
+     * Changelog: 2026-08-03 — Created for issue 3.4 (FR-TXN-010).
+     */
+    @Query(
+        "UPDATE transactions SET posted_at_utc_millis = :nowUtcMillis " +
+            "WHERE profile_id = :profileId AND booked_on_iso_date <= :todayIsoDate " +
+            "AND posted_at_utc_millis IS NULL AND deleted_at_utc_millis IS NULL",
+    )
+    suspend fun postDue(
+        profileId: String,
+        todayIsoDate: String,
+        nowUtcMillis: Long,
     ): Int
 }
 

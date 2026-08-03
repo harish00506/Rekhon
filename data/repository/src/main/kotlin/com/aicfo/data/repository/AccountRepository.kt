@@ -269,7 +269,7 @@ internal class RoomAccountRepository(
         profileId: String,
         includeArchived: Boolean,
     ): Flow<List<Account>> =
-        database.accountDao().observeWithBalances(profileId, includeArchived)
+        database.accountDao().observeWithBalances(profileId, includeArchived, clock.today().toString())
             // mapNotNull, not map: a row whose `type` this build does not recognise is dropped
             // rather than thrown on, so an old build reading a newer database shows fewer accounts
             // instead of crashing the list.
@@ -278,7 +278,7 @@ internal class RoomAccountRepository(
 
     override suspend fun find(id: String): Result<Account, AppError> =
         withContext(dispatchers.io) {
-            runCatchingToResult { database.accountDao().findWithBalance(id) }
+            runCatchingToResult { database.accountDao().findWithBalance(id, clock.today().toString()) }
                 .flatMapToAccount()
         }
 
@@ -317,7 +317,9 @@ internal class RoomAccountRepository(
         val validated = draft.validated() ?: return Err(AppError.Validation("name"))
         return withContext(dispatchers.io) {
             runCatchingToResult {
-                val existing = database.accountDao().findWithBalance(id) ?: return@runCatchingToResult null
+                val existing =
+                    database.accountDao().findWithBalance(id, clock.today().toString())
+                        ?: return@runCatchingToResult null
                 database.accountDao().update(
                     existing.account.copy(
                         name = validated.name,
@@ -331,7 +333,7 @@ internal class RoomAccountRepository(
                 )
                 // Re-derived rather than reusing `existing`: the opening balance may have just
                 // changed, and the caller is about to render this figure.
-                database.accountDao().findWithBalance(id)
+                database.accountDao().findWithBalance(id, clock.today().toString())
             }.flatMapToAccount()
         }
     }
@@ -369,7 +371,9 @@ internal class RoomAccountRepository(
                 // a transaction landing between the two would be silently absorbed into the
                 // correction and the user would have "fixed" a figure that was already right.
                 database.withTransaction {
-                    val existing = database.accountDao().findWithBalance(accountId) ?: return@withTransaction null
+                    val existing =
+                        database.accountDao().findWithBalance(accountId, clock.today().toString())
+                            ?: return@withTransaction null
                     val account = existing.toAccount() ?: return@withTransaction null
                     database.writeAdjustment(account, statementBalance, clock, ids)
                 }
@@ -457,6 +461,10 @@ private suspend fun CfoDatabase.writeAdjustment(
             // correction runs in whichever direction the user's records were wrong in. Typing it as
             // an expense would put every balance correction into spend totals.
             type = TransactionType.ADJUSTMENT.storedValue,
+            // Issue 3.4: an adjustment is booked today and is an actual the instant it is written —
+            // it exists to make a balance match a statement *now*. It is never scheduled, so it is
+            // stamped here rather than waiting for `ScheduledTransactionWorker` to notice it.
+            postedAtUtcMillis = now,
             createdAtUtcMillis = now,
             updatedAtUtcMillis = now,
         ),

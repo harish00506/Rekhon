@@ -260,17 +260,18 @@ internal object DemoDataset {
         clock: Clock,
         index: Int,
         nowUtcMillis: Long,
-    ): TransactionEntity =
-        TransactionEntity(
+    ): TransactionEntity {
+        // Midday in the profile zone, plus a per-row second so two rows on one day still order
+        // deterministically. Midday and not midnight: a timestamp on a day boundary is the one
+        // most likely to land on the wrong date if any caller ever re-derives it in UTC.
+        val occurredAt = clock.startOfDay(date) + MIDDAY_OFFSET_MILLIS + index * MILLIS_PER_SECOND
+        return TransactionEntity(
             id = "${DemoModeRepository.DEMO_PROFILE_ID}:txn:${index.toString().padStart(ID_DIGITS, '0')}",
             profileId = DemoModeRepository.DEMO_PROFILE_ID,
             accountId = accountId(spec.accountKey),
             amountMinor = amountMinor,
             currencyCode = DEMO_CURRENCY_CODE,
-            // Midday in the profile zone, plus a per-row second so two rows on one day still order
-            // deterministically. Midday and not midnight: a timestamp on a day boundary is the one
-            // most likely to land on the wrong date if any caller ever re-derives it in UTC.
-            occurredAtUtcMillis = clock.startOfDay(date) + MIDDAY_OFFSET_MILLIS + index * MILLIS_PER_SECOND,
+            occurredAtUtcMillis = occurredAt,
             bookedOnIsoDate = date.toString(),
             categoryId = spec.categoryKey?.let(::categoryId),
             merchant = spec.merchant,
@@ -280,9 +281,15 @@ internal object DemoDataset {
             // transfers, so every row is a plain expense or a salary credit. `TransactionType.matches`
             // is what stops this drifting from `amountMinor`.
             type = (if (amountMinor < 0L) TransactionType.EXPENSE else TransactionType.INCOME).storedValue,
+            // Issue 3.4: every sample row is dated in the past, so all of them are posted, and each
+            // posted when it occurred — the demo is a plausible history, and a history whose rows
+            // all posted the moment the user tapped "try it" would not be one. Left null they would
+            // sit in the Scheduled group until `ScheduledTransactionWorker` next ran (FR-TXN-010).
+            postedAtUtcMillis = occurredAt,
             createdAtUtcMillis = nowUtcMillis,
             updatedAtUtcMillis = nowUtcMillis,
         )
+    }
 
     // --- The dataset's own figures -------------------------------------------------------------
     //

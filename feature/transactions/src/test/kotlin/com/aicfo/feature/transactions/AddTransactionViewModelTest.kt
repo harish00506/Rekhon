@@ -2,6 +2,7 @@ package com.aicfo.feature.transactions
 
 import app.cash.turbine.test
 import com.aicfo.core.common.AppError
+import com.aicfo.core.common.FakeClock
 import com.aicfo.core.model.Category
 import com.aicfo.core.model.Money
 import kotlinx.coroutines.Dispatchers
@@ -17,6 +18,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.time.Instant
 
 /**
  * Tests for [AddTransactionViewModel] (issue 3.1; FR-TXN-002, ARC-004).
@@ -36,6 +38,7 @@ import org.junit.Test
 class AddTransactionViewModelTest {
     private val transactions = FakeTransactionRepository()
     private val accounts = FakeAccountRepository()
+    private val clock = FakeClock(initialMillis = Instant.parse("2026-08-02T18:00:00Z").toEpochMilli())
 
     /** Input: none. Output: `viewModelScope` runs on a test dispatcher. */
     @Before
@@ -758,8 +761,16 @@ class AddTransactionViewModelTest {
 
     // --- fixtures ----------------------------------------------------------------------------------
 
-    /** Result: a ViewModel over the two fakes. Input: none. Output: [AddTransactionViewModel]. */
-    private fun viewModel() = AddTransactionViewModel(transactions, accounts)
+    /**
+     * Result: a ViewModel over the two fakes and a frozen clock.
+     *
+     * The clock is fixed at 2026-08-02T23:30 IST — the same instant the repository suites use, an
+     * hour and a half before the profile's midnight and after UTC's. Issue 3.4's date assertions are
+     * relative to [TODAY], never to the wall clock (P-08).
+     *
+     * Input: none. Output: [AddTransactionViewModel].
+     */
+    private fun viewModel() = AddTransactionViewModel(transactions, accounts, clock)
 
     /**
      * Result: a ViewModel with one account, ₹1,000 typed and splitting on — two empty lines.
