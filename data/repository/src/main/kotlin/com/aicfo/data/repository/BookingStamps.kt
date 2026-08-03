@@ -3,6 +3,7 @@ package com.aicfo.data.repository
 import com.aicfo.core.common.Clock
 import com.aicfo.core.common.startOfDay
 import java.time.LocalDate
+import java.time.LocalTime
 
 /*
  * Future-dated transactions: the one place a booked date becomes the three stamps a row carries
@@ -59,16 +60,26 @@ internal data class BookingStamps(
  *         `TransactionDao.postDue` looks for, so a row written for tomorrow is exactly what the
  *         worker will pick up when tomorrow comes. It is a record, not the balance gate — see
  *         `docs/adr/0010-future-dated-posting.md`.
+ *         **A user-set [atTime] overrides all of that**, and is resolved through the profile
+ *         `ZoneId` rather than by adding milliseconds to a midnight — `ZonedDateTime` moves to the
+ *         first valid instant on a day whose local clock skips the chosen hour, where arithmetic on
+ *         an offset would silently land an hour earlier or on the previous day.
  * Result: the stamps, or `null` when [bookedOn] is before today — which the caller reports as
  *         `AppError.Validation("bookedOn")`. `null` rather than an exception because §5 forbids
  *         exceptions across a layer boundary.
  * Input:  the receiver — the injected [Clock] (TIM-001, never the wall clock); [bookedOn] — the day
  *         the user picked, or `null` to mean today, which is what every caller before issue 3.4
- *         meant implicitly.
+ *         meant implicitly; [atTime] — the time of day (FR-TXN-001's "date-time"), or `null` to
+ *         keep the stamped default.
  * Output: `BookingStamps?`.
  * Changelog: 2026-08-03 — Created for issue 3.4 (FR-TXN-010).
+ *            2026-08-03 — [atTime], so FR-TXN-001's "date-time" is a thing the user can state
+ *            rather than one the app always assumes.
  */
-internal fun Clock.stampsFor(bookedOn: LocalDate?): BookingStamps? {
+internal fun Clock.stampsFor(
+    bookedOn: LocalDate?,
+    atTime: LocalTime? = null,
+): BookingStamps? {
     val today = today()
     val date = bookedOn ?: today
     if (date.isBefore(today)) return null
@@ -76,7 +87,15 @@ internal fun Clock.stampsFor(bookedOn: LocalDate?): BookingStamps? {
     val isToday = date == today
     return BookingStamps(
         bookedOnIsoDate = date.toString(),
-        occurredAtUtcMillis = if (isToday) now else startOfDay(date),
+        occurredAtUtcMillis =
+            when {
+                atTime != null -> date.atTime(atTime).atZone(zone()).toInstant().toEpochMilli()
+                isToday -> now
+                else -> startOfDay(date)
+            },
+        // Unchanged by the time: **posting is a property of the day, not the hour** (ADR-0010). A
+        // row booked for later today is already in today's balance, so it is posted now; one booked
+        // for tomorrow at 09:00 is not posted at all until tomorrow, whatever hour was chosen.
         postedAtUtcMillis = now.takeIf { isToday },
         nowUtcMillis = now,
     )

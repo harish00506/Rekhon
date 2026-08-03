@@ -65,7 +65,13 @@ class AddTransactionViewModel
         private val accounts: AccountRepository,
         private val clock: Clock,
     ) : ViewModel() {
-        private val _uiState = MutableStateFlow(AddTransactionUiState(earliestBookableDate = clock.today()))
+        private val _uiState =
+            MutableStateFlow(
+                AddTransactionUiState(
+                    earliestBookableDate = clock.today(),
+                    nowInProfileZone = clock.timeOfDay(),
+                ),
+            )
 
         /**
          * The screen's state.
@@ -113,6 +119,7 @@ class AddTransactionViewModel
                             // midnight would otherwise keep offering yesterday as selectable, and
                             // the repository would refuse the save the picker had just allowed.
                             earliestBookableDate = clock.today(),
+                            nowInProfileZone = clock.timeOfDay(),
                         )
                     }
                 }
@@ -137,6 +144,7 @@ class AddTransactionViewModel
                 is AddTransactionEvent.AccountSelected -> _uiState.update { it.withSource(event.id) }
                 is AddTransactionEvent.DestinationSelected -> _uiState.update { it.copy(toAccountId = event.id) }
                 is AddTransactionEvent.CategorySelected -> _uiState.update { it.copy(selectedCategoryId = event.id) }
+                is AddTransactionEvent.MerchantChanged -> _uiState.update { it.copy(merchant = event.value) }
                 is AddTransactionEvent.NoteChanged -> _uiState.update { it.copy(note = event.value) }
                 is SplitEvent -> _uiState.update { it.applySplit(event) }
                 is ScheduleEvent -> _uiState.update { it.applySchedule(event) }
@@ -348,9 +356,11 @@ internal fun AddTransactionUiState.toSplitDraftOrNull(): SplitDraft? {
                         categoryId = line.categoryId,
                     )
                 },
+            merchant = merchant,
             note = note,
             // Issue 3.4: on the parent only — the lines divide one amount that moves on one day.
             bookedOn = bookedOn,
+            bookedAt = bookedAt,
         )
     } else {
         null
@@ -380,6 +390,9 @@ internal fun AddTransactionUiState.toTransferDraftOrNull(): TransferDraft? {
             note = note,
             // Issue 3.4: both legs take it, so a scheduled transfer cannot straddle two days.
             bookedOn = bookedOn,
+            bookedAt = bookedAt,
+            // No merchant: a transfer between your own accounts has no payee, which is why
+            // `TransferDraft` has no field for one (FR-TXN-003).
         )
     } else {
         null
@@ -418,9 +431,13 @@ internal fun AddTransactionUiState.toDraftOrNull(): TransactionDraft? {
             accountId = accountId,
             amount = signedAmount,
             categoryId = selectedCategoryId,
+            // FR-TXN-001. Blank collapses to null in the repository's `validated()`, so an untouched
+            // field is indistinguishable from one that was never offered.
+            merchant = merchant,
             note = note,
             // Issue 3.4: `null` means today, which is what every path before it meant (FR-TXN-010).
             bookedOn = bookedOn,
+            bookedAt = bookedAt,
         )
     } else {
         null

@@ -4,6 +4,7 @@ import androidx.annotation.StringRes
 import com.aicfo.core.common.AppError
 import com.aicfo.core.model.TransactionSource
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 import java.time.format.FormatStyle
@@ -61,6 +62,19 @@ internal object TransactionLabels {
         } catch (_: DateTimeParseException) {
             isoDate
         }
+
+    /**
+     * Renders a time of day (FR-TXN-001's "date-time").
+     *
+     * Why:    the same argument [dayHeader] makes about dates: `FormatStyle.SHORT` follows the
+     *         device locale, so a user who has their phone on 24-hour time sees "14:30" and one who
+     *         does not sees "2:30 PM" — without this module hardcoding either pattern (§21.6).
+     *
+     *         **Reads no clock**, like everything else here: it formats a value it was handed.
+     * Result: the localised time. Input: [time]. Output: [String].
+     * Changelog: 2026-08-03 — Created for FR-TXN-001's "date-time".
+     */
+    fun timeOfDay(time: LocalTime): String = time.format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT))
 
     /**
      * How a transaction's provenance reads to a user (issue 3.5; FR-TXN-009, P-02).

@@ -1,8 +1,10 @@
 package com.aicfo.feature.transactions
 
+import android.text.format.DateFormat
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -10,15 +12,20 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import com.aicfo.core.common.Clock
 import com.aicfo.core.designsystem.component.CfoSecondaryButton
 import com.aicfo.core.designsystem.theme.CfoDimens
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneOffset
 
 /*
@@ -71,8 +78,81 @@ internal fun ScheduleField(
                     ?: stringResource(R.string.add_txn_date_today),
             onClick = { onEvent(ScheduleEvent.DatePickerOpened) },
         )
+        // FR-TXN-001 says "date-time". The time sits beside the date rather than on a row of its
+        // own, so the two read as one answer to "when?" and neither costs vertical space the
+        // ≤ 3-tap form does not have.
+        CfoSecondaryButton(
+            text =
+                when {
+                    uiState.bookedAt != null -> TransactionLabels.timeOfDay(uiState.bookedAt)
+                    // Today with nothing picked: the instant will be *now*, and a clock time printed
+                    // here would be stale by the second the user read it.
+                    uiState.bookedAtLabelIsNow -> stringResource(R.string.add_txn_time_now)
+                    // A future day with nothing picked starts at midnight — a fixed, real value, so
+                    // it is shown rather than hidden behind a second meaning of the word "now".
+                    else -> TransactionLabels.timeOfDay(LocalTime.MIDNIGHT)
+                },
+            onClick = { onEvent(ScheduleEvent.TimePickerOpened) },
+        )
     }
     ScheduleDatePicker(uiState = uiState, onEvent = onEvent)
+    ScheduleTimePicker(uiState = uiState, onEvent = onEvent)
+}
+
+/**
+ * The Material 3 time picker, shown only while the user has asked for it (FR-TXN-001).
+ *
+ * Why:    **no bound on it, unlike the date picker.** A past *date* is refused because it would
+ *         stale a written `net_worth_snapshot` row; a past *time today* is the ordinary case — most
+ *         people record this morning's coffee in the evening — and it changes nothing but the order
+ *         of rows within a day. A time later today is equally harmless: the row is booked today
+ *         either way, because balances bound on the date (ADR-0010).
+ *
+ *         Seeded from [AddTransactionUiState.bookedAt] when there is one, and otherwise from the
+ *         profile's current time, so opening the picker on a fresh form starts where the user is
+ *         rather than at midnight.
+ * Result: the composition, or nothing. Input: [uiState], [onEvent]. Output: none.
+ * Changelog: 2026-08-03 — Created for FR-TXN-001's "date-time".
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ScheduleTimePicker(
+    uiState: AddTransactionUiState,
+    onEvent: (AddTransactionEvent) -> Unit,
+) {
+    if (!uiState.isTimePickerOpen) return
+
+    val initial = uiState.bookedAt ?: uiState.nowInProfileZone
+    val state =
+        rememberTimePickerState(
+            initialHour = initial.hour,
+            initialMinute = initial.minute,
+            // Follows the device's 12/24-hour setting rather than forcing one: the same reason the
+            // date is formatted through the locale instead of a hardcoded pattern (§21.6).
+            is24Hour = DateFormat.is24HourFormat(LocalContext.current),
+        )
+
+    AlertDialog(
+        onDismissRequest = { onEvent(ScheduleEvent.TimePickerDismissed) },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onEvent(ScheduleEvent.TimeSelected(LocalTime.of(state.hour, state.minute)))
+                    onEvent(ScheduleEvent.TimePickerDismissed)
+                },
+            ) {
+                Text(stringResource(R.string.add_txn_time_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = { onEvent(ScheduleEvent.TimePickerDismissed) }) {
+                Text(stringResource(R.string.add_txn_cancel))
+            }
+        },
+        // `AlertDialog` rather than `DatePickerDialog`'s time equivalent, which Material 3 does not
+        // ship: the time picker is a bare composable and the dialog around it is the caller's.
+        text = { TimePicker(state = state) },
+    )
 }
 
 /**
@@ -150,7 +230,28 @@ internal fun AddTransactionUiState.applySchedule(event: ScheduleEvent): AddTrans
         // user opens the picker and changes their mind back.
         is ScheduleEvent.DateSelected ->
             copy(bookedOn = event.date.takeIf { it != earliestBookableDate })
+
+        ScheduleEvent.TimePickerOpened -> copy(isTimePickerOpen = true)
+        ScheduleEvent.TimePickerDismissed -> copy(isTimePickerOpen = false)
+        // Kept as picked, with no collapse-to-null counterpart to `DateSelected`'s: there is no time
+        // the user could choose that means "now", because "now" moves and a chosen time does not.
+        is ScheduleEvent.TimeSelected -> copy(bookedAt = event.time)
     }
+
+/**
+ * The current time of day in the profile zone.
+ * Why:    the time picker has to open somewhere, and "wherever the user is" beats midnight. The
+ *         profile zone rather than the device's, for the reason TIM-001 gives about every other
+ *         calendar answer — and computed outside the composable, which may not read a clock at all.
+ *
+ *         Lives here rather than beside the ViewModel it is called from, for the reason
+ *         [applySchedule] does: `AddTransactionViewModel.kt` reached detekt's eleven-function
+ *         ceiling the moment this was added, and everything about *when* belongs together anyway.
+ * Result: the wall-clock time a user in the profile zone would see now.
+ * Input:  the receiver — the injected [Clock]. Output: [LocalTime].
+ * Changelog: 2026-08-03 — Created for FR-TXN-001's "date-time".
+ */
+internal fun Clock.timeOfDay(): LocalTime = Instant.ofEpochMilli(nowUtcMillis()).atZone(zone()).toLocalTime()
 
 /**
  * The date as the picker counts time — UTC midnight millis.

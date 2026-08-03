@@ -6,6 +6,7 @@ import com.aicfo.core.model.TransactionSplit
 import com.aicfo.core.model.sum
 import com.aicfo.core.model.total
 import java.time.LocalDate
+import java.time.LocalTime
 
 /*
  * Split transactions: the drafts a caller supplies, and the rules that decide whether one may be
@@ -48,6 +49,12 @@ data class SplitDraft(
      * answer to when the money left.
      */
     val bookedOn: LocalDate? = null,
+    /**
+     * The time of day the parent occurred (FR-TXN-001's "date-time"). `null` keeps the default.
+     *
+     * On the parent only, like [bookedOn]: the lines divide one amount that moved at one instant.
+     */
+    val bookedAt: LocalTime? = null,
 )
 
 /**

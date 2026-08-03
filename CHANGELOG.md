@@ -12,6 +12,36 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > reach writing to it; this epic makes a transaction theirs to create — by hand first, then by
 > transfer, split, receipt and SMS.
 
+### [0.3.6] — Fix: the add screen was missing two FR-TXN-001 fields  (2026-08-03)
+
+- **Fixed:** the add-transaction screen never captured a **merchant** or a **time of day**, both of
+  which FR-TXN-001 lists ("amount, currency, date-time, account, category, subcategory,
+  payee/merchant, notes, …"). No schema change — both were already stored.
+  - **Merchant was plumbed end to end and unreachable.** `transactions.merchant` has been a column
+    since schema v1, `TransactionDraft.merchant` since issue 3.1, the list row falls back to it for
+    its title and issue 3.5's detail sheet renders it — but **only `DemoDataset` ever wrote one**.
+    The visible symptom: every row on a real profile read "Uncategorised" unless the user happened
+    to type a note. **Hidden for a transfer**, which has no payee — which is why `TransferDraft` has
+    no field to carry one, the same reason it has no category (FR-TXN-003).
+  - **Time of day is now the user's to state.** `occurredAtUtcMillis` was always the app's choice —
+    now for today, the start of the day for a future date — so recording this morning's coffee in
+    the evening ordered it after everything bought since. `BookingStamps.stampsFor` takes an
+    optional `LocalTime` and resolves it through the profile `ZoneId`.
+  - **`null` still means "the app's choice"** for both fields, so every existing call site and the
+    ≤ 3-tap path are byte-for-byte unchanged (FR-TXN-002).
+  - **The time changes ordering, never money.** Balances and budgets bound on `booked_on_iso_date`,
+    so the hour decides where a row sits within its day and nothing else — and posting stays a
+    property of the day (ADR-0010): a row booked for 09:00 tomorrow is no more posted than one
+    booked for tomorrow with no time at all.
+- **Tests:** 944 passed, 0 skipped (+24). One failed first and taught something worth keeping:
+  **`ZonedDateTime` resolves a DST-gap time forward by the length of the gap, not to the first valid
+  instant.** Asking for 00:30 on Chile's 2026-09-06 gives 01:30 local (04:30Z), *not* the 04:00Z
+  `startOfDay` produces for the same day — because that asks for 00:00. The obvious expectation is
+  wrong, and the test was written asserting it.
+- **Verified on a device:** a ₹899 expense saved with merchant "Big Bazaar" at 7:03 AM renders as
+  **"Big Bazaar"** rather than "Uncategorised", and sorts below rows stamped at 19:03 — the hour
+  visibly driving intra-day order. Airplane mode throughout (P-04).
+
 ### [0.3.5] — Issue 3.5: Transaction source tracking  (2026-08-03)
 
 - **Implemented:** every transaction has recorded where it came from since issue 3.1 — this makes the

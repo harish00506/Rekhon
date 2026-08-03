@@ -17,6 +17,7 @@ import org.junit.Before
 import org.junit.Test
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 
 /**
  * Tests for the add screen's booked-date handling (issue 3.4; FR-TXN-010).
@@ -169,6 +170,176 @@ class AddTransactionScheduleTest {
                 assertEquals(TODAY.plusDays(2), awaitItem().bookedOn)
                 cancelAndIgnoreRemainingEvents()
             }
+        }
+
+    // --- time of day (FR-TXN-001's "date-time") ----------------------------------------------------
+
+    @Test
+    fun `no time picked sends null, so the repository keeps stamping now`() =
+        runTest {
+            // `null` is not midnight — it is "the app's choice", which is the behaviour every caller
+            // had before the field existed.
+            accounts.setAccounts(account())
+            val viewModel = viewModel()
+            viewModel.onEvent(AddTransactionEvent.AmountChanged("250"))
+
+            viewModel.onEvent(AddTransactionEvent.Save)
+
+            assertNull(transactions.created.single().bookedAt)
+        }
+
+    @Test
+    fun `a picked time reaches the draft`() =
+        runTest {
+            accounts.setAccounts(account())
+            val viewModel = viewModel()
+            viewModel.onEvent(AddTransactionEvent.AmountChanged("250"))
+
+            viewModel.onEvent(ScheduleEvent.TimeSelected(LocalTime.of(8, 30)))
+            viewModel.onEvent(AddTransactionEvent.Save)
+
+            assertEquals(LocalTime.of(8, 30), transactions.created.single().bookedAt)
+        }
+
+    @Test
+    fun `the time picker is seeded from the profile zone, not the device`() =
+        runTest {
+            // 2026-08-02T18:00Z is 23:30 in Asia/Kolkata. A seed read from the device clock would
+            // open the picker five and a half hours out.
+            accounts.setAccounts(account())
+
+            viewModel().uiState.test {
+                assertEquals(LocalTime.of(23, 30), awaitItem().nowInProfileZone)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `the time label says Now only for today with nothing picked`() =
+        runTest {
+            // Three states, one button: "now" (a moving target, so no clock time), a picked time,
+            // and a future day's midnight.
+            accounts.setAccounts(account())
+            val viewModel = viewModel()
+
+            viewModel.uiState.test {
+                assertTrue("today, nothing picked", awaitItem().bookedAtLabelIsNow)
+                cancelAndIgnoreRemainingEvents()
+            }
+
+            viewModel.onEvent(ScheduleEvent.DateSelected(TODAY.plusDays(1)))
+            viewModel.uiState.test {
+                assertFalse("a future day starts at its own midnight, not 'now'", awaitItem().bookedAtLabelIsNow)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `a picked time is not Now, even on today`() =
+        runTest {
+            accounts.setAccounts(account())
+            val viewModel = viewModel()
+
+            viewModel.onEvent(ScheduleEvent.TimeSelected(LocalTime.of(8, 30)))
+
+            viewModel.uiState.test {
+                assertFalse(awaitItem().bookedAtLabelIsNow)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `the time picker opens and closes`() =
+        runTest {
+            accounts.setAccounts(account())
+            val viewModel = viewModel()
+
+            viewModel.onEvent(ScheduleEvent.TimePickerOpened)
+            viewModel.uiState.test {
+                assertTrue(awaitItem().isTimePickerOpen)
+                cancelAndIgnoreRemainingEvents()
+            }
+
+            viewModel.onEvent(ScheduleEvent.TimePickerDismissed)
+            viewModel.uiState.test {
+                assertFalse(awaitItem().isTimePickerOpen)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `a transfer and a split carry the time too`() =
+        runTest {
+            val transfer = transferViewModel(amount = "10000")
+            transfer.onEvent(ScheduleEvent.TimeSelected(LocalTime.of(14, 15)))
+            transfer.onEvent(AddTransactionEvent.Save)
+
+            assertEquals(LocalTime.of(14, 15), transactions.transfersCreated.single().bookedAt)
+
+            val split = balancedSplitViewModel()
+            split.onEvent(ScheduleEvent.TimeSelected(LocalTime.of(9, 0)))
+            split.onEvent(AddTransactionEvent.Save)
+
+            assertEquals(LocalTime.of(9, 0), transactions.splitsCreated.single().bookedAt)
+        }
+
+    // --- merchant (FR-TXN-001's payee) -------------------------------------------------------------
+
+    @Test
+    fun `the merchant reaches the draft`() =
+        runTest {
+            // The field the add screen was missing: the column, the draft and the detail sheet have
+            // all supported it for issues, and nothing could write one.
+            accounts.setAccounts(account())
+            val viewModel = viewModel()
+            viewModel.onEvent(AddTransactionEvent.AmountChanged("250"))
+
+            viewModel.onEvent(AddTransactionEvent.MerchantChanged("Big Bazaar"))
+            viewModel.onEvent(AddTransactionEvent.Save)
+
+            assertEquals("Big Bazaar", transactions.created.single().merchant)
+        }
+
+    @Test
+    fun `a split carries the merchant on its parent`() =
+        runTest {
+            val viewModel = balancedSplitViewModel()
+
+            viewModel.onEvent(AddTransactionEvent.MerchantChanged("Big Bazaar"))
+            viewModel.onEvent(AddTransactionEvent.Save)
+
+            assertEquals("Big Bazaar", transactions.splitsCreated.single().merchant)
+        }
+
+    @Test
+    fun `a transfer is never offered a merchant`() =
+        runTest {
+            // Money moving between your own accounts has no payee, which is why `TransferDraft` has
+            // no field for one — the same reason it has no category (FR-TXN-003).
+            val viewModel = transferViewModel(amount = "10000")
+
+            viewModel.uiState.test {
+                assertFalse(awaitItem().hasMerchant)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `a merchant typed before switching to transfer is not sent`() =
+        runTest {
+            // The field disappears rather than being cleared, so what matters is that the draft has
+            // nowhere to put it — asserted here because a future `TransferDraft` gaining a merchant
+            // field would silently start carrying a stale one.
+            accounts.setAccounts(account { copy(id = "account:1") }, account { copy(id = "account:2") })
+            val viewModel = viewModel()
+            viewModel.onEvent(AddTransactionEvent.AmountChanged("10000"))
+            viewModel.onEvent(AddTransactionEvent.MerchantChanged("Big Bazaar"))
+
+            viewModel.onEvent(AddTransactionEvent.DirectionChanged(TransactionDirection.TRANSFER))
+            viewModel.onEvent(AddTransactionEvent.DestinationSelected("account:2"))
+            viewModel.onEvent(AddTransactionEvent.Save)
+
+            assertEquals(1, transactions.transfersCreated.size)
         }
 
     // --- fixtures ----------------------------------------------------------------------------------

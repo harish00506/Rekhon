@@ -8,6 +8,7 @@ import com.aicfo.core.model.MoneyFormatter
 import com.aicfo.core.model.Transaction
 import com.aicfo.core.model.TransactionSource
 import java.time.LocalDate
+import java.time.LocalTime
 
 /**
  * Everything the add-transaction screen renders, as one value (issue 3.1; ARC-004, FR-TXN-002).
@@ -63,6 +64,16 @@ data class AddTransactionUiState(
     /** Whether the date picker is open (issue 3.4). Part of the state so a test can drive it. */
     val isDatePickerOpen: Boolean = false,
     /**
+     * The time of day, or `null` to let the app choose (FR-TXN-001's "date-time").
+     *
+     * **`null` is not midnight.** It means "the default", which the repository resolves to *now* for
+     * today and to the start of the day for a future date — the behaviour every caller had before
+     * this field existed. [bookedAtLabelIsNow] is what lets the screen say which of the two it is.
+     */
+    val bookedAt: LocalTime? = null,
+    /** Whether the time picker is open. Part of the state so a test can drive it. */
+    val isTimePickerOpen: Boolean = false,
+    /**
      * The earliest day the picker offers — today, in the profile zone (issue 3.4).
      *
      * Supplied by the ViewModel from the injected `Clock` rather than read in the composable, and
@@ -74,6 +85,24 @@ data class AddTransactionUiState(
      * the constant exists, so this would have compiled, passed and crashed on a real phone.
      */
     val earliestBookableDate: LocalDate = LocalDate.ofEpochDay(0),
+    /**
+     * The current time of day in the profile zone, for seeding the time picker (FR-TXN-001).
+     *
+     * Supplied by the ViewModel from the injected `Clock` for the same reason
+     * [earliestBookableDate] is: a composable may not read a clock (TIM-001), and the profile zone
+     * is not the device's. Only ever a starting position — nothing is decided by it.
+     */
+    val nowInProfileZone: LocalTime = LocalTime.MIDNIGHT,
+    /**
+     * The payee or merchant (FR-TXN-001).
+     *
+     * **The field the add screen was missing.** `TransactionDraft.merchant` and the
+     * `transactions.merchant` column have existed since issues 3.1 and 1.6, the list row falls back
+     * to it for its title and the detail sheet renders it — but until this was added only
+     * `DemoDataset` ever wrote one, so every row on a real profile read "Uncategorised" unless the
+     * user happened to type a note.
+     */
+    val merchant: String = "",
     val note: String = "",
     val isLoading: Boolean = true,
     val isSaving: Boolean = false,
@@ -108,6 +137,23 @@ data class AddTransactionUiState(
 
     /** Whether the user is moving money between their own accounts (FR-TXN-003). */
     val isTransfer: Boolean get() = direction == TransactionDirection.TRANSFER
+
+    /**
+     * Whether to offer a merchant field (FR-TXN-001, FR-TXN-003).
+     *
+     * **Never for a transfer.** Moving money between your own accounts has no payee, which is why
+     * `TransferDraft` has no merchant to carry one — the same reason a transfer has no category.
+     */
+    val hasMerchant: Boolean get() = !isTransfer
+
+    /**
+     * Whether the time field means "now" rather than a clock time the user picked.
+     *
+     * `null` [bookedAt] resolves to *now* on today and to the start of the day on a future date, so
+     * the screen has to say which. Showing a stale clock time for "now" would be a lie by the second
+     * the user read it.
+     */
+    val bookedAtLabelIsNow: Boolean get() = bookedAt == null && bookedOn == null
 
     /**
      * The accounts offered as a transfer destination.
@@ -300,6 +346,9 @@ sealed interface AddTransactionEvent {
     /** The user picked a category, or tapped the selected one again to clear it. */
     data class CategorySelected(val id: String?) : AddTransactionEvent
 
+    /** The user typed in the merchant field (FR-TXN-001). */
+    data class MerchantChanged(val value: String) : AddTransactionEvent
+
     /** The user typed in the note field. */
     data class NoteChanged(val value: String) : AddTransactionEvent
 
@@ -329,6 +378,15 @@ sealed interface ScheduleEvent : AddTransactionEvent {
 
     /** The user confirmed or dismissed the picker. */
     data object DatePickerDismissed : ScheduleEvent
+
+    /** The user tapped the time button (FR-TXN-001's "date-time"). */
+    data object TimePickerOpened : ScheduleEvent
+
+    /** The user picked a time of day. */
+    data class TimeSelected(val time: LocalTime) : ScheduleEvent
+
+    /** The user confirmed or dismissed the time picker. */
+    data object TimePickerDismissed : ScheduleEvent
 }
 
 /**

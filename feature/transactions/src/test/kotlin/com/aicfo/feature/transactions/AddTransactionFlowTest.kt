@@ -24,6 +24,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.time.LocalDate
+import java.time.LocalTime
 
 /**
  * Compose tests for the add-transaction screen — **FR-TXN-002's tap budget** (issue 3.1, §21.5).
@@ -523,6 +524,74 @@ class AddTransactionFlowTest {
         )
 
         compose.onNodeWithText(text(R.string.add_txn_date_confirm)).assertIsDisplayed()
+    }
+
+    // --- merchant and time of day (FR-TXN-001) -----------------------------------------------------
+
+    @Test
+    fun `the merchant field is on the form, so a row can say what it was`() {
+        // Before this, `merchant` was written only by the demo dataset, so a real profile's rows fell
+        // through to "Uncategorised" unless the user typed a note.
+        val events = mutableListOf<AddTransactionEvent>()
+        setContent(state = loadedState(amountText = "250"), onEvent = { events += it })
+
+        compose.onNodeWithText(text(R.string.add_txn_merchant)).performTextInput("Big Bazaar")
+
+        assertTrue(events.any { it == AddTransactionEvent.MerchantChanged("Big Bazaar") })
+    }
+
+    @Test
+    fun `a transfer is offered no merchant field`() {
+        setContent(
+            state = loadedState(amountText = "10000").copy(direction = TransactionDirection.TRANSFER),
+        )
+
+        compose.onNodeWithText(text(R.string.add_txn_merchant)).assertDoesNotExist()
+    }
+
+    @Test
+    fun `the time reads Now beside the date, and costs no tap`() {
+        setContent(state = loadedState(amountText = "250"))
+
+        compose.onNodeWithText(text(R.string.add_txn_date_today)).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.add_txn_time_now)).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a picked time replaces Now with a localised clock time`() {
+        setContent(state = loadedState(amountText = "250").copy(bookedAt = LocalTime.of(8, 30)))
+
+        compose.onNodeWithText(text(R.string.add_txn_time_now)).assertDoesNotExist()
+        compose.onNodeWithText(TransactionLabels.timeOfDay(LocalTime.of(8, 30))).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a future day shows its own midnight rather than Now`() {
+        // "Now" would be a lie on a day that has not happened; midnight is the instant it will be
+        // stamped with, and it is fixed, so it can be shown.
+        setContent(
+            state = loadedState(amountText = "250").copy(bookedOn = LocalDate.parse("2026-08-10")),
+        )
+
+        compose.onNodeWithText(text(R.string.add_txn_time_now)).assertDoesNotExist()
+        compose.onNodeWithText(TransactionLabels.timeOfDay(LocalTime.MIDNIGHT)).assertIsDisplayed()
+    }
+
+    @Test
+    fun `tapping the time asks to open its picker`() {
+        val events = mutableListOf<AddTransactionEvent>()
+        setContent(state = loadedState(amountText = "250"), onEvent = { events += it })
+
+        compose.onNodeWithText(text(R.string.add_txn_time_now)).performClick()
+
+        assertEquals(listOf<AddTransactionEvent>(ScheduleEvent.TimePickerOpened), events)
+    }
+
+    @Test
+    fun `the time picker is not rendered until the user asks for it`() {
+        setContent(state = loadedState(amountText = "250"))
+
+        compose.onNodeWithText(text(R.string.add_txn_time_confirm)).assertDoesNotExist()
     }
 
     /**

@@ -28,6 +28,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalTime
 import java.time.ZoneId
 
 /**
@@ -510,6 +511,133 @@ class FutureDatedTransactionTest {
             assertEquals(Money(75_000_00L), accounts.find(account.id).expectOk().balance)
         }
 
+    // --- time of day (FR-TXN-001's "date-time") ----------------------------------------------------
+
+    @Test
+    fun `a chosen time is stamped instead of now`() =
+        runTest {
+            // FR-TXN-001 says "date-time". Before this the instant was always the app's choice —
+            // now for today — so a user recording this morning's coffee this evening got an instant
+            // that ordered it after everything they had bought since.
+            val account = newAccount()
+
+            val created =
+                repository.create(
+                    TransactionDraft(account.id, Money(-250_00L), bookedAt = LocalTime.of(8, 30)),
+                ).expectOk()
+
+            // 08:30 IST on 2026-08-02 is 03:00Z.
+            assertEquals(
+                Instant.parse("2026-08-02T03:00:00Z").toEpochMilli(),
+                created.occurredAtUtcMillis,
+            )
+            assertTrue("and it is before 'now', which is 23:30 IST", created.occurredAtUtcMillis < clock.nowUtcMillis())
+        }
+
+    @Test
+    fun `a chosen time does not change which day the row belongs to`() =
+        runTest {
+            // **The property that keeps the time harmless.** Balances and budgets bound on
+            // `booked_on_iso_date`, so an hour is presentation and ordering; the day is money.
+            val account = newAccount(opening = Money(1_00_000_00L))
+
+            val created =
+                repository.create(
+                    TransactionDraft(account.id, Money(-250_00L), bookedAt = LocalTime.of(0, 5)),
+                ).expectOk()
+
+            assertEquals(clock.today().toString(), created.bookedOn)
+            assertEquals(Money(99_750_00L), accounts.find(account.id).expectOk().balance)
+        }
+
+    @Test
+    fun `a time on a future date still leaves the row out of the balance`() =
+        runTest {
+            val account = newAccount(opening = Money(1_00_000_00L))
+
+            val scheduled =
+                repository.create(
+                    TransactionDraft(
+                        account.id,
+                        Money(-25_000_00L),
+                        bookedOn = clock.today().plusDays(1),
+                        bookedAt = LocalTime.of(9, 0),
+                    ),
+                ).expectOk()
+
+            assertEquals("2026-08-03", scheduled.bookedOn)
+            // 09:00 IST on the 3rd is 03:30Z on the 3rd.
+            assertEquals(
+                Instant.parse("2026-08-03T03:30:00Z").toEpochMilli(),
+                scheduled.occurredAtUtcMillis,
+            )
+            assertNull("still scheduled: the hour does not post it", rawRow(scheduled.id)?.postedAtUtcMillis)
+            assertEquals(Money(1_00_000_00L), accounts.find(account.id).expectOk().balance)
+        }
+
+    @Test
+    fun `an omitted time keeps the behaviour every caller had before`() =
+        runTest {
+            // `null` is not "midnight" — it is "the app's choice", which is now for today.
+            val account = newAccount()
+
+            val created = repository.create(TransactionDraft(account.id, Money(-250_00L))).expectOk()
+
+            assertEquals(clock.nowUtcMillis(), created.occurredAtUtcMillis)
+        }
+
+    @Test
+    fun `a time that does not exist on that day resolves forward rather than backward`() =
+        runTest {
+            // Chile skips 2026-09-06T00:00 to 01:00. Asking for 00:30 on that day asks for an
+            // instant the local clock never shows, and arithmetic on a fixed offset would land at
+            // 23:30 the *previous* day — a row booked on the wrong date, the one thing the day must
+            // never get wrong.
+            //
+            // **`ZonedDateTime` shifts forward by the length of the gap, not to the first valid
+            // instant.** 00:30 + 1h = 01:30 local, which is 04:30Z — *not* the 04:00Z that
+            // `startOfDay` produces for the same day, because that asks for 00:00 and 00:00 + 1h is
+            // 01:00. Both are "resolve forward"; the results differ because the requested local
+            // times do. Worth spelling out: the obvious expectation here is wrong, and this test was
+            // written asserting it.
+            clock.setZone(ZoneId.of("America/Santiago"))
+            clock.setTo(Instant.parse("2026-09-04T12:00:00Z").toEpochMilli())
+            val account = newAccount()
+
+            val created =
+                repository.create(
+                    TransactionDraft(
+                        account.id,
+                        Money(-250_00L),
+                        bookedOn = clock.today().plusDays(2),
+                        bookedAt = LocalTime.of(0, 30),
+                    ),
+                ).expectOk()
+
+            assertEquals("2026-09-06", created.bookedOn)
+            assertEquals(
+                Instant.parse("2026-09-06T04:30:00Z").toEpochMilli(),
+                created.occurredAtUtcMillis,
+            )
+        }
+
+    @Test
+    fun `both legs of a transfer share one instant`() =
+        runTest {
+            val from = newAccount(name = "Savings")
+            val to = newAccount(name = "Cash")
+
+            val transfer =
+                repository.createTransfer(
+                    TransferDraft(from.id, to.id, Money(1_000_00L), bookedAt = LocalTime.of(14, 15)),
+                ).expectOk()
+
+            val instants = allRows().filter { it.transferId == transfer.id }.map { it.occurredAtUtcMillis }
+            assertEquals(2, instants.size)
+            assertEquals("one movement, one instant", 1, instants.distinct().size)
+            assertEquals(Instant.parse("2026-08-02T08:45:00Z").toEpochMilli(), instants.first())
+        }
+
     // --- helpers -----------------------------------------------------------------------------------
 
     /**
@@ -546,6 +674,8 @@ class FutureDatedTransactionTest {
                                     cursor.getColumnIndexOrThrow("transfer_id").let {
                                         if (cursor.isNull(it)) null else cursor.getString(it)
                                     },
+                                occurredAtUtcMillis =
+                                    cursor.getLong(cursor.getColumnIndexOrThrow("occurred_at_utc_millis")),
                                 postedAtUtcMillis =
                                     cursor.getColumnIndexOrThrow("posted_at_utc_millis").let {
                                         if (cursor.isNull(it)) null else cursor.getLong(it)
@@ -584,6 +714,7 @@ private data class RawTransactionRow(
     val id: String,
     val bookedOnIsoDate: String,
     val transferId: String?,
+    val occurredAtUtcMillis: Long,
     val postedAtUtcMillis: Long?,
     val deletedAtUtcMillis: Long?,
 )

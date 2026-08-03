@@ -17,7 +17,7 @@
 
 ## Current state
 
-- **Version:** `0.3.5` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (**Epic 3 open**).
+- **Version:** `0.3.6` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (**Epic 3 open**).
   **Schema is v8** — unchanged by 3.5, the first Epic 3 issue that needed no migration.
 - **Currently working file:** none — issue 3.5 is **shipped**: committed on
   `feature/3-5-transaction-source-tracking` and merged `--no-ff` into `dev`. Push skipped (no remote).
@@ -28,6 +28,15 @@
   [tracker](issues/3.4-future-dated-transactions-tracker.md)) — **890 tests total, 0 skipped; the
   v7 → v8 upgrade path and a real date rollover verified on a device.**
 - **In progress:** nothing. **Next: 3.6** (search, filters, bulk edit), unblocked by 3.1.
+- **0.3.6 fixed two FR-TXN-001 fields the add screen never captured: merchant and time of day.**
+  Merchant was the notable one — the column (schema v1), the draft (3.1), the row's title fallback
+  and 3.5's detail sheet all supported it, and **only `DemoDataset` ever wrote one**, so every row on
+  a real profile read "Uncategorised". **A field being plumbed end-to-end is not evidence anything
+  can produce a value for it**; grep the write paths, not the type.
+- **`ZonedDateTime` resolves a DST-gap time forward by the gap's length, not to the first valid
+  instant.** 00:30 on Chile's 2026-09-06 becomes 01:30 local (04:30Z) — *not* the 04:00Z
+  `Clock.startOfDay` gives for the same day, which asks for 00:00. Both are "resolve forward"; the
+  results differ because the requested local times do. A test was written asserting the wrong one.
 - **3.5 shipped provenance on screen** ([tracker](issues/3.5-transaction-source-tracking-tracker.md)):
   a source label per row, a detail bottom sheet on tap, and a source filter chip row. **No schema
   change** — `transactions.source` has been right since 3.1; nothing showed it. The reconciliation

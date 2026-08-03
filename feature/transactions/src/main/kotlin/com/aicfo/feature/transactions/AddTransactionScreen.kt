@@ -154,6 +154,17 @@ private fun NoteFieldAndActions(
     onEvent: (AddTransactionEvent) -> Unit,
     onCancel: () -> Unit,
 ) {
+    // FR-TXN-001's payee/merchant. **Hidden for a transfer** — moving money between your own
+    // accounts has no payee, which is why `TransferDraft` has no field to carry one.
+    if (uiState.hasMerchant) {
+        OutlinedTextField(
+            value = uiState.merchant,
+            onValueChange = { onEvent(AddTransactionEvent.MerchantChanged(it)) },
+            label = { Text(stringResource(R.string.add_txn_merchant)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
     OutlinedTextField(
         value = uiState.note,
         onValueChange = { onEvent(AddTransactionEvent.NoteChanged(it)) },

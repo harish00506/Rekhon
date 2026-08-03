@@ -115,6 +115,20 @@
     <string name="add_txn_date">Date</string>
     <string name="add_txn_date_today">Today</string>
     <string name="add_txn_date_confirm">Set date</string>
+    <!--
+      FR-TXN-001's "date-time". "Now" rather than a clock time when nothing has been picked on
+      today's date: the instant will be whenever Save is tapped, and printing 14:30 would be stale
+      by the time the user read it. A future date with no time picked shows its real midnight.
+    -->
+    <string name="add_txn_time_now">Now</string>
+    <string name="add_txn_time_confirm">Set time</string>
+
+    <!--
+      FR-TXN-001's payee/merchant. The column and the draft field have existed since issues 1.6 and
+      3.1 and nothing could write one, so a row with no note read as "Uncategorised". Hidden for a
+      transfer: money moving between your own accounts has no payee.
+    -->
+    <string name="add_txn_merchant">Merchant (optional)</string>
 
     <string name="add_txn_note">Note (optional)</string>
     <string name="add_txn_save">Save</string>

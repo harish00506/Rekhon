@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
+import java.time.LocalTime
 
 /**
  * Creates and reads transactions (issue 3.1; FR-TXN-002, FR-TXN-001, FR-TXN-009).
@@ -309,6 +310,13 @@ data class TransferDraft(
      * which is exactly what `writeTransferLegs` computing the day twice would have caused.
      */
     val bookedOn: LocalDate? = null,
+    /**
+     * The time of day both legs are stamped with (FR-TXN-001's "date-time"). `null` keeps the
+     * default — now for today, the start of the day for a future date.
+     *
+     * Shared, like [bookedOn]: a transfer is one movement, so its two legs occur at one instant.
+     */
+    val bookedAt: LocalTime? = null,
 )
 
 /**
@@ -348,6 +356,17 @@ data class TransactionDraft(
      * repository's injected one resolves it (TIM-001).
      */
     val bookedOn: LocalDate? = null,
+    /**
+     * The time of day this occurred (FR-TXN-001's "date-time"). `null` means "do not care", which
+     * the repository resolves to now for today and to the start of the day for a future date.
+     *
+     * **Separate from [bookedOn], not folded into one `LocalDateTime`.** The two answer different
+     * questions and only one of them decides money: [bookedOn] is the profile-zone day every
+     * balance and budget bounds on (TIM-002), while this only orders rows within that day. Merging
+     * them would invite a call site to derive the day from the instant, which is the bug TIM-002
+     * exists to prevent.
+     */
+    val bookedAt: LocalTime? = null,
 )
 
 /**
@@ -438,7 +457,9 @@ internal class RoomTransactionRepository(
         val validated = draft.validated() ?: return Err(AppError.Validation(draft.invalidField()))
         // Issue 3.4: the booked day and the three stamps it implies, resolved once (FR-TXN-010).
         // `null` means the date is in the past, which this issue does not support — see `stampsFor`.
-        val stamps = clock.stampsFor(validated.bookedOn) ?: return Err(AppError.Validation("bookedOn"))
+        val stamps =
+            clock.stampsFor(validated.bookedOn, validated.bookedAt)
+                ?: return Err(AppError.Validation("bookedOn"))
         // Today, not the booked day: the account lookup only proves the account is live, and its
         // balance is read as at now (issue 3.4 bounded `findWithBalance` by date).
         val today = clock.today().toString()
@@ -490,7 +511,9 @@ internal class RoomTransactionRepository(
     override suspend fun createTransfer(draft: TransferDraft): Result<Transfer, AppError> {
         val validated = draft.validated() ?: return Err(AppError.Validation(draft.invalidField()))
         // Issue 3.4: resolved once, before the write, so **both legs** are stamped from one value.
-        val stamps = clock.stampsFor(validated.bookedOn) ?: return Err(AppError.Validation("bookedOn"))
+        val stamps =
+            clock.stampsFor(validated.bookedOn, validated.bookedAt)
+                ?: return Err(AppError.Validation("bookedOn"))
         // Today, not the booked day: the account lookup only proves the account is live, and its
         // balance is read as at now (issue 3.4 bounded `findWithBalance` by date).
         val today = clock.today().toString()
@@ -574,7 +597,9 @@ internal class RoomTransactionRepository(
     override suspend fun createSplit(draft: SplitDraft): Result<Transaction, AppError> {
         val validated = draft.validated() ?: return Err(AppError.Validation(draft.invalidField()))
         // Issue 3.4: the parent's day. The lines take no date of their own (FR-TXN-010).
-        val stamps = clock.stampsFor(validated.bookedOn) ?: return Err(AppError.Validation("bookedOn"))
+        val stamps =
+            clock.stampsFor(validated.bookedOn, validated.bookedAt)
+                ?: return Err(AppError.Validation("bookedOn"))
         // Today, not the booked day: the account lookup only proves the account is live, and its
         // balance is read as at now (issue 3.4 bounded `findWithBalance` by date).
         val today = clock.today().toString()
