@@ -38,6 +38,48 @@
     <string name="transactions_scheduled">Scheduled</string>
     <string name="transactions_posted">Posted</string>
 
+    <!--
+      FR-TXN-009 provenance, shown per row (P-02). **Worded as provenance, not mechanism** — a user
+      does not care that ML Kit read the receipt, only that the row came from one. "Balance
+      adjustment" is the load-bearing one: that row's note is deliberately null, so without this it
+      reads as an anonymous "Uncategorised" with nothing saying the app posted it.
+
+      "Manual" is deliberately absent from the row label (TransactionLabels.sourceLabel returns null
+      for it) and used only in the detail sheet and the filter chip, where a blank would read as
+      missing data rather than as the default.
+    -->
+    <string name="transactions_source_manual">Manual</string>
+    <string name="transactions_source_ocr">From a receipt</string>
+    <string name="transactions_source_sms">From a bank SMS</string>
+    <string name="transactions_source_import">Imported</string>
+    <string name="transactions_source_recurring">Recurring</string>
+    <string name="transactions_source_reconciliation">Balance adjustment</string>
+    <string name="transactions_source_demo">Sample data</string>
+    <!-- The "no filter" chip. Not "All sources" - the chip row is short and the context is obvious. -->
+    <string name="transactions_source_all">All</string>
+    <!-- Content description on the chip row, so a screen reader says what the chips are for. -->
+    <string name="transactions_source_filter">Filter by source</string>
+    <!--
+      Shown when a filter matches nothing. Deliberately not `transactions_empty`: telling a user who
+      has just narrowed the list that they have no transactions would read as the app having lost
+      them, the same failure a database error rendering as "empty" would be.
+    -->
+    <string name="transactions_filter_empty">Nothing from that source in this period.</string>
+
+    <!--
+      The detail sheet (issue 3.5). Field labels only - every value is rendered by CfoAmountText,
+      TransactionLabels or the account-name map, never interpolated into a string.
+    -->
+    <string name="transactions_detail_title">Transaction</string>
+    <string name="transactions_detail_amount">Amount</string>
+    <string name="transactions_detail_account">Account</string>
+    <string name="transactions_detail_date">Date</string>
+    <string name="transactions_detail_merchant">Merchant</string>
+    <string name="transactions_detail_note">Note</string>
+    <string name="transactions_detail_split">Split</string>
+    <string name="transactions_detail_source">Source</string>
+    <string name="transactions_detail_close">Close</string>
+
     <string name="add_txn_title">Add transaction</string>
     <string name="add_txn_amount">Amount</string>
     <string name="add_txn_amount_hint">0.00</string>

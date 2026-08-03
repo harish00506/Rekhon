@@ -366,11 +366,50 @@ class TransactionRepositoryTest {
         runTest {
             // Forward compatibility: an old build reading a database a newer one wrote shows fewer
             // rows, never an exception. The same shape `AccountType.fromStored` guarantees.
+            //
+            // The example was `recurring-auto` until issue 3.5, which added that source for real —
+            // hyphenated it is still unknown, but using the one value the enum had just gained made
+            // the test read as though it were asserting the opposite of what it means.
             val account = newAccount()
-            database.transactionDao().upsert(rawTransaction("txn:future", account.id, "recurring-auto"))
+            database.transactionDao().upsert(rawTransaction("txn:future", account.id, "account_aggregator"))
             val transaction = repository.create(TransactionDraft(account.id, Money(-250_00L))).expectOk()
 
             assertEquals(listOf(transaction.id), repository.observeRecent().first().map { it.id })
+        }
+
+    @Test
+    fun `every write path stamps a source, so there is nothing to backfill`() =
+        runTest {
+            // **Issue 3.5's criteria ask for "a default backfilled for manual entries". There is
+            // nothing to backfill**, and this is the assertion that says so rather than a migration
+            // that would do nothing: `transactions.source` has been `TEXT NOT NULL` since schema v1
+            // and every path that writes a row sets it explicitly. A row with no source cannot exist
+            // — the compiler will not build one — so what is worth pinning is that every path
+            // produces a value this build can still *read* (FR-TXN-009).
+            val from = newAccount()
+            val to = newAccount()
+            repository.create(TransactionDraft(from.id, Money(-250_00L))).expectOk()
+            repository.createTransfer(TransferDraft(from.id, to.id, Money(1_000_00L))).expectOk()
+            repository.createSplit(
+                SplitDraft(
+                    accountId = from.id,
+                    amount = Money(-1_000_00L),
+                    lines = listOf(SplitLineDraft(Money(-600_00L)), SplitLineDraft(Money(-400_00L))),
+                ),
+            ).expectOk()
+            // The fourth path, and the one whose row this issue exists to explain (issue 2.7).
+            accounts.reconcile(from.id, Money(99_999_00L)).expectOk()
+
+            val stored = storedSources()
+            assertEquals("four write paths, five rows (a transfer writes two)", 5, stored.size)
+            assertTrue(
+                "a stored source this build cannot parse would drop the row from every read",
+                stored.all { TransactionSource.fromStored(it) != null },
+            )
+            assertEquals(
+                setOf(TransactionSource.MANUAL.storedValue, TransactionSource.RECONCILIATION.storedValue),
+                stored.toSet(),
+            )
         }
 
     // --- observeCategories -------------------------------------------------------------------------
@@ -516,6 +555,23 @@ class TransactionRepositoryTest {
                 createdAtUtcMillis = cursor.getLong(cursor.getColumnIndexOrThrow("created_at_utc_millis")),
                 updatedAtUtcMillis = cursor.getLong(cursor.getColumnIndexOrThrow("updated_at_utc_millis")),
             )
+        }
+
+    /**
+     * Result: the `source` of every stored transaction, tombstones included. Input: none.
+     *         Output: `List<String>`.
+     *
+     * Reaches past the repository on purpose (issue 3.5): its reads map rows into the domain model
+     * and **drop any whose source this build cannot parse**, so a mapped read is precisely the one
+     * thing that cannot answer "is every stored source readable?".
+     */
+    private fun storedSources(): List<String> =
+        database.query("SELECT source FROM transactions", emptyArray()).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) {
+                    add(cursor.getString(0))
+                }
+            }
         }
 
     private companion object {

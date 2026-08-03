@@ -12,6 +12,42 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > reach writing to it; this epic makes a transaction theirs to create — by hand first, then by
 > transfer, split, receipt and SMS.
 
+### [0.3.5] — Issue 3.5: Transaction source tracking  (2026-08-03)
+
+- **Implemented:** every transaction has recorded where it came from since issue 3.1 — this makes the
+  app *show* it (**FR-TXN-009**, P-02; ARC-004, ARC-005). **No schema change:** the data has been
+  right all along, and only nothing surfaced it.
+  - **The row this exists for is the reconciliation adjustment.** Its `note` is deliberately null
+    (FR-ACC-006), so it rendered as an anonymous "Uncategorised −₹500.00" with nothing saying the
+    *app* had posted it to close a gap against a statement. It now reads **"Balance adjustment"**,
+    verified against a live reconciliation on the emulator.
+  - **A source label on the row**, worded as provenance rather than mechanism — "From a receipt",
+    not "OCR". **Manual rows carry none**: it is the default and the overwhelming majority, and
+    tagging every hand-typed row would bury the labels that carry information.
+  - **A detail bottom sheet on row tap** — the app's first — showing every FR-TXN-001 field the
+    transaction has, source included and spelled out even when it is "Manual". Deliberately **no
+    nav route**: issue 3.6 owns editing and will want a real screen.
+  - **A source filter chip row** that appears only when the window holds two or more distinct
+    sources, so the all-manual profile every real user has today shows no chips and no labels at
+    all. Filtered in the ViewModel over rows already loaded — FR-TXN-007's filter list (3.6's) does
+    not include source, and keeping this out of SQL leaves that query 3.6's to design.
+  - **`RECURRING_AUTO` added**, completing FR-TXN-009's five. Nothing writes it until issue 3.7; it
+    exists so a row from a newer build renders rather than being dropped by the mapper — the exact
+    failure that omitting `demo` caused in issue 3.1.
+- **Corrected the generated backlog for the fourth issue running**, at source in
+  `scripts/gen_issue_docs.py`: the criteria cited **AI-ARC-003**, which governs *engine result*
+  provenance and has nothing to say about a transaction row (no engine writes one, so "creating
+  engine/version where applicable" applied to nothing — and no such column was added); they asked
+  for the source "in the detail view" when no detail view existed; and they asked for a backfill
+  when `source` has been `TEXT NOT NULL` since schema v1 and every write path sets it. The
+  no-op migration was replaced by an assertion that there is nothing to backfill.
+- **Tests:** 920 passed, 0 skipped (+30). Two of the new tests failed first and both were real: a
+  filtered-to-nothing list rendered *both* empty messages, so `isEmpty` gained a fourth clause;
+  and `setContent` was called twice in one test, the mistake issue 3.3 had already recorded.
+- **No `connectedDebugAndroidTest`** — the first Epic 3 issue with no schema change, so no migration
+  to prove and no upgrade path to build. Emulator run covered the demo profile, a real profile
+  onboarded from scratch, and a live reconciliation; whole session in airplane mode (P-04).
+
 ### [0.3.4] — Issue 3.4: Future-dated transactions  (2026-08-03)
 
 - **Implemented:** a transaction can be booked on a future day, stays out of every actual until that

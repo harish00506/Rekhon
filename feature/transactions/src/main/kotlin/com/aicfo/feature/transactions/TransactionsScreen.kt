@@ -1,6 +1,7 @@
 package com.aicfo.feature.transactions
 
 import androidx.annotation.StringRes
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -88,9 +89,11 @@ fun TransactionsContent(
             )
         }
 
-        if (uiState.isEmpty) {
-            Text(text = stringResource(R.string.transactions_empty), style = MaterialTheme.typography.bodyMedium)
-        }
+        // Issue 3.5: renders nothing unless the window holds two or more distinct sources, which a
+        // real profile today does not (FR-TXN-009).
+        SourceFilterRow(uiState = uiState, onEvent = onEvent)
+
+        EmptyState(uiState = uiState)
 
         LazyColumn(verticalArrangement = Arrangement.spacedBy(CfoDimens.spaceSm)) {
             scheduledSection(uiState = uiState, onEvent = onEvent)
@@ -104,11 +107,42 @@ fun TransactionsContent(
                         row = row,
                         accountNames = uiState.accountNames,
                         onDelete = { onEvent(TransactionsEvent.Delete(row.id)) },
+                        onClick = { onEvent(TransactionsEvent.RowTapped(row.id)) },
                     )
                 }
             }
         }
+
+        // Issue 3.5: renders nothing until a row is tapped. Last in the Column so it draws over the
+        // list rather than under it.
+        TransactionDetailSheet(uiState = uiState, onEvent = onEvent)
     }
+}
+
+/**
+ * The "nothing here" line, whichever kind of nothing it is (issue 3.5).
+ *
+ * Why:    extracted from [TransactionsContent] at detekt's 40-line limit (§21.6), and the seam is a
+ *         real one: this is the whole of the screen's four-way distinction in one place.
+ *
+ *         **Four kinds of nothing, and only two of them say "nothing".** Still loading is not empty.
+ *         A failed read is not empty — rendering a database that would not open as a cheerful "add
+ *         your first one" hides the failure from the user who most needs to see it, which is why the
+ *         error banner above handles it. A profile with no transactions gets the invitation. A
+ *         **filter matching nothing** gets its own line, because telling a user who has plenty and
+ *         has merely narrowed the view that they have none reads as the app having lost them.
+ * Result: the composition, or nothing. Input: [uiState]. Output: none.
+ * Changelog: 2026-08-03 — Created for issue 3.5.
+ */
+@Composable
+private fun EmptyState(uiState: TransactionsUiState) {
+    val message =
+        when {
+            uiState.isEmpty -> R.string.transactions_empty
+            uiState.isFilteredEmpty -> R.string.transactions_filter_empty
+            else -> return
+        }
+    Text(text = stringResource(message), style = MaterialTheme.typography.bodyMedium)
 }
 
 /**
@@ -140,6 +174,7 @@ private fun LazyListScope.scheduledSection(
                 row = row,
                 accountNames = uiState.accountNames,
                 onDelete = { onEvent(TransactionsEvent.Delete(row.id)) },
+                onClick = { onEvent(TransactionsEvent.RowTapped(row.id)) },
             )
         }
     }
@@ -190,6 +225,14 @@ private const val SCHEDULED_SECTION_KEY = "section:scheduled"
 private const val ACTUALS_SECTION_KEY = "section:posted"
 
 /**
+ * What joins the two halves of a row's supporting line (issue 3.5).
+ *
+ * A middle dot rather than a comma or a dash: it reads as "and also" without implying a list or a
+ * range, and it is the separator the transfer row already uses.
+ */
+private const val SUPPORTING_SEPARATOR = " · "
+
+/**
  * One day's header and net total (FR-TXN-007's grouping half).
  * Why:    the total is read from [TransactionDay.total], which computes it from the rows underneath
  *         it with `Money`'s overflow-checked arithmetic (MNY-001) — the screen never adds money.
@@ -220,14 +263,16 @@ private fun DayHeader(day: TransactionDay) {
  *         without deciding how it renders. Both kinds carry the same delete action, and neither
  *         passes a transfer id to it — the row hands over the transaction it was built from and the
  *         repository works out whether a sibling goes too.
- * Result: the composition. Input: [row], [accountNames], [onDelete]. Output: none.
+ * Result: the composition. Input: [row], [accountNames], [onDelete], [onClick]. Output: none.
  * Changelog: 2026-08-02 — Created for issue 3.2, replacing issue 3.1's single-row composable.
+ *            2026-08-03 — Issue 3.5: the source label, and [onClick] to open the detail sheet.
  */
 @Composable
 private fun ListRow(
     row: TransactionRow,
     accountNames: Map<String, String>,
     onDelete: () -> Unit,
+    onClick: () -> Unit,
 ) {
     when (row) {
         is TransactionRow.Single ->
@@ -239,14 +284,9 @@ private fun ListRow(
                     row.transaction.note
                         ?: row.transaction.merchant
                         ?: stringResource(R.string.transactions_uncategorised),
-                // Issue 3.3: a split says how many categories its one amount is spread across. The
-                // amount itself is unchanged — the parent still holds all of it — so listing the
-                // lines here would show the same money twice.
-                supporting =
-                    row.splitLineCount?.let { count ->
-                        pluralStringResource(R.plurals.transactions_split_lines, count, count)
-                    },
+                supporting = supportingLine(row),
                 trailing = { RowTrailing(amount = row.transaction.amount, onDelete = onDelete) },
+                modifier = Modifier.clickable(onClick = onClick),
             )
 
         is TransactionRow.TransferPair ->
@@ -263,8 +303,38 @@ private fun ListRow(
                 // `showSign = false`: the amount is the size of the movement, and a leading "+" would
                 // claim the user gained money they only moved.
                 trailing = { RowTrailing(amount = row.amount, showSign = false, onDelete = onDelete) },
+                modifier = Modifier.clickable(onClick = onClick),
             )
     }
+}
+
+/**
+ * The second line of an ordinary row: where it came from, and how it is split (issue 3.5).
+ *
+ * Why:    `CfoListRow` has one supporting slot and two things now want it. Combining them here
+ *         rather than adding a second slot keeps the row one line tall at 200% font, and the order
+ *         is deliberate: **provenance first**, because "Balance adjustment" explains what a row *is*
+ *         while "3 lines" only describes how it was categorised.
+ *
+ *         **Manual rows contribute nothing** (`TransactionLabels.sourceLabel` returns null for
+ *         them), so the overwhelmingly common row is unchanged from before this issue — the label
+ *         exists to explain a row the user did not type.
+ * Result: `"Balance adjustment"`, `"3 lines"`, `"From a receipt · 3 lines"`, or `null` for a plain
+ *         hand-typed transaction.
+ * Input:  [row] — the single-transaction row. Output: `String?`.
+ * Changelog: 2026-08-03 — Created for issue 3.5.
+ */
+@Composable
+private fun supportingLine(row: TransactionRow.Single): String? {
+    val source = TransactionLabels.sourceLabel(row.transaction.source)?.let { stringResource(it) }
+    // Issue 3.3: a split says how many categories its one amount is spread across. The amount itself
+    // is unchanged — the parent still holds all of it — so listing the lines here would show the
+    // same money twice.
+    val split =
+        row.splitLineCount?.let { count ->
+            pluralStringResource(R.plurals.transactions_split_lines, count, count)
+        }
+    return listOfNotNull(source, split).takeIf { it.isNotEmpty() }?.joinToString(SUPPORTING_SEPARATOR)
 }
 
 /**

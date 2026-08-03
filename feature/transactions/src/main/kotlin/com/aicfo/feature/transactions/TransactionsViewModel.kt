@@ -7,6 +7,7 @@ import com.aicfo.core.common.Ok
 import com.aicfo.core.common.toAppError
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.Transaction
+import com.aicfo.core.model.TransactionSource
 import com.aicfo.data.repository.AccountRepository
 import com.aicfo.data.repository.TransactionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -52,6 +53,24 @@ class TransactionsViewModel
         private val _uiState = MutableStateFlow(TransactionsUiState())
 
         /**
+         * The rows as the repository last emitted them, ungrouped and unfiltered (issue 3.5).
+         *
+         * Why: the screen's state is now a function of the data **and** of what the user has chosen,
+         *      and the two change independently — a chip tap must re-render without waiting for a
+         *      database emission, and a database emission must not silently drop the chosen filter.
+         *      Keeping the raw lists is what lets [render] be the single place that combines them.
+         *      It is also what makes `availableSources` derivable from *unfiltered* rows, which is
+         *      the difference between a chip row the user can leave and one they cannot.
+         */
+        private var snapshot = ListSnapshot()
+
+        /** The source the user has narrowed to, or `null` for all (issue 3.5). */
+        private var sourceFilter: TransactionSource? = null
+
+        /** The row whose detail sheet is open, by id, or `null` (issue 3.5). */
+        private var selectedId: String? = null
+
+        /**
          * The screen's state.
          * Result: emits the current [TransactionsUiState] and every update. Read-only to callers.
          */
@@ -70,14 +89,16 @@ class TransactionsViewModel
                 repository.observeUpcoming(),
                 accounts.observeAccounts(includeArchived = true),
             ) { transactions, upcoming, accountList ->
-                TransactionsUiState(
-                    isLoading = false,
-                    days = transactions.groupIntoDays(),
-                    upcoming = upcoming.groupIntoDays(soonestFirst = true),
+                ListSnapshot(
+                    recent = transactions,
+                    upcoming = upcoming,
                     accountNames = accountList.associate { it.id to it.name },
                 )
             }
-                .onEach { state -> _uiState.update { state } }
+                .onEach { latest ->
+                    snapshot = latest
+                    render()
+                }
                 // `toAppError` rather than the throwable's own message: that message may name a file
                 // path, a column or an amount, and P-01 bans all three from anything user-visible.
                 .catch { failure ->
@@ -92,11 +113,62 @@ class TransactionsViewModel
          *         is silently unhandled.
          * Result: applies the event. Input: [event]. Output: none.
          * Changelog: 2026-08-02 — Created for issue 3.2, which gave this screen its first action.
+         *            2026-08-03 — Issue 3.5: the source filter and the detail sheet.
          */
         fun onEvent(event: TransactionsEvent) {
             when (event) {
                 is TransactionsEvent.Delete -> delete(event.transactionId)
                 TransactionsEvent.DismissError -> _uiState.update { it.copy(errorCode = null) }
+                is TransactionsEvent.SourceFilterSelected -> {
+                    sourceFilter = event.source
+                    render()
+                }
+                is TransactionsEvent.RowTapped -> {
+                    selectedId = event.transactionId
+                    render()
+                }
+                TransactionsEvent.DetailDismissed -> {
+                    selectedId = null
+                    render()
+                }
+            }
+        }
+
+        /**
+         * Builds the screen's state from the last data and the user's current choices (issue 3.5).
+         *
+         * Why:    **the filter is applied before grouping**, which is not a detail — [TransactionDay]
+         *         computes its total by folding the rows under it, so filtering first makes the day
+         *         totals recompute to the filtered rows for free. Filtering after grouping would
+         *         leave every header stating a total for transactions no longer beneath it.
+         *
+         *         `availableSources` is deliberately read from the **unfiltered** lists: derived from
+         *         what is on screen, choosing a chip would remove every other chip and strand the
+         *         user with no way back to "All". Ordered by [TransactionSource.entries] rather than
+         *         by first appearance, so chips keep their positions as rows arrive.
+         *
+         *         `errorCode` is carried over rather than cleared. A read that failed is still
+         *         failed after a chip tap, and re-rendering is not evidence that it recovered.
+         * Result: `_uiState` holds a value consistent with both the data and the choices.
+         * Input:  none — reads [snapshot], [sourceFilter] and [selectedId]. Output: none.
+         * Changelog: 2026-08-03 — Created for issue 3.5.
+         */
+        private fun render() {
+            val filter = sourceFilter
+            val recent = snapshot.recent.filterBySource(filter)
+            val upcoming = snapshot.upcoming.filterBySource(filter)
+            _uiState.update { previous ->
+                previous.copy(
+                    isLoading = false,
+                    days = recent.groupIntoDays(),
+                    upcoming = upcoming.groupIntoDays(soonestFirst = true),
+                    accountNames = snapshot.accountNames,
+                    sourceFilter = filter,
+                    availableSources = snapshot.sourcesPresent(),
+                    // Resolved from the unfiltered rows: a sheet opened on a row must not close
+                    // itself because the user then narrowed the list to something else.
+                    detail = selectedId?.let(snapshot::findById),
+                )
             }
         }
 
@@ -119,6 +191,63 @@ class TransactionsViewModel
             }
         }
     }
+
+/**
+ * The three streams the list is built from, as one value (issue 3.5).
+ *
+ * Why:  the ViewModel has to re-render on a chip tap, with no database emission to carry the data
+ *       in. Holding the last emission as one immutable value — rather than three mutable fields —
+ *       means a re-render cannot mix rows from one emission with account names from another.
+ * What: the actuals, the scheduled rows, and the id → name map, all exactly as they arrived.
+ * Result: `render()` has one input, and every state it produces is internally consistent.
+ * Changelog: 2026-08-03 — Created for issue 3.5.
+ *
+ * Input:  [recent] — actuals, newest first; [upcoming] — scheduled, soonest first;
+ *         [accountNames] — account id → display name.
+ * Output: an immutable value.
+ */
+internal data class ListSnapshot(
+    val recent: List<Transaction> = emptyList(),
+    val upcoming: List<Transaction> = emptyList(),
+    val accountNames: Map<String, String> = emptyMap(),
+) {
+    /**
+     * Every source present across both lists, in enum order (issue 3.5; FR-TXN-009).
+     * Why:    the chip row's contents. Both lists, because a profile whose only receipt is a
+     *         scheduled one still has receipts to filter by.
+     * Result: the distinct sources, ordered by [TransactionSource.entries]; empty for no rows.
+     * Input:  none. Output: `List<TransactionSource>`.
+     * Changelog: 2026-08-03 — Created for issue 3.5.
+     */
+    fun sourcesPresent(): List<TransactionSource> {
+        val present = (recent + upcoming).mapTo(mutableSetOf()) { it.source }
+        return TransactionSource.entries.filter { it in present }
+    }
+
+    /**
+     * Finds one transaction by id across both lists (issue 3.5).
+     * Why:    the detail sheet is opened from a row id, and a row can be an actual or a scheduled
+     *         one. For a transfer the id is one leg's, which resolves here like any other.
+     * Result: the transaction, or `null` when the id names nothing on screen — a row deleted while
+     *         its sheet was open closes the sheet rather than showing a stale copy.
+     * Input:  [id]. Output: `Transaction?`.
+     * Changelog: 2026-08-03 — Created for issue 3.5.
+     */
+    fun findById(id: String): Transaction? = recent.firstOrNull { it.id == id } ?: upcoming.firstOrNull { it.id == id }
+}
+
+/**
+ * Narrows a list to one source, or leaves it alone (issue 3.5; FR-TXN-009).
+ * Why:    stated once so the actuals and the scheduled rows cannot drift apart — a filter that
+ *         applied to one list and not the other would show a "Scheduled" group contradicting the
+ *         chip above it.
+ * Result: the rows whose source matches, or the receiver unchanged when [source] is `null`.
+ * Input:  the receiver; [source] — the chosen source, or `null` for all.
+ * Output: `List<Transaction>`.
+ * Changelog: 2026-08-03 — Created for issue 3.5.
+ */
+internal fun List<Transaction>.filterBySource(source: TransactionSource?): List<Transaction> =
+    if (source == null) this else filter { it.source == source }
 
 /**
  * Groups transactions into days, newest day first.

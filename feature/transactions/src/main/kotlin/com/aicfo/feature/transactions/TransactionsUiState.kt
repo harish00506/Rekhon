@@ -6,6 +6,7 @@ import com.aicfo.core.model.Category
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.MoneyFormatter
 import com.aicfo.core.model.Transaction
+import com.aicfo.core.model.TransactionSource
 import java.time.LocalDate
 
 /**
@@ -387,6 +388,20 @@ sealed interface TransactionsEvent {
 
     /** The user dismissed the error banner. */
     data object DismissError : TransactionsEvent
+
+    /** The user chose a source chip, or `null` for "All" (issue 3.5; FR-TXN-009). */
+    data class SourceFilterSelected(val source: TransactionSource?) : TransactionsEvent
+
+    /**
+     * The user tapped a row to see everything about it (issue 3.5).
+     *
+     * Carries the same id [Delete] does — for a transfer, one leg's — so the screen does not have to
+     * know which kind of row it is holding.
+     */
+    data class RowTapped(val transactionId: String) : TransactionsEvent
+
+    /** The user closed the detail sheet. */
+    data object DetailDismissed : TransactionsEvent
 }
 
 /**
@@ -422,6 +437,30 @@ data class TransactionsUiState(
      */
     val upcoming: List<TransactionDay> = emptyList(),
     val accountNames: Map<String, String> = emptyMap(),
+    /**
+     * The source the list is narrowed to, or `null` for all of them (issue 3.5; FR-TXN-009).
+     *
+     * Applied by the ViewModel **before** grouping, so [TransactionDay.total] recomputes to the
+     * filtered rows with no extra code — a day showing three of its five transactions must not still
+     * total all five.
+     */
+    val sourceFilter: TransactionSource? = null,
+    /**
+     * The sources actually present in the loaded window, in enum order (issue 3.5).
+     *
+     * **Computed from the *unfiltered* rows.** Deriving it from what is on screen would delete every
+     * other chip the moment one was chosen, leaving the user no way back to "All". Enum order rather
+     * than order of encounter, so the chips do not rearrange as rows arrive.
+     */
+    val availableSources: List<TransactionSource> = emptyList(),
+    /**
+     * The transaction whose detail sheet is open, or `null` (issue 3.5).
+     *
+     * The whole [Transaction], not an id, so the sheet is a pure function of the state and needs no
+     * lookup of its own. The ViewModel resolves the id it was handed — including for a transfer,
+     * where the row carries one leg's id.
+     */
+    val detail: Transaction? = null,
     val errorCode: String? = null,
 ) {
     /**
@@ -434,12 +473,47 @@ data class TransactionsUiState(
      *
      * **A profile with only scheduled rows is not empty** (issue 3.4): the user has entered
      * something, and telling them they have not would read as the app having lost it.
+     *
+     * **Nor is a filtered-to-nothing list** (issue 3.5) — `sourceFilter == null` is the fourth
+     * clause and it is the same argument a fourth time. Without it the screen rendered *both* this
+     * message and [isFilteredEmpty]'s at once, which a test caught: "no transactions yet, tap + to
+     * add your first one" is a lie told to a user who has plenty and has merely narrowed the view.
      */
-    val isEmpty: Boolean get() = !isLoading && errorCode == null && days.isEmpty() && upcoming.isEmpty()
+    val isEmpty: Boolean
+        get() =
+            !isLoading && errorCode == null && sourceFilter == null &&
+                days.isEmpty() && upcoming.isEmpty()
 
     /** Whether the scheduled section has anything to show (issue 3.4). */
     val hasUpcoming: Boolean get() = upcoming.isNotEmpty()
+
+    /**
+     * Whether the source filter is worth showing at all (issue 3.5).
+     *
+     * **Two or more, not one or more.** A real profile today is entirely hand-typed, so a chip row
+     * reading "All · Manual" would offer a choice between a thing and the same thing — noise on the
+     * screen the user looks at most. It appears when there is genuinely something to separate: a
+     * demo dataset, a reconciliation adjustment, and later a receipt or an SMS.
+     */
+    val hasSourceFilter: Boolean get() = availableSources.size >= MIN_SOURCES_TO_FILTER
+
+    /**
+     * Whether a filter is hiding rows the user has (issue 3.5).
+     *
+     * Distinguishes "this profile has nothing" from "this filter matches nothing" — [isEmpty] would
+     * otherwise render a filtered-to-nothing list as the cheerful "no transactions yet" invitation,
+     * which is the same failure that made a failed read look empty.
+     */
+    val isFilteredEmpty: Boolean get() = sourceFilter != null && days.isEmpty() && upcoming.isEmpty()
 }
+
+/**
+ * The fewest distinct sources that make a filter meaningful (issue 3.5).
+ *
+ * One source is not a choice. Named rather than inlined so the rule is greppable from the test that
+ * pins it.
+ */
+internal const val MIN_SOURCES_TO_FILTER = 2
 
 /**
  * One day's transactions with its total (issue 3.1; FR-TXN-007's grouping half).
