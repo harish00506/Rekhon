@@ -22,15 +22,19 @@ import org.junit.Test
  */
 class TransactionTest {
     /**
-     * The four values FR-TXN-009 names, plus the two the app writes that it does not.
+     * The five values FR-TXN-009 names, plus the two the app writes that it does not.
      *
      * Copied by hand from the SRS and from `grep "source =" data/repository/src/main` rather than
      * derived from the enum — a test that derives its expectation from the code under test asserts
      * nothing. **The grep is the part that matters:** omitting `demo` here first time round made
      * every sample transaction unreadable (see [TransactionSource]'s note).
+     *
+     * Changelog: 2026-08-03 — Issue 3.5 added `recurring_auto`, the fifth FR-TXN-009 names. It is
+     * the one entry here that **no grep would have found**, because nothing writes it until issue
+     * 3.7 — it comes from the requirement alone.
      */
     private val storedValues =
-        listOf("manual", "ocr", "sms", "import", "reconciliation", "demo")
+        listOf("manual", "ocr", "sms", "import", "recurring_auto", "reconciliation", "demo")
 
     @Test
     fun `every stored source exists, and no others`() {
@@ -38,10 +42,22 @@ class TransactionTest {
     }
 
     @Test
-    fun `FR-TXN-009 names manual, ocr, sms and import`() {
-        listOf("manual", "ocr", "sms", "import").forEach {
+    fun `FR-TXN-009's five sources all exist`() {
+        // The requirement's own list: "manual, ocr, sms, import, recurring-auto". Issue 3.5 added the
+        // fifth; before it, a source-tracking feature would have shipped four of the five.
+        listOf("manual", "ocr", "sms", "import", "recurring_auto").forEach {
             assertNotNull("FR-TXN-009 requires the source $it", TransactionSource.fromStored(it))
         }
+    }
+
+    @Test
+    fun `recurring-auto is stored with an underscore, like the other multi-word values`() {
+        // The SRS spells it "recurring-auto"; the column stores `recurring_auto`, matching
+        // `transfer_out`/`transfer_in` in TransactionType. The convention is the codebase's, and it
+        // has to be pinned somewhere because nothing writes this value until issue 3.7 — there is no
+        // existing row to contradict a later change of mind.
+        assertEquals("recurring_auto", TransactionSource.RECURRING_AUTO.storedValue)
+        assertNull("the hyphenated spelling is not the stored one", TransactionSource.fromStored("recurring-auto"))
     }
 
     @Test
@@ -69,7 +85,7 @@ class TransactionTest {
     @Test
     fun `an unknown source is null rather than an exception`() {
         // Forward compatibility: an old build reading a newer database drops the row, never crashes.
-        assertNull(TransactionSource.fromStored("recurring-auto"))
+        assertNull(TransactionSource.fromStored("account_aggregator"))
         assertNull(TransactionSource.fromStored(""))
         assertNull(TransactionSource.fromStored("MANUAL"))
     }

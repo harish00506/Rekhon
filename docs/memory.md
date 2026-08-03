@@ -17,17 +17,33 @@
 
 ## Current state
 
-- **Version:** `0.3.4` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (**Epic 3 open**).
-  **Schema is now v8.**
-- **Currently working file:** none — issue 3.4 is **shipped**: committed on
-  `feature/3-4-future-dated-transactions` and merged `--no-ff` into `dev`. Push skipped (no remote).
+- **Version:** `0.3.5` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (**Epic 3 open**).
+  **Schema is v8** — unchanged by 3.5, the first Epic 3 issue that needed no migration.
+- **Currently working file:** none — issue 3.5 is **shipped**: committed on
+  `feature/3-5-transaction-source-tracking` and merged `--no-ff` into `dev`. Push skipped (no remote).
 - **Shipped to `dev`:** 3.1 add-transaction ≤ 3 taps (`61568c9`, merged `06375da`) · 3.2 transfers as
   one logical record (`66189fc`, merged `20ebbfb`) · 3.3 splits across N category lines
   (`7de4944`, merged `f3afaec`) · 3.4 future-dated transactions
   ([3.4](issues/3.4-future-dated-transactions.md) ·
   [tracker](issues/3.4-future-dated-transactions-tracker.md)) — **890 tests total, 0 skipped; the
   v7 → v8 upgrade path and a real date rollover verified on a device.**
-- **In progress:** nothing. **Next: 3.5/3.6**, both unblocked by 3.1.
+- **In progress:** nothing. **Next: 3.6** (search, filters, bulk edit), unblocked by 3.1.
+- **3.5 shipped provenance on screen** ([tracker](issues/3.5-transaction-source-tracking-tracker.md)):
+  a source label per row, a detail bottom sheet on tap, and a source filter chip row. **No schema
+  change** — `transactions.source` has been right since 3.1; nothing showed it. The reconciliation
+  adjustment now says "Balance adjustment" instead of reading as an anonymous "Uncategorised".
+- **"Nothing on screen" and "nothing exists" are different claims, and only the second may say so.**
+  `TransactionsUiState.isEmpty` has now grown a clause four times — loading, a failed read, a
+  scheduled-only profile (3.4), and a filter matching nothing (3.5). Each was found by a test, not
+  by reading. Any future state that empties the lists without emptying the profile needs a fifth.
+- **Distrust the generated acceptance criteria wherever they are more specific than the SRS section
+  they cite** — that is now four for four (3.1 wrong FR id, 3.3 non-existent API, 3.4 an invented
+  WorkManager clause, 3.5 an FR id belonging to a different subsystem plus two requirements for work
+  that must not be done). They describe an implementation the author guessed at, not the requirement.
+- **AI-ARC-003 is about engine results, not stored rows.** It mandates provenance on what an
+  *engine* computes (`engineId`, `engineVersion`, `confidence`, `evidence`). No engine writes a
+  transaction, so it does not reach the `transactions` table — 3.7's recurring rules are the first
+  thing that could want a rule id there.
 - **The account-balance queries were wrong and nobody noticed for eight days.** `observeWithBalances`
   and `findWithBalance` summed every live transaction whenever it happened, while `balancesForNetWorth`
   bounded on `booked_on_iso_date <= today` — so the accounts screen and net worth would have shown
@@ -54,6 +70,7 @@
   `git diff docs/issues/` after every run and restore any shipped issue it touched. **It blanked four
   at once during 3.4** (2.7, 3.1, 3.2, 3.3) — note that most of the ~150 files it reports as modified
   are CRLF-only noise, so read `git diff --stat` rather than `git status` to find the real ones.
+  **Five during 3.5**, up from four — it grows by one with every issue shipped.
 - **Model a stored column as a closed set only after grepping what the app actually writes to it.**
   `TransactionSource` first modelled the SRS's list plus `reconciliation` and missed `"demo"`, which
   `DemoDataset` has written since issue 2.4 — so the mapper's forward-compatible `mapNotNull` silently

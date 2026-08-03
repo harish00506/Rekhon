@@ -593,13 +593,23 @@ ISSUES: list[Issue] = [
        "Covered by boundary tests (today vs tomorrow, zone/DST-safe)."],
       ["Date logic via the injected `Clock`, never `System.currentTimeMillis()` (TIM-001).",
        "Never gate an amount on a background job: a deferred worker must not change a figure."]),
+    # Three corrections made while implementing 3.5, all of the same kind as 3.1/3.3/3.4's:
+    #   * The FR id was "AI-ARC-003", which governs *engine result* provenance (engineId,
+    #     engineVersion, confidence, evidence) and has nothing to say about a transaction row. No
+    #     engine writes a transaction, so "where applicable" was nowhere. The requirement is
+    #     FR-TXN-009. SS18 is the OCR workflow - relevant to where `ocr` comes from, not to this.
+    #   * "shown in the detail view" - there was no detail view, and no route was added for one.
+    #   * "a default is backfilled" - `source` has been TEXT NOT NULL since schema v1 and every
+    #     write path sets it, so there was nothing to backfill and no migration to write.
     I("3.5", 3, "Transaction source tracking", "transactions", "H", "3.1",
-      "SS5.3, SS18; AI-ARC-003", "SS5 Data Model",
-      "Every transaction records its source (manual, OCR, SMS, import, recurring) so categorisation confidence and audits can reason about provenance.",
-      ["Each txn carries a source enum + provenance (creating engine/version where applicable, AI-ARC-003).",
-       "Source is filterable and shown in the detail view (P-02).",
-       "A default is backfilled for manual entries; covered by tests."],
-      ["Provenance on every record (AI-ARC-003); show the source (P-02)."]),
+      "SS5.3; FR-TXN-009, P-02", "SS5 Data Model",
+      "Every transaction records where it came from, and the app shows it - so a row the user did not type explains itself.",
+      ["Every txn carries a source from FR-TXN-009's closed set; every write path stamps one (no row can lack it, so there is nothing to backfill - assert that rather than writing a migration).",
+       "The source is visible on the row and in a detail surface (P-02). The reconciliation adjustment is the test case: its note is null, so the source is the only thing explaining it.",
+       "The list is filterable by source. Note FR-TXN-007 (issue 3.6) does NOT list source among its filters, so this one belongs here.",
+       "Covered by tests, including a row whose stored source this build does not know."],
+      ["Provenance on every record; show the source (P-02).",
+       "AI-ARC-003 is about engine results, not transactions - do not add an engine/version column here."]),
     I("3.6", 3, "Search, filters, bulk edit", "transactions", "H", "3.1",
       "SS5.3; FR-TXN-*", "SS5 Data Model, SS6 Module Structure",
       "Full-text search, faceted filters (date/account/category/amount range), and safe bulk edit/recategorise over the transaction ledger.",

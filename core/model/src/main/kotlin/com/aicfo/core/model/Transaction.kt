@@ -11,6 +11,8 @@ package com.aicfo.core.model
  * What: the sources the schema documents, each carrying the exact string the column stores.
  * Result: a transaction's provenance is a compile-time value everywhere above the database.
  * Changelog: 2026-08-02 — Created for issue 3.1 (FR-TXN-009).
+ *            2026-08-03 — Issue 3.5: [RECURRING_AUTO] added, completing FR-TXN-009's five. The set
+ *            is now the requirement's list plus the two the app writes of its own.
  *
  * **[storedValue] is the persisted contract, not [name]** — the same rule [AccountType] states, and
  * for the same reason: `name.lowercase()` would break the day someone renames a constant.
@@ -40,6 +42,18 @@ enum class TransactionSource(val storedValue: String) {
 
     /** Brought in by a file import or a restore (issue 5.4). */
     IMPORT("import"),
+
+    /**
+     * Posted automatically by a confirmed recurring rule (issue 3.7; FR-TXN-006).
+     *
+     * **Nothing writes this yet**, and it is here anyway. FR-TXN-009 names it explicitly, and this
+     * enum is the requirement's vocabulary — a source-tracking issue that shipped four of the five
+     * would be an incomplete answer to it. More practically, [fromStored] drops a value it does not
+     * recognise, and the mapper drops the whole row with it: adding the constant with its writer in
+     * 3.7 would mean an intervening build silently hiding rows a newer one had written. That is not
+     * hypothetical — omitting [DEMO] did exactly that in issue 3.1.
+     */
+    RECURRING_AUTO("recurring_auto"),
 
     /** Written by reconciliation to align an account with a statement (issue 2.7; FR-ACC-006). */
     RECONCILIATION("reconciliation"),

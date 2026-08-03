@@ -8,6 +8,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.aicfo.core.designsystem.theme.CfoTheme
 import com.aicfo.core.model.Money
+import com.aicfo.core.model.TransactionSource
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -254,6 +255,195 @@ class TransactionsFlowTest {
         compose.onNodeWithContentDescription(text(R.string.transactions_delete)).performClick()
 
         assertEquals(listOf(TransactionsEvent.Delete("txn:rent")), events)
+    }
+
+    // --- source tracking (issue 3.5; FR-TXN-009, P-02) ---------------------------------------------
+
+    @Test
+    fun `a reconciliation row says the app posted it, instead of reading as anonymous`() {
+        // **The row this issue exists for.** Its note is deliberately null (issue 2.7), so before
+        // this it rendered as "Uncategorised -Rs 500.00" with nothing saying the app posted it to
+        // close a gap against a statement. On that row the source is the only explanation there is.
+        setContent(
+            TransactionsUiState(
+                isLoading = false,
+                days = listOf(day(transaction { copy(source = TransactionSource.RECONCILIATION) })),
+            ),
+        )
+
+        compose.onNodeWithText(text(R.string.transactions_source_reconciliation)).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a hand-typed row carries no source label at all`() {
+        // Manual is the default and the overwhelming majority; tagging every row "Manual" would bury
+        // the few labels that carry information. The common row is unchanged from before 3.5.
+        setContent(TransactionsUiState(isLoading = false, days = listOf(day(transaction()))))
+
+        compose.onNodeWithText(text(R.string.transactions_source_manual)).assertDoesNotExist()
+    }
+
+    @Test
+    fun `a row that is both imported and split says both, provenance first`() {
+        // One supporting slot, two things wanting it. Provenance leads because it explains what the
+        // row *is*; the line count only describes how it was categorised.
+        setContent(
+            TransactionsUiState(
+                isLoading = false,
+                days =
+                    listOf(
+                        day(
+                            splitTransaction(lines = 2).copy(source = TransactionSource.IMPORT),
+                            transaction(),
+                        ),
+                    ),
+            ),
+        )
+
+        compose.onNodeWithText("${text(R.string.transactions_source_import)} · 2 lines").assertIsDisplayed()
+    }
+
+    @Test
+    fun `one source means no chip row at all`() {
+        // The profile every real user has today is entirely hand-typed, and pays nothing for this
+        // feature. (Two tests rather than one: `setContent` may be called only once per test — the
+        // mistake issue 3.3 recorded.)
+        setContent(TransactionsUiState(isLoading = false, days = listOf(day(transaction()))))
+
+        compose.onNodeWithText(text(R.string.transactions_source_all)).assertDoesNotExist()
+    }
+
+    @Test
+    fun `two sources bring out the chip row`() {
+        setContent(
+            TransactionsUiState(
+                isLoading = false,
+                days = listOf(day(transaction())),
+                availableSources = listOf(TransactionSource.MANUAL, TransactionSource.DEMO),
+            ),
+        )
+
+        compose.onNodeWithText(text(R.string.transactions_source_all)).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.transactions_source_demo)).assertIsDisplayed()
+    }
+
+    @Test
+    fun `tapping a chip asks for that source, and tapping it again clears the filter`() {
+        val events = mutableListOf<TransactionsEvent>()
+        setContent(
+            state =
+                TransactionsUiState(
+                    isLoading = false,
+                    days = listOf(day(transaction())),
+                    availableSources = listOf(TransactionSource.MANUAL, TransactionSource.DEMO),
+                    sourceFilter = TransactionSource.DEMO,
+                ),
+            onEvent = { events += it },
+        )
+
+        // Already selected, so this clears rather than re-selecting — the same behaviour the
+        // category chips have, and it saves a trip to "All".
+        compose.onNodeWithText(text(R.string.transactions_source_demo)).performClick()
+
+        assertEquals(listOf(TransactionsEvent.SourceFilterSelected(null)), events)
+    }
+
+    @Test
+    fun `a filter matching nothing says so, rather than inviting a first transaction`() {
+        setContent(
+            TransactionsUiState(
+                isLoading = false,
+                sourceFilter = TransactionSource.OCR,
+                availableSources = listOf(TransactionSource.MANUAL, TransactionSource.OCR),
+            ),
+        )
+
+        compose.onNodeWithText(text(R.string.transactions_filter_empty)).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.transactions_empty)).assertDoesNotExist()
+    }
+
+    @Test
+    fun `tapping a row asks to open its detail`() {
+        val events = mutableListOf<TransactionsEvent>()
+        setContent(
+            state = TransactionsUiState(isLoading = false, days = listOf(day(transaction()))),
+            onEvent = { events += it },
+        )
+
+        compose.onNodeWithText(text(R.string.transactions_uncategorised)).performClick()
+
+        assertEquals(listOf(TransactionsEvent.RowTapped("txn:1")), events)
+    }
+
+    // --- the detail sheet's content (issue 3.5) ----------------------------------------------------
+    //
+    // Rendered directly rather than through `TransactionDetailSheet`: the content is stateless by
+    // design precisely so these do not have to fight Robolectric over a sheet's animation.
+
+    @Test
+    fun `the detail names every field the transaction has`() {
+        compose.setContent {
+            CfoTheme {
+                TransactionDetailContent(
+                    transaction =
+                        transaction {
+                            copy(
+                                amount = Money(-1_23_456_78L),
+                                merchant = "Big Bazaar",
+                                note = "Weekly shop",
+                                source = TransactionSource.OCR,
+                            )
+                        },
+                    accountNames = mapOf("account:1" to "HDFC Savings"),
+                    onClose = {},
+                )
+            }
+        }
+
+        compose.onNodeWithText("₹1,23,456.78", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("HDFC Savings").assertIsDisplayed()
+        compose.onNodeWithText(TransactionLabels.dayHeader("2026-08-02")).assertIsDisplayed()
+        compose.onNodeWithText("Big Bazaar").assertIsDisplayed()
+        compose.onNodeWithText("Weekly shop").assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.transactions_source_ocr)).assertIsDisplayed()
+    }
+
+    @Test
+    fun `the detail names Manual, unlike the row`() {
+        // In a list a missing label reads as "ordinary"; in a field list it reads as missing data.
+        compose.setContent {
+            CfoTheme {
+                TransactionDetailContent(transaction = transaction(), accountNames = emptyMap(), onClose = {})
+            }
+        }
+
+        compose.onNodeWithText(text(R.string.transactions_source_manual)).assertIsDisplayed()
+    }
+
+    @Test
+    fun `the detail omits fields the transaction does not have`() {
+        // FR-TXN-001 makes every field but the amount optional, so the sheet is as short as the row
+        // is simple — an empty "Merchant" line would read as data the app lost.
+        compose.setContent {
+            CfoTheme {
+                TransactionDetailContent(transaction = transaction(), accountNames = emptyMap(), onClose = {})
+            }
+        }
+
+        compose.onNodeWithText(text(R.string.transactions_detail_merchant)).assertDoesNotExist()
+        compose.onNodeWithText(text(R.string.transactions_detail_note)).assertDoesNotExist()
+        compose.onNodeWithText(text(R.string.transactions_detail_split)).assertDoesNotExist()
+    }
+
+    @Test
+    fun `an account with no name falls back to its id rather than a blank`() {
+        compose.setContent {
+            CfoTheme {
+                TransactionDetailContent(transaction = transaction(), accountNames = emptyMap(), onClose = {})
+            }
+        }
+
+        compose.onNodeWithText("account:1").assertIsDisplayed()
     }
 
     /** Result: one future day holding a ₹25,000 rent payment. Input: none. Output: a day. */

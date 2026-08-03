@@ -4,6 +4,7 @@ import app.cash.turbine.test
 import com.aicfo.core.common.AppError
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.Transaction
+import com.aicfo.core.model.TransactionSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -411,6 +412,321 @@ class TransactionsViewModelTest {
                 val state = awaitItem()
                 assertFalse(state.isEmpty)
                 assertTrue(state.days.isEmpty())
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    // --- source tracking (issue 3.5; FR-TXN-009) ---------------------------------------------------
+
+    @Test
+    fun `a source filter narrows the actuals and the scheduled rows together`() =
+        runTest {
+            // One filter, both lists. Applying it to one and not the other would show a Scheduled
+            // group contradicting the chip above it.
+            repository.setTransactions(
+                transaction { copy(id = "txn:1", source = TransactionSource.MANUAL) },
+                transaction { copy(id = "txn:2", source = TransactionSource.RECONCILIATION) },
+            )
+            repository.setUpcoming(
+                transaction { copy(id = "txn:3", bookedOn = "2026-08-10", source = TransactionSource.MANUAL) },
+                transaction {
+                    copy(id = "txn:4", bookedOn = "2026-08-11", source = TransactionSource.RECONCILIATION)
+                },
+            )
+            val viewModel = TransactionsViewModel(repository, accounts)
+
+            viewModel.onEvent(TransactionsEvent.SourceFilterSelected(TransactionSource.RECONCILIATION))
+
+            viewModel.uiState.test {
+                val state = awaitItem()
+                assertEquals(listOf("txn:2"), state.days.flatMap { day -> day.rows.map { it.id } })
+                assertEquals(listOf("txn:4"), state.upcoming.flatMap { day -> day.rows.map { it.id } })
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `a filtered day total is the sum of the rows still under it`() =
+        runTest {
+            // **Why the filter is applied before grouping.** `TransactionDay.total` folds its rows,
+            // so filtering first makes this recompute for free; filtering afterwards would leave the
+            // header stating a total for transactions no longer beneath it.
+            repository.setTransactions(
+                transaction { copy(id = "txn:1", amount = Money(-500_00L), source = TransactionSource.MANUAL) },
+                transaction {
+                    copy(id = "txn:2", amount = Money(-300_00L), source = TransactionSource.RECONCILIATION)
+                },
+            )
+            val viewModel = TransactionsViewModel(repository, accounts)
+
+            viewModel.uiState.test {
+                assertEquals(Money(-800_00L), awaitItem().days.single().total)
+                cancelAndIgnoreRemainingEvents()
+            }
+
+            viewModel.onEvent(TransactionsEvent.SourceFilterSelected(TransactionSource.RECONCILIATION))
+
+            viewModel.uiState.test {
+                assertEquals(Money(-300_00L), awaitItem().days.single().total)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `the chips survive a selection, because they come from the unfiltered rows`() =
+        runTest {
+            // Derived from what is on screen, choosing a chip would delete every other chip and
+            // strand the user with no way back to "All".
+            repository.setTransactions(
+                transaction { copy(id = "txn:1", source = TransactionSource.MANUAL) },
+                transaction { copy(id = "txn:2", source = TransactionSource.RECONCILIATION) },
+            )
+            val viewModel = TransactionsViewModel(repository, accounts)
+
+            viewModel.onEvent(TransactionsEvent.SourceFilterSelected(TransactionSource.RECONCILIATION))
+
+            viewModel.uiState.test {
+                val state = awaitItem()
+                assertEquals(
+                    listOf(TransactionSource.MANUAL, TransactionSource.RECONCILIATION),
+                    state.availableSources,
+                )
+                assertTrue(state.hasSourceFilter)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `chips are ordered by the enum, not by the order rows arrived`() =
+        runTest {
+            // So they keep their positions as rows come and go rather than rearranging under the
+            // user's finger.
+            repository.setTransactions(
+                transaction { copy(id = "txn:1", source = TransactionSource.DEMO) },
+                transaction { copy(id = "txn:2", source = TransactionSource.RECONCILIATION) },
+                transaction { copy(id = "txn:3", source = TransactionSource.MANUAL) },
+            )
+
+            TransactionsViewModel(repository, accounts).uiState.test {
+                assertEquals(
+                    listOf(TransactionSource.MANUAL, TransactionSource.RECONCILIATION, TransactionSource.DEMO),
+                    awaitItem().availableSources,
+                )
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `one source is not a choice, so no chip row is offered`() =
+        runTest {
+            // The profile every real user has today: entirely hand-typed. A chip row reading
+            // "All · Manual" would be a choice between a thing and the same thing.
+            repository.setTransactions(
+                transaction { copy(id = "txn:1", source = TransactionSource.MANUAL) },
+                transaction { copy(id = "txn:2", source = TransactionSource.MANUAL) },
+            )
+
+            TransactionsViewModel(repository, accounts).uiState.test {
+                val state = awaitItem()
+                assertEquals(listOf(TransactionSource.MANUAL), state.availableSources)
+                assertFalse(state.hasSourceFilter)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `a scheduled row's source counts towards the chips`() =
+        runTest {
+            // A profile whose only receipt is a scheduled one still has receipts to filter by.
+            repository.setTransactions(transaction { copy(id = "txn:1", source = TransactionSource.MANUAL) })
+            repository.setUpcoming(
+                transaction { copy(id = "txn:2", bookedOn = "2026-08-10", source = TransactionSource.OCR) },
+            )
+
+            TransactionsViewModel(repository, accounts).uiState.test {
+                assertEquals(
+                    listOf(TransactionSource.MANUAL, TransactionSource.OCR),
+                    awaitItem().availableSources,
+                )
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `a filter matching nothing is not an empty profile`() =
+        runTest {
+            // The same distinction a failed read gets: rendering a filtered-to-nothing list as the
+            // cheerful "add your first one" invitation would read as the app having lost the rows.
+            repository.setTransactions(
+                transaction { copy(id = "txn:1", source = TransactionSource.MANUAL) },
+                transaction { copy(id = "txn:2", source = TransactionSource.RECONCILIATION) },
+            )
+            val viewModel = TransactionsViewModel(repository, accounts)
+
+            viewModel.onEvent(TransactionsEvent.SourceFilterSelected(TransactionSource.OCR))
+
+            viewModel.uiState.test {
+                val state = awaitItem()
+                assertTrue(state.isFilteredEmpty)
+                assertTrue("a filtered list is not an empty profile", !state.isEmpty)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `clearing the filter brings everything back`() =
+        runTest {
+            repository.setTransactions(
+                transaction { copy(id = "txn:1", source = TransactionSource.MANUAL) },
+                transaction { copy(id = "txn:2", source = TransactionSource.RECONCILIATION) },
+            )
+            val viewModel = TransactionsViewModel(repository, accounts)
+            viewModel.onEvent(TransactionsEvent.SourceFilterSelected(TransactionSource.RECONCILIATION))
+
+            viewModel.onEvent(TransactionsEvent.SourceFilterSelected(null))
+
+            viewModel.uiState.test {
+                val state = awaitItem()
+                assertEquals(2, state.days.single().rows.size)
+                assertNull(state.sourceFilter)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `a filter survives a new emission from the store`() =
+        runTest {
+            // The filter is the user's choice, not a property of the data. A balance changing
+            // elsewhere re-emits the list, and a ViewModel that reset the filter would fight them.
+            repository.setTransactions(
+                transaction { copy(id = "txn:1", source = TransactionSource.MANUAL) },
+                transaction { copy(id = "txn:2", source = TransactionSource.RECONCILIATION) },
+            )
+            val viewModel = TransactionsViewModel(repository, accounts)
+            viewModel.onEvent(TransactionsEvent.SourceFilterSelected(TransactionSource.RECONCILIATION))
+
+            repository.setTransactions(
+                transaction { copy(id = "txn:1", source = TransactionSource.MANUAL) },
+                transaction { copy(id = "txn:2", source = TransactionSource.RECONCILIATION) },
+                transaction { copy(id = "txn:3", source = TransactionSource.MANUAL) },
+            )
+
+            viewModel.uiState.test {
+                val state = awaitItem()
+                assertEquals(TransactionSource.RECONCILIATION, state.sourceFilter)
+                assertEquals(listOf("txn:2"), state.days.flatMap { day -> day.rows.map { it.id } })
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    // --- the detail sheet (issue 3.5) --------------------------------------------------------------
+
+    @Test
+    fun `tapping a row resolves it to the whole transaction`() =
+        runTest {
+            repository.setTransactions(transaction { copy(id = "txn:1", note = "Chai") })
+            val viewModel = TransactionsViewModel(repository, accounts)
+
+            viewModel.onEvent(TransactionsEvent.RowTapped("txn:1"))
+
+            viewModel.uiState.test {
+                assertEquals("Chai", awaitItem().detail?.note)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `a scheduled row opens too`() =
+        runTest {
+            // It arrives on the other flow, so a lookup that only searched the actuals would find
+            // nothing and silently open no sheet.
+            repository.setUpcoming(transaction { copy(id = "txn:9", bookedOn = "2026-08-10", note = "Rent") })
+            val viewModel = TransactionsViewModel(repository, accounts)
+
+            viewModel.onEvent(TransactionsEvent.RowTapped("txn:9"))
+
+            viewModel.uiState.test {
+                assertEquals("Rent", awaitItem().detail?.note)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `tapping a transfer opens the leg the row named`() =
+        runTest {
+            // A transfer row carries one leg's id, the same one delete uses — the screen never has
+            // to know which kind of row it is holding.
+            repository.setTransactions(*transferLegs().toTypedArray())
+            val viewModel = TransactionsViewModel(repository, accounts)
+
+            viewModel.onEvent(TransactionsEvent.RowTapped("tfr:1:out"))
+
+            viewModel.uiState.test {
+                assertEquals("tfr:1:out", awaitItem().detail?.id)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `an id that names nothing leaves the sheet closed rather than throwing`() =
+        runTest {
+            repository.setTransactions(transaction())
+            val viewModel = TransactionsViewModel(repository, accounts)
+
+            viewModel.onEvent(TransactionsEvent.RowTapped("txn:gone"))
+
+            viewModel.uiState.test {
+                assertNull(awaitItem().detail)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `a filter does not close an open sheet`() =
+        runTest {
+            // The sheet is resolved from the unfiltered rows: a user who opens a row and then
+            // narrows the list to something else must not have it vanish mid-read.
+            repository.setTransactions(
+                transaction { copy(id = "txn:1", note = "Chai", source = TransactionSource.MANUAL) },
+                transaction { copy(id = "txn:2", source = TransactionSource.RECONCILIATION) },
+            )
+            val viewModel = TransactionsViewModel(repository, accounts)
+            viewModel.onEvent(TransactionsEvent.RowTapped("txn:1"))
+
+            viewModel.onEvent(TransactionsEvent.SourceFilterSelected(TransactionSource.RECONCILIATION))
+
+            viewModel.uiState.test {
+                assertEquals("Chai", awaitItem().detail?.note)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `dismissing closes the sheet`() =
+        runTest {
+            repository.setTransactions(transaction())
+            val viewModel = TransactionsViewModel(repository, accounts)
+            viewModel.onEvent(TransactionsEvent.RowTapped("txn:1"))
+
+            viewModel.onEvent(TransactionsEvent.DetailDismissed)
+
+            viewModel.uiState.test {
+                assertNull(awaitItem().detail)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `deleting the open row closes its sheet rather than showing a stale copy`() =
+        runTest {
+            repository.setTransactions(transaction { copy(id = "txn:1") })
+            val viewModel = TransactionsViewModel(repository, accounts)
+            viewModel.onEvent(TransactionsEvent.RowTapped("txn:1"))
+
+            viewModel.onEvent(TransactionsEvent.Delete("txn:1"))
+
+            viewModel.uiState.test {
+                assertNull(awaitItem().detail)
                 cancelAndIgnoreRemainingEvents()
             }
         }
