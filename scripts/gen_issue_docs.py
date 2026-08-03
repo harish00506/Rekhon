@@ -579,13 +579,20 @@ ISSUES: list[Issue] = [
        "The remainder is distributed largest-remainder-first (`Money.split`), so a 3-way split of 1000 is 333.34/333.33/333.33; each line carries its own category/nature.",
        "Editing a line re-balances; the UI shows the running remainder."],
       ["Splits always sum to the parent; use `Money.split`/`allocate` (MNY-001)."]),
+    # FR-TXN-010, not "FR-TXN-*": these criteria used to cite no requirement id at all, and the
+    # WorkManager clause below was invented here rather than taken from the SRS, which says only
+    # "excluded from actuals but included in forecasts". Corrected while implementing 3.4, the third
+    # such correction after 3.1's wrong FR id and 3.3's non-existent API — distrust these criteria
+    # where they are more specific than the SRS section they cite. See ADR-0010.
     I("3.4", 3, "Future-dated transactions", "transactions", "M", "3.1",
-      "SS5.3; FR-TXN-*, TIM-001", "SS7 Money & Time Rules",
-      "Future-dated (scheduled) transactions that stay out of current balances until their date, using the injected `Clock` for rollover.",
-      ["Future-dated txns are excluded from current balance/spend until their date passes (injected `Clock`, TIM-001).",
-       "On date rollover they post automatically (WorkManager), idempotently.",
+      "SS5.3; FR-TXN-010, TIM-001, TIM-002", "SS7 Money & Time Rules",
+      "Future-dated (scheduled) transactions that stay out of actuals until their date and feed forecasts before it, using the injected `Clock`.",
+      ["Future-dated txns are excluded from actuals - balance, net worth and day totals - until their date passes (FR-TXN-010, injected `Clock`, TIM-001).",
+       "A scheduled txn is visible and labelled as scheduled, and is readable by forecasts before its date (FR-TXN-010's second clause).",
+       "Rollover needs no write: the same row counts on its own date. A daily WorkManager job records the posting idempotently, but no balance depends on it having run (ADR-0010).",
        "Covered by boundary tests (today vs tomorrow, zone/DST-safe)."],
-      ["Date logic via the injected `Clock`, never `System.currentTimeMillis()` (TIM-001)."]),
+      ["Date logic via the injected `Clock`, never `System.currentTimeMillis()` (TIM-001).",
+       "Never gate an amount on a background job: a deferred worker must not change a figure."]),
     I("3.5", 3, "Transaction source tracking", "transactions", "H", "3.1",
       "SS5.3, SS18; AI-ARC-003", "SS5 Data Model",
       "Every transaction records its source (manual, OCR, SMS, import, recurring) so categorisation confidence and audits can reason about provenance.",

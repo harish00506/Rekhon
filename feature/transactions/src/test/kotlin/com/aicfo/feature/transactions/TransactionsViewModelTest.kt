@@ -342,6 +342,93 @@ class TransactionsViewModelTest {
                 cancelAndIgnoreRemainingEvents()
             }
         }
+
+    // --- future-dated transactions (issue 3.4; FR-TXN-010) ------------------------------------------
+
+    @Test
+    fun `scheduled rows land in their own group, never among the actuals`() =
+        runTest {
+            repository.setTransactions(transaction { copy(id = "txn:1", bookedOn = "2026-08-03") })
+            repository.setUpcoming(transaction { copy(id = "txn:2", bookedOn = "2026-08-10") })
+
+            TransactionsViewModel(repository, accounts).uiState.test {
+                val state = awaitItem()
+                assertEquals(listOf("txn:1"), state.days.single().rows.map { it.id })
+                assertEquals(listOf("txn:2"), state.upcoming.single().rows.map { it.id })
+                assertTrue(state.hasUpcoming)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `a scheduled row contributes nothing to any day total`() =
+        runTest {
+            // **The reason the two are separate lists rather than one list with a flag.** There is no
+            // filter to forget: a scheduled row is simply not in `days`, so no total can include it.
+            repository.setTransactions(
+                transaction { copy(id = "txn:1", bookedOn = "2026-08-03", amount = Money(-500_00L)) },
+            )
+            repository.setUpcoming(
+                transaction { copy(id = "txn:2", bookedOn = "2026-08-10", amount = Money(-25_000_00L)) },
+            )
+
+            TransactionsViewModel(repository, accounts).uiState.test {
+                val state = awaitItem()
+                assertEquals(Money(-500_00L), state.days.single().total)
+                assertEquals(
+                    "every actual day total must be the sum of actuals only",
+                    Money(-500_00L),
+                    state.days.fold(Money.ZERO) { running, day -> running + day.total },
+                )
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `the scheduled group reads soonest first, the opposite of history`() =
+        runTest {
+            // History reads newest-first; a schedule reads by what is due next. Both come out of the
+            // same `groupIntoDays`, which is what stops the two orderings drifting apart.
+            repository.setUpcoming(
+                transaction { copy(id = "txn:2", bookedOn = "2026-08-20") },
+                transaction { copy(id = "txn:1", bookedOn = "2026-08-05") },
+            )
+
+            TransactionsViewModel(repository, accounts).uiState.test {
+                assertEquals(listOf("2026-08-05", "2026-08-20"), awaitItem().upcoming.map { it.isoDate })
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `a profile holding only scheduled rows is not empty`() =
+        runTest {
+            // Telling a user who has just scheduled a payment that they have no transactions would
+            // read as the app having lost it.
+            repository.setUpcoming(transaction { copy(bookedOn = "2026-08-10") })
+
+            TransactionsViewModel(repository, accounts).uiState.test {
+                val state = awaitItem()
+                assertFalse(state.isEmpty)
+                assertTrue(state.days.isEmpty())
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `a scheduled transfer still collapses to one row`() =
+        runTest {
+            // The scheduled group runs through the same `toRows`, so FR-TXN-003's collapsing is not
+            // something the new section has to re-implement or can forget.
+            repository.setUpcoming(*transferLegs(bookedOn = "2026-08-10").toTypedArray())
+
+            TransactionsViewModel(repository, accounts).uiState.test {
+                val rows = awaitItem().upcoming.single().rows
+                assertEquals(1, rows.size)
+                assertTrue(rows.single() is TransactionRow.TransferPair)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
 }
 
 /**

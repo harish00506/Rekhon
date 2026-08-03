@@ -17,16 +17,31 @@
 
 ## Current state
 
-- **Version:** `0.3.3` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (**Epic 3 open**).
-  **Schema is now v7.**
-- **Currently working file:** none — issue 3.3 is **shipped**: committed on
-  `feature/3-3-split-transactions-n-lines` and merged `--no-ff` into `dev`. Push skipped (no remote).
+- **Version:** `0.3.4` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (**Epic 3 open**).
+  **Schema is now v8.**
+- **Currently working file:** none — issue 3.4 is **shipped**: committed on
+  `feature/3-4-future-dated-transactions` and merged `--no-ff` into `dev`. Push skipped (no remote).
 - **Shipped to `dev`:** 3.1 add-transaction ≤ 3 taps (`61568c9`, merged `06375da`) · 3.2 transfers as
   one logical record (`66189fc`, merged `20ebbfb`) · 3.3 splits across N category lines
-  ([3.3](issues/3.3-split-transactions-n-lines.md) ·
-  [tracker](issues/3.3-split-transactions-n-lines-tracker.md)) — `7de4944`, merged `f3afaec`;
-  **62 new tests, suite green, the v6 → v7 upgrade path verified on a device.**
-- **In progress:** nothing. **Next: 3.4/3.5/3.6**, all unblocked by 3.1 and none of them needing 3.3.
+  (`7de4944`, merged `f3afaec`) · 3.4 future-dated transactions
+  ([3.4](issues/3.4-future-dated-transactions.md) ·
+  [tracker](issues/3.4-future-dated-transactions-tracker.md)) — **890 tests total, 0 skipped; the
+  v7 → v8 upgrade path and a real date rollover verified on a device.**
+- **In progress:** nothing. **Next: 3.5/3.6**, both unblocked by 3.1.
+- **The account-balance queries were wrong and nobody noticed for eight days.** `observeWithBalances`
+  and `findWithBalance` summed every live transaction whenever it happened, while `balancesForNetWorth`
+  bounded on `booked_on_iso_date <= today` — so the accounts screen and net worth would have shown
+  two different figures the moment 3.4 landed. **`balancesForNetWorth`'s own doc comment predicted it
+  by name.** A comment that names a future bug does not prevent it; going back to the sibling query
+  does. Found by asserting the balance *the accounts screen renders*, not the query under edit.
+- **Never gate an amount on a background job** (3.4, [ADR-0010](adr/0010-future-dated-posting.md)).
+  A future-dated row is excluded from actuals by its **date**; `posted_at_utc_millis` and
+  `ScheduledTransactionWorker` only *record* the rollover. A worker can be deferred by Doze, by a
+  powered-off device, or by the app being locked (SEC-002) — a date cannot.
+- **Lint catches API-level bugs no test can.** `LocalDate.EPOCH` is API 34 and minSdk is 26; it
+  compiled, passed 890 JVM tests, and would have crashed on a phone. `lintDebug` is not optional.
+- **The emulator's date is movable, so day-rollover features can actually be verified:** `adb root`,
+  `settings put global auto_time 0`, `adb shell date MMDDhhmmYYYY.ss`; restore `auto_time 1` after.
 - **Epic 2 is done.** Onboarding, the app lock, accounts, net worth and reconciliation all ship.
 - **The `transactions` table finally has a real writer** (3.1's `TransactionRepository`), so
   reconciliation is no longer the only non-demo thing that writes one. **Nothing writes a balance** —
@@ -36,7 +51,9 @@
   distrusting the generated FR ids on other issues too.
 - **Regenerating issue docs overwrites hand-completed ones.** `gen_issue_docs.py` rewrote 2.7's
   finished file (Files Changed, Verification); it was restored with `git checkout`. Check
-  `git diff docs/issues/` after every run and restore any shipped issue it touched.
+  `git diff docs/issues/` after every run and restore any shipped issue it touched. **It blanked four
+  at once during 3.4** (2.7, 3.1, 3.2, 3.3) — note that most of the ~150 files it reports as modified
+  are CRLF-only noise, so read `git diff --stat` rather than `git status` to find the real ones.
 - **Model a stored column as a closed set only after grepping what the app actually writes to it.**
   `TransactionSource` first modelled the SRS's list plus `reconciliation` and missed `"demo"`, which
   `DemoDataset` has written since issue 2.4 — so the mapper's forward-compatible `mapNotNull` silently

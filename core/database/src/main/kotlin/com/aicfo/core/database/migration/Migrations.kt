@@ -334,6 +334,46 @@ internal object Migrations {
             }
         }
 
+    /**
+     * 7 → 8: adds `transactions.posted_at_utc_millis` (issue 3.4; FR-TXN-010).
+     *
+     * Why:    FR-TXN-010 requires future-dated transactions to be "excluded from actuals". The
+     *         exclusion itself is already structural — every balance query bounds on
+     *         `booked_on_iso_date <= :asOfIsoDate` — so this column is not what keeps a scheduled
+     *         row out of the figures. It records **that the rollover was observed**: it is
+     *         `ScheduledTransactionWorker`'s idempotence key, and the durable marker issue 3.7 and
+     *         any later "posted today" surface read. See `docs/adr/0010-future-dated-posting.md`.
+     * What:   one `ADD COLUMN`, then a backfill.
+     * Result: an upgraded installation keeps every row, and every row it already had is posted.
+     * Input:  [SupportSQLiteDatabase] — the database mid-upgrade. Output: none (executes DDL).
+     *
+     * **The backfill is the whole risk in this migration, and it is not optional.** The column is
+     * nullable, so `ADD COLUMN` gives every existing row `NULL` — which is exactly the value that
+     * means "not yet posted". Without the `UPDATE`, every transaction written before this issue
+     * would read as scheduled: `ScheduledTransactionWorker` would stamp them all on its first run,
+     * and until it did, the recent list would be entirely empty and the Scheduled group would hold
+     * the user's whole history. `occurred_at_utc_millis` is the honest value to backfill with — it
+     * is when the money actually moved, and every pre-3.4 row was booked on the day it was created.
+     *
+     * **No `DEFAULT`, and no `@ColumnInfo(defaultValue = …)` on the entity.** The trap ADR-0008
+     * documents — SQLite refusing a `NOT NULL` `ADD COLUMN` without one, and Room then failing
+     * schema validation at open time — applies only to `NOT NULL` columns. This one is nullable by
+     * design, because "not posted" needs a representable value.
+     *
+     * The type matches what Room generates for `TransactionEntity`; the committed `schemas/8.json`
+     * is the reference, and `MigrationRoundTripTest` fails on a device if the two drift.
+     */
+    val MIGRATION_7_8 =
+        object : Migration(VERSION_7, VERSION_8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `transactions` ADD COLUMN `posted_at_utc_millis` INTEGER")
+                db.execSQL(
+                    "UPDATE `transactions` SET `posted_at_utc_millis` = `occurred_at_utc_millis` " +
+                        "WHERE `posted_at_utc_millis` IS NULL",
+                )
+            }
+        }
+
     /** Every migration, in order, for `CfoDatabaseFactory` to register. */
     val ALL: Array<Migration> =
         arrayOf(
@@ -343,6 +383,7 @@ internal object Migrations {
             MIGRATION_4_5,
             MIGRATION_5_6,
             MIGRATION_6_7,
+            MIGRATION_7_8,
         )
 
     /** Named so the version pair reads as a schema version rather than an unexplained literal. */
@@ -360,6 +401,9 @@ internal object Migrations {
     /** The version issue 3.2 introduced, and the one issue 3.3 upgrades from. */
     private const val VERSION_6 = 6
 
-    /** Matches `CfoDatabase.VERSION` at the time this migration was written (issue 3.3). */
+    /** The version issue 3.3 introduced, and the one issue 3.4 upgrades from. */
     private const val VERSION_7 = 7
+
+    /** Matches `CfoDatabase.VERSION` at the time this migration was written (issue 3.4). */
+    private const val VERSION_8 = 8
 }

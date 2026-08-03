@@ -12,6 +12,51 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > reach writing to it; this epic makes a transaction theirs to create — by hand first, then by
 > transfer, split, receipt and SMS.
 
+### [0.3.4] — Issue 3.4: Future-dated transactions  (2026-08-03)
+
+- **Implemented:** a transaction can be booked on a future day, stays out of every actual until that
+  day, and is readable by forecasts before it (**FR-TXN-010**; DB-003, TIM-001, TIM-002, MNY-001,
+  ARC-004, ARC-005, SEC-002, P-04, P-08).
+  - **Fixed a live defect the tests found before the feature existed.** Net worth has bounded on
+    `booked_on_iso_date <= today` since issue 2.6, but the **account-balance** queries
+    (`observeWithBalances`, `findWithBalance` — behind the accounts screen, the account editor and
+    reconciliation) never did: they summed every live transaction whenever it happened. The first
+    scheduled payment would have been subtracted on the accounts screen while net worth showed a
+    different figure for the same money. Both are bounded now. `balancesForNetWorth`'s own doc
+    comment had predicted this by name eight days earlier.
+  - **Schema v7 → v8** — `transactions.posted_at_utc_millis`, nullable, **with a backfill**.
+    `ADD COLUMN` alone gives every existing row `NULL`, which is exactly the value meaning "not
+    posted", so an upgraded install would have shown the user's whole history in the Scheduled group.
+  - **The date decides every figure; the stamp is only a record** (see
+    [ADR-0010](docs/adr/0010-future-dated-posting.md)). `ScheduledTransactionWorker` runs daily and
+    stamps what is due, idempotently — a second run the same day stamps nothing — but no balance
+    depends on it having run. A job can be deferred by Doze, by a powered-off device, or by the app
+    being locked (SEC-002); a date cannot.
+  - **The add screen gained a Date row**, pre-filled with "Today" so FR-TXN-002's ≤ 3-tap expense is
+    untouched. The picker will not offer a past day: back-dating would stale the `net_worth_snapshot`
+    rows already written for those days, and issue 3.6 owns editing.
+  - **The list gained a Scheduled group** above a Posted one, its day headers deliberately carrying
+    no total — a day total is a statement about money that has moved. The two halves come from two
+    repository flows whose windows abut at today, so a scheduled row is never in the list day totals
+    are computed from and there is no filter for a later screen to forget.
+  - **`observeUpcoming()`** is the seam Epic 6's cash-flow forecast and FR-HOME-001's 14-day
+    obligations card will read — the "included in forecasts" half of the requirement.
+  - **Zone- and DST-correct.** A future row's instant is the start of its own day via
+    `Clock.startOfDay`, so it sorts after today's and lands on the first valid instant on a day whose
+    local midnight does not exist (Chile, 2026-09-06 — a test case).
+- **Corrected the generated backlog for the third issue running**, at source in
+  `scripts/gen_issue_docs.py`: the criteria cited no requirement id at all (it is **FR-TXN-010**),
+  and "on date rollover they post automatically (WorkManager), idempotently" appears nowhere in the
+  SRS — it was authored in the generator. Where those criteria are more specific than the SRS section
+  they cite, they are a guess.
+- **Tests:** 890 passed, 0 skipped (+62 for this issue) · 12/12 instrumented on a device, incl. the
+  7 → 8 backfill · emulator: **v7 installed, real data added, v8 installed over it** — net worth
+  unchanged; then a ₹25,000 payment scheduled (net worth unmoved), then the device date advanced one
+  day (net worth moved by exactly ₹25,000, **with nothing written**). Whole session in airplane mode.
+- **Caught by lint, not by any test:** `LocalDate.EPOCH` requires API 34 and this app's minSdk is 26.
+  Every unit test runs on the JVM, where the constant exists, so it compiled, passed 890 tests and
+  would have crashed on a real phone.
+
 ### [0.3.3] — Issue 3.3: Split transactions across N category lines  (2026-08-02)
 
 - **Implemented:** one purchase attributed across several categories — a ₹1,000 supermarket trip is

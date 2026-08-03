@@ -131,6 +131,9 @@ fun AddTransactionContent(
         AccountPicker(uiState = uiState, onEvent = onEvent)
         DestinationPicker(uiState = uiState, onEvent = onEvent)
         CategoryPicker(uiState = uiState, onEvent = onEvent)
+        // Issue 3.4: below the pickers rather than above them, so the ≤ 3-tap path never scrolls
+        // past it (FR-TXN-002), and pre-filled with today so it costs that path nothing.
+        ScheduleField(uiState = uiState, onEvent = onEvent)
         SplitToggle(uiState = uiState, onEvent = onEvent)
         SplitEditor(uiState = uiState, onEvent = onEvent)
         NoteFieldAndActions(uiState = uiState, onEvent = onEvent, onCancel = onCancel)

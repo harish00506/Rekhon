@@ -45,6 +45,10 @@ class TransactionsViewModel
         private val repository: TransactionRepository,
         accounts: AccountRepository,
     ) : ViewModel() {
+        // Issue 3.4 note for the reader: this class has no `Clock`, on purpose. "Is this row
+        // scheduled?" is answered by which flow it arrived on, and the repository — which has the
+        // injected clock — decides that. A second answer computed here could disagree with the one
+        // the balances were derived from (TIM-001).
         private val _uiState = MutableStateFlow(TransactionsUiState())
 
         /**
@@ -60,11 +64,16 @@ class TransactionsViewModel
             // still name it rather than falling back to a raw id (FR-ACC-007).
             combine(
                 repository.observeRecent(),
+                // Issue 3.4: a second flow, not a widened window (FR-TXN-010). Keeping the two
+                // apart is what stops a scheduled payment being counted in a day total — the
+                // scheduled rows are simply never in `days`, so no filter has to be remembered.
+                repository.observeUpcoming(),
                 accounts.observeAccounts(includeArchived = true),
-            ) { transactions, accountList ->
+            ) { transactions, upcoming, accountList ->
                 TransactionsUiState(
                     isLoading = false,
                     days = transactions.groupIntoDays(),
+                    upcoming = upcoming.groupIntoDays(soonestFirst = true),
                     accountNames = accountList.associate { it.id to it.name },
                 )
             }
@@ -118,17 +127,22 @@ class TransactionsViewModel
  *         `bookedOn` — the profile-zone calendar day (TIM-002) — never the instant: deriving the day
  *         from `occurredAtUtcMillis` in the UI layer would need a time zone the UI does not have,
  *         and would put a 23:30 IST spend in the wrong day.
- * Result: one [TransactionDay] per distinct booked date, ordered newest first, each keeping the
- *         repository's newest-first order within the day. An empty input gives an empty list.
- * Input:  the receiver — the repository's stream, already newest first.
+ * Result: one [TransactionDay] per distinct booked date, ordered newest first (or soonest first for
+ *         a schedule), each keeping the repository's order within the day. An empty input gives an
+ *         empty list.
+ * Input:  the receiver — the repository's stream, already ordered; [soonestFirst] — `true` for the
+ *         scheduled group (issue 3.4), where the next thing due belongs at the top rather than the
+ *         furthest-away one.
  * Output: `List<TransactionDay>`.
  * Changelog: 2026-08-02 — Created for issue 3.1.
+ *            2026-08-03 — Issue 3.4: [soonestFirst], so the same grouping serves both halves of the
+ *            screen rather than the scheduled group getting a near-copy of this function.
  */
-internal fun List<Transaction>.groupIntoDays(): List<TransactionDay> =
+internal fun List<Transaction>.groupIntoDays(soonestFirst: Boolean = false): List<TransactionDay> =
     groupBy { it.bookedOn }
         // ISO `yyyy-MM-dd` sorts lexicographically in date order, which is the whole reason TIM-002
         // stores dates that way rather than as `dd/MM/yyyy` or a midnight timestamp.
-        .toSortedMap(reverseOrder())
+        .toSortedMap(if (soonestFirst) naturalOrder() else reverseOrder())
         .map { (isoDate, transactions) -> TransactionDay(isoDate = isoDate, rows = transactions.toRows()) }
 
 /**

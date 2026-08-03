@@ -30,6 +30,13 @@
         <item quantity="one">%1$d line</item>
         <item quantity="other">%1$d lines</item>
     </plurals>
+    <!--
+      FR-TXN-010: the two halves of the list. "Scheduled" money has not left the account and is in
+      no balance; "Posted" money has. Named as a state of the money rather than "Upcoming"/"Past",
+      which describe the date and leave the user to infer what it means for their balance (P-02).
+    -->
+    <string name="transactions_scheduled">Scheduled</string>
+    <string name="transactions_posted">Posted</string>
 
     <string name="add_txn_title">Add transaction</string>
     <string name="add_txn_amount">Amount</string>
@@ -57,6 +64,15 @@
     <string name="add_txn_split_remove_line">Remove line</string>
     <string name="add_txn_split_evenly">Split evenly</string>
     <string name="add_txn_error_lines">The lines must add up to the amount.</string>
+
+    <!--
+      FR-TXN-010: future dating. "Today" rather than the actual date when nothing has been picked —
+      it is what the user means, and it says the default costs them nothing. The date itself is
+      rendered by TransactionLabels through the device locale, never assembled here.
+    -->
+    <string name="add_txn_date">Date</string>
+    <string name="add_txn_date_today">Today</string>
+    <string name="add_txn_date_confirm">Set date</string>
 
     <string name="add_txn_note">Note (optional)</string>
     <string name="add_txn_save">Save</string>

@@ -23,6 +23,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.time.LocalDate
 
 /**
  * Compose tests for the add-transaction screen — **FR-TXN-002's tap budget** (issue 3.1, §21.5).
@@ -470,6 +471,60 @@ class AddTransactionFlowTest {
         }
     }
 
+    // --- future dating (issue 3.4; FR-TXN-010) -----------------------------------------------------
+
+    @Test
+    fun `the date reads Today and costs the common expense no tap`() {
+        // The whole bargain of this field: a user who wants next Tuesday pays two taps for it, and
+        // everybody else pays nothing. The tap-count test above is the other half of the guard.
+        setContent(state = loadedState(amountText = "250"))
+
+        compose.onNodeWithText(text(R.string.add_txn_date)).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.add_txn_date_today)).assertIsDisplayed()
+    }
+
+    @Test
+    fun `tapping the date asks to open the picker rather than changing anything`() {
+        val events = mutableListOf<AddTransactionEvent>()
+        setContent(state = loadedState(amountText = "250"), onEvent = { events += it })
+
+        compose.onNodeWithText(text(R.string.add_txn_date_today)).performClick()
+
+        assertEquals(listOf<AddTransactionEvent>(ScheduleEvent.DatePickerOpened), events)
+    }
+
+    @Test
+    fun `a chosen date replaces Today with a readable date, not the ISO string`() {
+        // The same formatter the list headers use, so the button and the header agree (TIM-002).
+        setContent(
+            state = loadedState(amountText = "25000").copy(bookedOn = LocalDate.parse("2026-08-10")),
+        )
+
+        compose.onNodeWithText(text(R.string.add_txn_date_today)).assertDoesNotExist()
+        compose.onNodeWithText("2026-08-10").assertDoesNotExist()
+        compose.onNodeWithText(TransactionLabels.dayHeader("2026-08-10")).assertIsDisplayed()
+    }
+
+    @Test
+    fun `the picker is not rendered until the user asks for it`() {
+        setContent(state = loadedState(amountText = "250"))
+
+        compose.onNodeWithText(text(R.string.add_txn_date_confirm)).assertDoesNotExist()
+    }
+
+    @Test
+    fun `the picker renders when the state says it is open`() {
+        setContent(
+            state =
+                loadedState(amountText = "250").copy(
+                    isDatePickerOpen = true,
+                    earliestBookableDate = LocalDate.parse("2026-08-02"),
+                ),
+        )
+
+        compose.onNodeWithText(text(R.string.add_txn_date_confirm)).assertIsDisplayed()
+    }
+
     /**
      * Result: the state a user sees after the screen loads with one account and no categories — what
      *         every real profile has today. Input: [amountText]. Output: [AddTransactionUiState].
@@ -480,5 +535,8 @@ class AddTransactionFlowTest {
             isLoading = false,
             accounts = listOf(account()),
             selectedAccountId = "account:1",
+            // Issue 3.4: the bound the ViewModel supplies from the injected clock. Fixed here so the
+            // date assertions cannot drift with the wall clock (P-08).
+            earliestBookableDate = LocalDate.parse("2026-08-02"),
         )
 }

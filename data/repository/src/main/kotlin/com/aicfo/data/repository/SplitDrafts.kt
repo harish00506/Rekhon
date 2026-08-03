@@ -5,6 +5,7 @@ import com.aicfo.core.model.Money
 import com.aicfo.core.model.TransactionSplit
 import com.aicfo.core.model.sum
 import com.aicfo.core.model.total
+import java.time.LocalDate
 
 /*
  * Split transactions: the drafts a caller supplies, and the rules that decide whether one may be
@@ -29,7 +30,8 @@ import com.aicfo.core.model.total
  * is one movement in one direction, so the sign means exactly what it always does.
  *
  * Input:  [accountId]; [amount] — MNY-001 paise, signed, non-zero; [lines] — at least two, each
- *         signed the same way and together summing to [amount] exactly; [merchant]; [note].
+ *         signed the same way and together summing to [amount] exactly; [merchant]; [note];
+ *         [bookedOn] — the day it is booked on, today or later, `null` meaning today (issue 3.4).
  * Output: an immutable value.
  */
 data class SplitDraft(
@@ -38,6 +40,14 @@ data class SplitDraft(
     val lines: List<SplitLineDraft>,
     val merchant: String? = null,
     val note: String? = null,
+    /**
+     * The day this split is booked on (issue 3.4; FR-TXN-010). `null` means today.
+     *
+     * Held on the **parent only**. The lines carry no date of their own: they divide one amount that
+     * moved on one day, and a line dated differently from its parent would be a second, contradictory
+     * answer to when the money left.
+     */
+    val bookedOn: LocalDate? = null,
 )
 
 /**

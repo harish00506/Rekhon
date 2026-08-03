@@ -43,6 +43,9 @@ import org.junit.runner.RunWith
  *            2026-08-02 — Issue 3.3: added the 6 → 7 case (`transaction_splits`). Additive again,
  *            so the risk here is the opposite one: a migration that quietly recreates the table it
  *            was meant to leave alone would validate perfectly and lose every row.
+ *            2026-08-03 — Issue 3.4: added the 7 → 8 case (`transactions.posted_at_utc_millis`).
+ *            **The backfill is the whole test.** `ADD COLUMN` alone validates, preserves every row
+ *            and still ships a broken app — every pre-existing transaction would read as unposted.
  */
 @RunWith(AndroidJUnit4::class)
 class MigrationRoundTripTest {
@@ -420,6 +423,67 @@ class MigrationRoundTripTest {
         migrated.query("SELECT category_id FROM transaction_splits WHERE id = 'spl2'").use { cursor ->
             assertTrue(cursor.moveToFirst())
             assertTrue(cursor.isNull(0))
+        }
+        migrated.close()
+    }
+
+    /**
+     * Input:  a v7 database holding two transactions, one of them soft-deleted.
+     * Output: asserts both survive, that **every** row comes out of the migration posted, and that
+     *         the column then accepts `NULL` for a genuinely future-dated row (FR-TXN-010).
+     *
+     * **The backfill is what this test exists for.** `ALTER TABLE … ADD COLUMN` gives every existing
+     * row `NULL`, which is precisely the value that means "not yet posted" — so a migration that
+     * stopped there would validate, preserve every byte, and still leave the user's entire history
+     * sitting in the Scheduled group with an empty recent list. The tombstone is included because a
+     * `WHERE deleted_at IS NULL` accidentally added to the backfill would leave exactly one row
+     * behind, and undeleting is issue 3.6's job.
+     */
+    @Test
+    fun migrate7To8_backfillsPostedAtOnEveryExistingRow() {
+        helper.createDatabase(TEST_DB, 7).use { db ->
+            db.execSQL(
+                "INSERT INTO transactions (id, profile_id, account_id, amount_minor, currency_code, " +
+                    "occurred_at_utc_millis, booked_on_iso_date, source, type, created_at_utc_millis, " +
+                    "updated_at_utc_millis, deleted_at_utc_millis) VALUES " +
+                    "('t1','p1','a1',-100000,'INR',1767312000000,'2026-01-02','manual','expense'," +
+                    "1767312000000,1767312000000,NULL)," +
+                    "('t2','p1','a1',-250000,'INR',1767398400000,'2026-01-03','manual','expense'," +
+                    "1767398400000,1767398400000,1767484800000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 8, true, Migrations.MIGRATION_7_8)
+
+        migrated.query("SELECT amount_minor, posted_at_utc_millis FROM transactions WHERE id = 't1'")
+            .use { cursor ->
+                assertTrue("the pre-migration transaction must still be there", cursor.moveToFirst())
+                assertEquals("MNY-001: the amount must survive byte for byte", -100000L, cursor.getLong(0))
+                // Backfilled from `occurred_at_utc_millis`: every row written before issue 3.4 was
+                // booked on the day it was created, so that instant is when it posted.
+                assertEquals(
+                    "a row that existed before 3.4 is posted, not scheduled",
+                    1767312000000L,
+                    cursor.getLong(1),
+                )
+            }
+
+        migrated.query("SELECT COUNT(*) FROM transactions WHERE posted_at_utc_millis IS NULL").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("the backfill must reach tombstones too", 0, cursor.getInt(0))
+        }
+
+        // The column must be writable as NULL: that is what a future-dated row looks like.
+        migrated.execSQL(
+            "INSERT INTO transactions (id, profile_id, account_id, amount_minor, currency_code, " +
+                "occurred_at_utc_millis, booked_on_iso_date, source, type, posted_at_utc_millis, " +
+                "created_at_utc_millis, updated_at_utc_millis) VALUES " +
+                "('t3','p1','a1',-2500000,'INR',1769904000000,'2026-02-01','manual','expense',NULL," +
+                "1767312000000,1767312000000)",
+        )
+        migrated.query("SELECT posted_at_utc_millis FROM transactions WHERE id = 't3'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertTrue("FR-TXN-010: a scheduled row carries no posted stamp", cursor.isNull(0))
         }
         migrated.close()
     }

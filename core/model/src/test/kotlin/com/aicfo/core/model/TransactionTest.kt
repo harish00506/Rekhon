@@ -109,6 +109,47 @@ class TransactionTest {
     }
 
     @Test
+    fun `a transaction booked after today is scheduled, and one booked today is not`() {
+        // FR-TXN-010's boundary, and the one that decides whether money is in a balance: **today is
+        // an actual**. An off-by-one here would keep a payment made this morning out of the user's
+        // figures until tomorrow, which is the same class of bug as leaving a future one in.
+        val today = "2026-08-03"
+        assertTrue(transaction(bookedOn = "2026-08-04").isScheduledOn(today))
+        assertFalse(transaction(bookedOn = today).isScheduledOn(today))
+        assertFalse(transaction(bookedOn = "2026-08-02").isScheduledOn(today))
+    }
+
+    @Test
+    fun `scheduling compares dates, not string length or month boundaries`() {
+        // ISO `yyyy-MM-dd` sorts lexicographically in date order — the whole reason TIM-002 mandates
+        // the format — so the comparison has to hold across a month and a year boundary, where a
+        // `dd/MM/yyyy` string or a day-number comparison would invert.
+        assertTrue(transaction(bookedOn = "2026-09-01").isScheduledOn("2026-08-31"))
+        assertTrue(transaction(bookedOn = "2027-01-01").isScheduledOn("2026-12-31"))
+        assertFalse(transaction(bookedOn = "2026-08-31").isScheduledOn("2026-09-01"))
+    }
+
+    @Test
+    fun `a posted stamp is separate from being scheduled`() {
+        // The two are deliberately not the same question. Between midnight and the worker's next run
+        // a row is an actual (its date has arrived, so it is in the balance) while still carrying no
+        // stamp — so nothing may read a null `postedAtUtcMillis` as "this is scheduled".
+        val due = transaction(bookedOn = "2026-08-03").copy(postedAtUtcMillis = null)
+        assertFalse("its date has arrived, stamp or no stamp", due.isScheduledOn("2026-08-03"))
+        assertNull(due.postedAtUtcMillis)
+
+        val posted = transaction().copy(postedAtUtcMillis = 1_785_000_000_000L)
+        assertEquals(1_785_000_000_000L, posted.postedAtUtcMillis)
+    }
+
+    @Test
+    fun `a transaction carries no posted stamp until something writes one`() {
+        // The default is null because that is what a scheduled row looks like, and because every
+        // write site must state its own value rather than inheriting a wrong one.
+        assertNull(transaction().postedAtUtcMillis)
+    }
+
+    @Test
     fun `a category carries an id and a name`() {
         val category = Category(id = "category:groceries", name = "Groceries")
         assertEquals("category:groceries", category.id)

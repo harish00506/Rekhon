@@ -153,6 +153,8 @@ data class AccountEntity(
  * Changelog: 2026-07-25 — Created for issue 1.6.
  *            2026-08-02 — Issue 3.2: `type` and `transfer_id`, so a transfer is one logical record
  *            across two rows (FR-TXN-003) and so transfers can be excluded from spend totals.
+ *            2026-08-03 — Issue 3.4: `posted_at_utc_millis`, the record that a future-dated row's
+ *            date has arrived (FR-TXN-010).
  *
  * Table named `transactions`: `transaction` is a reserved SQL keyword.
  */
@@ -228,6 +230,29 @@ data class TransactionEntity(
      */
     @ColumnInfo(name = "transfer_id")
     val transferId: String? = null,
+    /**
+     * When this row's booked day arrived and the app recorded it as posted (issue 3.4; FR-TXN-010).
+     * Null while the row is still future-dated.
+     *
+     * **This column does not gate a single balance, and that is deliberate.** Every amount query —
+     * `AccountDao.observeWithBalances`, the net-worth as-of read — bounds on
+     * `booked_on_iso_date <= :asOfIsoDate` and continues to, so a scheduled row is out of the
+     * figures because of its *date*. If posting were gated on this column instead, a
+     * `ScheduledTransactionWorker` deferred by Doze, a powered-off device or a locked session
+     * (SEC-002) would leave real money missing from the user's balance until the job next ran. The
+     * date cannot be deferred; a job can.
+     *
+     * What it is for: the worker's **idempotence key** — the `WHERE … IS NULL` clause is what makes
+     * a second run in the same day affect zero rows — and a durable record that the rollover
+     * happened, which issue 3.7's recurring-auto series and any later "posted today" surface read.
+     *
+     * Nullable, so `ALTER TABLE … ADD COLUMN` needs no `DEFAULT` and the entity needs no
+     * `@ColumnInfo(defaultValue = …)` — the trap [type] documents applies only to `NOT NULL`. The
+     * 7 → 8 migration still has to **backfill** it, or every row written before issue 3.4 reads as
+     * an unposted one.
+     */
+    @ColumnInfo(name = "posted_at_utc_millis")
+    val postedAtUtcMillis: Long? = null,
     @ColumnInfo(name = "created_at_utc_millis")
     val createdAtUtcMillis: Long,
     @ColumnInfo(name = "updated_at_utc_millis")

@@ -6,6 +6,7 @@ import com.aicfo.core.model.Category
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.MoneyFormatter
 import com.aicfo.core.model.Transaction
+import java.time.LocalDate
 
 /**
  * Everything the add-transaction screen renders, as one value (issue 3.1; ARC-004, FR-TXN-002).
@@ -48,6 +49,30 @@ data class AddTransactionUiState(
     val selectedCategoryId: String? = null,
     val isSplit: Boolean = false,
     val splitLines: List<SplitLineInput> = emptyList(),
+    /**
+     * The day the transaction will be booked on, or `null` for today (issue 3.4; FR-TXN-010).
+     *
+     * **`null` is not "unset", it is "today"**, and it stays the default so FR-TXN-002's tap budget
+     * is untouched: a user recording an ordinary expense never opens the picker. The screen renders
+     * `null` as the word "Today" rather than a date, because that is what the user means by it and
+     * because deciding what today *is* needs the profile zone, which lives in the ViewModel's
+     * injected `Clock` (TIM-001) and not in a composable.
+     */
+    val bookedOn: LocalDate? = null,
+    /** Whether the date picker is open (issue 3.4). Part of the state so a test can drive it. */
+    val isDatePickerOpen: Boolean = false,
+    /**
+     * The earliest day the picker offers — today, in the profile zone (issue 3.4).
+     *
+     * Supplied by the ViewModel from the injected `Clock` rather than read in the composable, and
+     * defaulted to the epoch so a preview or a test that does not care renders without a clock. Its
+     * real value arrives with the first state emission.
+     *
+     * **`ofEpochDay(0)`, not `LocalDate.EPOCH`** — that constant is API 34 and this app's minSdk is
+     * 26 (NFR-008). Caught by `lintDebug`, not by any test: every unit test runs on the JVM, where
+     * the constant exists, so this would have compiled, passed and crashed on a real phone.
+     */
+    val earliestBookableDate: LocalDate = LocalDate.ofEpochDay(0),
     val note: String = "",
     val isLoading: Boolean = true,
     val isSaving: Boolean = false,
@@ -285,6 +310,27 @@ sealed interface AddTransactionEvent {
 }
 
 /**
+ * The three things a user can do to the booked date (issue 3.4; FR-TXN-010).
+ *
+ * Why:  grouped for the reason [SplitEvent] is — they arrive together, they are handled together in
+ *       one `is ScheduleEvent ->` branch, and flattening three more members into
+ *       [AddTransactionEvent] would push `onEvent` back past detekt's complexity ceiling that
+ *       issue 3.3 had to extract to get under. Picking a day is its own small mode.
+ * Result: adding a date interaction cannot silently grow the screen's main event handler.
+ * Changelog: 2026-08-03 — Created for issue 3.4.
+ */
+sealed interface ScheduleEvent : AddTransactionEvent {
+    /** The user tapped the date button. */
+    data object DatePickerOpened : ScheduleEvent
+
+    /** The user picked a day. Never in the past — the picker will not offer one. */
+    data class DateSelected(val date: LocalDate) : ScheduleEvent
+
+    /** The user confirmed or dismissed the picker. */
+    data object DatePickerDismissed : ScheduleEvent
+}
+
+/**
  * The six things a user can do to a split (issue 3.3; FR-TXN-004).
  *
  * Why:  a nested sealed interface rather than six more members of [AddTransactionEvent] directly.
@@ -365,6 +411,16 @@ sealed interface TransactionsEvent {
 data class TransactionsUiState(
     val isLoading: Boolean = true,
     val days: List<TransactionDay> = emptyList(),
+    /**
+     * The future-dated transactions, soonest day first (issue 3.4; FR-TXN-010).
+     *
+     * **A separate list, not a flag on a row, and that is the whole design.** [days] holds actuals
+     * and nothing else, so [TransactionDay.total] cannot accidentally include a payment that has
+     * not happened — there is no filter to forget. The two lists come from two repository flows
+     * whose windows abut at today, so a row is in exactly one of them and moves between them on its
+     * own date with no write.
+     */
+    val upcoming: List<TransactionDay> = emptyList(),
     val accountNames: Map<String, String> = emptyMap(),
     val errorCode: String? = null,
 ) {
@@ -375,8 +431,14 @@ data class TransactionsUiState(
      * `AccountsUiState.isEmpty` made before it: still loading is not empty, and **a failed read is
      * not empty either** — rendering a database that would not open as a cheerful "no transactions
      * yet" hides the failure from the one user who most needs to see it.
+     *
+     * **A profile with only scheduled rows is not empty** (issue 3.4): the user has entered
+     * something, and telling them they have not would read as the app having lost it.
      */
-    val isEmpty: Boolean get() = !isLoading && errorCode == null && days.isEmpty()
+    val isEmpty: Boolean get() = !isLoading && errorCode == null && days.isEmpty() && upcoming.isEmpty()
+
+    /** Whether the scheduled section has anything to show (issue 3.4). */
+    val hasUpcoming: Boolean get() = upcoming.isNotEmpty()
 }
 
 /**

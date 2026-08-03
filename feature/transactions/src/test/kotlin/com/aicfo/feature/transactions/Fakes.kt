@@ -47,6 +47,7 @@ internal class FakeTransactionRepository(
     var failWith: AppError? = null,
 ) : TransactionRepository {
     private val transactions = MutableStateFlow<List<Transaction>>(emptyList())
+    private val upcoming = MutableStateFlow<List<Transaction>>(emptyList())
     private val categories = MutableStateFlow<List<Category>>(emptyList())
 
     /** Every draft passed to [create], in order. */
@@ -87,16 +88,45 @@ internal class FakeTransactionRepository(
         transactions.value = seed.toList()
     }
 
+    /**
+     * Seeds the **scheduled** list (issue 3.4; FR-TXN-010).
+     *
+     * Separate from [setTransactions] because the real store keeps them separate: `observeRecent`
+     * stops at today and `observeUpcoming` starts tomorrow, so a fake that served one list to both
+     * would let a ViewModel test pass while the screen showed a scheduled payment among its actuals.
+     *
+     * Input: [seed] — the future-dated transactions to hold. Output: none.
+     */
+    fun setUpcoming(vararg seed: Transaction) {
+        upcoming.value = seed.toList()
+    }
+
     /** Seeds the category chips. Input: [seed]. Output: none. */
     fun setCategories(vararg seed: Category) {
         categories.value = seed.toList()
     }
+
+    /** Every call to [postDueTransactions], counted (issue 3.4). */
+    var postDueCalls: Int = 0
+        private set
 
     override fun observeRecent(): Flow<List<Transaction>> =
         transactions.map { list ->
             failOnObserve?.let { throw IllegalStateException(it.code) }
             list
         }
+
+    override fun observeUpcoming(): Flow<List<Transaction>> =
+        upcoming.map { list ->
+            failOnObserve?.let { throw IllegalStateException(it.code) }
+            list
+        }
+
+    override suspend fun postDueTransactions(): Result<Int, AppError> {
+        postDueCalls++
+        failWith?.let { return Err(it) }
+        return Ok(0)
+    }
 
     override fun observeCategories(): Flow<List<Category>> =
         categories.map { list ->
