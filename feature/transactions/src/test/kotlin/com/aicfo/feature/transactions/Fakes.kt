@@ -1,5 +1,8 @@
 package com.aicfo.feature.transactions
 
+import androidx.paging.LoadState
+import androidx.paging.LoadStates
+import androidx.paging.PagingData
 import com.aicfo.core.common.AppError
 import com.aicfo.core.common.Err
 import com.aicfo.core.common.Ok
@@ -9,6 +12,7 @@ import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Category
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.Reconciliation
+import com.aicfo.core.model.Tag
 import com.aicfo.core.model.Transaction
 import com.aicfo.core.model.TransactionSource
 import com.aicfo.core.model.TransactionSplit
@@ -16,8 +20,10 @@ import com.aicfo.core.model.TransactionType
 import com.aicfo.core.model.Transfer
 import com.aicfo.data.repository.AccountDraft
 import com.aicfo.data.repository.AccountRepository
+import com.aicfo.data.repository.FilteredTransaction
 import com.aicfo.data.repository.SplitDraft
 import com.aicfo.data.repository.TransactionDraft
+import com.aicfo.data.repository.TransactionFilter
 import com.aicfo.data.repository.TransactionRepository
 import com.aicfo.data.repository.TransferDraft
 import kotlinx.coroutines.flow.Flow
@@ -110,11 +116,100 @@ internal class FakeTransactionRepository(
     var postDueCalls: Int = 0
         private set
 
-    override fun observeRecent(): Flow<List<Transaction>> =
+    /** Every bulk call, in order, as `"operation:id,id"` (issue 3.6; FR-TXN-008). */
+    val bulkCalls: MutableList<String> = mutableListOf()
+
+    /**
+     * What [deleteAll] reports as removed, when it should differ from what it was asked (issue 3.6).
+     *
+     * Why: deleting one leg of a transfer removes both (FR-TXN-003), and the undo batch has to name
+     *      both. Injecting the extra ids is how a ViewModel test drives that without a database — a
+     *      fake that always echoed its input could never fail the test that matters.
+     */
+    var deleteAllReturns: List<String>? = null
+
+    /** The tags the filter sheet offers (issue 3.6). */
+    private val tags = MutableStateFlow<List<Tag>>(emptyList())
+
+    /** Seeds the tag chips (issue 3.6). Input: [seed]. Output: none. */
+    fun setTags(vararg seed: Tag) {
+        tags.value = seed.toList()
+    }
+
+    /**
+     * The filter every [observeFiltered] call has been made with, in order (issue 3.6).
+     *
+     * The claim the ViewModel tests make is that a chip tap becomes a *query*, and this is the only
+     * place that can be observed — the rows a fake returns would look the same either way.
+     */
+    val filtersQueried: MutableList<TransactionFilter> = mutableListOf()
+
+    override fun observeFiltered(filter: TransactionFilter): Flow<PagingData<FilteredTransaction>> {
+        filtersQueried += filter
+        return transactions.map { list ->
+            failOnObserve?.let { throw IllegalStateException(it.code) }
+            // Filtered in Kotlin rather than ignored: a ViewModel test asserting "typing narrows the
+            // list" would otherwise pass against a fake that never narrowed anything. Only the
+            // facets the ViewModel is actually tested on — the SQL is proven in `TransactionSearchTest`.
+            PagingData.from(
+                data = list.filter { it.matches(filter) }.map { FilteredTransaction(it) },
+                sourceLoadStates = LOADED,
+            )
+        }
+    }
+
+    override fun observeDayTotals(filter: TransactionFilter): Flow<Map<String, Money>> =
         transactions.map { list ->
+            failOnObserve?.let { throw IllegalStateException(it.code) }
+            list.filter { it.matches(filter) }
+                .groupBy { it.bookedOn }
+                .mapValues { (_, rows) -> rows.fold(Money.ZERO) { running, row -> running + row.amount } }
+        }
+
+    override fun observeSources(): Flow<List<TransactionSource>> =
+        transactions.map { list ->
+            failOnObserve?.let { throw IllegalStateException(it.code) }
+            val present = list.mapTo(mutableSetOf()) { it.source }
+            TransactionSource.entries.filter { it in present }
+        }
+
+    override fun observeTags(): Flow<List<Tag>> =
+        tags.map { list ->
             failOnObserve?.let { throw IllegalStateException(it.code) }
             list
         }
+
+    override suspend fun recategoriseAll(
+        ids: List<String>,
+        categoryId: String?,
+    ): Result<Int, AppError> {
+        bulkCalls += "recategorise:${ids.joinToString(",")}:${categoryId.orEmpty()}"
+        failWith?.let { return Err(it) }
+        return Ok(ids.size)
+    }
+
+    override suspend fun retagAll(
+        ids: List<String>,
+        tagNames: List<String>,
+    ): Result<Int, AppError> {
+        bulkCalls += "retag:${ids.joinToString(",")}:${tagNames.joinToString(",")}"
+        failWith?.let { return Err(it) }
+        return Ok(ids.size)
+    }
+
+    override suspend fun deleteAll(ids: List<String>): Result<List<String>, AppError> {
+        bulkCalls += "deleteAll:${ids.joinToString(",")}"
+        failWith?.let { return Err(it) }
+        val removed = deleteAllReturns ?: ids
+        transactions.value = transactions.value.filterNot { it.id in removed }
+        return Ok(removed)
+    }
+
+    override suspend fun restoreAll(ids: List<String>): Result<Int, AppError> {
+        bulkCalls += "restoreAll:${ids.joinToString(",")}"
+        failWith?.let { return Err(it) }
+        return Ok(ids.size)
+    }
 
     override fun observeUpcoming(): Flow<List<Transaction>> =
         upcoming.map { list ->
@@ -387,4 +482,45 @@ internal fun transferLegs(
                 transferId = transferId,
             )
         },
+    )
+
+/**
+ * Whether a transaction would survive a filter (issue 3.6; FR-TXN-007).
+ * Why: [FakeTransactionRepository] narrows the rows it returns so a ViewModel test asserting "typing
+ *       narrows the list" is actually asserting something — a fake that ignored the filter would pass
+ *       whether or not the ViewModel ever built one. **Only the facets the ViewModel is tested on**:
+ *       the full predicate is SQL and is proven against a real engine in `TransactionSearchTest`, and
+ *       reimplementing it here would be a second definition to drift.
+ * Result: `true` when the row matches every facet the fake honours.
+ * Input:  the receiver; [filter]. Output: [Boolean].
+ * Changelog: 2026-08-04 — Created for issue 3.6.
+ */
+internal fun Transaction.matches(filter: TransactionFilter): Boolean {
+    val term = filter.searchTerm
+    val textMatches =
+        term == null ||
+            merchant?.contains(term, ignoreCase = true) == true ||
+            note?.contains(term, ignoreCase = true) == true
+    return textMatches &&
+        (filter.source == null || source == filter.source) &&
+        (filter.accountId == null || accountId == filter.accountId) &&
+        (filter.type == null || type == filter.type)
+}
+
+/**
+ * The load states a fully-loaded, single-page [PagingData] carries (issue 3.6).
+ *
+ * Why:  `PagingData.from(list)` **without** them leaves `refresh` on `Loading` for ever, and two
+ *       things then hang rather than fail: `asSnapshot` waits for a pager that never goes idle, and
+ *       the screen's empty state — which keys off `loadState.refresh is NotLoading` so it cannot
+ *       flash "add your first one" at a user whose first page has not arrived — never renders.
+ *       Both cost a minute of test timeout each and neither names paging in its failure.
+ * Result: a page that says it is complete, which is what a hand-built fixture is.
+ * Changelog: 2026-08-04 — Created for issue 3.6.
+ */
+internal val LOADED: LoadStates =
+    LoadStates(
+        refresh = LoadState.NotLoading(endOfPaginationReached = true),
+        prepend = LoadState.NotLoading(endOfPaginationReached = true),
+        append = LoadState.NotLoading(endOfPaginationReached = true),
     )

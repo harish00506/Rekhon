@@ -193,9 +193,9 @@ enum class TransactionType(val storedValue: String) {
  * 23:30 IST is 18:00Z on the same date — deriving one from the other at a call site without the
  * profile zone is how a day's spend lands in the wrong day, so both travel together.
  *
- * **FR-TXN-001's remaining fields are deliberately absent.** Tags and attachments have no table yet
- * and subcategory belongs to issue 4.1's taxonomy. Adding empty fields for them now would be
- * scaffolding no code reads.
+ * **Attachments are deliberately absent** — no table yet — and subcategory belongs to issue 4.1's
+ * taxonomy. Adding empty fields for them now would be scaffolding no code reads. [tags] stopped
+ * being one of those in issue 3.6.
  *
  * Input:  [id]; [accountId] — which account moved; [amount] — signed paise; [occurredAtUtcMillis];
  *         [bookedOn] — ISO `yyyy-MM-dd` in the profile zone; [categoryId] — `null` until the user
@@ -224,6 +224,18 @@ data class Transaction(
      * this never changes what the transaction is worth, only what it is *about*.
      */
     val splits: List<TransactionSplit> = emptyList(),
+    /**
+     * The free-text labels attached to this transaction (issue 3.6; FR-TXN-001, FR-TXN-007).
+     *
+     * Empty for almost every row, and **empty is the normal case** — tags are an opt-in habit, not
+     * something the app assigns. Name-ordered, so a row's chips do not rearrange between reads.
+     *
+     * **[Tag] values, not ids.** A tag has nothing but a name, so resolving ids to names in the UI
+     * would mean every screen carrying a lookup map for a label the row could simply have brought
+     * with it — the mistake [accountId] genuinely has to live with (an account has ten other
+     * fields) and this does not.
+     */
+    val tags: List<Tag> = emptyList(),
     /**
      * When the app recorded this row's booked day as having arrived (issue 3.4; FR-TXN-010).
      * `null` while it is still future-dated.
@@ -365,6 +377,30 @@ data class Transfer(
  * Output: an immutable value.
  */
 data class Category(
+    val id: String,
+    val name: String,
+)
+
+/**
+ * A free-text label the user attaches to transactions (issue 3.6; FR-TXN-007, FR-TXN-008).
+ *
+ * Why:  FR-TXN-007 requires search by tag and FR-TXN-008 requires bulk retag, and a `List<String>`
+ *       could carry neither: the filter needs a stable id to match on, because two users' `travel`
+ *       and `Travel` are one tag and a string comparison would make them two. SRS §20.1's `tags`
+ *       table is where that id comes from.
+ * What: an id and the label as the user typed it.
+ * Result: a chip can be rendered and a filter can be applied without the UI knowing about the join
+ *       table underneath.
+ * Changelog: 2026-08-04 — Created for issue 3.6 (FR-TXN-007, FR-TXN-008).
+ *
+ * **Not a [Category], and the two must not be merged.** A category is one per transaction and drives
+ * budgets and the need/want/invest nature (issue 4.3); a tag is unlimited per transaction and drives
+ * nothing but search. `goa-trip` in a budget envelope is the bug that merging them would ship.
+ *
+ * Input:  [id]; [name] — the user's own words, trimmed, case as typed.
+ * Output: an immutable value.
+ */
+data class Tag(
     val id: String,
     val name: String,
 )

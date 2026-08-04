@@ -3,6 +3,7 @@ package com.aicfo.feature.transactions
 import androidx.annotation.StringRes
 import com.aicfo.core.common.AppError
 import com.aicfo.core.model.TransactionSource
+import com.aicfo.core.model.TransactionType
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -122,4 +123,24 @@ internal object TransactionLabels {
      */
     @StringRes
     fun sourceName(source: TransactionSource): Int = sourceLabel(source) ?: R.string.transactions_source_manual
+
+    /**
+     * The label for a transaction type, for the filter sheet's chips (issue 3.6; FR-TXN-007).
+     *
+     * Why: FR-TXN-007 asks the list to be filterable by type, and §20.2's stored vocabulary is not
+     *      what a user thinks in — `transfer_out` and `transfer_in` are a consequence of saving a
+     *      transfer, not a kind of thing anyone goes looking for. **The two legs share one label**
+     *      so the `when` stays exhaustive (a new stored type is a compile error here) while the
+     *      sheet offers only the three chips that mean something.
+     * Result: a string resource id, always. Input: [type]. Output: `@StringRes Int`.
+     * Changelog: 2026-08-04 — Created for issue 3.6 (FR-TXN-007).
+     */
+    @StringRes
+    fun typeName(type: TransactionType): Int =
+        when (type) {
+            TransactionType.EXPENSE -> R.string.transactions_type_expense
+            TransactionType.INCOME -> R.string.transactions_type_income
+            TransactionType.ADJUSTMENT -> R.string.transactions_type_adjustment
+            TransactionType.TRANSFER_OUT, TransactionType.TRANSFER_IN -> R.string.transactions_type_transfer
+        }
 }

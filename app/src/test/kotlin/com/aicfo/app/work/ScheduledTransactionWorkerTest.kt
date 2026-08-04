@@ -1,5 +1,6 @@
 package com.aicfo.app.work
 
+import androidx.paging.PagingData
 import androidx.test.core.app.ApplicationProvider
 import androidx.work.ListenableWorker
 import androidx.work.testing.TestListenableWorkerBuilder
@@ -9,10 +10,15 @@ import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
 import com.aicfo.core.crypto.SessionLock
 import com.aicfo.core.model.Category
+import com.aicfo.core.model.Money
+import com.aicfo.core.model.Tag
 import com.aicfo.core.model.Transaction
+import com.aicfo.core.model.TransactionSource
 import com.aicfo.core.model.Transfer
+import com.aicfo.data.repository.FilteredTransaction
 import com.aicfo.data.repository.SplitDraft
 import com.aicfo.data.repository.TransactionDraft
+import com.aicfo.data.repository.TransactionFilter
 import com.aicfo.data.repository.TransactionRepository
 import com.aicfo.data.repository.TransferDraft
 import kotlinx.coroutines.flow.Flow
@@ -141,9 +147,16 @@ private class RecordingTransactionRepository : TransactionRepository {
         return result
     }
 
-    override fun observeRecent(): Flow<List<Transaction>> = flowOf(emptyList())
+    override fun observeFiltered(filter: TransactionFilter): Flow<PagingData<FilteredTransaction>> =
+        flowOf(PagingData.empty())
 
     override fun observeUpcoming(): Flow<List<Transaction>> = flowOf(emptyList())
+
+    override fun observeDayTotals(filter: TransactionFilter): Flow<Map<String, Money>> = flowOf(emptyMap())
+
+    override fun observeSources(): Flow<List<TransactionSource>> = flowOf(emptyList())
+
+    override fun observeTags(): Flow<List<Tag>> = flowOf(emptyList())
 
     override fun observeCategories(): Flow<List<Category>> = flowOf(emptyList())
 
@@ -154,6 +167,20 @@ private class RecordingTransactionRepository : TransactionRepository {
     override suspend fun createSplit(draft: SplitDraft): Result<Transaction, AppError> = unsupported()
 
     override suspend fun delete(transactionId: String): Result<Unit, AppError> = unsupported()
+
+    override suspend fun recategoriseAll(
+        ids: List<String>,
+        categoryId: String?,
+    ): Result<Int, AppError> = unsupported()
+
+    override suspend fun retagAll(
+        ids: List<String>,
+        tagNames: List<String>,
+    ): Result<Int, AppError> = unsupported()
+
+    override suspend fun deleteAll(ids: List<String>): Result<List<String>, AppError> = unsupported()
+
+    override suspend fun restoreAll(ids: List<String>): Result<Int, AppError> = unsupported()
 
     /** Result: never — always throws. Input: none. Output: nothing. */
     private fun unsupported(): Nothing =

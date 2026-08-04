@@ -418,4 +418,36 @@ class TransactionTypeTest {
             )
         }
     }
+
+    /**
+     * Input:  a transaction with and without tags (issue 3.6; FR-TXN-007).
+     * Output: asserts tags default to empty and survive a `copy` — the two things every read path
+     *         depends on. **Empty is the normal case**: tags are an opt-in habit, so a default that
+     *         was anything else would put a label on every row nobody asked for.
+     */
+    @Test
+    fun `a transaction carries its tags, and none by default`() {
+        val plain =
+            Transaction(
+                id = "txn:1",
+                accountId = "account:1",
+                amount = Money(-250_00L),
+                occurredAtUtcMillis = 0L,
+                bookedOn = "2026-08-02",
+                categoryId = null,
+                merchant = null,
+                note = null,
+                source = TransactionSource.MANUAL,
+                type = TransactionType.EXPENSE,
+            )
+
+        assertEquals(emptyList<Tag>(), plain.tags)
+
+        val tagged = plain.copy(tags = listOf(Tag(id = "tag:1", name = "goa-trip")))
+        assertEquals(listOf("goa-trip"), tagged.tags.map { it.name })
+        assertEquals("tag:1", tagged.tags.single().id)
+        // The amount is untouched by tagging: a label says what a movement was *for*, never what it
+        // was worth (MNY-001).
+        assertEquals(Money(-250_00L), tagged.amount)
+    }
 }

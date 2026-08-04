@@ -43,9 +43,9 @@ import com.aicfo.core.model.Transaction
  *         sources** — a real profile today is entirely manual, so a chip row offering "All · Manual"
  *         would be a choice between a thing and the same thing, on the screen the user looks at most.
  *
- *         The chips come from [TransactionsUiState.availableSources], which the ViewModel computes
- *         from the *unfiltered* rows: derived from what is on screen, choosing one would delete the
- *         others and strand the user.
+ *         The chips come from [TransactionsUiState.availableSources], which the repository reads
+ *         straight from the ledger (issue 3.6): derived from what is on screen, choosing one would
+ *         delete the others and strand the user — and with paging, "on screen" is one page.
  *
  *         `FilterChip` in a `FlowRow`, the same shape the category pickers use, so the two read as
  *         one idiom and wrap rather than clip at 200% font.
@@ -68,17 +68,17 @@ internal fun SourceFilterRow(
         modifier = Modifier.fillMaxWidth().semantics { contentDescription = label },
     ) {
         FilterChip(
-            selected = uiState.sourceFilter == null,
+            selected = uiState.filter.source == null,
             onClick = { onEvent(TransactionsEvent.SourceFilterSelected(null)) },
             label = { Text(stringResource(R.string.transactions_source_all)) },
         )
         uiState.availableSources.forEach { source ->
             FilterChip(
-                selected = uiState.sourceFilter == source,
+                selected = uiState.filter.source == source,
                 // Tapping the selected chip clears the filter rather than doing nothing — the same
                 // behaviour the category chips have, and it saves a trip to "All".
                 onClick = {
-                    val next = source.takeIf { it != uiState.sourceFilter }
+                    val next = source.takeIf { it != uiState.filter.source }
                     onEvent(TransactionsEvent.SourceFilterSelected(next))
                 },
                 label = { Text(stringResource(TransactionLabels.sourceName(source))) },

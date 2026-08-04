@@ -1,9 +1,11 @@
 package com.aicfo.core.database.dao
 
+import androidx.paging.PagingSource
 import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Embedded
 import androidx.room.Insert
+import androidx.room.Junction
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Relation
@@ -16,8 +18,10 @@ import com.aicfo.core.database.entity.CategoryEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
 import com.aicfo.core.database.entity.ProfileEntity
 import com.aicfo.core.database.entity.RecurringRuleEntity
+import com.aicfo.core.database.entity.TagEntity
 import com.aicfo.core.database.entity.TransactionEntity
 import com.aicfo.core.database.entity.TransactionSplitEntity
+import com.aicfo.core.database.entity.TransactionTagEntity
 import kotlinx.coroutines.flow.Flow
 
 /*
@@ -359,6 +363,10 @@ interface AccountDao {
 
 /** Reads and writes transactions. */
 @Dao
+// One DAO per table is Room's model, and this is the highest-traffic table in the app: capture
+// (3.1-3.4), the filtered ledger (3.6) and the bulk edits all read and write `transactions`.
+// Splitting by query kind would put two DAOs on one table, which is worse than the count.
+@Suppress("TooManyFunctions")
 interface TransactionDao {
     /** Inserts a transaction, replacing one with the same id. Input: [transaction]. Output: none. */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -495,7 +503,306 @@ interface TransactionDao {
         todayIsoDate: String,
         nowUtcMillis: Long,
     ): Int
+
+    /**
+     * The whole ledger, filtered and paged (issue 3.6; FR-TXN-007).
+     *
+     * Why:    FR-TXN-007 asks one question with seven facets — "search (payee, note, amount, tag),
+     *         filters (date range, account, category, type, amount range) … and infinite scroll via
+     *         paging" — and this is one statement answering all of it. **The nullable-parameter
+     *         shape (`:p IS NULL OR column = :p`) is the point**: the alternative is a query per
+     *         combination, which is 2^7 of them, or string-concatenated SQL, which Room cannot
+     *         verify at compile time and which is where an injection bug would live.
+     *
+     *         **A `PagingSource`, not a windowed `Flow`.** [observeBookedBetweenWithSplits] reads a
+     *         fixed 30 days because loading a user's whole history into a list was never acceptable;
+     *         paging is how the list stops being a window without becoming unbounded. Room keeps
+     *         this source invalidated, so a write still refreshes the screen.
+     *
+     *         **Transfer legs are collapsed here rather than in Kotlin, and that is the subtle
+     *         part.** The list must show a transfer once (FR-TXN-003), and the old
+     *         `List<Transaction>.toRows()` did it by pairing legs within a loaded day — which breaks
+     *         the moment paging puts the two legs in different pages. So: with no account filter,
+     *         only the outgoing leg survives (`type <> 'transfer_in'`) and [counterpartAccountId]
+     *         names where the money went. **With an account filter the clause stands down**, because
+     *         a user who filters to the destination account must still see the money arrive — there
+     *         the account clause itself admits exactly one leg.
+     * Result: a page of rows, newest instant first, each with its split lines and tags attached.
+     *         Soft-deleted parents excluded.
+     * Input:  [profileId]; [queryPattern] — a pre-escaped `%term%`, or `null`; [queryAmountMinor] —
+     *         the search text parsed as an amount, or `null` when it is not one; [accountId];
+     *         [categoryId]; [type] and [source] — stored values, not enum names; [tagId];
+     *         [minAmountMinor]/[maxAmountMinor] — bounds on the **absolute** amount (MNY-001), so
+     *         "between ₹100 and ₹500" matches an expense; [fromIsoDate]/[toIsoDate] — inclusive
+     *         ISO `yyyy-MM-dd` bounds (TIM-002). Every one is `null` for "do not filter on this".
+     * Output: `PagingSource<Int, TransactionListRow>`.
+     * Changelog: 2026-08-04 — Created for issue 3.6 (FR-TXN-007).
+     */
+    @Transaction
+    @Query(
+        "SELECT *, (SELECT s.account_id FROM transactions s WHERE s.transfer_id = transactions.transfer_id " +
+            "AND s.id <> transactions.id AND s.deleted_at_utc_millis IS NULL LIMIT 1) " +
+            "AS counterpart_account_id " +
+            "FROM transactions WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
+            "AND (:accountId IS NULL OR account_id = :accountId) " +
+            "AND (:categoryId IS NULL OR category_id = :categoryId) " +
+            "AND (:type IS NULL OR type = :type) " +
+            "AND (:source IS NULL OR source = :source) " +
+            "AND (:fromIsoDate IS NULL OR booked_on_iso_date >= :fromIsoDate) " +
+            "AND (:toIsoDate IS NULL OR booked_on_iso_date <= :toIsoDate) " +
+            "AND (:minAmountMinor IS NULL OR ABS(amount_minor) >= :minAmountMinor) " +
+            "AND (:maxAmountMinor IS NULL OR ABS(amount_minor) <= :maxAmountMinor) " +
+            "AND (:tagId IS NULL OR EXISTS (SELECT 1 FROM transaction_tags tt " +
+            "WHERE tt.transaction_id = transactions.id AND tt.tag_id = :tagId)) " +
+            "AND (:queryPattern IS NULL OR merchant LIKE :queryPattern ESCAPE '\\' " +
+            "OR note LIKE :queryPattern ESCAPE '\\' " +
+            "OR (:queryAmountMinor IS NOT NULL AND ABS(amount_minor) = :queryAmountMinor) " +
+            "OR EXISTS (SELECT 1 FROM transaction_tags tt JOIN tags g ON g.id = tt.tag_id " +
+            "WHERE tt.transaction_id = transactions.id AND g.deleted_at_utc_millis IS NULL " +
+            "AND g.name LIKE :queryPattern ESCAPE '\\')) " +
+            "AND (transfer_id IS NULL OR :accountId IS NOT NULL OR type <> 'transfer_in') " +
+            "ORDER BY occurred_at_utc_millis DESC, id DESC",
+    )
+    @Suppress("LongParameterList") // One parameter per FR-TXN-007 facet; a wrapper cannot cross into SQL.
+    fun pagedFiltered(
+        profileId: String,
+        queryPattern: String?,
+        queryAmountMinor: Long?,
+        accountId: String?,
+        categoryId: String?,
+        type: String?,
+        source: String?,
+        tagId: String?,
+        minAmountMinor: Long?,
+        maxAmountMinor: Long?,
+        fromIsoDate: String?,
+        toIsoDate: String?,
+    ): PagingSource<Int, TransactionListRow>
+
+    /**
+     * Each day's net total over the same filtered set (issue 3.6; FR-TXN-007's "daily totals").
+     *
+     * Why:    **this cannot be a fold over the loaded rows, and that is the whole reason it exists.**
+     *         A page boundary can fall in the middle of a day, so a header that summed what was in
+     *         memory would understate its own day until the user scrolled — a wrong number on screen
+     *         is worse than a missing one. The database has every row; it does the sum.
+     *
+     *         **Transfer legs are excluded rather than both included.** A transfer's legs are `-X`
+     *         and `+X`, so keeping both would contribute zero — which is exactly what
+     *         `TransactionDay.total` has always produced for a collapsed pair — and excluding them
+     *         reaches the same figure in one clause that cannot be broken by the account filter
+     *         admitting only one leg. A transfer is not spending; it should move no day total.
+     * Result: one row per day that has at least one non-transfer transaction, newest first. A day
+     *         whose only activity was a transfer is absent, and reads as a zero total.
+     * Input:  the same facets as [pagedFiltered], with the same `null`-means-unfiltered contract.
+     * Output: `Flow<List<DayTotalRow>>`.
+     * Changelog: 2026-08-04 — Created for issue 3.6 (FR-TXN-007).
+     */
+    @Query(
+        "SELECT booked_on_iso_date AS iso_date, SUM(amount_minor) AS total_minor " +
+            "FROM transactions WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
+            "AND transfer_id IS NULL " +
+            "AND (:accountId IS NULL OR account_id = :accountId) " +
+            "AND (:categoryId IS NULL OR category_id = :categoryId) " +
+            "AND (:type IS NULL OR type = :type) " +
+            "AND (:source IS NULL OR source = :source) " +
+            "AND (:fromIsoDate IS NULL OR booked_on_iso_date >= :fromIsoDate) " +
+            "AND (:toIsoDate IS NULL OR booked_on_iso_date <= :toIsoDate) " +
+            "AND (:minAmountMinor IS NULL OR ABS(amount_minor) >= :minAmountMinor) " +
+            "AND (:maxAmountMinor IS NULL OR ABS(amount_minor) <= :maxAmountMinor) " +
+            "AND (:tagId IS NULL OR EXISTS (SELECT 1 FROM transaction_tags tt " +
+            "WHERE tt.transaction_id = transactions.id AND tt.tag_id = :tagId)) " +
+            "AND (:queryPattern IS NULL OR merchant LIKE :queryPattern ESCAPE '\\' " +
+            "OR note LIKE :queryPattern ESCAPE '\\' " +
+            "OR (:queryAmountMinor IS NOT NULL AND ABS(amount_minor) = :queryAmountMinor) " +
+            "OR EXISTS (SELECT 1 FROM transaction_tags tt JOIN tags g ON g.id = tt.tag_id " +
+            "WHERE tt.transaction_id = transactions.id AND g.deleted_at_utc_millis IS NULL " +
+            "AND g.name LIKE :queryPattern ESCAPE '\\')) " +
+            "GROUP BY booked_on_iso_date ORDER BY booked_on_iso_date DESC",
+    )
+    @Suppress("LongParameterList") // Mirrors pagedFiltered's facets exactly; they must not drift.
+    fun observeDayTotals(
+        profileId: String,
+        queryPattern: String?,
+        queryAmountMinor: Long?,
+        accountId: String?,
+        categoryId: String?,
+        type: String?,
+        source: String?,
+        tagId: String?,
+        minAmountMinor: Long?,
+        maxAmountMinor: Long?,
+        fromIsoDate: String?,
+        toIsoDate: String?,
+    ): Flow<List<DayTotalRow>>
+
+    /**
+     * The distinct sources present in a profile's whole ledger (issue 3.6; FR-TXN-009).
+     *
+     * Why:    the source chips. Issue 3.5 derived them from the loaded rows, which was correct while
+     *         the list *was* every row it had; with paging, "loaded" is the first page, so chips
+     *         built from it would appear and vanish as the user scrolled. Unfiltered on purpose —
+     *         chips derived from the filtered set would delete every alternative the moment one was
+     *         chosen, stranding the user with no way back.
+     * Result: emits on every change; soft-deleted rows excluded. Empty for an empty profile.
+     * Input:  [profileId]. Output: `Flow<List<String>>` of stored source values.
+     * Changelog: 2026-08-04 — Created for issue 3.6.
+     */
+    @Query(
+        "SELECT DISTINCT source FROM transactions WHERE profile_id = :profileId " +
+            "AND deleted_at_utc_millis IS NULL",
+    )
+    fun observeDistinctSources(profileId: String): Flow<List<String>>
+
+    /**
+     * Sets the category on many transactions at once (issue 3.6; FR-TXN-008).
+     *
+     * Why:    FR-TXN-008's "multi-select recategorise", as one statement — a loop of single updates
+     *         would be the same writes with a window in which half the selection is recategorised.
+     *
+     *         **Two rows are refused in SQL rather than filtered by the caller**, because both are
+     *         invariants of other requirements and a caller that had to remember them is a caller
+     *         that can forget:
+     *         - `transfer_id IS NULL` — a transfer is not spending, so a leg has no category
+     *           (FR-TXN-003). A categorised leg would count the user's own savings against a budget.
+     *         - not a split parent — the lines carry the categories (FR-TXN-004), and a category on
+     *           the parent as well is a second, contradictory answer to "what was this?".
+     * Result: rows actually changed, which may be fewer than were asked for. The caller reports the
+     *         count rather than assuming the selection size.
+     * Input:  [ids]; [categoryId] — `null` clears the category, which is a legitimate bulk edit;
+     *         [updatedAtUtcMillis] — from the injected `Clock` (TIM-001).
+     * Output: rows affected.
+     * Changelog: 2026-08-04 — Created for issue 3.6 (FR-TXN-008).
+     */
+    @Query(
+        "UPDATE transactions SET category_id = :categoryId, updated_at_utc_millis = :updatedAtUtcMillis " +
+            "WHERE id IN (:ids) AND deleted_at_utc_millis IS NULL AND transfer_id IS NULL " +
+            "AND id NOT IN (SELECT transaction_id FROM transaction_splits " +
+            "WHERE deleted_at_utc_millis IS NULL)",
+    )
+    suspend fun recategoriseAll(
+        ids: List<String>,
+        categoryId: String?,
+        updatedAtUtcMillis: Long,
+    ): Int
+
+    /**
+     * Marks many transactions deleted at once (issue 3.6; FR-TXN-008, DB-002).
+     *
+     * Why:    the bulk half of [softDelete], with the same `deleted_at_utc_millis IS NULL` guard —
+     *         it is what makes the returned count mean "rows that actually went", so a repeat of the
+     *         same delete reports zero rather than lying about work it did not do.
+     * Result: they disappear from every read and every balance; the rows survive as tombstones, so
+     *         [restoreAll] can bring them back.
+     * Input:  [ids]; [deletedAtUtcMillis]. Output: rows affected.
+     * Changelog: 2026-08-04 — Created for issue 3.6 (FR-TXN-008).
+     */
+    @Query(
+        "UPDATE transactions SET deleted_at_utc_millis = :deletedAtUtcMillis " +
+            "WHERE id IN (:ids) AND deleted_at_utc_millis IS NULL",
+    )
+    suspend fun softDeleteAll(
+        ids: List<String>,
+        deletedAtUtcMillis: Long,
+    ): Int
+
+    /**
+     * Brings soft-deleted transactions back (issue 3.6; FR-TXN-008's undo).
+     *
+     * Why:    "delete (with undo snackbar)" is only honest if the delete is genuinely reversible.
+     *         DB-002's tombstones already keep the rows; this is the statement that makes them
+     *         visible again, and it is the reason the delete is soft rather than a `DELETE`.
+     *
+     *         **Every balance recovers with no further write**, because a balance is a `SUM` over
+     *         live transactions (DB-001, ADR-0007) — the same property that made the delete move it.
+     * Result: the rows return to every read. Splits and tags come back with their parent untouched:
+     *         the lines are restored by the caller in the same database transaction, and tag links
+     *         were never removed.
+     * Input:  [ids]; [updatedAtUtcMillis] — from the injected `Clock` (TIM-001).
+     * Output: rows affected.
+     * Changelog: 2026-08-04 — Created for issue 3.6 (FR-TXN-008).
+     */
+    @Query(
+        "UPDATE transactions SET deleted_at_utc_millis = NULL, updated_at_utc_millis = :updatedAtUtcMillis " +
+            "WHERE id IN (:ids) AND deleted_at_utc_millis IS NOT NULL",
+    )
+    suspend fun restoreAll(
+        ids: List<String>,
+        updatedAtUtcMillis: Long,
+    ): Int
+
+    /**
+     * Finds the ids of every live leg of the transfers the given rows belong to (issue 3.6).
+     *
+     * Why:    FR-TXN-003's "deleting one side deletes both" has to survive being applied to a
+     *         *selection*. The repository asks for the full set before it deletes, so the undo
+     *         batch it hands back names both legs — undoing a bulk delete that silently pulled in a
+     *         sibling must bring the sibling back too, or the money the transfer moved reappears in
+     *         one account only.
+     * Result: every live transaction sharing a `transfer_id` with one of [ids], **including** the
+     *         rows named in [ids] themselves. Empty when none of them are transfers.
+     * Input:  [ids]. Output: `List<String>`.
+     * Changelog: 2026-08-04 — Created for issue 3.6 (FR-TXN-008).
+     */
+    @Query(
+        "SELECT id FROM transactions WHERE deleted_at_utc_millis IS NULL AND transfer_id IN " +
+            "(SELECT transfer_id FROM transactions WHERE id IN (:ids) AND transfer_id IS NOT NULL)",
+    )
+    suspend fun findTransferSiblingIds(ids: List<String>): List<String>
 }
+
+/**
+ * One day's net total, as SQLite computes it (issue 3.6; FR-TXN-007).
+ *
+ * Why:  the projection [TransactionDao.observeDayTotals] returns. A pair rather than a `Map` because
+ *       Room maps a query to rows, and building the map once in the repository keeps the ordering
+ *       decision — newest day first — in the SQL where it can be read.
+ * Result: the figure a day header shows.
+ * Changelog: 2026-08-04 — Created for issue 3.6.
+ *
+ * Input:  [isoDate] — the profile-zone day (TIM-002); [totalMinor] — MNY-001 paise, signed, wrapped
+ *         in `Money` by the repository so nothing above the data layer does arithmetic on a raw
+ *         `Long`. Output: an immutable value.
+ */
+data class DayTotalRow(
+    @ColumnInfo(name = "iso_date") val isoDate: String,
+    @ColumnInfo(name = "total_minor") val totalMinor: Long,
+)
+
+/**
+ * One row of the filtered ledger — a transaction with everything the list needs (issue 3.6).
+ *
+ * Why:  [TransactionWithSplits] carries the lines but not the tags, and neither carries the fact a
+ *       transfer row most needs: **which account is on the other side**. The list renders "HDFC
+ *       Savings → Cash Wallet" from one leg, and with paging it can no longer find the sibling by
+ *       scanning the loaded rows (they may be pages apart). So the query projects it.
+ * Result: a page row that renders without a second lookup.
+ * Changelog: 2026-08-04 — Created for issue 3.6 (FR-TXN-007, FR-TXN-003).
+ *
+ * **[splits] and [tags] both include tombstones**, for the reason [TransactionWithSplits] states:
+ * `@Relation` cannot carry a `WHERE`. Both are filtered once, in the repository's mapper.
+ *
+ * Input:  [transaction] — the row; [counterpartAccountId] — the other leg's account for a transfer,
+ *         `null` on every other row and on a transfer whose sibling is gone; [splits]; [tags].
+ * Output: an immutable value.
+ */
+data class TransactionListRow(
+    @Embedded val transaction: TransactionEntity,
+    @ColumnInfo(name = "counterpart_account_id") val counterpartAccountId: String?,
+    @Relation(parentColumn = "id", entityColumn = "transaction_id")
+    val splits: List<TransactionSplitEntity>,
+    @Relation(
+        parentColumn = "id",
+        entityColumn = "id",
+        associateBy =
+            Junction(
+                value = TransactionTagEntity::class,
+                parentColumn = "transaction_id",
+                entityColumn = "tag_id",
+            ),
+    )
+    val tags: List<TagEntity>,
+)
 
 /**
  * A transaction with its split lines, as one row (issue 3.3; FR-TXN-004).
@@ -559,6 +866,108 @@ interface TransactionSplitDao {
         transactionId: String,
         deletedAtUtcMillis: Long,
     ): Int
+
+    /**
+     * Brings a transaction's soft-deleted lines back (issue 3.6; FR-TXN-008's undo).
+     *
+     * Why:    the mirror of [softDeleteForTransaction]. A restored split parent whose lines stayed
+     *         deleted would be an amount attributed to nothing — the transaction would reappear in
+     *         every balance while the categories it was divided across stayed gone, and no screen
+     *         would show why. Run in the same database transaction as the parent's restore.
+     * Result: the lines return to every read. `0` when the transaction was never split, which is
+     *         the normal case and not a failure.
+     * Input:  [transactionId], [updatedAtUtcMillis]. Output: rows affected.
+     * Changelog: 2026-08-04 — Created for issue 3.6 (FR-TXN-008).
+     */
+    @Query(
+        "UPDATE transaction_splits SET deleted_at_utc_millis = NULL, " +
+            "updated_at_utc_millis = :updatedAtUtcMillis " +
+            "WHERE transaction_id = :transactionId AND deleted_at_utc_millis IS NOT NULL",
+    )
+    suspend fun restoreForTransaction(
+        transactionId: String,
+        updatedAtUtcMillis: Long,
+    ): Int
+}
+
+/**
+ * Reads and writes tags and their attachments to transactions (issue 3.6; FR-TXN-007, FR-TXN-008).
+ *
+ * **Detaching a tag is a hard `DELETE`, and that is a deliberate exception to DB-002.** A row in
+ * `transaction_tags` is a pure link — it holds no amount, no date and nothing the user typed, so
+ * there is nothing in it to recover. Soft-deleting one would be worse than useless here: Room's
+ * `@Relation` with a `Junction` cannot carry a `WHERE`, so a tombstoned link would keep returning
+ * its tag on every read and the untag would appear not to have happened. The `deleted_at_utc_millis`
+ * column still exists because `MigrationSafetyTest` requires it on every table; nothing sets it.
+ *
+ * Deleting the *transaction* leaves its links alone, which is what makes undo restore the tags with
+ * the row (FR-TXN-008) — the parent's tombstone already hides them from every read.
+ */
+@Dao
+interface TagDao {
+    /**
+     * Inserts tags, replacing any with the same id.
+     * Why:    a bulk retag creates every missing tag in one statement inside the same database
+     *         transaction as the links (DB-004), so a half-applied retag cannot leave a link
+     *         pointing at a tag that was never written.
+     * Result: the tags exist. Input: [tags]. Output: none.
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(tags: List<TagEntity>)
+
+    /**
+     * Observes a profile's live tags, name-ordered (FR-TXN-007).
+     * Why:    the filter sheet's tag chips. Read from the database rather than derived from the
+     *         loaded rows: with paging, "loaded" is only the first page, so chips built from it
+     *         would appear and disappear as the user scrolled.
+     * Result: emits on every change; soft-deleted rows excluded. Empty is the normal state.
+     * Input:  [profileId]. Output: `Flow<List<TagEntity>>`.
+     */
+    @Query(
+        "SELECT * FROM tags WHERE profile_id = :profileId " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY name",
+    )
+    fun observeForProfile(profileId: String): Flow<List<TagEntity>>
+
+    /**
+     * Finds a profile's existing tags by name, case-insensitively (FR-TXN-008).
+     * Why:    a bulk retag must reuse the tag the user already has rather than minting a second
+     *         one — `Travel` typed today and `travel` typed last week are one tag, and two rows
+     *         would split its transactions across two chips. The unique index enforces the same
+     *         rule; this is what lets the repository satisfy it without relying on a conflict.
+     * Result: the matching live tags; empty when none of the names exist yet.
+     * Input:  [profileId]; [loweredNames] — already lower-cased by the caller, because SQLite's
+     *         `LOWER` is ASCII-only and the caller's `lowercase()` is not.
+     * Output: `List<TagEntity>`.
+     */
+    @Query(
+        "SELECT * FROM tags WHERE profile_id = :profileId " +
+            "AND LOWER(name) IN (:loweredNames) AND deleted_at_utc_millis IS NULL",
+    )
+    suspend fun findByNames(
+        profileId: String,
+        loweredNames: List<String>,
+    ): List<TagEntity>
+
+    /**
+     * Attaches tags to transactions, replacing any link with the same id.
+     * Result: the links exist. Input: [links]. Output: none.
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun attachAll(links: List<TransactionTagEntity>)
+
+    /**
+     * Removes every tag from the named transactions (FR-TXN-008).
+     * Why:    a retag is "these transactions now carry exactly these tags", so it clears first and
+     *         attaches second, both inside one database transaction. Expressing it as a set rather
+     *         than as add/remove deltas is what makes the operation idempotent — applying the same
+     *         retag twice leaves the same links.
+     *
+     *         A hard `DELETE` — see the interface comment.
+     * Result: the links are gone. Input: [transactionIds]. Output: rows affected.
+     */
+    @Query("DELETE FROM transaction_tags WHERE transaction_id IN (:transactionIds)")
+    suspend fun detachAllFor(transactionIds: List<String>): Int
 }
 
 /** Reads and writes categories. */
@@ -727,6 +1136,9 @@ interface RecurringRuleDao {
  * not the demo's to erase.
  */
 @Dao
+// One delete per profile-scoped table, which is exactly what ADR-0006 requires: a table this DAO
+// cannot reach is residue the demo wipe leaves behind. The count tracks the schema.
+@Suppress("TooManyFunctions")
 interface DemoDao {
     /** Result: rows removed from `budget`. Input: [profileId]. Output: the count. */
     @Query("DELETE FROM budget WHERE profile_id = :profileId")
@@ -755,6 +1167,20 @@ interface DemoDao {
      */
     @Query("DELETE FROM transaction_splits WHERE profile_id = :profileId")
     suspend fun deleteTransactionSplits(profileId: String): Int
+
+    /**
+     * Result: rows removed from `transaction_tags`. Input: [profileId]. Output: the count.
+     *
+     * Added by issue 3.6, which introduced the table. Called **before** [deleteTransactions] and
+     * [deleteTags], for the ordering reason [deleteTransactionSplits] gives: a link outlives neither
+     * of the rows it joins.
+     */
+    @Query("DELETE FROM transaction_tags WHERE profile_id = :profileId")
+    suspend fun deleteTransactionTags(profileId: String): Int
+
+    /** Result: rows removed from `tags`. Input: [profileId]. Output: the count. */
+    @Query("DELETE FROM tags WHERE profile_id = :profileId")
+    suspend fun deleteTags(profileId: String): Int
 
     /** Result: rows removed from `transactions`. Input: [profileId]. Output: the count. */
     @Query("DELETE FROM transactions WHERE profile_id = :profileId")
@@ -786,13 +1212,15 @@ interface DemoDao {
      *         Deliberately **not** filtered by `deleted_at_utc_millis`: a soft-deleted row is
      *         precisely the residue being looked for, so it must count.
      * Result: `0` once the profile has been erased.
-     * Input:  [profileId]. Output: the total row count across all eight tables.
+     * Input:  [profileId]. Output: the total row count across all ten tables.
      */
     @Query(
         "SELECT (SELECT COUNT(*) FROM profile WHERE id = :profileId) + " +
             "(SELECT COUNT(*) FROM account WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM transactions WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM transaction_splits WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM transaction_tags WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM tags WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM category WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM budget WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM recurring_rule WHERE profile_id = :profileId) + " +

@@ -46,6 +46,9 @@ import org.junit.runner.RunWith
  *            2026-08-03 — Issue 3.4: added the 7 → 8 case (`transactions.posted_at_utc_millis`).
  *            **The backfill is the whole test.** `ADD COLUMN` alone validates, preserves every row
  *            and still ships a broken app — every pre-existing transaction would read as unposted.
+ *            2026-08-04 — Issue 3.6: added the 8 → 9 case (`tags`, `transaction_tags`). Additive,
+ *            so it asserts the *index* as well as the rows: a `UNIQUE` index a migration forgot to
+ *            create is invisible until a user happens to have two of something.
  */
 @RunWith(AndroidJUnit4::class)
 class MigrationRoundTripTest {
@@ -485,6 +488,76 @@ class MigrationRoundTripTest {
             assertTrue(cursor.moveToFirst())
             assertTrue("FR-TXN-010: a scheduled row carries no posted stamp", cursor.isNull(0))
         }
+        migrated.close()
+    }
+
+    /**
+     * 8 → 9 adds `tags` and `transaction_tags` (issue 3.6; FR-TXN-007, FR-TXN-008).
+     *
+     * Input:  a version-8 database holding a transaction with an exact paise amount.
+     * Output: asserts the transaction survives untouched, both new tables exist and are writable,
+     *         and the unique index actually rejects a duplicate tag name within a profile while
+     *         allowing the same name under a different profile.
+     *
+     * **Additive, so the risk is the 6 → 7 one rather than the 7 → 8 one**: nothing needs
+     * backfilling, but a migration that recreated `transactions` on its way to adding a table would
+     * validate perfectly against `schemas/9.json` and lose every row. The amount is asserted byte
+     * for byte for the reason `migrate1To2` gives (MNY-001).
+     *
+     * **The unique index is asserted, not assumed.** It is the only thing stopping `travel` existing
+     * twice under one profile and splitting a tag's transactions across two chips — and an index a
+     * migration forgot to create is invisible until a user has two of something.
+     */
+    @Test
+    fun migrate8To9_preservesTransactionsAndAcceptsTags() {
+        helper.createDatabase(TEST_DB, 8).use { db ->
+            db.execSQL(
+                "INSERT INTO transactions (id, profile_id, account_id, amount_minor, currency_code, " +
+                    "occurred_at_utc_millis, booked_on_iso_date, source, type, posted_at_utc_millis, " +
+                    "created_at_utc_millis, updated_at_utc_millis) VALUES " +
+                    "('t1','p1','a1',-12345678,'INR',1767312000000,'2026-01-02','manual','expense'," +
+                    "1767312000000,1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 9, true, Migrations.MIGRATION_8_9)
+
+        migrated.query("SELECT amount_minor FROM transactions WHERE id = 't1'").use { cursor ->
+            assertTrue("the pre-migration transaction must still be there", cursor.moveToFirst())
+            assertEquals("MNY-001: the amount must survive byte for byte", -12345678L, cursor.getLong(0))
+        }
+
+        migrated.execSQL(
+            "INSERT INTO tags (id, profile_id, name, created_at_utc_millis, updated_at_utc_millis) " +
+                "VALUES ('g1','p1','travel',1767312000000,1767312000000)",
+        )
+        migrated.execSQL(
+            "INSERT INTO transaction_tags (id, profile_id, transaction_id, tag_id, " +
+                "created_at_utc_millis, updated_at_utc_millis) " +
+                "VALUES ('tt1','p1','t1','g1',1767312000000,1767312000000)",
+        )
+        migrated.query(
+            "SELECT g.name FROM transaction_tags tt JOIN tags g ON g.id = tt.tag_id " +
+                "WHERE tt.transaction_id = 't1'",
+        ).use { cursor ->
+            assertTrue("the join must resolve a tag back to its transaction", cursor.moveToFirst())
+            assertEquals("travel", cursor.getString(0))
+        }
+
+        // The same name under a second profile is a different tag — the demo profile depends on it.
+        migrated.execSQL(
+            "INSERT INTO tags (id, profile_id, name, created_at_utc_millis, updated_at_utc_millis) " +
+                "VALUES ('g2','p2','travel',1767312000000,1767312000000)",
+        )
+        // The same name under the *same* profile is not.
+        val duplicateRejected =
+            runCatching {
+                migrated.execSQL(
+                    "INSERT INTO tags (id, profile_id, name, created_at_utc_millis, updated_at_utc_millis) " +
+                        "VALUES ('g3','p1','travel',1767312000000,1767312000000)",
+                )
+            }.isFailure
+        assertTrue("the unique index must reject a duplicate tag name within a profile", duplicateRejected)
         migrated.close()
     }
 

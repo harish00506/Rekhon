@@ -164,6 +164,11 @@ internal class RoomDemoModeRepository(
                     // Issue 3.3: lines before their parents, for the same reason the profile row
                     // goes last — a failure in between must not strand children behind (ADR-0006).
                     demo.deleteTransactionSplits(DemoModeRepository.DEMO_PROFILE_ID)
+                    // Issue 3.6: the tag links before either row they join, then the tags. The demo
+                    // dataset seeds none, but a user who tags a demo transaction while browsing
+                    // creates both — and a table the wipe cannot reach is residue (ADR-0006).
+                    demo.deleteTransactionTags(DemoModeRepository.DEMO_PROFILE_ID)
+                    demo.deleteTags(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteTransactions(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteCategories(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteAccounts(DemoModeRepository.DEMO_PROFILE_ID)

@@ -571,3 +571,20 @@ internal fun Result<Int, AppError>.requireRowTouched(): Result<Unit, AppError> =
         is Ok -> if (value > 0) Ok(Unit) else Err(AppError.NotFound)
         is Err -> this
     }
+
+/**
+ * The same rule as [requireRowTouched], but **keeping the count** (issue 3.6).
+ * Why:    a bulk operation's caller needs to know how many rows it actually reached — a selection
+ *         of twenty of which two were transfer legs recategorises eighteen, and the snackbar should
+ *         say eighteen. [requireRowTouched] throws that number away, which is right for a single
+ *         delete and wrong here. Zero is still `NotFound`, for exactly its reason: reporting success
+ *         for an operation that changed nothing is how a user gets lied to.
+ * Result: `Ok(n)` when at least one row was touched, `Err(NotFound)` when none was.
+ * Input:  the receiver — the DAO's affected-row count. Output: `Result<Int, AppError>`.
+ * Changelog: 2026-08-04 — Created for issue 3.6 (FR-TXN-008).
+ */
+internal fun Result<Int, AppError>.requireAnyRowTouched(): Result<Int, AppError> =
+    when (this) {
+        is Ok -> if (value > 0) Ok(value) else Err(AppError.NotFound)
+        is Err -> this
+    }

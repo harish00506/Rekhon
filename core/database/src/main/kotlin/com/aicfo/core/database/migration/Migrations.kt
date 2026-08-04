@@ -374,6 +374,97 @@ internal object Migrations {
             }
         }
 
+    /**
+     * 8 → 9: adds `tags` and `transaction_tags` (issue 3.6; FR-TXN-007, FR-TXN-008).
+     *
+     * Why:    FR-TXN-007 requires the list to be searchable by tag and FR-TXN-008 requires bulk
+     *         retag. SRS §20.1 names these two tables, so this follows the blueprint rather than
+     *         inventing a comma-joined column on `transactions` — which would have made "find every
+     *         transaction tagged `travel`" a substring match that also matched `travel-insurance`.
+     * What:   two `CREATE TABLE IF NOT EXISTS` and their indices. **Nothing existing is read,
+     *         written or altered**, which is the same property [MIGRATION_2_3] and [MIGRATION_6_7]
+     *         have and the reason this cannot lose data: an upgraded installation simply gains two
+     *         empty tables. `MigrationSafetyTest` proves it by diffing 8.json against 9.json.
+     * Result: an upgraded installation keeps every row and can carry tags.
+     * Input:  [SupportSQLiteDatabase] — the database mid-upgrade. Output: none (executes DDL).
+     *
+     * **No backfill, deliberately.** Unlike [MIGRATION_7_8], there is no pre-existing value these
+     * tables should hold: a user who has never tagged anything has no tags, and inventing some from
+     * merchants or categories would be the app putting words in their mouth.
+     *
+     * The DDL matches what Room generates for `TagEntity` and `TransactionTagEntity`; the committed
+     * `schemas/9.json` is the reference, and `MigrationRoundTripTest` fails on a device if the two
+     * drift.
+     */
+    val MIGRATION_8_9 =
+        object : Migration(VERSION_8, VERSION_9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                createTags(db)
+                createTransactionTags(db)
+            }
+        }
+
+    /**
+     * Creates `tags` and its unique index (issue 3.6).
+     * Why:    one function per table, the convention [createBudget] set — each block stays short
+     *         enough to check line by line against the entity it mirrors.
+     *
+     *         **The index is `UNIQUE` on `(profile_id, name)`.** It is the only thing stopping two
+     *         `travel` rows from existing under one profile, which would split a tag's transactions
+     *         across two chips the user cannot tell apart. Scoped by profile because the demo lives
+     *         under a second profile id and must be free to have its own `travel`.
+     * Result: the table exists. Input: [db]. Output: none (executes DDL).
+     */
+    private fun createTags(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `tags` (" +
+                "`id` TEXT NOT NULL, " +
+                "`profile_id` TEXT NOT NULL, " +
+                "`name` TEXT NOT NULL, " +
+                "`created_at_utc_millis` INTEGER NOT NULL, " +
+                "`updated_at_utc_millis` INTEGER NOT NULL, " +
+                "`deleted_at_utc_millis` INTEGER, " +
+                "PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_tags_profile_id_name` " +
+                "ON `tags` (`profile_id`, `name`)",
+        )
+    }
+
+    /**
+     * Creates `transaction_tags` and its indices (issue 3.6).
+     * Why:    see [createTags]. Three indices because the join is read from all three directions —
+     *         by transaction (the detail sheet), by tag (the filter's `EXISTS`), and by profile
+     *         (the demo wipe, ADR-0006).
+     * Result: the table exists. Input: [db]. Output: none (executes DDL).
+     */
+    private fun createTransactionTags(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `transaction_tags` (" +
+                "`id` TEXT NOT NULL, " +
+                "`profile_id` TEXT NOT NULL, " +
+                "`transaction_id` TEXT NOT NULL, " +
+                "`tag_id` TEXT NOT NULL, " +
+                "`created_at_utc_millis` INTEGER NOT NULL, " +
+                "`updated_at_utc_millis` INTEGER NOT NULL, " +
+                "`deleted_at_utc_millis` INTEGER, " +
+                "PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_transaction_tags_transaction_id` " +
+                "ON `transaction_tags` (`transaction_id`)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_transaction_tags_tag_id` " +
+                "ON `transaction_tags` (`tag_id`)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_transaction_tags_profile_id` " +
+                "ON `transaction_tags` (`profile_id`)",
+        )
+    }
+
     /** Every migration, in order, for `CfoDatabaseFactory` to register. */
     val ALL: Array<Migration> =
         arrayOf(
@@ -384,6 +475,7 @@ internal object Migrations {
             MIGRATION_5_6,
             MIGRATION_6_7,
             MIGRATION_7_8,
+            MIGRATION_8_9,
         )
 
     /** Named so the version pair reads as a schema version rather than an unexplained literal. */
@@ -404,6 +496,9 @@ internal object Migrations {
     /** The version issue 3.3 introduced, and the one issue 3.4 upgrades from. */
     private const val VERSION_7 = 7
 
-    /** Matches `CfoDatabase.VERSION` at the time this migration was written (issue 3.4). */
+    /** The version issue 3.4 introduced, and the one issue 3.6 upgrades from. */
     private const val VERSION_8 = 8
+
+    /** Matches `CfoDatabase.VERSION` at the time this migration was written (issue 3.6). */
+    private const val VERSION_9 = 9
 }

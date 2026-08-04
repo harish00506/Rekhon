@@ -327,6 +327,102 @@ data class TransactionSplitEntity(
 )
 
 /**
+ * A free-text label the user can attach to any number of transactions (issue 3.6; §20.1).
+ *
+ * Why:    FR-TXN-007 requires the list to be searchable by tag and FR-TXN-008 requires bulk retag,
+ *         and neither is expressible with a column on `transactions` — a transaction has "tags
+ *         (many)" (SRS §5.3) and a tag belongs to many transactions. §20.1 names the two tables this
+ *         and [TransactionTagEntity] implement.
+ *
+ *         **A tag is not a category, and the difference is load-bearing.** A category answers "what
+ *         kind of spending was this?", is exactly one per transaction, and drives budgets and the
+ *         need/want/invest nature (issue 4.3). A tag answers "what was this *for*?" — `goa-trip`,
+ *         `reimbursable`, `business` — is unlimited per transaction, and drives nothing but search.
+ *         Modelling them as one thing would put `goa-trip` in a budget envelope.
+ * Result: a Room row in `tags`.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-08-04 — Created for issue 3.6 (FR-TXN-007, FR-TXN-008).
+ *
+ * **The unique index is on `(profile_id, name)`, not on `name`.** Two profiles — a real one and the
+ * demo — may each have a `travel` tag, and they are different rows; a global unique index would make
+ * entering the demo fail on the second profile's first collision.
+ */
+@Entity(
+    tableName = "tags",
+    indices = [Index(value = ["profile_id", "name"], unique = true)],
+)
+data class TagEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /**
+     * The label as the user typed it, trimmed.
+     *
+     * **Case is preserved but uniqueness is not case-sensitive** — the repository lower-cases before
+     * looking a tag up, so `Travel` and `travel` resolve to one row rather than becoming two chips
+     * the user cannot tell apart. Storing what they typed is what keeps the chip reading `Travel`.
+     */
+    @ColumnInfo(name = "name")
+    val name: String,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+)
+
+/**
+ * Attaches one [TagEntity] to one [TransactionEntity] (issue 3.6; §20.1).
+ *
+ * Why:    the many-to-many join. A row here is the *only* statement that a transaction carries a
+ *         tag — there is no denormalised copy on `transactions`, so retagging touches this table
+ *         alone and no second representation can drift out of step with it.
+ * Result: a Room row in `transaction_tags`.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-08-04 — Created for issue 3.6 (FR-TXN-007, FR-TXN-008).
+ *
+ * **`profile_id` is denormalised onto the join**, for exactly the reason [TransactionSplitEntity]
+ * carries one: `DemoDao`'s wipe and its residue count are profile-scoped single-table deletes
+ * (ADR-0006), and a table they cannot reach by `profile_id` alone leaves residue behind when the
+ * demo is exited. `MigrationSafetyTest` enforces it on every table but `audit_log`.
+ *
+ * **Soft-deleted rather than removed**, like everything else here (DB-002): untagging is undoable,
+ * and a hard `DELETE` in a bulk retag would be the one irreversible step in an otherwise reversible
+ * feature.
+ */
+@Entity(
+    tableName = "transaction_tags",
+    indices = [
+        // "which tags does this transaction have?" — the detail sheet and the list projection.
+        Index("transaction_id"),
+        // "which transactions carry this tag?" — the tag filter's `EXISTS` clause.
+        Index("tag_id"),
+        // The demo wipe and the residue count both scope by profile.
+        Index("profile_id"),
+    ],
+)
+data class TransactionTagEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    @ColumnInfo(name = "transaction_id")
+    val transactionId: String,
+    @ColumnInfo(name = "tag_id")
+    val tagId: String,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+)
+
+/**
  * A spending category, optionally nested one level under a parent.
  * Why:    categorisation drives budgets and every insight, and `nature` is what separates a need
  *         from a want from an investment — the distinction the advice layer is built on.

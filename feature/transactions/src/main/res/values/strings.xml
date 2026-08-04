@@ -64,7 +64,66 @@
       has just narrowed the list that they have no transactions would read as the app having lost
       them, the same failure a database error rendering as "empty" would be.
     -->
-    <string name="transactions_filter_empty">Nothing from that source in this period.</string>
+    <string name="transactions_filter_empty">Nothing matches those filters.</string>
+
+    <!--
+      Search and filters (issue 3.6, FR-TXN-007). One field covers payee, note, amount and tag: a
+      user looking for a transaction knows *something* about it and should not have to say which
+      kind of something first.
+    -->
+    <string name="transactions_search">Search</string>
+    <!-- Icon-only, so this is the whole of what a screen reader announces for the filter button. -->
+    <string name="transactions_filter">Filters</string>
+    <string name="transactions_filter_clear">Clear</string>
+    <string name="transactions_filter_account">Account</string>
+    <string name="transactions_filter_type">Type</string>
+    <string name="transactions_filter_tag">Tag</string>
+    <!--
+      MNY-001: bounds on the *magnitude*, which is why neither is labelled with a sign. "Between
+      ₹100 and ₹500" is a statement about size — under a signed comparison it would exclude every
+      expense, because an expense is negative.
+    -->
+    <string name="transactions_filter_min_amount">Min amount</string>
+    <string name="transactions_filter_max_amount">Max amount</string>
+
+    <!--
+      §20.2's transaction types, as a user thinks of them. The two transfer legs share one label:
+      "Transfer out" is a consequence of saving a transfer, not something anyone searches for.
+    -->
+    <string name="transactions_type_expense">Spending</string>
+    <string name="transactions_type_income">Income</string>
+    <string name="transactions_type_transfer">Transfer</string>
+    <string name="transactions_type_adjustment">Adjustment</string>
+
+    <!--
+      Bulk edit (issue 3.6, FR-TXN-008). ICU plurals throughout — "1 selected" must not read as
+      "1 selecteds", and the delete confirmation counts what the *user* picked rather than what the
+      store removed, which for a transfer is both legs (§21.6).
+    -->
+    <plurals name="transactions_selected">
+        <item quantity="one">%1$d selected</item>
+        <item quantity="other">%1$d selected</item>
+    </plurals>
+    <plurals name="transactions_deleted">
+        <item quantity="one">%1$d deleted</item>
+        <item quantity="other">%1$d deleted</item>
+    </plurals>
+    <string name="transactions_undo">Undo</string>
+    <string name="transactions_selection_clear">Leave selection</string>
+    <string name="transactions_bulk_recategorise">Category</string>
+    <string name="transactions_bulk_retag">Tags</string>
+    <!-- Icon-only and destructive, so the description must say what it removes, not just "delete". -->
+    <string name="transactions_bulk_delete">Delete selected transactions</string>
+    <string name="transactions_bulk_apply">Apply</string>
+    <!-- Clearing a category in bulk is a real edit, not an absence — so it is an offered choice. -->
+    <string name="transactions_bulk_no_category">No category</string>
+    <!--
+      Shown instead of an empty chip row: a real profile has no categories until issue 4.1 seeds a
+      taxonomy, and an empty picker reads as a broken one.
+    -->
+    <string name="transactions_bulk_no_categories_yet">No categories yet.</string>
+    <!-- Several tags in one field, comma-separated — the separator every user already reaches for. -->
+    <string name="transactions_tags_hint">Tags, comma separated</string>
 
     <!--
       The detail sheet (issue 3.5). Field labels only - every value is rendered by CfoAmountText,
