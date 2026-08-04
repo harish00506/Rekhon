@@ -2,20 +2,31 @@ package com.aicfo.feature.transactions
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
+import androidx.paging.insertSeparators
+import androidx.paging.map
+import com.aicfo.core.common.AppError
 import com.aicfo.core.common.Err
 import com.aicfo.core.common.Ok
+import com.aicfo.core.common.Result
 import com.aicfo.core.common.toAppError
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.Transaction
-import com.aicfo.core.model.TransactionSource
+import com.aicfo.core.model.TransactionType
 import com.aicfo.data.repository.AccountRepository
+import com.aicfo.data.repository.FilteredTransaction
+import com.aicfo.data.repository.TransactionFilter
 import com.aicfo.data.repository.TransactionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
@@ -39,6 +50,7 @@ import javax.inject.Inject
  *
  * Input:  [repository] — the transactions store. Output: an observable screen state.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class TransactionsViewModel
     @Inject
@@ -53,28 +65,82 @@ class TransactionsViewModel
         private val _uiState = MutableStateFlow(TransactionsUiState())
 
         /**
-         * The rows as the repository last emitted them, ungrouped and unfiltered (issue 3.5).
+         * What the list is querying with (issue 3.6; FR-TXN-007).
          *
-         * Why: the screen's state is now a function of the data **and** of what the user has chosen,
-         *      and the two change independently — a chip tap must re-render without waiting for a
-         *      database emission, and a database emission must not silently drop the chosen filter.
-         *      Keeping the raw lists is what lets [render] be the single place that combines them.
-         *      It is also what makes `availableSources` derivable from *unfiltered* rows, which is
-         *      the difference between a chip row the user can leave and one they cannot.
+         * Why: a `StateFlow` rather than a plain field, because [items] has to *re-query* when it
+         *      changes — `flatMapLatest` needs something to observe. Declared before [items] so it
+         *      exists when that property initialises; Kotlin evaluates them in source order.
          */
-        private var snapshot = ListSnapshot()
-
-        /** The source the user has narrowed to, or `null` for all (issue 3.5). */
-        private var sourceFilter: TransactionSource? = null
-
-        /** The row whose detail sheet is open, by id, or `null` (issue 3.5). */
-        private var selectedId: String? = null
+        private val filterFlow = MutableStateFlow(TransactionFilter())
 
         /**
-         * The screen's state.
+         * The ids the user has selected (issue 3.6; FR-TXN-008).
+         *
+         * A flow for the same reason [filterFlow] is: a row renders its own selected state, so a tap
+         * must reach the paged stream. Combining it there rather than re-querying means selecting a
+         * row costs no database read.
+         */
+        private val selectionFlow = MutableStateFlow(emptySet<String>())
+
+        /**
+         * The screen's state — everything except the paged rows (issue 3.6).
          * Result: emits the current [TransactionsUiState] and every update. Read-only to callers.
          */
         val uiState: StateFlow<TransactionsUiState> = _uiState.asStateFlow()
+
+        /**
+         * The pager's own stream, cached (issue 3.6; FR-TXN-007).
+         *
+         * Why:    **`cachedIn` belongs here, before [items]'s `combine`, and putting it after was a
+         *         crash.** `combine` re-emits its latest values whenever *any* source moves, so a
+         *         changed selection would hand the list the same `PagingData` a second time — and an
+         *         uncached one may be collected exactly once
+         *         (`IllegalStateException: Attempt to collect twice from pageEventFlow`). Caching
+         *         first makes the stream multicast, which is what lets it be re-emitted safely; it
+         *         is also what keeps the loaded pages across a rotation.
+         *
+         *         **No unit test caught this**, and none could have: the fakes hand back
+         *         `PagingData.from(…)`, a static value that *is* safely re-collectable, while a real
+         *         `Pager` is not. The emulator run found it on the second visit to the screen — the
+         *         case §9's "a green build does not close the issue" exists for.
+         *
+         *         `flatMapLatest`, not `map`: a changed facet must *switch* which query is observed
+         *         and cancel the previous one, or the old query's pages race into the new list.
+         */
+        private val pagedRows: Flow<PagingData<FilteredTransaction>> =
+            filterFlow
+                .flatMapLatest { filter -> repository.observeFiltered(filter) }
+                .cachedIn(viewModelScope)
+
+        /**
+         * Each day's total, re-queried on every filter change (issue 3.6; FR-TXN-007).
+         *
+         * Read from the database rather than folded from the loaded page, because a page boundary
+         * can fall inside a day — see [TransactionListItem.DayHeader].
+         */
+        private val dayTotals: Flow<Map<String, Money>> =
+            filterFlow.flatMapLatest { filter -> repository.observeDayTotals(filter) }
+
+        /**
+         * The paged rows, with their day headers inserted (issue 3.6; FR-TXN-007).
+         *
+         * Why:    a second flow rather than a field on [uiState], because `PagingData` is a stream of
+         *         load events and not a value: every `copy` of an immutable state class holding one
+         *         would hand the list a fresh stream and restart it from page one, losing the user's
+         *         scroll position on a keystroke.
+         *
+         *         The three sources are combined **after** [pagedRows] has been cached — see the
+         *         note there for why the other order crashes.
+         * Result: emits day headers and rows, newest first. The header's total is the database's,
+         *         never a fold over the loaded page — see [TransactionListItem.DayHeader].
+         */
+        val items: Flow<PagingData<TransactionListItem>> =
+            // `combine`, so the list re-renders as soon as the rows, the totals **or** the selection
+            // move. The totals are a small keyed map and the selection is a set of ids, so
+            // recombining costs nothing next to a re-query.
+            combine(pagedRows, dayTotals, selectionFlow) { page, totals, selection ->
+                page.toListItems(totals, selection)
+            }
 
         init {
             // Accounts are read for their **names** only: a transfer row says "HDFC Savings → Cash
@@ -82,23 +148,27 @@ class TransactionsViewModel
             // (`includeArchived = true`) because a transfer into an account closed afterwards must
             // still name it rather than falling back to a raw id (FR-ACC-007).
             combine(
-                repository.observeRecent(),
-                // Issue 3.4: a second flow, not a widened window (FR-TXN-010). Keeping the two
-                // apart is what stops a scheduled payment being counted in a day total — the
-                // scheduled rows are simply never in `days`, so no filter has to be remembered.
+                // Issue 3.4: a separate flow from the paged list (FR-TXN-010). Keeping the two apart
+                // is what stops a scheduled payment being counted in a day total — the scheduled
+                // rows are simply never in the paged stream, so no filter has to be remembered.
                 repository.observeUpcoming(),
                 accounts.observeAccounts(includeArchived = true),
-            ) { transactions, upcoming, accountList ->
-                ListSnapshot(
-                    recent = transactions,
-                    upcoming = upcoming,
-                    accountNames = accountList.associate { it.id to it.name },
-                )
-            }
-                .onEach { latest ->
-                    snapshot = latest
-                    render()
+                repository.observeSources(),
+                repository.observeTags(),
+                repository.observeCategories(),
+            ) { upcoming, accountList, sources, tags, categories ->
+                { previous: TransactionsUiState ->
+                    previous.copy(
+                        isLoading = false,
+                        upcoming = upcoming.groupIntoDays(soonestFirst = true),
+                        accountNames = accountList.associate { it.id to it.name },
+                        availableSources = sources,
+                        availableTags = tags,
+                        categories = categories,
+                    )
                 }
+            }
+                .onEach { apply -> _uiState.update(apply) }
                 // `toAppError` rather than the throwable's own message: that message may name a file
                 // path, a column or an amount, and P-01 bans all three from anything user-visible.
                 .catch { failure ->
@@ -110,66 +180,181 @@ class TransactionsViewModel
         /**
          * Handles something the user did.
          * Why:    one entry point, so the sealed interface's exhaustiveness guarantees no interaction
-         *         is silently unhandled.
+         *         is silently unhandled. The two nested groups are handled as groups, which is what
+         *         keeps this function under detekt's complexity ceiling (§21.6).
          * Result: applies the event. Input: [event]. Output: none.
          * Changelog: 2026-08-02 — Created for issue 3.2, which gave this screen its first action.
          *            2026-08-03 — Issue 3.5: the source filter and the detail sheet.
+         *            2026-08-04 — Issue 3.6: search, the filter sheet and bulk selection.
          */
         fun onEvent(event: TransactionsEvent) {
             when (event) {
+                is FilterEvent -> applyFilter(event)
+                is BulkEvent -> applyBulk(event)
                 is TransactionsEvent.Delete -> delete(event.transactionId)
                 TransactionsEvent.DismissError -> _uiState.update { it.copy(errorCode = null) }
-                is TransactionsEvent.SourceFilterSelected -> {
-                    sourceFilter = event.source
-                    render()
-                }
-                is TransactionsEvent.RowTapped -> {
-                    selectedId = event.transactionId
-                    render()
-                }
-                TransactionsEvent.DetailDismissed -> {
-                    selectedId = null
-                    render()
-                }
+                is TransactionsEvent.SearchChanged -> setFilter(currentFilter.copy(query = event.query))
+                is TransactionsEvent.SourceFilterSelected ->
+                    setFilter(currentFilter.copy(source = event.source))
+                is TransactionsEvent.RowTapped -> _uiState.update { it.copy(detail = event.transaction) }
+                TransactionsEvent.DetailDismissed -> _uiState.update { it.copy(detail = null) }
             }
         }
 
         /**
-         * Builds the screen's state from the last data and the user's current choices (issue 3.5).
-         *
-         * Why:    **the filter is applied before grouping**, which is not a detail — [TransactionDay]
-         *         computes its total by folding the rows under it, so filtering first makes the day
-         *         totals recompute to the filtered rows for free. Filtering after grouping would
-         *         leave every header stating a total for transactions no longer beneath it.
-         *
-         *         `availableSources` is deliberately read from the **unfiltered** lists: derived from
-         *         what is on screen, choosing a chip would remove every other chip and strand the
-         *         user with no way back to "All". Ordered by [TransactionSource.entries] rather than
-         *         by first appearance, so chips keep their positions as rows arrive.
-         *
-         *         `errorCode` is carried over rather than cleared. A read that failed is still
-         *         failed after a chip tap, and re-rendering is not evidence that it recovered.
-         * Result: `_uiState` holds a value consistent with both the data and the choices.
-         * Input:  none — reads [snapshot], [sourceFilter] and [selectedId]. Output: none.
-         * Changelog: 2026-08-03 — Created for issue 3.5.
+         * Applies a filter-sheet event (issue 3.6; FR-TXN-007).
+         * Why:    split from [onEvent] so the main handler stays one line per group, the shape the
+         *         add screen's `applySplit` already established.
+         * Result: the filter or the sheet's visibility changes; the paged flow re-queries.
+         * Input:  [event]. Output: none.
+         * Changelog: 2026-08-04 — Created for issue 3.6.
          */
-        private fun render() {
-            val filter = sourceFilter
-            val recent = snapshot.recent.filterBySource(filter)
-            val upcoming = snapshot.upcoming.filterBySource(filter)
-            _uiState.update { previous ->
-                previous.copy(
-                    isLoading = false,
-                    days = recent.groupIntoDays(),
-                    upcoming = upcoming.groupIntoDays(soonestFirst = true),
-                    accountNames = snapshot.accountNames,
-                    sourceFilter = filter,
-                    availableSources = snapshot.sourcesPresent(),
-                    // Resolved from the unfiltered rows: a sheet opened on a row must not close
-                    // itself because the user then narrowed the list to something else.
-                    detail = selectedId?.let(snapshot::findById),
-                )
+        private fun applyFilter(event: FilterEvent) {
+            when (event) {
+                FilterEvent.Opened -> _uiState.update { it.copy(isFilterSheetOpen = true) }
+                FilterEvent.Dismissed -> _uiState.update { it.copy(isFilterSheetOpen = false) }
+                // The search text survives Clear: it is typed in a field the sheet does not own, and
+                // wiping it from under the user's cursor would read as the app losing what they said.
+                FilterEvent.Cleared -> setFilter(TransactionFilter(query = currentFilter.query))
+                is FilterEvent.Changed -> setFilter(event.filter)
             }
+        }
+
+        /**
+         * Applies a bulk-selection event (issue 3.6; FR-TXN-008).
+         * Why:    split from [onEvent] for the same reason [applyFilter] is. Selection is a mode.
+         * Result: the selection changes, or a bulk write is launched.
+         * Input:  [event]. Output: none.
+         * Changelog: 2026-08-04 — Created for issue 3.6.
+         */
+        private fun applyBulk(event: BulkEvent) {
+            when (event) {
+                is BulkEvent.Toggled -> toggleSelection(event.transactionId)
+                BulkEvent.Cleared -> setSelection(emptySet())
+                is BulkEvent.Recategorise -> runBulk { repository.recategoriseAll(it, event.categoryId) }
+                is BulkEvent.Retag -> runBulk { repository.retagAll(it, event.tagNames) }
+                BulkEvent.Delete -> deleteSelection()
+                BulkEvent.Undo -> undo()
+                BulkEvent.UndoDismissed -> _uiState.update { it.copy(undo = null) }
+            }
+        }
+
+        /**
+         * Adds or removes one row from the selection (issue 3.6; FR-TXN-008).
+         * Result: the selection changes; emptying it leaves selection mode.
+         * Input:  [transactionId]. Output: none.
+         * Changelog: 2026-08-04 — Created for issue 3.6.
+         */
+        private fun toggleSelection(transactionId: String) {
+            val current = selectionFlow.value
+            setSelection(if (transactionId in current) current - transactionId else current + transactionId)
+        }
+
+        /**
+         * Runs a bulk write over the current selection and reports the outcome (issue 3.6).
+         * Why:    recategorise and retag differ only in which repository call they make, so the
+         *         guard rails around them — refuse an empty selection, block a second write while
+         *         one is in flight, clear the selection on success, surface the error code on
+         *         failure — are written once here rather than twice.
+         *
+         *         **The selection is cleared on success.** Leaving twenty rows selected after they
+         *         have been changed invites the user to change them again by reflex.
+         * Result: the write runs; `isBulkRunning` brackets it either way.
+         * Input:  [write] — the repository call, given the selected ids.
+         * Output: none (launches on `viewModelScope`).
+         * Changelog: 2026-08-04 — Created for issue 3.6 (FR-TXN-008).
+         */
+        private fun runBulk(write: suspend (List<String>) -> Result<Int, AppError>) {
+            val ids = selectionFlow.value.toList()
+            if (ids.isEmpty() || _uiState.value.isBulkRunning) return
+            viewModelScope.launch {
+                _uiState.update { it.copy(isBulkRunning = true) }
+                when (val outcome = write(ids)) {
+                    is Ok -> setSelection(emptySet())
+                    is Err -> _uiState.update { it.copy(errorCode = outcome.error.code) }
+                }
+                _uiState.update { it.copy(isBulkRunning = false) }
+            }
+        }
+
+        /**
+         * Deletes the selection and arms the undo snackbar (issue 3.6; FR-TXN-008).
+         * Why:    not routed through [runBulk], because this is the one bulk write whose *result* is
+         *         needed afterwards: the repository returns the ids it actually removed, which for a
+         *         transfer is more than was selected, and undo has to restore exactly those.
+         * Result: the rows leave every read; `undo` holds what can bring them back.
+         * Input:  none — reads the selection. Output: none (launches on `viewModelScope`).
+         * Changelog: 2026-08-04 — Created for issue 3.6 (FR-TXN-008).
+         */
+        private fun deleteSelection() {
+            val ids = selectionFlow.value.toList()
+            if (ids.isEmpty() || _uiState.value.isBulkRunning) return
+            viewModelScope.launch {
+                _uiState.update { it.copy(isBulkRunning = true) }
+                when (val outcome = repository.deleteAll(ids)) {
+                    is Ok -> {
+                        setSelection(emptySet())
+                        _uiState.update {
+                            it.copy(undo = UndoBatch(ids = outcome.value, selectedCount = ids.size))
+                        }
+                    }
+
+                    is Err -> _uiState.update { it.copy(errorCode = outcome.error.code) }
+                }
+                _uiState.update { it.copy(isBulkRunning = false) }
+            }
+        }
+
+        /**
+         * Puts back what the last bulk delete removed (issue 3.6; FR-TXN-008).
+         * Why:    restores [UndoBatch.ids] — what the repository *removed* — rather than what the
+         *         user selected. For a transfer those differ, and restoring only the selection would
+         *         bring back one leg and leave the money it moved in one account with no counterpart.
+         * Result: the rows return to every read and the balances revert; the snackbar disarms.
+         * Input:  none — reads `undo`. Output: none (launches on `viewModelScope`).
+         * Changelog: 2026-08-04 — Created for issue 3.6 (FR-TXN-008).
+         */
+        private fun undo() {
+            val batch = _uiState.value.undo ?: return
+            // Disarmed first, so a second tap on a snackbar that has not yet gone cannot restore
+            // twice — the second call would be a NotFound and would surface as an error banner over
+            // an operation that had in fact succeeded.
+            _uiState.update { it.copy(undo = null) }
+            viewModelScope.launch {
+                when (val outcome = repository.restoreAll(batch.ids)) {
+                    is Ok -> Unit
+                    is Err -> _uiState.update { it.copy(errorCode = outcome.error.code) }
+                }
+            }
+        }
+
+        /** The filter the list is currently querying with. */
+        private val currentFilter: TransactionFilter get() = filterFlow.value
+
+        /**
+         * Applies a new filter and mirrors it into the state (issue 3.6).
+         * Why:    two places need it — [filterFlow] drives the query, [uiState] drives the controls —
+         *         and setting one without the other is how a chip ends up showing a facet the query
+         *         never saw. One function, so they cannot part company.
+         * Result: the paged flow re-queries and the sheet re-renders.
+         * Input:  [filter]. Output: none.
+         * Changelog: 2026-08-04 — Created for issue 3.6.
+         */
+        private fun setFilter(filter: TransactionFilter) {
+            filterFlow.value = filter
+            _uiState.update { it.copy(filter = filter) }
+        }
+
+        /**
+         * Applies a new selection and mirrors it into the state (issue 3.6).
+         * Why:    the same argument [setFilter] makes. [selectionFlow] feeds the paged stream so a
+         *         row can render its own checkbox; [uiState] feeds the action bar's count.
+         * Result: both move together. Input: [selection]. Output: none.
+         * Changelog: 2026-08-04 — Created for issue 3.6.
+         */
+        private fun setSelection(selection: Set<String>) {
+            selectionFlow.value = selection
+            _uiState.update { it.copy(selection = selection) }
         }
 
         /**
@@ -178,7 +363,8 @@ class TransactionsViewModel
          * Why:    the id goes to the store as-is. **This is deliberately not "if it is a transfer,
          *         delete the transfer"** — the screen does not branch on the row's kind, because the
          *         atomicity guarantee belongs in one place and that place is the repository. No
-         *         refresh follows: `observeRecent` is a live query, so the list updates itself.
+         *         refresh follows: the paged query is invalidated by the write, so the list
+         *         updates itself.
          * Result: the row leaves the list, or `errorCode` is set and it stays.
          * Input:  [transactionId]. Output: none (launches on `viewModelScope`).
          */
@@ -193,61 +379,75 @@ class TransactionsViewModel
     }
 
 /**
- * The three streams the list is built from, as one value (issue 3.5).
+ * Turns one page row into the row the list renders (issue 3.6; FR-TXN-003).
  *
- * Why:  the ViewModel has to re-render on a chip tap, with no database emission to carry the data
- *       in. Holding the last emission as one immutable value — rather than three mutable fields —
- *       means a re-render cannot mix rows from one emission with account names from another.
- * What: the actuals, the scheduled rows, and the id → name map, all exactly as they arrived.
- * Result: `render()` has one input, and every state it produces is internally consistent.
- * Changelog: 2026-08-03 — Created for issue 3.5.
+ * Why:    the collapse of a transfer's two legs moved into SQL in issue 3.6 — [toRows] pairs legs
+ *         within a loaded day, which paging breaks the moment they land in different pages. The
+ *         query now returns one leg with its counterpart account projected beside it, and this is
+ *         where that becomes a [TransactionRow.TransferPair].
  *
- * Input:  [recent] — actuals, newest first; [upcoming] — scheduled, soonest first;
- *         [accountNames] — account id → display name.
- * Output: an immutable value.
+ *         **The direction comes from the leg's type, not from the amount's sign.** Either would
+ *         work — `TransactionType.matches` is asserted over every write path — but the type is what
+ *         the query filtered on, so reading it here keeps one answer rather than two that agree.
+ * Result: a [TransactionRow.TransferPair] for a transfer leg whose sibling is still live, otherwise
+ *         a [TransactionRow.Single]. **A leg whose sibling has gone stays a Single**, which is the
+ *         honest failure mode: hiding it would make money vanish from the list.
+ * Input:  the receiver. Output: [TransactionRow].
+ * Changelog: 2026-08-04 — Created for issue 3.6.
  */
-internal data class ListSnapshot(
-    val recent: List<Transaction> = emptyList(),
-    val upcoming: List<Transaction> = emptyList(),
-    val accountNames: Map<String, String> = emptyMap(),
-) {
-    /**
-     * Every source present across both lists, in enum order (issue 3.5; FR-TXN-009).
-     * Why:    the chip row's contents. Both lists, because a profile whose only receipt is a
-     *         scheduled one still has receipts to filter by.
-     * Result: the distinct sources, ordered by [TransactionSource.entries]; empty for no rows.
-     * Input:  none. Output: `List<TransactionSource>`.
-     * Changelog: 2026-08-03 — Created for issue 3.5.
-     */
-    fun sourcesPresent(): List<TransactionSource> {
-        val present = (recent + upcoming).mapTo(mutableSetOf()) { it.source }
-        return TransactionSource.entries.filter { it in present }
-    }
-
-    /**
-     * Finds one transaction by id across both lists (issue 3.5).
-     * Why:    the detail sheet is opened from a row id, and a row can be an actual or a scheduled
-     *         one. For a transfer the id is one leg's, which resolves here like any other.
-     * Result: the transaction, or `null` when the id names nothing on screen — a row deleted while
-     *         its sheet was open closes the sheet rather than showing a stale copy.
-     * Input:  [id]. Output: `Transaction?`.
-     * Changelog: 2026-08-03 — Created for issue 3.5.
-     */
-    fun findById(id: String): Transaction? = recent.firstOrNull { it.id == id } ?: upcoming.firstOrNull { it.id == id }
+internal fun FilteredTransaction.toRow(): TransactionRow {
+    val transferId = transaction.transferId
+    val counterpart = counterpartAccountId
+    if (transferId == null || counterpart == null) return TransactionRow.Single(transaction)
+    val isOutgoing = transaction.type == TransactionType.TRANSFER_OUT
+    return TransactionRow.TransferPair(
+        transferId = transferId,
+        // This leg: either identifies the transfer to the store, and using the one the query
+        // returned keeps the delete action pointing at a row that is actually on screen.
+        transaction = transaction,
+        outAccountId = if (isOutgoing) transaction.accountId else counterpart,
+        inAccountId = if (isOutgoing) counterpart else transaction.accountId,
+        // Positive: the size of the movement, matching `Transfer`. The stored leg is signed.
+        amount = if (isOutgoing) Money.ZERO - transaction.amount else transaction.amount,
+    )
 }
 
 /**
- * Narrows a list to one source, or leaves it alone (issue 3.5; FR-TXN-009).
- * Why:    stated once so the actuals and the scheduled rows cannot drift apart — a filter that
- *         applied to one list and not the other would show a "Scheduled" group contradicting the
- *         chip above it.
- * Result: the rows whose source matches, or the receiver unchanged when [source] is `null`.
- * Input:  the receiver; [source] — the chosen source, or `null` for all.
- * Output: `List<Transaction>`.
- * Changelog: 2026-08-03 — Created for issue 3.5.
+ * Turns a page of transactions into the list's items, day headers included (issue 3.6; FR-TXN-007).
+ *
+ * Why:    `insertSeparators` is Paging's answer to "group by day" over a stream that arrives in
+ *         fixed-size pages: it is called with each adjacent pair, so a header is emitted exactly
+ *         where the booked day changes — including at a page boundary, where a naive grouping
+ *         would emit a second header for a day already headed, or none at all.
+ *
+ *         **`before == null` is the top of the list, not the top of a page.** Paging guarantees the
+ *         nulls only bracket the whole loaded stream, which is what makes the first day get a header.
+ *
+ *         **The total is looked up, never folded.** A day split across two pages would otherwise be
+ *         summed from whichever half is loaded — see [TransactionListItem.DayHeader].
+ * Result: `[DayHeader, Row, Row, DayHeader, Row, …]`, newest first.
+ * Input:  the receiver — one page of rows; [totals] — day → net total, from the database;
+ *         [selection] — the ids the user has selected. Output: `PagingData<TransactionListItem>`.
+ * Changelog: 2026-08-04 — Created for issue 3.6 (FR-TXN-007).
  */
-internal fun List<Transaction>.filterBySource(source: TransactionSource?): List<Transaction> =
-    if (source == null) this else filter { it.source == source }
+internal fun PagingData<FilteredTransaction>.toListItems(
+    totals: Map<String, Money>,
+    selection: Set<String>,
+): PagingData<TransactionListItem> =
+    map { row ->
+        TransactionListItem.Row(row = row.toRow(), isSelected = row.transaction.id in selection)
+    }.insertSeparators { before, after ->
+        // Nothing after: the end of the list, where a trailing header would head nothing.
+        val day = (after as? TransactionListItem.Row)?.row?.transaction?.bookedOn ?: return@insertSeparators null
+        val previousDay = (before as? TransactionListItem.Row)?.row?.transaction?.bookedOn
+        if (day == previousDay) {
+            null
+        } else {
+            // ZERO when the day is absent from the map, which happens when its only activity was a
+            // transfer — the totals query excludes both legs, and zero is the arithmetic truth.
+            TransactionListItem.DayHeader(isoDate = day, total = totals[day] ?: Money.ZERO)
+        }
+    }
 
 /**
  * Groups transactions into days, newest day first.
@@ -323,9 +523,9 @@ private fun List<Transaction>.toTransferRow(transferId: String): TransactionRow.
     val into = first { it.amount > Money.ZERO }
     return TransactionRow.TransferPair(
         transferId = transferId,
-        // Either leg identifies the transfer to the store; the outgoing one is chosen so the id is
+        // Either leg identifies the transfer to the store; the outgoing one is chosen so the row is
         // deterministic rather than depending on the order the query returned.
-        id = out.id,
+        transaction = out,
         outAccountId = out.accountId,
         inAccountId = into.accountId,
         amount = into.amount,

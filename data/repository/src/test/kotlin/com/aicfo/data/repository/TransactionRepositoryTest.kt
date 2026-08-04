@@ -236,7 +236,7 @@ class TransactionRepositoryTest {
             val result = repository.create(TransactionDraft(account.id, Money.ZERO))
 
             assertEquals("amount", (result as Err).error.let { (it as AppError.Validation).field })
-            assertTrue(repository.observeRecent().first().isEmpty())
+            assertTrue(repository.liveTransactions().isEmpty())
         }
 
     @Test
@@ -255,7 +255,7 @@ class TransactionRepositoryTest {
             val result = repository.create(TransactionDraft("account:missing", Money(-250_00L)))
 
             assertEquals(AppError.NotFound, (result as Err).error)
-            assertTrue(repository.observeRecent().first().isEmpty())
+            assertTrue(repository.liveTransactions().isEmpty())
         }
 
     @Test
@@ -280,12 +280,12 @@ class TransactionRepositoryTest {
             assertTrue(repository.create(TransactionDraft(account.id, Money(-250_00L))) is Ok)
         }
 
-    // --- observeRecent -----------------------------------------------------------------------------
+    // --- observeFiltered ---------------------------------------------------------------------------
 
     @Test
     fun `the recent list is empty on a fresh profile`() =
         runTest {
-            assertTrue(repository.observeRecent().first().isEmpty())
+            assertTrue(repository.liveTransactions().isEmpty())
         }
 
     @Test
@@ -296,7 +296,7 @@ class TransactionRepositoryTest {
             clock.advanceBy(Duration.ofMinutes(5))
             repository.create(TransactionDraft(account.id, Money(-200_00L), note = "second")).expectOk()
 
-            assertEquals(listOf("second", "first"), repository.observeRecent().first().map { it.note })
+            assertEquals(listOf("second", "first"), repository.liveTransactions().map { it.note })
         }
 
     @Test
@@ -307,44 +307,46 @@ class TransactionRepositoryTest {
 
             database.transactionDao().softDelete(transaction.id, clock.nowUtcMillis())
 
-            assertTrue(repository.observeRecent().first().isEmpty())
+            assertTrue(repository.liveTransactions().isEmpty())
         }
 
     @Test
-    fun `a transaction older than the window falls out of the recent list`() =
+    fun `a transaction older than the old thirty-day window is still listed`() =
         runTest {
+            // The inverse of the assertion this replaced. Until issue 3.6 the list read a fixed
+            // 30-day window and this same fixture asserted the row had *left* it — which is exactly
+            // the limitation FR-TXN-007 exists to remove: a user with six months of history could
+            // not reach month four. There is no lower bound now.
             val account = newAccount()
             repository.create(TransactionDraft(account.id, Money(-250_00L))).expectOk()
 
-            assertEquals(1, repository.observeRecent().first().size)
-            clock.advanceBy(Duration.ofDays(TransactionRepository.RECENT_WINDOW_DAYS + 1))
+            assertEquals(1, repository.liveTransactions().size)
+            clock.advanceBy(Duration.ofDays(400))
 
-            // Out of the list, but not out of the balance — issue 3.6 builds the full history.
-            assertTrue(repository.observeRecent().first().isEmpty())
+            assertEquals(1, repository.liveTransactions().size)
             assertEquals(Money(99_750_00L), accounts.find(account.id).expectOk().balance)
         }
 
     @Test
-    fun `a transaction from inside the window is listed`() =
+    fun `a row booked in the past is listed`() =
         runTest {
             // The boundary tests above only ever look at a row booked *today*, which cannot tell a
-            // working 30-day window from one that is accidentally a single day wide. This is the
-            // case the emulator run turned up as empty on a demo profile full of history.
+            // working query from one that is accidentally a single day wide. This is the case the
+            // emulator run turned up as empty on a demo profile full of history.
             val account = newAccount()
             database.transactionDao().upsert(
                 rawTransaction("txn:old", account.id, TransactionSource.MANUAL.storedValue)
                     .copy(bookedOnIsoDate = clock.today().minusDays(10).toString()),
             )
 
-            assertEquals(listOf("txn:old"), repository.observeRecent().first().map { it.id })
+            assertEquals(listOf("txn:old"), repository.liveTransactions().map { it.id })
         }
 
     @Test
-    fun `the demo's own history is inside the window`() =
+    fun `the demo's own history is listed`() =
         runTest {
             // Reproduces what the emulator run showed: a freshly-seeded demo whose recent list came
-            // back empty even though its account balances plainly derived from transactions. The
-            // dataset seeds three months up to today, so a 30-day window must catch a month of it.
+            // back empty even though its account balances plainly derived from transactions.
             val demo =
                 RepositoryFactory.demoMode(
                     database = database,
@@ -356,8 +358,8 @@ class TransactionRepositoryTest {
             activeProfileId.value = DemoModeRepository.DEMO_PROFILE_ID
 
             assertTrue(
-                "the demo seeds three months of history; the 30-day window must show some of it",
-                repository.observeRecent().first().isNotEmpty(),
+                "the demo seeds three months of history; the ledger read must show it",
+                repository.liveTransactions().isNotEmpty(),
             )
         }
 
@@ -374,7 +376,7 @@ class TransactionRepositoryTest {
             database.transactionDao().upsert(rawTransaction("txn:future", account.id, "account_aggregator"))
             val transaction = repository.create(TransactionDraft(account.id, Money(-250_00L))).expectOk()
 
-            assertEquals(listOf(transaction.id), repository.observeRecent().first().map { it.id })
+            assertEquals(listOf(transaction.id), repository.liveTransactions().map { it.id })
         }
 
     @Test
@@ -442,7 +444,7 @@ class TransactionRepositoryTest {
 
             activeProfileId.value = DEMO_PROFILE
 
-            assertTrue(repository.observeRecent().first().isEmpty())
+            assertTrue(repository.liveTransactions().isEmpty())
         }
 
     @Test
@@ -452,10 +454,10 @@ class TransactionRepositoryTest {
             repository.create(TransactionDraft(account.id, Money(-250_00L))).expectOk()
 
             activeProfileId.value = DEMO_PROFILE
-            assertTrue(repository.observeRecent().first().isEmpty())
+            assertTrue(repository.liveTransactions().isEmpty())
             activeProfileId.value = REAL_PROFILE
 
-            assertEquals(1, repository.observeRecent().first().size)
+            assertEquals(1, repository.liveTransactions().size)
         }
 
     @Test
@@ -530,7 +532,7 @@ class TransactionRepositoryTest {
     /**
      * Result: the raw row including tombstones, or null. Input: [id]. Output: `TransactionEntity?`.
      *
-     * Reaches past the repository on purpose: [TransactionRepository.observeRecent] maps rows into
+     * Reaches past the repository on purpose: [TransactionRepository.observeFiltered] maps rows into
      * the domain model, so "the stored profile and currency are right" is not a claim it can make.
      */
     private fun rawRow(id: String): TransactionEntity? =

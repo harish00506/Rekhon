@@ -36,6 +36,10 @@ androidxHilt = "1.2.0"
 
 # --- Persistence ---
 room = "2.7.1"
+# Issue 3.6: FR-TXN-007 asks the transaction list for "infinite scroll via paging". Paging 3 is
+# the first-party answer and the one Room ships a PagingSource integration for (room-paging), so
+# the query stays one @Query rather than becoming a hand-rolled LIMIT/OFFSET cursor.
+paging = "3.3.6"
 datastore = "1.1.7"
 protobuf = "4.31.1"
 protobufPlugin = "0.9.5"
@@ -132,6 +136,14 @@ room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
 # Schema-bundle parsing (issue 1.7). A JVM artifact, so DB-003 can be checked in unit tests
 # rather than only on a device.
 room-migration = { module = "androidx.room:room-migration", version.ref = "room" }
+# Issue 3.6: lets a @Query return a PagingSource that Room keeps invalidated (FR-TXN-007).
+room-paging = { module = "androidx.room:room-paging", version.ref = "room" }
+
+# --- Paging (issue 3.6, FR-TXN-007) ---
+androidx-paging-runtime = { module = "androidx.paging:paging-runtime", version.ref = "paging" }
+androidx-paging-compose = { module = "androidx.paging:paging-compose", version.ref = "paging" }
+# collectDataForTest / TestPager, so paging is asserted in unit tests rather than only on a device.
+androidx-paging-testing = { module = "androidx.paging:paging-testing", version.ref = "paging" }
 
 # --- Encrypted store ---
 sqlcipher = { module = "net.zetetic:sqlcipher-android", version.ref = "sqlcipher" }

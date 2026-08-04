@@ -97,6 +97,20 @@ class MoneyParseTest {
     }
 
     /**
+     * Input:  a Devanagari digit in the **paise** half.
+     * Output: asserts refusal, like the rupee half above.
+     *
+     * A separate case because the two halves are checked by two clauses of one `&&` chain, and the
+     * rupee case short-circuits before the paise one is ever evaluated — so the rupee test alone
+     * leaves the paise guard unexercised. This app is India-first, so `1.१0` is plausible input
+     * rather than an exotic one, and `BigInteger` throws on it if the guard is missing.
+     */
+    @Test
+    fun `refuses non-ASCII digits in the paise half too`() {
+        assertNull(MoneyFormatter.parse("1.१0"))
+    }
+
+    /**
      * Input:  more precision than paise.
      * Output: asserts refusal rather than silent rounding — rounding here would be the app deciding
      *         what the user meant, and MNY-001 puts rounding under explicit HALF_EVEN control, not

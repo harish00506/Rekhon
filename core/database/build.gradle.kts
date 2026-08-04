@@ -50,6 +50,10 @@ dependencies {
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
 
+    // Issue 3.6: `TransactionDao.pagedFiltered` returns a PagingSource, so the type is on this
+    // module's public surface and `:data:repository` must be able to name it (FR-TXN-007).
+    api(libs.room.paging)
+
     // SQLCipher supplies the encrypted SQLite build Room opens through; androidx-sqlite is the
     // SupportSQLite API both sides speak.
     implementation(libs.sqlcipher)

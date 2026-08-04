@@ -31,6 +31,12 @@ dependencies {
     // ARC-001's chain is feature -> domain -> data/core, so the repositories sit below this module.
     implementation(project(":data:repository"))
 
+    // Issue 3.6: collectAsLazyPagingItems, the Compose half of FR-TXN-007's paged list.
+    implementation(libs.androidx.paging.compose)
+    // `asSnapshot` — how a ViewModel test asserts against a paged stream, which is otherwise a
+    // sequence of load events rather than a list.
+    testImplementation(libs.androidx.paging.testing)
+
     // Compose UI tests run on the JVM here (the :feature:accounts pattern): FR-TXN-002's tap budget
     // is checked on every `test` run, not only when an emulator happens to be up.
     testImplementation(libs.robolectric)

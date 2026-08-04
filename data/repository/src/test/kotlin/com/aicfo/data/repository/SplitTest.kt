@@ -14,7 +14,6 @@ import com.aicfo.core.model.Money
 import com.aicfo.core.model.total
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -214,7 +213,7 @@ class SplitTest {
                 )
 
             assertEquals("lines", ((result as Err).error as AppError.Validation).field)
-            assertTrue(repository.observeRecent().first().isEmpty())
+            assertTrue(repository.liveTransactions().isEmpty())
             assertTrue(allLines().isEmpty())
         }
 
@@ -335,7 +334,7 @@ class SplitTest {
             val account = newAccount()
             repository.createSplit(splitDraft(account.id)).expectOk()
 
-            val recent = repository.observeRecent().first()
+            val recent = repository.liveTransactions()
 
             assertEquals(1, recent.size)
             assertEquals(2, recent.single().splits.size)
@@ -348,7 +347,7 @@ class SplitTest {
             val account = newAccount()
             repository.create(TransactionDraft(account.id, Money(-250_00L))).expectOk()
 
-            val transaction = repository.observeRecent().first().single()
+            val transaction = repository.liveTransactions().single()
 
             assertTrue(transaction.splits.isEmpty())
             assertTrue(!transaction.isSplit)
@@ -361,7 +360,7 @@ class SplitTest {
             repository.createSplit(splitDraft(account.id)).expectOk()
             repository.create(TransactionDraft(account.id, Money(-250_00L))).expectOk()
 
-            val recent = repository.observeRecent().first()
+            val recent = repository.liveTransactions()
 
             assertEquals(setOf(0, 2), recent.map { it.splits.size }.toSet())
             recent.filter { it.isSplit }.forEach { parent ->
@@ -381,7 +380,7 @@ class SplitTest {
             repository.delete(parent.id).expectOk()
 
             assertTrue(liveLinesOf(parent.id).isEmpty())
-            assertTrue(repository.observeRecent().first().isEmpty())
+            assertTrue(repository.liveTransactions().isEmpty())
         }
 
     @Test
@@ -451,7 +450,7 @@ class SplitTest {
 
             activeProfileId.value = DEMO_PROFILE
 
-            assertTrue(repository.observeRecent().first().isEmpty())
+            assertTrue(repository.liveTransactions().isEmpty())
         }
 
     @Test
@@ -505,7 +504,7 @@ class SplitTest {
     /**
      * Result: every split row, straight from SQL, tombstones included. Input: none. Output: the rows.
      *
-     * Reaches past the repository on purpose: `observeRecent` filters soft-deleted rows, so "the
+     * Reaches past the repository on purpose: the ledger read filters soft-deleted rows, so "the
      * tombstone is still there" is not a claim it can make.
      */
     private fun allLinesIncludingDeleted(): List<RawLine> =

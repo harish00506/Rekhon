@@ -12,6 +12,41 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > reach writing to it; this epic makes a transaction theirs to create — by hand first, then by
 > transfer, split, receipt and SMS.
 
+### [0.3.7] — Issue 3.6: search, filters and bulk edit  (2026-08-04)
+
+- **Implemented:** the transaction list stopped being a 30-day window and became the whole ledger —
+  searchable, filterable, paged, with multi-select recategorise, retag and delete (FR-TXN-007,
+  FR-TXN-008).
+  - **Search covers payee, note, tag and amount** behind one field: a user looking for a transaction
+    knows *something* about it and should not have to say which kind of something first. The amount
+    match is exact via `MoneyFormatter.parse`, not a substring on the stored paise — typing `250`
+    finds ₹250, not ₹2.50, ₹1,250 and ₹25,000 as well. Typed `%` and `_` are escaped, so the search
+    means what the user typed.
+  - **Filters:** account, category, type, source, tag, amount range and date range, as one
+    `TransactionFilter` expanded into one nullable-parameter `@Query`. The amount bounds are on the
+    **magnitude** (MNY-001) — under a signed comparison "between ₹100 and ₹500" would exclude every
+    expense, which is most of a ledger.
+  - **Tags are new** (schema **v8 → v9**): `tags` and `transaction_tags`, the two tables SRS §20.1
+    names. Additive DDL, no backfill, with a round-trip case that asserts the unique index as well
+    as the rows — an index a migration forgot is invisible until a user has two of something.
+  - **Paging 3** (`androidx.paging` + `room-paging`, first-party, no network). Two consequences that
+    are not obvious from the requirement: a transfer's two legs are now collapsed **in SQL** rather
+    than paired within a loaded day, because paging can put them in different pages; and each day's
+    total comes from its own `GROUP BY` query rather than a fold over loaded rows, because a page
+    boundary can fall inside a day and a folded total would understate it until the user scrolled.
+  - **Bulk edit is reversible.** Delete returns the ids it *actually* removed — for a transfer that
+    is both legs (FR-TXN-003) — and undo restores exactly those, so the snackbar cannot leave money
+    in one account with no counterpart. Recategorise skips transfer legs and split parents in SQL
+    rather than trusting the caller to remember (FR-TXN-003, FR-TXN-004).
+  - **`observeRecent` was removed, not kept alongside.** Its window was scaffolding whose own doc
+    comment named this issue as its removal. The *upper* bound survives, so a scheduled payment
+    still stays out of the actuals unless a filter names a future date (FR-TXN-010).
+- **Tests:** 1457 passed, 0 skipped. 37 new repository tests (each facet, paging across a page
+  boundary, day totals across a page boundary, bulk + undo), 42 Compose tests, 40 ViewModel tests,
+  and the 8 → 9 migration round trip. The `LIKE`-escaping guard was proven to fail on purpose before
+  being trusted — its first version passed with the escaping removed, because the decoy row had no
+  digits in it.
+
 ### [0.3.6] — Fix: the add screen was missing two FR-TXN-001 fields  (2026-08-03)
 
 - **Fixed:** the add-transaction screen never captured a **merchant** or a **time of day**, both of

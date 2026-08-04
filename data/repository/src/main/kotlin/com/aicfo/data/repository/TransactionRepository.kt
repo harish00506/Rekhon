@@ -1,5 +1,10 @@
 package com.aicfo.data.repository
 
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
+import androidx.paging.flatMap
+import androidx.paging.map
 import androidx.room.withTransaction
 import com.aicfo.core.common.AppError
 import com.aicfo.core.common.Clock
@@ -12,10 +17,13 @@ import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.database.dao.TransactionWithSplits
 import com.aicfo.core.database.entity.AccountEntity
 import com.aicfo.core.database.entity.CategoryEntity
+import com.aicfo.core.database.entity.TagEntity
 import com.aicfo.core.database.entity.TransactionEntity
 import com.aicfo.core.database.entity.TransactionSplitEntity
+import com.aicfo.core.database.entity.TransactionTagEntity
 import com.aicfo.core.model.Category
 import com.aicfo.core.model.Money
+import com.aicfo.core.model.Tag
 import com.aicfo.core.model.Transaction
 import com.aicfo.core.model.TransactionSource
 import com.aicfo.core.model.TransactionType
@@ -38,9 +46,12 @@ import java.time.LocalTime
  *       adjustment did. That left FR-TXN-002 (add-transaction in one tap, completable in ≤ 3)
  *       unbuildable, every account balance derived from rows the user could not create, and the
  *       whole of Epic 3 blocked. This is the class that opens the capture path.
- * What: two observations and one write.
- * Result: a transaction is the user's to create, and every balance that derives from one moves.
+ * What: the reads the list is built from, and every write that creates or changes a transaction.
+ * Result: a transaction is the user's to create, find, edit in bulk and undo, and every balance that
+ *       derives from one moves.
  * Changelog: 2026-08-02 — Created for issue 3.1.
+ *            2026-08-04 — Issue 3.6: the windowed `observeRecent` became [observeFiltered], a paged
+ *            read over the whole ledger, and the bulk edits FR-TXN-008 asks for landed beside it.
  *
  * **The only class allowed to touch [com.aicfo.core.database.dao.TransactionDao] (ARC-005).** The
  * transactions ViewModels see [Transaction] — a `:core:model` type — and never a Room entity.
@@ -50,34 +61,44 @@ import java.time.LocalTime
  * balance update. A repository that also adjusted `account.current_balance_minor` would be stating
  * a figure that is already derivable, which is precisely what DB-001 forbids.
  *
- * **Scope is create-only, deliberately.** Editing, deleting, transfers (issue 3.2), splits (3.3),
- * future dating (3.4), and search/filters/bulk edit (3.6) each have their own issue. This class grows
- * a method when one of them lands, not before.
+ * **The class grows one method per issue, not a speculative surface.** Transfers (3.2), splits
+ * (3.3), future dating (3.4), source tracking (3.5) and search/filters/bulk edit (3.6) each added
+ * exactly what they needed. Per-row editing has no issue yet and so has no method here.
+ *
+ * **Past detekt's `TooManyFunctions` ceiling, deliberately.** ARC-005 makes this the single gateway
+ * to the `transactions` table, so its surface is the sum of every transaction feature. Splitting it
+ * would give two classes the same database, clock, id generator and profile flow, and `deleteAll`
+ * would lose the `softDeleteOne` that `delete` shares with it — the duplication that split is
+ * supposed to prevent.
  */
+@Suppress("TooManyFunctions") // See the note above: one gateway per table (ARC-005).
 interface TransactionRepository {
     /**
-     * Observes the active profile's recent transactions, newest first.
+     * Observes the active profile's whole ledger, filtered and paged, newest first (issue 3.6).
      *
      * Why:    the caller does not choose the profile, for the same reason
      *         [AccountRepository.observeAccounts] does not — demo mode puts sample data under a
      *         second profile id, and "which profile?" is a question with one right answer at any
      *         moment that several screens would each have to get right.
      *
-     *         **A rolling window, not everything.** [RECENT_WINDOW_DAYS] days back from today, in
-     *         the profile zone. Issue 3.6 owns the full list with search, filters and paging; a
-     *         screen that loaded every row a user has ever entered would be that issue built badly
-     *         and early. The window is computed from the injected `Clock` (TIM-001), so it rolls
-     *         over at the profile's midnight rather than UTC's.
-     * Result: emits on every change; soft-deleted rows excluded. An empty list is a real state the
-     *         screen must render as an empty state.
-     * Input:  none — the active profile. Output: `Flow<List<Transaction>>`.
+     *         **This replaced `observeRecent`, which read a fixed 30-day window.** That window was
+     *         scaffolding with its removal written into its own doc comment: "issue 3.6 owns the
+     *         full list with search, filters and paging". A user with six months of history could
+     *         not reach month four. Paging is what lets the list stop being a window without
+     *         becoming an unbounded load.
+     * Result: emits a new [PagingData] whenever the data changes; soft-deleted rows excluded. An
+     *         empty page is a real state — and the screen must tell "this profile has nothing" from
+     *         "this filter matches nothing", which [TransactionFilter.isActive] answers.
+     * Input:  [filter] — every facet `null` for the unfiltered ledger.
+     * Output: `Flow<PagingData<FilteredTransaction>>`.
      *
-     * **The upper bound is today, and since issue 3.4 that is load-bearing.** Until future dating
-     * existed no row could be booked past today, so the bound was true by accident; now it is what
-     * keeps a scheduled payment out of the actuals half of the list and out of every day total
-     * (FR-TXN-010). Scheduled rows are read by [observeUpcoming] instead.
+     * **The lower bound is gone; the upper bound is not.** Without an explicit [filter] date range
+     * this still stops at today, so a scheduled payment stays out of the actuals and out of every
+     * day total (FR-TXN-010) — [observeUpcoming] is where those rows are read, and a list that
+     * returned them here as well would render them twice. A filter that *names* a future date is
+     * honoured, because a user asking for next month is asking for exactly those rows.
      */
-    fun observeRecent(): Flow<List<Transaction>>
+    fun observeFiltered(filter: TransactionFilter): Flow<PagingData<FilteredTransaction>>
 
     /**
      * Observes the active profile's **future-dated** transactions, soonest first (issue 3.4).
@@ -86,18 +107,143 @@ interface TransactionRepository {
      *         in forecasts". This is the read that makes the second half possible: the cash-flow
      *         forecast (Epic 6) and FR-HOME-001's "upcoming obligations (next 14 days)" card both
      *         need the obligations the user has already told the app about, and neither can find
-     *         them in [observeRecent], which stops at today by design.
+     *         them in the actuals half of the list, which stops at today by design.
      *
      *         **A separate flow rather than a widened window**, so the two halves cannot be summed
      *         by accident. A caller that wants actuals gets actuals; nothing has to remember to
      *         filter. The bounds are tomorrow to today + [UPCOMING_WINDOW_DAYS], both computed from
      *         the injected `Clock`, so the split moves at the profile's midnight (TIM-001) — a row
-     *         leaves this flow and enters [observeRecent] on its own date, with no write.
+     *         leaves this flow and joins the actuals on its own date, with no write.
      * Result: emits on every change, soonest date first; soft-deleted rows excluded. Empty is the
      *         normal state — most users schedule nothing.
      * Input:  none — the active profile. Output: `Flow<List<Transaction>>`.
      */
     fun observeUpcoming(): Flow<List<Transaction>>
+
+    /**
+     * Observes each day's net total over the same filtered set (issue 3.6; FR-TXN-007).
+     *
+     * Why:    FR-TXN-007 asks for "grouping by day with daily totals", and with paging the total
+     *         **cannot** be folded from the rows on screen: a page boundary can fall inside a day,
+     *         so a header would understate its own day until the user scrolled. A wrong number is
+     *         worse than a late one, so the database sums every matching row and the header renders
+     *         what it says.
+     *
+     *         **A transfer contributes nothing**, which is arithmetically true — its legs are `-X`
+     *         and `+X` — and matches what the list has shown since issue 3.2.
+     * Result: emits day → signed total, keyed by the profile-zone ISO day (TIM-002). A day with no
+     *         non-transfer activity is simply absent, which the header renders as zero.
+     * Input:  [filter] — the same value passed to [observeFiltered]; the two must agree or the
+     *         headers will describe a different set from the rows beneath them.
+     * Output: `Flow<Map<String, Money>>`.
+     */
+    fun observeDayTotals(filter: TransactionFilter): Flow<Map<String, Money>>
+
+    /**
+     * Observes the sources present anywhere in the active profile's ledger (issue 3.6; FR-TXN-009).
+     *
+     * Why:    the source chips. Issue 3.5 derived them in the ViewModel from the rows it had, which
+     *         was correct while those rows *were* everything; with paging they are the first page,
+     *         so chips built from them would appear and vanish as the user scrolled. **Unfiltered on
+     *         purpose** — chips derived from the filtered set would remove every alternative the
+     *         moment one was chosen, stranding the user with no way back to "All".
+     * Result: emits the distinct sources in [TransactionSource.entries] order, so chips keep their
+     *         positions as rows arrive. Unknown stored values are dropped, not guessed at.
+     * Input:  none — the active profile. Output: `Flow<List<TransactionSource>>`.
+     */
+    fun observeSources(): Flow<List<TransactionSource>>
+
+    /**
+     * Observes the active profile's tags, name-ordered (issue 3.6; FR-TXN-007).
+     *
+     * Result: emits on every change; soft-deleted tags excluded. **Empty is the normal state** —
+     *         tags are an opt-in habit, so the filter sheet hides the row rather than showing one
+     *         with nothing in it.
+     * Input:  none — the active profile. Output: `Flow<List<Tag>>`.
+     */
+    fun observeTags(): Flow<List<Tag>>
+
+    /**
+     * Sets the category on many transactions at once (issue 3.6; FR-TXN-008).
+     *
+     * Why:    FR-TXN-008's "multi-select recategorise". Applied as **one statement inside one
+     *         database transaction** (DB-004): a loop of single updates would leave a window in
+     *         which half the selection was recategorised, which is the state no screen can render
+     *         honestly.
+     *
+     *         **Transfer legs and split parents are skipped, not refused.** A selection is a rough
+     *         instrument — the user swept up twenty rows and two of them happen to be a transfer —
+     *         and failing the whole operation would punish them for the app's invariants. The rows
+     *         that can carry a category get one; the count says how many did.
+     * Result: `Ok(n)` — rows actually changed, **which may be fewer than [ids]**, and `0` is a
+     *         success meaning nothing in the selection was eligible. `Err(Validation)` for an empty
+     *         selection, or `Err(Storage)`.
+     * Input:  [ids] — the selected transactions; [categoryId] — `null` clears the category, which
+     *         is a legitimate bulk edit and not a mistake.
+     * Output: `Result<Int, AppError>`.
+     */
+    suspend fun recategoriseAll(
+        ids: List<String>,
+        categoryId: String?,
+    ): Result<Int, AppError>
+
+    /**
+     * Replaces the tags on many transactions at once (issue 3.6; FR-TXN-008).
+     *
+     * Why:    FR-TXN-008's "retag". Expressed as a **set** — "these transactions now carry exactly
+     *         these tags" — rather than as add/remove deltas, which makes it idempotent: applying
+     *         the same retag twice leaves the same links, so a double-tap cannot double anything.
+     *
+     *         **Tags the profile does not have yet are created here**, in the same database
+     *         transaction as the links (DB-004), matched case-insensitively against existing ones so
+     *         `Travel` typed today and `travel` typed last week stay one tag rather than becoming
+     *         two chips the user cannot tell apart.
+     * Result: `Ok(n)` — the transactions retagged. An empty [tagNames] clears every tag from them,
+     *         which is how "remove all tags" is expressed. `Err(Validation)` for an empty selection,
+     *         or `Err(Storage)`.
+     * Input:  [ids] — the selected transactions; [tagNames] — the labels as the user typed them,
+     *         trimmed and de-duplicated by the repository.
+     * Output: `Result<Int, AppError>`.
+     */
+    suspend fun retagAll(
+        ids: List<String>,
+        tagNames: List<String>,
+    ): Result<Int, AppError>
+
+    /**
+     * Soft-deletes many transactions at once, and reports exactly what went (issue 3.6; FR-TXN-008).
+     *
+     * Why:    FR-TXN-008's "delete (with undo snackbar, 7-day soft delete)". Every row goes inside
+     *         one database transaction (DB-004) — a half-applied bulk delete is money half-destroyed
+     *         — and each one carries its split lines and its sibling transfer leg exactly as a
+     *         single [delete] does, because it routes through the same code.
+     *
+     *         **It returns the ids it actually removed, which may be more than it was given.**
+     *         Deleting one leg of a transfer takes the other (FR-TXN-003); an undo that restored
+     *         only the selection would bring back one leg and leave the money the transfer moved
+     *         sitting in one account with no counterpart. The caller hands this list straight to
+     *         [restoreAll].
+     * Result: `Ok(ids)` — every id removed, siblings included; the affected balances revert.
+     *         `Err(Validation)` for an empty selection, `Err(NotFound)` when nothing named was live,
+     *         or `Err(Storage)`.
+     * Input:  [ids] — the selected transactions. Output: `Result<List<String>, AppError>`.
+     */
+    suspend fun deleteAll(ids: List<String>): Result<List<String>, AppError>
+
+    /**
+     * Brings soft-deleted transactions back (issue 3.6; FR-TXN-008's undo).
+     *
+     * Why:    "delete with undo" is only honest if the delete is genuinely reversible, and DB-002's
+     *         tombstones are what make it so. The split lines are restored with their parents in the
+     *         same database transaction; tag links were never removed, so they return by themselves.
+     *
+     *         **Every balance recovers with no balance write**, because a balance is a `SUM` over
+     *         live transactions (DB-001, ADR-0007) — the same property that made the delete move it.
+     * Result: `Ok(n)` — rows restored. `Err(Validation)` for an empty list, `Err(NotFound)` when
+     *         nothing named was actually deleted, or `Err(Storage)`.
+     * Input:  [ids] — exactly what [deleteAll] returned. Output: `Result<Int, AppError>`.
+     */
+    suspend fun restoreAll(ids: List<String>): Result<Int, AppError>
 
     /**
      * Stamps every scheduled row whose day has arrived, and reports how many (issue 3.4).
@@ -230,13 +376,30 @@ interface TransactionRepository {
         const val ID_PREFIX = "txn"
 
         /**
-         * How far back [observeRecent] looks, in profile-zone days.
+         * How many rows [observeFiltered] loads per page (issue 3.6; FR-TXN-007).
          *
          * Not a financial threshold, so §29's data-not-code rule does not reach it — it is the size
-         * of a list, and the list itself is temporary scaffolding until issue 3.6 builds the real
-         * one with filters and paging.
+         * of a read. Chosen to comfortably overfill a phone screen so the user never sees the list
+         * catch up with them, while staying small enough that the first page renders immediately on
+         * a ledger of any size. Paging's prefetch does the rest.
          */
-        const val RECENT_WINDOW_DAYS = 30L
+        const val PAGE_SIZE = 40
+
+        /**
+         * The [IdGenerator] prefix for tag ids (issue 3.6).
+         *
+         * Distinct from [ID_PREFIX] so a database dump reads as itself: `tag:4` is plainly a label,
+         * not a transaction.
+         */
+        const val TAG_ID_PREFIX = "tag"
+
+        /**
+         * The [IdGenerator] prefix for the rows joining a tag to a transaction (issue 3.6).
+         *
+         * Distinct again: `txtag:4` is a link, and the three tables are read side by side often
+         * enough that telling them apart at a glance is worth two extra characters.
+         */
+        const val TRANSACTION_TAG_ID_PREFIX = "txtag"
 
         /**
          * How far ahead [observeUpcoming] looks, in profile-zone days (issue 3.4).
@@ -384,6 +547,7 @@ data class TransactionDraft(
  * Output: a working repository.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
+@Suppress("TooManyFunctions") // See the interface: one implementation per gateway (ARC-003/ARC-005).
 internal class RoomTransactionRepository(
     private val database: CfoDatabase,
     private val clock: Clock,
@@ -391,24 +555,55 @@ internal class RoomTransactionRepository(
     private val dispatchers: DispatcherProvider,
     private val activeProfileId: Flow<String>,
 ) : TransactionRepository {
-    override fun observeRecent(): Flow<List<Transaction>> =
+    override fun observeFiltered(filter: TransactionFilter): Flow<PagingData<FilteredTransaction>> =
         // flatMapLatest, not map: entering or leaving the demo must *switch* which query is being
         // observed, cancelling the previous one. A `map` would leave the old profile's Flow running
         // and the screen showing the transactions it was already showing.
         activeProfileId.flatMapLatest { profileId ->
-            val today = clock.today()
-            // One query, not two combined: Room's `@Relation` fetches each transaction's lines
-            // inside the same database transaction and invalidates on either table (issue 3.3).
-            database.transactionDao()
-                .observeBookedBetweenWithSplits(
-                    profileId = profileId,
-                    fromIsoDate = today.minusDays(TransactionRepository.RECENT_WINDOW_DAYS).toString(),
-                    toIsoDate = today.toString(),
-                )
-                // mapNotNull, not map: a row whose `source` this build does not recognise is dropped
-                // rather than thrown on, so an old build reading a newer database shows fewer rows
-                // instead of crashing the list.
-                .map { rows -> rows.mapNotNull { it.toTransaction() } }
+            val bounded = filter.boundedToActuals(clock)
+            Pager(
+                // No `enablePlaceholders`: it needs a total row count, which means a second COUNT
+                // query on every invalidation, to render rows the user cannot read anyway. The list
+                // simply grows as pages arrive.
+                config = PagingConfig(pageSize = TransactionRepository.PAGE_SIZE, enablePlaceholders = false),
+                // The factory is re-invoked by Paging on every invalidation, so the query is rebuilt
+                // from the same filter after each write rather than going stale.
+                pagingSourceFactory = { database.transactionDao().pagedFiltered(profileId, bounded) },
+            ).flow
+                // mapNotNull, not map: a row whose `source` or `type` this build does not recognise
+                // is dropped rather than thrown on, so an old build reading a newer database shows
+                // fewer rows instead of crashing the list.
+                // flatMap over `listOfNotNull`, because PagingData has no `mapNotNull` and the
+                // alternative — filter, then map with a `!!` — runs the mapper twice per row.
+                .map { page -> page.flatMap { listOfNotNull(it.toFilteredTransaction()) } }
+                .flowOn(dispatchers.io)
+        }
+
+    override fun observeDayTotals(filter: TransactionFilter): Flow<Map<String, Money>> =
+        activeProfileId.flatMapLatest { profileId ->
+            database.transactionDao().observeDayTotals(profileId, filter.boundedToActuals(clock))
+                // `Money`, not the raw Long, at the data layer's edge: every arithmetic on it above
+                // this line is then overflow-checked (MNY-001).
+                .map { rows -> rows.associate { it.isoDate to Money(it.totalMinor) } }
+                .flowOn(dispatchers.io)
+        }
+
+    override fun observeSources(): Flow<List<TransactionSource>> =
+        activeProfileId.flatMapLatest { profileId ->
+            database.transactionDao().observeDistinctSources(profileId)
+                .map { stored ->
+                    val present = stored.mapNotNullTo(mutableSetOf()) { TransactionSource.fromStored(it) }
+                    // Enum order rather than the order SQLite returned, so chips keep their
+                    // positions as rows arrive rather than rearranging under the user's finger.
+                    TransactionSource.entries.filter { it in present }
+                }
+                .flowOn(dispatchers.io)
+        }
+
+    override fun observeTags(): Flow<List<Tag>> =
+        activeProfileId.flatMapLatest { profileId ->
+            database.tagDao().observeForProfile(profileId)
+                .map { rows -> rows.map { it.toTag() } }
                 .flowOn(dispatchers.io)
         }
 
@@ -418,7 +613,7 @@ internal class RoomTransactionRepository(
             database.transactionDao()
                 .observeBookedBetweenWithSplits(
                     profileId = profileId,
-                    // Tomorrow, not today: today's rows are actuals and belong to `observeRecent`.
+                    // Tomorrow, not today: today's rows are actuals and belong to the main list.
                     // The two windows abut exactly, so no row can appear in both or in neither.
                     fromIsoDate = today.plusDays(1).toString(),
                     toIsoDate = today.plusDays(TransactionRepository.UPCOMING_WINDOW_DAYS).toString(),
@@ -682,28 +877,181 @@ internal class RoomTransactionRepository(
     override suspend fun delete(transactionId: String): Result<Unit, AppError> =
         withContext(dispatchers.io) {
             runCatchingToResult {
-                val existing =
-                    database.transactionDao().findById(transactionId)
-                        ?: return@runCatchingToResult 0
                 val now = clock.nowUtcMillis()
                 // One transaction around every row that goes (DB-004): a parent gone without its
                 // lines, or one transfer leg without the other, is a half-deleted record.
-                database.withTransaction {
-                    // The transfer case is one statement, not a read-then-delete-each loop, so there
-                    // is no window in which one leg is gone and the other is not (FR-TXN-003).
-                    val touched =
-                        existing.transferId
-                            ?.let { database.transactionDao().softDeleteTransfer(it, now) }
-                            ?: database.transactionDao().softDelete(transactionId, now)
-                    // Only when the parent actually went: a repeated delete must stay a no-op all
-                    // the way down rather than quietly re-stamping the lines' tombstones.
-                    if (touched > 0) {
-                        database.transactionSplitDao().softDeleteForTransaction(transactionId, now)
-                    }
-                    touched
-                }
+                database.withTransaction { softDeleteOne(transactionId, now) }
             }.requireRowTouched()
         }
+
+    /**
+     * Soft-deletes one transaction, its lines, and its sibling transfer leg.
+     * Why:    extracted so [delete] and [deleteAll] are **the same code**, not two implementations
+     *         of "deleting one side deletes both" that can drift. A bulk delete that forgot the
+     *         sibling would leave money that came from nowhere sitting in the destination account —
+     *         and it would be a bug that only appears when the user selects rather than swipes.
+     * Result: rows touched — `0` when the id names nothing live, which is what makes a repeated
+     *         delete report honestly rather than claiming success twice.
+     * Input:  [transactionId] — either leg of a transfer; [nowUtcMillis] — the tombstone stamp,
+     *         from the injected `Clock` (TIM-001). **Must be called inside a `withTransaction`.**
+     * Output: [Int].
+     * Changelog: 2026-08-04 — Extracted from `delete` for issue 3.6 (FR-TXN-008).
+     */
+    private suspend fun softDeleteOne(
+        transactionId: String,
+        nowUtcMillis: Long,
+    ): Int {
+        val existing = database.transactionDao().findById(transactionId) ?: return 0
+        // The transfer case is one statement, not a read-then-delete-each loop, so there is no
+        // window in which one leg is gone and the other is not (FR-TXN-003).
+        val touched =
+            existing.transferId
+                ?.let { database.transactionDao().softDeleteTransfer(it, nowUtcMillis) }
+                ?: database.transactionDao().softDelete(transactionId, nowUtcMillis)
+        // Only when the parent actually went: a repeated delete must stay a no-op all the way down
+        // rather than quietly re-stamping the lines' tombstones.
+        if (touched > 0) {
+            database.transactionSplitDao().softDeleteForTransaction(transactionId, nowUtcMillis)
+        }
+        return touched
+    }
+
+    override suspend fun recategoriseAll(
+        ids: List<String>,
+        categoryId: String?,
+    ): Result<Int, AppError> {
+        // Rejected before `withContext`, so an empty selection costs no thread switch and — more to
+        // the point — cannot have written anything by the time it is rejected.
+        if (ids.isEmpty()) return Err(AppError.Validation("ids"))
+        val now = clock.nowUtcMillis()
+        return withContext(dispatchers.io) {
+            runCatchingToResult {
+                // One statement, so no window exists in which half the selection is recategorised.
+                // Transfer legs and split parents are excluded by the query itself (FR-TXN-003,
+                // FR-TXN-004) rather than filtered here, so the invariant cannot be forgotten.
+                database.transactionDao().recategoriseAll(ids, categoryId, now)
+            }
+        }
+    }
+
+    override suspend fun retagAll(
+        ids: List<String>,
+        tagNames: List<String>,
+    ): Result<Int, AppError> {
+        if (ids.isEmpty()) return Err(AppError.Validation("ids"))
+        // Trimmed, blank-stripped and de-duplicated case-insensitively before anything is written:
+        // " Travel " and "travel" are one label, and two rows for them would split a tag's
+        // transactions across two chips the user cannot tell apart.
+        val names =
+            tagNames.map { it.trim() }
+                .filter { it.isNotBlank() }
+                .distinctBy { it.lowercase() }
+        val now = clock.nowUtcMillis()
+        return withContext(dispatchers.io) {
+            runCatchingToResult {
+                val profileId = activeProfileId.first()
+                // One transaction around the tags, the clear and the attach (DB-004): a retag that
+                // cleared and then failed would silently untag the user's selection.
+                database.withTransaction { writeTags(ids, names, profileId, now) }
+            }
+        }
+    }
+
+    /**
+     * Clears the selection's tags and attaches the named ones, creating any that are new.
+     * Why:    split out of [retagAll] so the part that must run inside `withTransaction` is one
+     *         readable block. **Existing tags are looked up before any are minted** — the unique
+     *         index on `(profile_id, name)` would reject a duplicate anyway, but failing a bulk
+     *         retag because the user already had `travel` would be absurd.
+     * Result: the transactions carry exactly [names]; the count of transactions retagged.
+     * Input:  [transactionIds] — the selection; [names] — already trimmed and de-duplicated;
+     *         [profileId] — the active profile; [nowUtcMillis] — from the injected `Clock`
+     *         (TIM-001). Output: [Int].
+     * Changelog: 2026-08-04 — Created for issue 3.6 (FR-TXN-008).
+     */
+    private suspend fun writeTags(
+        transactionIds: List<String>,
+        names: List<String>,
+        profileId: String,
+        nowUtcMillis: Long,
+    ): Int {
+        val dao = database.tagDao()
+        // Cleared first, so the operation is "these transactions now carry exactly these tags"
+        // rather than an accumulation — which is what makes applying it twice a no-op.
+        dao.detachAllFor(transactionIds)
+        if (names.isEmpty()) return transactionIds.size
+
+        val existing = dao.findByNames(profileId, names.map { it.lowercase() })
+        val byLoweredName = existing.associateBy { it.name.lowercase() }
+        val created =
+            names.filterNot { it.lowercase() in byLoweredName }
+                .map { name ->
+                    TagEntity(
+                        id = ids.newId(TransactionRepository.TAG_ID_PREFIX),
+                        profileId = profileId,
+                        name = name,
+                        createdAtUtcMillis = nowUtcMillis,
+                        updatedAtUtcMillis = nowUtcMillis,
+                    )
+                }
+        dao.upsertAll(created)
+
+        val tagIds = existing.map { it.id } + created.map { it.id }
+        dao.attachAll(
+            transactionIds.flatMap { transactionId ->
+                tagIds.map { tagId ->
+                    TransactionTagEntity(
+                        id = ids.newId(TransactionRepository.TRANSACTION_TAG_ID_PREFIX),
+                        profileId = profileId,
+                        transactionId = transactionId,
+                        tagId = tagId,
+                        createdAtUtcMillis = nowUtcMillis,
+                        updatedAtUtcMillis = nowUtcMillis,
+                    )
+                }
+            },
+        )
+        return transactionIds.size
+    }
+
+    override suspend fun deleteAll(ids: List<String>): Result<List<String>, AppError> {
+        if (ids.isEmpty()) return Err(AppError.Validation("ids"))
+        val now = clock.nowUtcMillis()
+        return withContext(dispatchers.io) {
+            runCatchingToResult {
+                // One transaction around every row that goes (DB-004): a bulk delete that applied
+                // to half a selection is a state no screen can render honestly.
+                database.withTransaction {
+                    // Read the siblings **before** deleting: afterwards every leg is a tombstone and
+                    // the query that finds live ones would return nothing, so the undo batch would
+                    // silently omit exactly the rows FR-TXN-003 pulled in.
+                    val affected = (ids + database.transactionDao().findTransferSiblingIds(ids)).distinct()
+                    val touched = ids.sumOf { softDeleteOne(it, now) }
+                    // Null, not an empty list: `flatMapPresent` turns it into `Err(NotFound)`, which
+                    // is the honest answer when nothing named was live — including a repeat.
+                    if (touched > 0) affected else null
+                }
+            }.flatMapPresent()
+        }
+    }
+
+    override suspend fun restoreAll(ids: List<String>): Result<Int, AppError> {
+        if (ids.isEmpty()) return Err(AppError.Validation("ids"))
+        val now = clock.nowUtcMillis()
+        return withContext(dispatchers.io) {
+            runCatchingToResult {
+                database.withTransaction {
+                    val restored = database.transactionDao().restoreAll(ids, now)
+                    // The lines come back with their parents, in the same transaction: a restored
+                    // split whose lines stayed deleted would be an amount attributed to nothing.
+                    if (restored > 0) {
+                        ids.forEach { database.transactionSplitDao().restoreForTransaction(it, now) }
+                    }
+                    restored
+                }
+            }.requireAnyRowTouched()
+        }
+    }
 }
 
 /**

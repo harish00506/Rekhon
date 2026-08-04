@@ -10,6 +10,7 @@ import com.aicfo.core.database.dao.DemoDao
 import com.aicfo.core.database.dao.NetWorthSnapshotDao
 import com.aicfo.core.database.dao.ProfileDao
 import com.aicfo.core.database.dao.RecurringRuleDao
+import com.aicfo.core.database.dao.TagDao
 import com.aicfo.core.database.dao.TransactionDao
 import com.aicfo.core.database.dao.TransactionSplitDao
 import com.aicfo.core.database.entity.AccountEntity
@@ -19,8 +20,10 @@ import com.aicfo.core.database.entity.CategoryEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
 import com.aicfo.core.database.entity.ProfileEntity
 import com.aicfo.core.database.entity.RecurringRuleEntity
+import com.aicfo.core.database.entity.TagEntity
 import com.aicfo.core.database.entity.TransactionEntity
 import com.aicfo.core.database.entity.TransactionSplitEntity
+import com.aicfo.core.database.entity.TransactionTagEntity
 
 /**
  * The encrypted on-device database — every rupee the user owns lives here (SRS §20, DB-003).
@@ -52,10 +55,13 @@ import com.aicfo.core.database.entity.TransactionSplitEntity
         BudgetEntity::class,
         RecurringRuleEntity::class,
         NetWorthSnapshotEntity::class,
+        TagEntity::class,
+        TransactionTagEntity::class,
     ],
     version = CfoDatabase.VERSION,
     exportSchema = true,
 )
+@Suppress("TooManyFunctions") // One accessor per table: the count is the schema's, not a design choice.
 abstract class CfoDatabase : RoomDatabase() {
     /** Input: none. Output: the profile DAO. */
     abstract fun profileDao(): ProfileDao
@@ -84,6 +90,9 @@ abstract class CfoDatabase : RoomDatabase() {
     /** Input: none. Output: the net-worth snapshot DAO (issue 2.6, FR-ACC-005). */
     abstract fun netWorthSnapshotDao(): NetWorthSnapshotDao
 
+    /** Input: none. Output: the tag DAO (issue 3.6, FR-TXN-007/FR-TXN-008). */
+    abstract fun tagDao(): TagDao
+
     /**
      * Input:  none. Output: the demo wipe DAO (issue 2.4, FR-ONB-004).
      *
@@ -102,9 +111,10 @@ abstract class CfoDatabase : RoomDatabase() {
          * (`net_worth_snapshot`, `account.include_in_networth`; FR-ACC-005) · 6 — issue 3.2
          * (`transactions.type`, `transactions.transfer_id`; FR-TXN-003) · 7 — issue 3.3
          * (`transaction_splits`; FR-TXN-004) · 8 — issue 3.4
-         * (`transactions.posted_at_utc_millis`; FR-TXN-010).
+         * (`transactions.posted_at_utc_millis`; FR-TXN-010) · 9 — issue 3.6 (`tags`,
+         * `transaction_tags`; FR-TXN-007, FR-TXN-008).
          */
-        const val VERSION = 8
+        const val VERSION = 9
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"

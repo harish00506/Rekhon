@@ -222,7 +222,7 @@ class TransferTest {
             val result = repository.createTransfer(TransferDraft(from.id, from.id, Money(5_000_00L)))
 
             assertEquals("toAccountId", ((result as Err).error as AppError.Validation).field)
-            assertTrue(repository.observeRecent().first().isEmpty())
+            assertTrue(repository.liveTransactions().isEmpty())
         }
 
     @Test
@@ -236,7 +236,7 @@ class TransferTest {
                 val result = repository.createTransfer(TransferDraft(from.id, to.id, amount))
                 assertEquals("amount", ((result as Err).error as AppError.Validation).field)
             }
-            assertTrue(repository.observeRecent().first().isEmpty())
+            assertTrue(repository.liveTransactions().isEmpty())
         }
 
     @Test
@@ -248,7 +248,7 @@ class TransferTest {
 
             assertEquals(AppError.NotFound, (result as Err).error)
             // The half-transfer this guards against: the outgoing leg written, the incoming one not.
-            assertTrue(repository.observeRecent().first().isEmpty())
+            assertTrue(repository.liveTransactions().isEmpty())
         }
 
     @Test
@@ -260,7 +260,7 @@ class TransferTest {
             val result = repository.createTransfer(TransferDraft(from.id, to.id, Money(5_000_00L)))
 
             assertEquals(AppError.NotFound, (result as Err).error)
-            assertTrue(repository.observeRecent().first().isEmpty())
+            assertTrue(repository.liveTransactions().isEmpty())
         }
 
     @Test
@@ -274,7 +274,7 @@ class TransferTest {
             val result = repository.createTransfer(TransferDraft(from.id, to.id, Money(5_000_00L)))
 
             assertEquals(AppError.NotFound, (result as Err).error)
-            assertTrue(repository.observeRecent().first().isEmpty())
+            assertTrue(repository.liveTransactions().isEmpty())
         }
 
     // --- deletion ----------------------------------------------------------------------------------
@@ -439,18 +439,41 @@ class TransferTest {
     // --- reads -------------------------------------------------------------------------------------
 
     @Test
-    fun `both legs appear in the recent list, carrying their shared id`() =
+    fun `a transfer is one row in the list, naming the account on the other side`() =
         runTest {
-            // The repository returns rows; collapsing the pair into one line is the screen's job
-            // (issue 3.2's list), and it needs this id to do it.
+            // Issue 3.6 moved the collapse from the screen into the query. Until then the repository
+            // returned both legs and `List<Transaction>.toRows()` paired them within a loaded day —
+            // which paging breaks the moment the legs land in different pages. Now the incoming leg
+            // never leaves SQL and the outgoing one carries its counterpart (FR-TXN-003).
             val (from, to) = twoAccounts()
             val transfer = repository.createTransfer(TransferDraft(from.id, to.id, Money(5_000_00L))).expectOk()
 
-            val recent = repository.observeRecent().first()
+            val rows = repository.liveRows()
 
-            assertEquals(2, recent.size)
-            assertEquals(setOf(transfer.id), recent.mapNotNull { it.transferId }.toSet())
-            assertTrue(recent.all { it.type.isTransfer })
+            assertEquals(1, rows.size)
+            val row = rows.single()
+            assertEquals(transfer.id, row.transaction.transferId)
+            assertEquals(TransactionType.TRANSFER_OUT, row.transaction.type)
+            assertEquals(from.id, row.transaction.accountId)
+            assertEquals(to.id, row.counterpartAccountId)
+        }
+
+    @Test
+    fun `filtering by the destination account shows the incoming leg instead`() =
+        runTest {
+            // The collapse clause stands down when an account filter is set, and it has to: a user
+            // who filters to the account money *arrived* in must see it arrive. Dropping the
+            // incoming leg unconditionally would make a transfer invisible from one of the two
+            // accounts it touched.
+            val (from, to) = twoAccounts()
+            repository.createTransfer(TransferDraft(from.id, to.id, Money(5_000_00L))).expectOk()
+
+            val rows = repository.liveRows(TransactionFilter(accountId = to.id))
+
+            val row = rows.single()
+            assertEquals(TransactionType.TRANSFER_IN, row.transaction.type)
+            assertEquals(Money(5_000_00L), row.transaction.amount)
+            assertEquals(from.id, row.counterpartAccountId)
         }
 
     @Test
@@ -460,7 +483,7 @@ class TransferTest {
 
             repository.create(TransactionDraft(account.id, Money(-250_00L))).expectOk()
 
-            assertNull(repository.observeRecent().first().single().transferId)
+            assertNull(repository.liveTransactions().single().transferId)
         }
 
     // --- fixtures ----------------------------------------------------------------------------------
@@ -500,7 +523,7 @@ class TransferTest {
     /**
      * Result: every transaction row, straight from SQL. Input: none. Output: the rows.
      *
-     * Reaches past the repository on purpose: `observeRecent` filters soft-deleted rows and maps into
+     * Reaches past the repository on purpose: the ledger read filters soft-deleted rows and maps into
      * the domain model, so neither "the tombstone is still there" nor "the stored type is right" is a
      * claim it can make.
      */

@@ -5,8 +5,10 @@ import com.aicfo.core.model.Account
 import com.aicfo.core.model.Category
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.MoneyFormatter
+import com.aicfo.core.model.Tag
 import com.aicfo.core.model.Transaction
 import com.aicfo.core.model.TransactionSource
+import com.aicfo.data.repository.TransactionFilter
 import java.time.LocalDate
 import java.time.LocalTime
 
@@ -453,13 +455,85 @@ sealed interface TransactionsEvent {
     /**
      * The user tapped a row to see everything about it (issue 3.5).
      *
-     * Carries the same id [Delete] does — for a transfer, one leg's — so the screen does not have to
-     * know which kind of row it is holding.
+     * Carries the **transaction**, not its id (issue 3.6). It used to carry an id that the ViewModel
+     * resolved against a held snapshot of the whole list — and with paging there is no such
+     * snapshot: the loaded pages are not the ledger. Every row already knows the transaction it was
+     * built from, so handing it over removes the lookup rather than replacing it with a query.
      */
-    data class RowTapped(val transactionId: String) : TransactionsEvent
+    data class RowTapped(val transaction: Transaction) : TransactionsEvent
 
     /** The user closed the detail sheet. */
     data object DetailDismissed : TransactionsEvent
+
+    /** The user typed in the search field (issue 3.6; FR-TXN-007). */
+    data class SearchChanged(val query: String) : TransactionsEvent
+}
+
+/**
+ * The four things a user can do to the filter sheet (issue 3.6; FR-TXN-007).
+ *
+ * Why:  a nested sealed interface rather than four more members of [TransactionsEvent] directly, for
+ *       the reason [SplitEvent] gives on the add screen: they arrive together, they are handled
+ *       together in one `is FilterEvent ->` branch, and flattening them into the parent pushes
+ *       `onEvent` past detekt's cyclomatic-complexity ceiling. Filtering is its own small mode.
+ * Result: adding a facet cannot silently grow the list's main event handler.
+ * Changelog: 2026-08-04 — Created for issue 3.6.
+ */
+sealed interface FilterEvent : TransactionsEvent {
+    /** The user opened the filter sheet. */
+    data object Opened : FilterEvent
+
+    /** The user closed it. */
+    data object Dismissed : FilterEvent
+
+    /**
+     * The user changed a facet.
+     *
+     * Carries **the whole filter**, not one field, so the ViewModel has nothing to merge and the
+     * sheet cannot apply one facet against a copy of the state that has since moved on. The search
+     * text is deliberately not in here — it has its own event, because it changes on every keystroke
+     * while the sheet is shut.
+     */
+    data class Changed(val filter: TransactionFilter) : FilterEvent
+
+    /** The user cleared every facet at once. */
+    data object Cleared : FilterEvent
+}
+
+/**
+ * The seven things a user can do in selection mode (issue 3.6; FR-TXN-008).
+ *
+ * Why:  grouped for the same reason [FilterEvent] is. Multi-select is a mode the screen enters and
+ *       leaves, and its actions are meaningless outside it.
+ * Result: adding a bulk action cannot silently grow the list's main event handler.
+ * Changelog: 2026-08-04 — Created for issue 3.6.
+ */
+sealed interface BulkEvent : TransactionsEvent {
+    /**
+     * The user long-pressed a row, or tapped one while already selecting.
+     *
+     * A toggle rather than separate select/deselect events: the screen would otherwise have to know
+     * whether the row is already selected, which is state it does not hold.
+     */
+    data class Toggled(val transactionId: String) : BulkEvent
+
+    /** The user left selection mode. */
+    data object Cleared : BulkEvent
+
+    /** The user chose a category for the selection, or `null` to clear it. */
+    data class Recategorise(val categoryId: String?) : BulkEvent
+
+    /** The user set the selection's tags. An empty list removes every tag. */
+    data class Retag(val tagNames: List<String>) : BulkEvent
+
+    /** The user deleted the selection. */
+    data object Delete : BulkEvent
+
+    /** The user tapped Undo on the snackbar. */
+    data object Undo : BulkEvent
+
+    /** The snackbar went away without being tapped. */
+    data object UndoDismissed : BulkEvent
 }
 
 /**
@@ -471,19 +545,18 @@ sealed interface TransactionsEvent {
  * Result: the list screen is a pure function of this value.
  * Changelog: 2026-08-02 — Created for issue 3.1 (replacing 1.10's placeholder screen).
  *
- * **Deliberately no search, filters, paging or bulk edit.** FR-TXN-007 and FR-TXN-008 are issue
- * 3.6's, and the repository behind this deliberately reads a fixed 30-day window rather than
- * everything. Growing this class is how 3.6 gets built early and badly.
+ * **The paged rows are not in here, and that is deliberate** (issue 3.6). `PagingData` is a stream
+ * of load events, not a value: putting it in an immutable snapshot would make every `copy` of this
+ * class restart the list. The ViewModel exposes it as a second flow, and this class holds everything
+ * *around* the rows — what the user has narrowed to, what they have selected, and what they can undo.
  *
- * Input:  [isLoading]; [days] — newest day first, each with its rows newest first; [accountNames] —
- *         id → display name, so a transfer row can say "HDFC Savings → Cash Wallet" (issue 3.2);
- *         [errorCode] — an `AppError.code`, never a message.
+ * Input:  [isLoading]; [accountNames] — id → display name, so a transfer row can say "HDFC Savings →
+ *         Cash Wallet" (issue 3.2); [errorCode] — an `AppError.code`, never a message.
  * Output: an immutable snapshot for the composable.
  */
 @Immutable
 data class TransactionsUiState(
     val isLoading: Boolean = true,
-    val days: List<TransactionDay> = emptyList(),
     /**
      * The future-dated transactions, soonest day first (issue 3.4; FR-TXN-010).
      *
@@ -496,21 +569,44 @@ data class TransactionsUiState(
     val upcoming: List<TransactionDay> = emptyList(),
     val accountNames: Map<String, String> = emptyMap(),
     /**
-     * The source the list is narrowed to, or `null` for all of them (issue 3.5; FR-TXN-009).
+     * Everything the list is narrowed by (issue 3.6; FR-TXN-007).
      *
-     * Applied by the ViewModel **before** grouping, so [TransactionDay.total] recomputes to the
-     * filtered rows with no extra code — a day showing three of its five transactions must not still
-     * total all five.
+     * Held whole rather than as ten fields, because the ViewModel turns it straight into a query:
+     * one value here is one query below, and a screen that assembled facets separately could show a
+     * chip the query never saw.
      */
-    val sourceFilter: TransactionSource? = null,
+    val filter: TransactionFilter = TransactionFilter(),
+    /** Whether the filter sheet is open (issue 3.6). Part of the state so a test can drive it. */
+    val isFilterSheetOpen: Boolean = false,
     /**
-     * The sources actually present in the loaded window, in enum order (issue 3.5).
+     * The sources present anywhere in the ledger, in enum order (issue 3.5, reworked in 3.6).
      *
-     * **Computed from the *unfiltered* rows.** Deriving it from what is on screen would delete every
-     * other chip the moment one was chosen, leaving the user no way back to "All". Enum order rather
-     * than order of encounter, so the chips do not rearrange as rows arrive.
+     * **Read from the database, not derived from the rows on screen.** Issue 3.5 derived it from the
+     * loaded window, which was right while the window *was* everything; with paging, "loaded" is the
+     * first page, so chips built from it would appear and vanish as the user scrolled.
      */
     val availableSources: List<TransactionSource> = emptyList(),
+    /** The tags the profile has, name-ordered (issue 3.6). Empty is the normal state. */
+    val availableTags: List<Tag> = emptyList(),
+    /** The categories a bulk recategorise can choose from (issue 3.6; FR-TXN-008). */
+    val categories: List<Category> = emptyList(),
+    /**
+     * The rows the user has selected, by id (issue 3.6; FR-TXN-008).
+     *
+     * **A `Set`, so a row cannot be selected twice** — the toggle is what the screen sends, and a
+     * list would grow a duplicate on any event the UI managed to deliver twice.
+     */
+    val selection: Set<String> = emptySet(),
+    /** Whether a bulk operation is in flight (issue 3.6), so the action bar can refuse a second. */
+    val isBulkRunning: Boolean = false,
+    /**
+     * What the undo snackbar can put back, or `null` when there is nothing to undo (FR-TXN-008).
+     *
+     * Holds the ids the repository said it **actually** removed, which for a transfer is more than
+     * the user selected — restoring only the selection would bring back one leg of a transfer and
+     * leave the money it moved in one account with no counterpart.
+     */
+    val undo: UndoBatch? = null,
     /**
      * The transaction whose detail sheet is open, or `null` (issue 3.5).
      *
@@ -521,29 +617,14 @@ data class TransactionsUiState(
     val detail: Transaction? = null,
     val errorCode: String? = null,
 ) {
-    /**
-     * Whether to show the "nothing yet" line rather than a list.
-     *
-     * The same three-way distinction [AddTransactionUiState.hasNoAccount] makes and
-     * `AccountsUiState.isEmpty` made before it: still loading is not empty, and **a failed read is
-     * not empty either** — rendering a database that would not open as a cheerful "no transactions
-     * yet" hides the failure from the one user who most needs to see it.
-     *
-     * **A profile with only scheduled rows is not empty** (issue 3.4): the user has entered
-     * something, and telling them they have not would read as the app having lost it.
-     *
-     * **Nor is a filtered-to-nothing list** (issue 3.5) — `sourceFilter == null` is the fourth
-     * clause and it is the same argument a fourth time. Without it the screen rendered *both* this
-     * message and [isFilteredEmpty]'s at once, which a test caught: "no transactions yet, tap + to
-     * add your first one" is a lie told to a user who has plenty and has merely narrowed the view.
-     */
-    val isEmpty: Boolean
-        get() =
-            !isLoading && errorCode == null && sourceFilter == null &&
-                days.isEmpty() && upcoming.isEmpty()
+    /** Whether the user is picking rows for a bulk action (issue 3.6; FR-TXN-008). */
+    val isSelecting: Boolean get() = selection.isNotEmpty()
 
     /** Whether the scheduled section has anything to show (issue 3.4). */
     val hasUpcoming: Boolean get() = upcoming.isNotEmpty()
+
+    /** The search text, so the field is a pure function of the state (issue 3.6). */
+    val searchQuery: String get() = filter.query.orEmpty()
 
     /**
      * Whether the source filter is worth showing at all (issue 3.5).
@@ -554,16 +635,29 @@ data class TransactionsUiState(
      * demo dataset, a reconciliation adjustment, and later a receipt or an SMS.
      */
     val hasSourceFilter: Boolean get() = availableSources.size >= MIN_SOURCES_TO_FILTER
-
-    /**
-     * Whether a filter is hiding rows the user has (issue 3.5).
-     *
-     * Distinguishes "this profile has nothing" from "this filter matches nothing" — [isEmpty] would
-     * otherwise render a filtered-to-nothing list as the cheerful "no transactions yet" invitation,
-     * which is the same failure that made a failed read look empty.
-     */
-    val isFilteredEmpty: Boolean get() = sourceFilter != null && days.isEmpty() && upcoming.isEmpty()
 }
+
+/**
+ * A bulk delete the user can still take back (issue 3.6; FR-TXN-008).
+ *
+ * Why:  the snackbar has to say how many rows went and be able to put back exactly those rows. The
+ *       two are different numbers when a transfer is involved — deleting one leg takes both — so the
+ *       count the user is shown is the **selection** they made while the ids are what the repository
+ *       actually removed. Reporting "2 deleted" for a one-row selection would be alarming and true;
+ *       reporting "1" and restoring 2 is what the user meant.
+ * What: what to say, and what to restore.
+ * Result: undo is exact rather than approximately right.
+ * Changelog: 2026-08-04 — Created for issue 3.6 (FR-TXN-008).
+ *
+ * Input:  [ids] — every id the repository removed, siblings included; [selectedCount] — how many
+ *         rows the user picked, which is what the snackbar counts.
+ * Output: an immutable value.
+ */
+@Immutable
+data class UndoBatch(
+    val ids: List<String>,
+    val selectedCount: Int,
+)
 
 /**
  * The fewest distinct sources that make a filter meaningful (issue 3.5).
@@ -572,6 +666,53 @@ data class TransactionsUiState(
  * pins it.
  */
 internal const val MIN_SOURCES_TO_FILTER = 2
+
+/**
+ * One entry in the paged list: a day header or a transaction (issue 3.6; FR-TXN-007).
+ *
+ * Why:  FR-TXN-007 asks for "grouping by day with daily totals" **and** paging, and the two pull in
+ *       opposite directions — grouping wants a whole day at once, paging delivers a fixed number of
+ *       rows. `PagingData.insertSeparators` is how Paging reconciles them: the headers are inserted
+ *       into the stream as the pages arrive, so a day that straddles a page boundary gets exactly
+ *       one header rather than two or none.
+ * What: the closed set of things the list can render.
+ * Result: adding a third kind of entry is a compile error until the screen handles it.
+ * Changelog: 2026-08-04 — Created for issue 3.6.
+ */
+@Immutable
+sealed interface TransactionListItem {
+    /** The stable list key, so a page arriving does not re-render or re-order what is above it. */
+    val key: String
+
+    /**
+     * A day's date and its net total (FR-TXN-007).
+     *
+     * **[total] comes from the database, not from the rows below it.** A page boundary can fall
+     * inside a day, so a total folded from what is loaded would be short until the user scrolled.
+     *
+     * Input: [isoDate] — the profile-zone day (TIM-002); [total] — the day's signed net movement.
+     */
+    @Immutable
+    data class DayHeader(
+        val isoDate: String,
+        val total: Money,
+    ) : TransactionListItem {
+        override val key: String get() = "day:$isoDate"
+    }
+
+    /**
+     * One transaction, ordinary or a whole transfer.
+     *
+     * Input: [row] — the rendering model; [isSelected] — whether it is in the bulk selection.
+     */
+    @Immutable
+    data class Row(
+        val row: TransactionRow,
+        val isSelected: Boolean = false,
+    ) : TransactionListItem {
+        override val key: String get() = "txn:${row.id}"
+    }
+}
 
 /**
  * One day's transactions with its total (issue 3.1; FR-TXN-007's grouping half).
@@ -614,8 +755,17 @@ data class TransactionDay(
  */
 @Immutable
 sealed interface TransactionRow {
+    /**
+     * The transaction this row was built from (issue 3.6).
+     *
+     * On the interface rather than only on [Single], so the detail sheet can be opened from any row
+     * without the screen branching on which kind it holds. For a transfer it is the leg the query
+     * returned — which is the row on screen, and either leg identifies the pair to the store.
+     */
+    val transaction: Transaction
+
     /** The id the delete action carries — for a transfer, either leg will do (the store decides). */
-    val id: String
+    val id: String get() = transaction.id
 
     /** What this row contributes to its day's total. Zero for a transfer, by construction. */
     val netAmount: Money
@@ -626,8 +776,7 @@ sealed interface TransactionRow {
      * Input: [transaction] — the row as stored. Output: an immutable value.
      */
     @Immutable
-    data class Single(val transaction: Transaction) : TransactionRow {
-        override val id: String get() = transaction.id
+    data class Single(override val transaction: Transaction) : TransactionRow {
         override val netAmount: Money get() = transaction.amount
 
         /**
@@ -646,14 +795,15 @@ sealed interface TransactionRow {
      * **[amount] is positive** — the size of the movement, matching `Transfer`. [netAmount] is zero
      * because the legs cancel, which is what keeps the day total honest when a pair is collapsed.
      *
-     * Input:  [transferId] — the shared link; [id] — the leg the delete action names; [outAccountId]
-     *         and [inAccountId] — where the money left and arrived; [amount] — positive paise.
+     * Input:  [transferId] — the shared link; [transaction] — the leg the query returned, which is
+     *         also the id the delete action names; [outAccountId] and [inAccountId] — where the
+     *         money left and arrived; [amount] — positive paise.
      * Output: an immutable value.
      */
     @Immutable
     data class TransferPair(
         val transferId: String,
-        override val id: String,
+        override val transaction: Transaction,
         val outAccountId: String,
         val inAccountId: String,
         val amount: Money,

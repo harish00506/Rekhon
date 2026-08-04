@@ -261,7 +261,7 @@ class FutureDatedTransactionTest {
                 TransactionDraft(account.id, Money(-25_000_00L), bookedOn = clock.today().plusDays(1)),
             ).expectOk()
 
-            val recent = repository.observeRecent().first()
+            val recent = repository.liveTransactions()
             val upcoming = repository.observeUpcoming().first()
 
             assertEquals(1, recent.size)
@@ -324,7 +324,7 @@ class FutureDatedTransactionTest {
             clock.advanceBy(Duration.ofHours(2))
 
             assertTrue(repository.observeUpcoming().first().isEmpty())
-            assertEquals(created.id, repository.observeRecent().first().single().id)
+            assertEquals(created.id, repository.liveTransactions().single().id)
         }
 
     // --- posting -----------------------------------------------------------------------------------
@@ -447,7 +447,7 @@ class FutureDatedTransactionTest {
             assertNull("the worker has not run", rawRow(scheduled.id)?.postedAtUtcMillis)
             val balance = accounts.find(account.id).expectOk().balance
             assertEquals("and the money has moved anyway", Money(75_000_00L), balance)
-            assertFalse(repository.observeRecent().first().single().isScheduledOn(clock.today().toString()))
+            assertFalse(repository.liveTransactions().single().isScheduledOn(clock.today().toString()))
         }
 
     // --- zone and DST ------------------------------------------------------------------------------
