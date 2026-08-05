@@ -1,0 +1,87 @@
+// The on-device settings and consent ledger (issue 1.9; SRS §21.3, P-01).
+//
+// Why:  P-01 makes every off-device path opt-in, per feature, and revocable. That is a schema, not
+//       a bag of booleans — which is why §21.3 pins Proto DataStore and bans SharedPreferences.
+// What: one message holding user settings plus a map of consent records keyed by feature id.
+// Note: field numbers are permanent. Add new fields with new numbers; never renumber or reuse, or
+//       an existing install will decode old bytes into the wrong field.
+syntax = "proto3";
+
+option java_package = "com.aicfo.core.datastore.proto";
+option java_multiple_files = true;
+
+// How the user wants the app themed. THEME_SYSTEM is 0 so it is the proto3 default.
+enum ThemePreferenceProto {
+  THEME_SYSTEM = 0;
+  THEME_LIGHT = 1;
+  THEME_DARK = 2;
+}
+
+// One consent decision, with the history P-01 requires.
+//
+// A bare bool cannot answer "when did I agree to this?" or "when did I withdraw it?", which is
+// exactly what a privacy-first app must be able to show. Timestamps are UTC epoch millis
+// (TIM-001), stamped from the injected Clock.
+message ConsentRecordProto {
+  bool granted = 1;
+  int64 granted_at_utc_millis = 2;
+  int64 revoked_at_utc_millis = 3;
+}
+
+message CfoSettingsProto {
+  // IANA zone id. Empty means "not set" — the Clock then falls back to the device zone.
+  string profile_time_zone_id = 1;
+  // ISO-4217. Empty means "not set".
+  string currency_code = 2;
+  // Issue 5.3: hides amounts on screen without deleting anything.
+  bool privacy_blur_enabled = 3;
+  ThemePreferenceProto theme = 4;
+  // Keyed by ConsentFeature.id. A missing entry means NOT granted — absence is never consent.
+  map<string, ConsentRecordProto> consents = 5;
+
+  // --- Onboarding (issue 2.1; FR-ONB-001, FR-ONB-002) ---
+
+  // When first-run onboarding finished, UTC epoch millis (TIM-001). 0 = never completed, which is
+  // what sends the app to the onboarding flow at launch. A timestamp rather than a bool so "when
+  // did this profile start?" stays answerable — the same reason ConsentRecordProto keeps its dates.
+  int64 onboarding_completed_at_utc_millis = 6;
+  // What the user calls themselves. Local only; never leaves the device (P-01). Empty = not set.
+  string profile_display_name = 7;
+
+  // Quick-setup seeds (FR-ONB-002) — MNY-001: minor units (paise) as int64, never a float.
+  // Issue 2.3 reads these to seed budgets and the emergency-fund target. All optional: the step is
+  // skippable, and 0 reads as "not answered" (a stated income of zero is not a useful seed).
+  int64 quick_setup_monthly_income_minor = 8;
+  int64 quick_setup_rent_emi_minor = 9;
+  int64 quick_setup_typical_savings_minor = 10;
+
+  // --- App lock (issue 2.2; SEC-002, FR-SET-001) ---
+
+  // Whether the lock screen gates the app at all. Default false, because a lock the user never
+  // chose would leave them with a PIN they never set — there would be nothing to unlock with.
+  bool app_lock_enabled = 11;
+  // Whether to offer BiometricPrompt. Independent of app_lock_enabled: a user may keep the lock on
+  // and biometrics off (SEC-002 makes the PIN the fallback, not the other way round).
+  bool biometric_unlock_enabled = 12;
+  // How long the app may sit in the background before it re-locks. 0 = unset, which reads as the
+  // §23.1 default of 60 s — a value the user can raise or lower in settings (FR-SET-001).
+  int32 auto_lock_timeout_seconds = 13;
+
+  // Consecutive failed unlocks, and when the last one happened (UTC epoch millis, TIM-001).
+  //
+  // These live on disk rather than in memory on purpose: SEC-002's lockout is worthless if
+  // force-stopping the app resets it, and force-stopping is the first thing an attacker with a
+  // stolen phone would try. They are cleared on every successful unlock.
+  int32 failed_unlock_attempts = 14;
+  int64 last_failed_unlock_at_utc_millis = 15;
+
+  // --- Demo mode (issue 2.4; FR-ONB-004) ---
+
+  // Whether the app is currently showing the sample dataset instead of the user's own data.
+  //
+  // On disk rather than in memory because the user can background the app mid-demo, and coming back
+  // to real-looking fake money with no banner is the one outcome this feature must never produce.
+  // Deliberately NOT paired with a timestamp, unlike onboarding and consent: nothing ever needs to
+  // answer "when did the demo start?", and a demo profile is destroyed on exit anyway.
+  bool demo_mode_active = 16;
+}

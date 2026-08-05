@@ -6,6 +6,9 @@
   Result: A reader has concrete, token-based visual defaults and the rule that nothing is hardcoded.
   Changelog:
     2026-07-18 — Created (proposed M3 tokens; reconcile with SRS §24 at issue 1.8).
+    2026-07-25 — Issue 1.8 implemented these tokens in :core:designsystem. This file is now
+                 the rationale; the code is the source of truth (theme/Color.kt, Type.kt,
+                 CfoDimens.kt). Contrast of every pair is asserted by ColorContrastTest.
 -->
 
 # AI Personal CFO — Design

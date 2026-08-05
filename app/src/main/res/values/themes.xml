@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Base app theme (issue 1.1). A Material3 no-action-bar theme so the Compose content
+  draws the UI; the full design-system theme tokens arrive in issue 1.8.
+-->
+<resources>
+    <style name="Theme.AiPersonalCfo" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

@@ -199,9 +199,10 @@ financial life, so the store is encrypted and the UI is capture-guarded.
 - **CI (GitHub Actions, [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml)):** build ·
   unit + coverage (`koverVerify`) · ktlint/detekt · Paparazzi screenshot diff · dependency scan ·
   (where a device is available) instrumented E2E. All gates green before merge (§21.6).
-- **Trunk-based:** `main` is always releasable; **conventional commits** each referencing their
-  requirement ID(s); feature-flag incomplete work — no long-lived branches. Work happens on
-  `feature/<id-dashes>-<slug>` and merges to `main`.
+- **Branch model (GitFlow-lite):** `feature/<id-dashes>-<slug>` → `dev` → `stage` → `main`;
+  `main` and `stage` are **protected** (PR-only, CI-gated) release / live-test branches;
+  **conventional commits** each referencing their requirement ID(s); feature-flag incomplete
+  work — short-lived feature branches.
 - **Versioning (SemVer):** single source of truth is repo-root [`VERSION`](../../../VERSION); keep
   `app/build.gradle.kts` `versionName` equal to it. **New epic → minor bump; finished issue →
   patch bump**, with a [`CHANGELOG.md`](../../../CHANGELOG.md) entry citing requirement IDs. Epics

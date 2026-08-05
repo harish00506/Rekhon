@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Dashboard copy (§21.6, ACC-*).
+
+  Why:  every user-visible string lives here, not in a composable — so it can be translated, use
+        ICU plurals, and be reviewed for tone and accessibility. The CfoHardcodedUiString lint rule
+        from issue 1.5 fails the build on a literal in a :feature:* Text(...).
+  Note: the content descriptions are written as full sentences because a screen reader reads them
+        aloud in place of the figure, and "1,23,456" alone tells a non-sighted user nothing.
+-->
+<resources>
+    <string name="dashboard_title">Dashboard</string>
+    <string name="dashboard_safe_to_spend_label">Safe to spend</string>
+    <string name="dashboard_net_worth_label">Net worth</string>
+    <string name="dashboard_spend_split_label">This month</string>
+    <string name="dashboard_accounts_action">Your accounts</string>
+    <string name="dashboard_transactions_action">View transactions</string>
+    <string name="dashboard_refresh_action">Refresh</string>
+    <string name="dashboard_loading">Working out your position…</string>
+    <string name="dashboard_error">Something went wrong. Pull to refresh.</string>
+    <string name="dashboard_safe_to_spend_description">Safe to spend this month</string>
+    <string name="dashboard_net_worth_description">Your net worth</string>
+    <!-- Issue 2.6: shown before the first daily snapshot has been taken. Never rendered as ₹0. -->
+    <string name="dashboard_net_worth_pending">Not worked out yet — we\'ll have it after your first daily update.</string>
+    <string name="dashboard_spend_split_description">Spending split between needs, wants and savings</string>
+    <!-- Issue 2.3: shown when the user skipped quick setup, so there is no budget to chart. -->
+    <string name="dashboard_spend_split_empty">No budget yet. Add your monthly income in Settings and we\'ll suggest one.</string>
+</resources>

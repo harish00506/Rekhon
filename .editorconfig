@@ -23,6 +23,8 @@ ktlint_standard_no-wildcard-imports = enabled
 ktlint_standard_filename = enabled
 ij_kotlin_allow_trailing_comma = true
 ij_kotlin_allow_trailing_comma_on_call_site = true
+# @Composable functions are PascalCase by convention — exempt them from function-naming.
+ktlint_function_naming_ignore_when_annotated_with = Composable
 
 [*.{yml,yaml,json}]
 indent_size = 2

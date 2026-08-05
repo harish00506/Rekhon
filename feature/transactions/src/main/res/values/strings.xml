@@ -1,0 +1,239 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Transactions copy (§21.6). Every user-visible string lives here, never in a composable — the
+  `CfoHardcodedUiString` lint detector fails the build on a literal in a :feature:* module, because a
+  string baked into Kotlin cannot be translated (issue 10.8 ships Hindi) and cannot be reviewed.
+
+  Amounts are never interpolated into these strings: they are rendered by `CfoAmountText` through
+  `MoneyFormatter`, so Indian digit grouping (₹1,23,456.78) stays in one place (P-06).
+-->
+<resources>
+    <string name="transactions_title">Transactions</string>
+    <string name="transactions_empty">No transactions yet. Tap + to add your first one.</string>
+    <string name="transactions_uncategorised">Uncategorised</string>
+    <!-- Content description on a day header's total, so a screen reader says what the figure is. -->
+    <string name="transactions_day_total">Total for the day</string>
+    <!--
+      FR-TXN-003: a transfer is one row, not two. The two account names are substituted in, so this
+      reads "Transfer · HDFC Savings → Cash Wallet". The arrow is the direction, which is why it is
+      not left to the amount's sign — a collapsed row has no single sign.
+    -->
+    <string name="transactions_transfer">Transfer · %1$s → %2$s</string>
+    <!-- Icon-only, so this is what a screen reader announces for the delete action. -->
+    <string name="transactions_delete">Delete transaction</string>
+    <!--
+      FR-TXN-004: the row's amount is unchanged by splitting, so it says how many categories the
+      amount is attributed across rather than repeating the money. ICU plural — "1 line" must not
+      read as "1 lines" (§21.6).
+    -->
+    <plurals name="transactions_split_lines">
+        <item quantity="one">%1$d line</item>
+        <item quantity="other">%1$d lines</item>
+    </plurals>
+    <!--
+      FR-TXN-010: the two halves of the list. "Scheduled" money has not left the account and is in
+      no balance; "Posted" money has. Named as a state of the money rather than "Upcoming"/"Past",
+      which describe the date and leave the user to infer what it means for their balance (P-02).
+    -->
+    <string name="transactions_scheduled">Scheduled</string>
+    <string name="transactions_posted">Posted</string>
+
+    <!--
+      FR-TXN-009 provenance, shown per row (P-02). **Worded as provenance, not mechanism** — a user
+      does not care that ML Kit read the receipt, only that the row came from one. "Balance
+      adjustment" is the load-bearing one: that row's note is deliberately null, so without this it
+      reads as an anonymous "Uncategorised" with nothing saying the app posted it.
+
+      "Manual" is deliberately absent from the row label (TransactionLabels.sourceLabel returns null
+      for it) and used only in the detail sheet and the filter chip, where a blank would read as
+      missing data rather than as the default.
+    -->
+    <string name="transactions_source_manual">Manual</string>
+    <string name="transactions_source_ocr">From a receipt</string>
+    <string name="transactions_source_sms">From a bank SMS</string>
+    <string name="transactions_source_import">Imported</string>
+    <string name="transactions_source_recurring">Recurring</string>
+    <string name="transactions_source_reconciliation">Balance adjustment</string>
+    <string name="transactions_source_demo">Sample data</string>
+    <!-- The "no filter" chip. Not "All sources" - the chip row is short and the context is obvious. -->
+    <string name="transactions_source_all">All</string>
+    <!-- Content description on the chip row, so a screen reader says what the chips are for. -->
+    <string name="transactions_source_filter">Filter by source</string>
+    <!--
+      Shown when a filter matches nothing. Deliberately not `transactions_empty`: telling a user who
+      has just narrowed the list that they have no transactions would read as the app having lost
+      them, the same failure a database error rendering as "empty" would be.
+    -->
+    <string name="transactions_filter_empty">Nothing matches those filters.</string>
+
+    <!--
+      Search and filters (issue 3.6, FR-TXN-007). One field covers payee, note, amount and tag: a
+      user looking for a transaction knows *something* about it and should not have to say which
+      kind of something first.
+    -->
+    <string name="transactions_search">Search</string>
+    <!-- Icon-only, so this is the whole of what a screen reader announces for the filter button. -->
+    <string name="transactions_filter">Filters</string>
+    <string name="transactions_filter_clear">Clear</string>
+    <string name="transactions_filter_account">Account</string>
+    <string name="transactions_filter_type">Type</string>
+    <string name="transactions_filter_tag">Tag</string>
+    <!--
+      MNY-001: bounds on the *magnitude*, which is why neither is labelled with a sign. "Between
+      ₹100 and ₹500" is a statement about size — under a signed comparison it would exclude every
+      expense, because an expense is negative.
+    -->
+    <string name="transactions_filter_min_amount">Min amount</string>
+    <string name="transactions_filter_max_amount">Max amount</string>
+
+    <!--
+      §20.2's transaction types, as a user thinks of them. The two transfer legs share one label:
+      "Transfer out" is a consequence of saving a transfer, not something anyone searches for.
+    -->
+    <string name="transactions_type_expense">Spending</string>
+    <string name="transactions_type_income">Income</string>
+    <string name="transactions_type_transfer">Transfer</string>
+    <string name="transactions_type_adjustment">Adjustment</string>
+
+    <!--
+      Bulk edit (issue 3.6, FR-TXN-008). ICU plurals throughout — "1 selected" must not read as
+      "1 selecteds", and the delete confirmation counts what the *user* picked rather than what the
+      store removed, which for a transfer is both legs (§21.6).
+    -->
+    <plurals name="transactions_selected">
+        <item quantity="one">%1$d selected</item>
+        <item quantity="other">%1$d selected</item>
+    </plurals>
+    <plurals name="transactions_deleted">
+        <item quantity="one">%1$d deleted</item>
+        <item quantity="other">%1$d deleted</item>
+    </plurals>
+    <string name="transactions_undo">Undo</string>
+    <string name="transactions_selection_clear">Leave selection</string>
+    <string name="transactions_bulk_recategorise">Category</string>
+    <string name="transactions_bulk_retag">Tags</string>
+    <!-- Icon-only and destructive, so the description must say what it removes, not just "delete". -->
+    <string name="transactions_bulk_delete">Delete selected transactions</string>
+    <string name="transactions_bulk_apply">Apply</string>
+    <!-- Clearing a category in bulk is a real edit, not an absence — so it is an offered choice. -->
+    <string name="transactions_bulk_no_category">No category</string>
+    <!--
+      Shown instead of an empty chip row: a real profile has no categories until issue 4.1 seeds a
+      taxonomy, and an empty picker reads as a broken one.
+    -->
+    <string name="transactions_bulk_no_categories_yet">No categories yet.</string>
+    <!-- Several tags in one field, comma-separated — the separator every user already reaches for. -->
+    <string name="transactions_tags_hint">Tags, comma separated</string>
+
+    <!--
+      Recurring detection (issue 3.7, FR-TXN-006). The heading says what the section *is* rather
+      than what the app concluded: "Looks like a repeat" is a hypothesis the user is being asked to
+      confirm, where "Your subscriptions" would be the app asserting something it does not know
+      (P-07 - it proposes, the user decides).
+    -->
+    <string name="transactions_recurring_title">Looks like a repeat</string>
+    <string name="transactions_recurring_confirm">Yes, it repeats</string>
+    <!--
+      Not "Dismiss" or "No": the button says what the user is *asserting*, so the record it writes
+      is legible from the label. Dismissing is a decision the app keeps, not a way to close a card.
+    -->
+    <string name="transactions_recurring_reject">Not recurring</string>
+    <!--
+      The evidence (P-02). ICU plural - "1 payments" must not appear - and the dates are appended by
+      the composable from TransactionLabels, never interpolated into a translated sentence, because
+      date order differs by locale.
+    -->
+    <plurals name="transactions_recurring_occurrences">
+        <item quantity="one">%1$d payment</item>
+        <item quantity="other">%1$d payments</item>
+    </plurals>
+    <!-- The projection, so the proposal says what confirming it would predict. -->
+    <string name="transactions_recurring_next_due">Next due %1$s</string>
+    <!--
+      §20.1's cadence codes as words. The engine returns a Cadence enum and never copy (:domain:*
+      holds no user-visible strings), so this is the only place a cadence is named.
+    -->
+    <string name="transactions_cadence_weekly">Weekly</string>
+    <string name="transactions_cadence_monthly">Monthly</string>
+    <string name="transactions_cadence_yearly">Yearly</string>
+
+    <!--
+      The detail sheet (issue 3.5). Field labels only - every value is rendered by CfoAmountText,
+      TransactionLabels or the account-name map, never interpolated into a string.
+    -->
+    <string name="transactions_detail_title">Transaction</string>
+    <string name="transactions_detail_amount">Amount</string>
+    <string name="transactions_detail_account">Account</string>
+    <string name="transactions_detail_date">Date</string>
+    <string name="transactions_detail_merchant">Merchant</string>
+    <string name="transactions_detail_note">Note</string>
+    <string name="transactions_detail_split">Split</string>
+    <string name="transactions_detail_source">Source</string>
+    <string name="transactions_detail_close">Close</string>
+
+    <string name="add_txn_title">Add transaction</string>
+    <string name="add_txn_amount">Amount</string>
+    <string name="add_txn_amount_hint">0.00</string>
+    <string name="add_txn_expense">Expense</string>
+    <string name="add_txn_income">Income</string>
+    <!-- FR-TXN-003. Disabled until the profile has two accounts — there is nowhere to move money to. -->
+    <string name="add_txn_transfer">Transfer</string>
+    <string name="add_txn_account">Account</string>
+    <string name="add_txn_from_account">From</string>
+    <string name="add_txn_to_account">To</string>
+    <string name="add_txn_category">Category</string>
+    <!--
+      Splits (FR-TXN-004). The remainder is a label plus a CfoAmountText, never an amount
+      interpolated into a string — Indian digit grouping belongs to MoneyFormatter (P-06).
+    -->
+    <string name="add_txn_split">Split into lines</string>
+    <!--
+      "Line amount", not "Amount": the parent's field is already labelled "Amount", and two
+      identically-labelled inputs on one form are announced identically by a screen reader.
+    -->
+    <string name="add_txn_split_line_amount">Line amount</string>
+    <string name="add_txn_split_remaining">Remaining</string>
+    <string name="add_txn_split_add_line">Add line</string>
+    <string name="add_txn_split_remove_line">Remove line</string>
+    <string name="add_txn_split_evenly">Split evenly</string>
+    <string name="add_txn_error_lines">The lines must add up to the amount.</string>
+
+    <!--
+      FR-TXN-010: future dating. "Today" rather than the actual date when nothing has been picked —
+      it is what the user means, and it says the default costs them nothing. The date itself is
+      rendered by TransactionLabels through the device locale, never assembled here.
+    -->
+    <string name="add_txn_date">Date</string>
+    <string name="add_txn_date_today">Today</string>
+    <string name="add_txn_date_confirm">Set date</string>
+    <!--
+      FR-TXN-001's "date-time". "Now" rather than a clock time when nothing has been picked on
+      today's date: the instant will be whenever Save is tapped, and printing 14:30 would be stale
+      by the time the user read it. A future date with no time picked shows its real midnight.
+    -->
+    <string name="add_txn_time_now">Now</string>
+    <string name="add_txn_time_confirm">Set time</string>
+
+    <!--
+      FR-TXN-001's payee/merchant. The column and the draft field have existed since issues 1.6 and
+      3.1 and nothing could write one, so a row with no note read as "Uncategorised". Hidden for a
+      transfer: money moving between your own accounts has no payee.
+    -->
+    <string name="add_txn_merchant">Merchant (optional)</string>
+
+    <string name="add_txn_note">Note (optional)</string>
+    <string name="add_txn_save">Save</string>
+    <string name="add_txn_cancel">Cancel</string>
+    <!-- Shown when the user has no account to spend from — a real state, not an error (FR-ONB-001). -->
+    <string name="add_txn_no_account">Add an account before recording a transaction.</string>
+    <string name="add_txn_error_dismiss">Dismiss</string>
+
+    <!--
+      One line per AppError.code the add screen can surface. The state carries the code, never a
+      message, so the wording is reviewable and translatable here rather than assembled in Kotlin.
+    -->
+    <string name="add_txn_error_validation">Check the amount and try again.</string>
+    <string name="add_txn_error_not_found">That account is no longer available.</string>
+    <string name="add_txn_error_storage">Couldn\'t save that. Please try again.</string>
+    <string name="add_txn_error_unknown">Something went wrong. Please try again.</string>
+</resources>

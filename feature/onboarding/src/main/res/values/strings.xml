@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Onboarding copy (issue 2.1; §21.6, FR-ONB-001/002/003, ACC-*).
+
+  Why:  every user-visible string lives here, not in a composable — so it can be translated (Hindi
+        is issue 10.8), reviewed for tone, and read aloud by a screen reader. The
+        CfoHardcodedUiString lint rule from issue 1.5 fails the build on a literal in a
+        :feature:* Text(...).
+  Note: the consent copy is written to satisfy FR-ONB-003 literally — it must say what is read,
+        state that parsing happens on-device only, and make clear the step can be skipped. That is
+        a requirement about the words themselves, so changing them is a requirements change.
+-->
+<resources>
+    <!-- Chrome shared by every step -->
+    <string name="onboarding_step_of">Step %1$d of %2$d</string>
+    <string name="onboarding_back">Back</string>
+    <string name="onboarding_next">Next</string>
+    <string name="onboarding_finish">Finish</string>
+    <string name="onboarding_skip">Skip for now</string>
+    <string name="onboarding_saving">Saving your setup…</string>
+    <string name="onboarding_error">We could not save your setup. Please try again.</string>
+    <string name="onboarding_error_dismiss">Dismiss</string>
+
+    <!-- Step 1 — welcome and the privacy pledge (FR-ONB-001) -->
+    <string name="onboarding_welcome_title">Your money, on your phone</string>
+    <string name="onboarding_welcome_body">A full-time CFO for your finances — it tracks, forecasts, advises, and always shows its working.</string>
+    <string name="onboarding_welcome_pledge_title">Our privacy pledge</string>
+    <string name="onboarding_welcome_pledge">Everything is stored encrypted on this device. Nothing about your money is sent anywhere unless you turn a feature on yourself, and you can turn it back off at any time. The app works fully offline.</string>
+
+    <!--
+      Demo mode (issue 2.4, FR-ONB-004). Offered on step 1, because the requirement is that the
+      sample data be reachable *without creating a profile* — an offer made after the questions is
+      one the user has already answered their way past. The body states what leaving does, since
+      "what will this leave on my phone?" is the question a privacy-first user asks first.
+    -->
+    <string name="onboarding_demo_title">Just want a look first?</string>
+    <string name="onboarding_demo_body">Explore the whole app on a sample household\'s finances — no setup, and nothing of yours entered. The sample data is clearly marked while you browse, and leaving the demo erases every bit of it.</string>
+    <string name="onboarding_demo_action">Explore with sample data</string>
+
+    <!-- Step 2 — SMS parsing opt-in (FR-ONB-003, P-01) -->
+    <string name="onboarding_consent_title">Read bank messages?</string>
+    <string name="onboarding_consent_body">If you turn this on, the app reads transaction alerts from banks and UPI apps to fill in your spending automatically.</string>
+    <string name="onboarding_consent_what_is_read">What it reads: the amount, the merchant, the date and the account — only from messages sent by banks and payment apps. It never reads personal messages.</string>
+    <string name="onboarding_consent_on_device">All of this happens on this device. No message ever leaves your phone.</string>
+    <string name="onboarding_consent_toggle">Read transaction messages</string>
+    <string name="onboarding_consent_optional">This is optional. You can skip it now and turn it on later in Settings — or turn it off again at any time.</string>
+
+    <!-- Step 3 — profile, currency and time zone (FR-ONB-001, TIM-001) -->
+    <string name="onboarding_profile_title">About you</string>
+    <string name="onboarding_profile_body">Kept on this device only.</string>
+    <string name="onboarding_profile_name_label">What should we call you?</string>
+    <string name="onboarding_profile_currency_label">Currency</string>
+    <string name="onboarding_profile_time_zone_label">Time zone</string>
+    <string name="onboarding_profile_time_zone_help">This decides when your day and month roll over, so budgets and due dates line up with your life rather than your phone.</string>
+    <string name="onboarding_profile_selected">Selected</string>
+
+    <!-- Step 4 — optional quick setup (FR-ONB-002) -->
+    <string name="onboarding_quick_setup_title">A head start (optional)</string>
+    <string name="onboarding_quick_setup_body">Three rough figures let the app suggest budgets and an emergency-fund target straight away. Estimates are fine, and you can skip this entirely.</string>
+    <string name="onboarding_quick_setup_income_label">Monthly income</string>
+    <string name="onboarding_quick_setup_rent_label">Rent or EMI each month</string>
+    <string name="onboarding_quick_setup_savings_label">Typical savings each month</string>
+
+    <!-- Issue 2.5: FR-ONB-001's fourth step, the last one ADR-0002 was waiting on. -->
+    <string name="onboarding_account_title">Your first account</string>
+    <string name="onboarding_account_body">Add the account you use most. You can add the rest later,
+        and skip this entirely by leaving the name blank.</string>
+    <string name="onboarding_account_name_label">Account name</string>
+    <string name="onboarding_account_balance_label">Opening balance (optional)</string>
+    <string name="onboarding_account_balance_help">What it holds right now. For a credit card, enter
+        what you owe as a negative amount.</string>
+    <string name="onboarding_account_type_bank">Bank account</string>
+    <string name="onboarding_account_type_cash">Cash</string>
+    <string name="onboarding_account_type_credit_card">Credit card</string>
+    <string name="onboarding_account_type_investment">Investment</string>
+    <string name="onboarding_quick_setup_amount_hint">₹</string>
+
+    <!-- The derived plan (issue 2.3, FR-ONB-002). Every line names the rule behind it (P-02). -->
+    <string name="onboarding_quick_setup_summary_title">What we\'ll set up</string>
+    <string name="onboarding_quick_setup_summary_needs">Needs</string>
+    <string name="onboarding_quick_setup_summary_wants">Wants</string>
+    <string name="onboarding_quick_setup_summary_savings">Savings</string>
+    <string name="onboarding_quick_setup_summary_emergency">Emergency fund target</string>
+    <string name="onboarding_quick_setup_summary_emergency_help">%1$d months of your needs budget.</string>
+    <string name="onboarding_quick_setup_summary_obligations">Rent and EMIs take %1$s of your income.</string>
+    <string name="onboarding_quick_setup_summary_obligations_within">That is within the guideline.</string>
+    <string name="onboarding_quick_setup_summary_obligations_above">That is above the usual guideline of 40%.</string>
+    <string name="onboarding_quick_setup_summary_obligations_fail">That is high enough that most lenders would refuse more credit.</string>
+    <string name="onboarding_quick_setup_summary_short">Your rent is more than this budget can cover. We have kept your savings intact rather than balancing the books on paper.</string>
+    <string name="onboarding_quick_setup_summary_rules">Based on %1$s</string>
+    <string name="onboarding_quick_setup_summary_editable">You can change any of this later.</string>
+    <!-- Step 4 - the app lock (FR-ONB-001 step 3, SEC-002, issue 2.2). Skippable by design. -->
+    <string name="onboarding_security_title">Lock the app</string>
+    <string name="onboarding_security_body">Add a lock so that whoever picks up your phone cannot open your finances.</string>
+    <string name="onboarding_security_explainer">Your PIN never leaves this device and is never stored as you typed it. If your phone supports fingerprint or face unlock, you can use that too.</string>
+    <string name="onboarding_security_toggle">Require a PIN to open the app</string>
+    <string name="onboarding_security_pin_label">Choose a PIN</string>
+    <string name="onboarding_security_pin_confirm_label">Enter it again</string>
+    <string name="onboarding_security_pin_help">4 to 6 digits. There is no way to recover it, so pick something you will remember.</string>
+    <string name="onboarding_security_optional">You can skip this and turn it on later in Settings.</string>
+    <string name="onboarding_security_error_pin_short">A PIN needs 4 to 6 digits.</string>
+    <string name="onboarding_security_error_pin_mismatch">Those two PINs are different.</string>
+</resources>

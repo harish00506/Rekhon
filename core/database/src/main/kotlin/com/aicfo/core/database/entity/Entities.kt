@@ -1,0 +1,703 @@
+package com.aicfo.core.database.entity
+
+import androidx.room.ColumnInfo
+import androidx.room.Entity
+import androidx.room.Index
+import androidx.room.PrimaryKey
+
+/*
+ * The base schema: profile, account, transaction, category (SRS §20; MNY-001, TIM-001/002, DB-003).
+ *
+ * Why:  these four are what issue 1.6's acceptance criteria name, and they are the tables whose
+ *       shape is already settled by the SRS. The design spec lists nine more (budget, goal,
+ *       investment_lot, insight, consent, audit_log …), but each is defined by its own feature
+ *       issue — and under DB-003 a wrong column guessed today costs a migration tomorrow, while a
+ *       table added later is a trivial non-destructive one. So the expensive mistake is building
+ *       ahead, not building narrow.
+ * What: Room entities carrying the three invariants that apply to every table in this app —
+ *       money as `Long` paise, timestamps as UTC epoch millis with date-only fields as ISO
+ *       strings, and soft delete plus per-profile scoping on every row.
+ * Result: an encrypted schema later features extend rather than rewrite.
+ * Changelog: 2026-07-25 — Created for issue 1.6 (profile, account, transaction, category).
+ *
+ * **Invariants, enforced by review and by the `:lint` detectors from issue 1.5:**
+ * - **MNY-001** — every amount column is `Long` minor units (paise). A `Double` here fails lint.
+ * - **TIM-001/002** — instants are `…UtcMillis: Long`; a date the user picked is an ISO
+ *   `LocalDate` string, never a midnight timestamp, because midnight depends on a time zone that
+ *   can change under a stored value.
+ * - **Soft delete** — `deletedAtUtcMillis` is set instead of deleting the row, so an accidental
+ *   delete is recoverable and a sync can still see the tombstone. Every query filters it.
+ * - **Per-profile scoping** — every row carries `profileId`; no query may span profiles.
+ */
+
+/**
+ * A person using the app. One profile per household member.
+ * Why:    every other row is scoped to a profile, and the profile owns the time zone all calendar
+ *         logic resolves in (TIM-001) — which is why `Clock` reads its zone from settings rather
+ *         than the device.
+ * Result: the root record everything else hangs off.
+ * Input:  see the constructor. Output: a Room row in `profile`.
+ * Changelog: 2026-07-25 — Created for issue 1.6.
+ */
+@Entity(tableName = "profile")
+data class ProfileEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "display_name")
+    val displayName: String,
+    /** IANA zone id, e.g. `Asia/Kolkata`. The profile time zone TIM-001 refers to. */
+    @ColumnInfo(name = "time_zone_id")
+    val timeZoneId: String,
+    /** ISO-4217, e.g. `INR`. A `Money` is single-currency; this says which. */
+    @ColumnInfo(name = "currency_code")
+    val currencyCode: String,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+)
+
+/**
+ * A place money sits — one of the eleven types FR-ACC-001 names.
+ * Why:    balances are the input to net worth and Safe-to-Spend, so the amount columns are the
+ *         first place MNY-001 has to hold.
+ * Result: a Room row in `account`, scoped to one profile.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-07-25 — Created for issue 1.6.
+ *            2026-07-28 — Issue 2.5: `institution` and `archived_at_utc_millis` added at schema
+ *            version 4; the type list moved to `AccountType`, which is now its only definition.
+ */
+@Entity(
+    tableName = "account",
+    indices = [Index("profile_id"), Index("profile_id", "deleted_at_utc_millis")],
+)
+data class AccountEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    @ColumnInfo(name = "name")
+    val name: String,
+    /**
+     * An `AccountType.storedValue` (`:core:model`) — the §20.2 vocabulary, e.g. `credit_card`.
+     *
+     * A plain string with no CHECK constraint, so **a new type is not a migration**; the enum is
+     * what keeps a typo from becoming a row every query silently misses. Issue 1.6's doc comment
+     * listed six types including `wallet`, which is in no SRS list; issue 2.5 replaced that guess
+     * with the enum and dropped `wallet`.
+     */
+    @ColumnInfo(name = "type")
+    val type: String,
+    /** MNY-001: paise, never a floating-point rupee value. */
+    @ColumnInfo(name = "opening_balance_minor")
+    val openingBalanceMinor: Long,
+    /**
+     * MNY-001: paise. **A cache, not the truth (DB-001).**
+     *
+     * The current balance "is derivable from opening balance + transactions" and is "never mutated
+     * ad hoc", so every read derives it — see `AccountDao.observeWithBalances`. This column stays
+     * for the nightly integrity job DB-001 describes, which compares the two and raises an
+     * adjustment prompt when they disagree (FR-ACC-006, issue 2.7). Recorded in ADR-0007.
+     */
+    @ColumnInfo(name = "current_balance_minor")
+    val currentBalanceMinor: Long,
+    @ColumnInfo(name = "currency_code")
+    val currencyCode: String,
+    /** The bank, issuer or custodian. Free text and optional — cash has none (issue 2.5). */
+    @ColumnInfo(name = "institution")
+    val institution: String? = null,
+    /**
+     * Whether this account counts towards net worth (issue 2.6; §20.2, FR-ACC-005).
+     *
+     * **Distinct from [archivedAtUtcMillis], and both from [deletedAtUtcMillis].** Archiving retires
+     * an account the user has closed; this excludes one that is still open and still transacting but
+     * is not theirs to count — a company card, or an account held for someone else. An account can
+     * be active, used daily, and legitimately outside the total.
+     *
+     * Defaults to counting: the migration fills every existing row with `1`, and an account the user
+     * has said nothing about is one they expect to see in their net worth.
+     */
+    @ColumnInfo(name = "include_in_networth", defaultValue = "1")
+    val includeInNetWorth: Boolean = true,
+    /**
+     * FR-ACC-007: when the user retired this account, or null while it is active.
+     *
+     * **Distinct from [deletedAtUtcMillis] on purpose.** A deleted account is a mistake being
+     * undone; an archived one is a real account the user closed, and FR-ACC-007 requires its
+     * history to survive while it drops out of active totals. Conflating them would lose a closed
+     * card's transactions from every past month.
+     */
+    @ColumnInfo(name = "archived_at_utc_millis")
+    val archivedAtUtcMillis: Long? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+)
+
+/**
+ * A single movement of money.
+ * Why:    the highest-volume table and the one every engine reads. It carries **both** an instant
+ *         and a date on purpose: `occurred_at_utc_millis` orders events exactly, while
+ *         `booked_on_iso_date` is the day the user considers it to have happened in their own zone
+ *         (TIM-002). Deriving the second from the first at read time would re-open the 23:30 IST
+ *         bug `Clock` exists to close.
+ * Result: a Room row in `transactions`.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-07-25 — Created for issue 1.6.
+ *            2026-08-02 — Issue 3.2: `type` and `transfer_id`, so a transfer is one logical record
+ *            across two rows (FR-TXN-003) and so transfers can be excluded from spend totals.
+ *            2026-08-03 — Issue 3.4: `posted_at_utc_millis`, the record that a future-dated row's
+ *            date has arrived (FR-TXN-010).
+ *
+ * Table named `transactions`: `transaction` is a reserved SQL keyword.
+ */
+@Entity(
+    tableName = "transactions",
+    indices = [
+        Index("profile_id", "booked_on_iso_date"),
+        Index("account_id"),
+        Index("category_id"),
+        // Issue 3.2: every read of a transfer starts from this column — collapsing the pair for the
+        // list, and finding the sibling leg to delete alongside it.
+        Index("transfer_id"),
+    ],
+)
+data class TransactionEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    @ColumnInfo(name = "account_id")
+    val accountId: String,
+    /** MNY-001: paise. Negative is an outflow, positive an inflow. */
+    @ColumnInfo(name = "amount_minor")
+    val amountMinor: Long,
+    @ColumnInfo(name = "currency_code")
+    val currencyCode: String,
+    /** TIM-001: the exact instant, UTC epoch millis. */
+    @ColumnInfo(name = "occurred_at_utc_millis")
+    val occurredAtUtcMillis: Long,
+    /** TIM-002: the profile-zone day this belongs to, ISO `yyyy-MM-dd`. Never a midnight timestamp. */
+    @ColumnInfo(name = "booked_on_iso_date")
+    val bookedOnIsoDate: String,
+    @ColumnInfo(name = "category_id")
+    val categoryId: String? = null,
+    @ColumnInfo(name = "merchant")
+    val merchant: String? = null,
+    @ColumnInfo(name = "note")
+    val note: String? = null,
+    /**
+     * `manual` | `ocr` | `sms` | `import` | `reconciliation`. Provenance, so the UI can show where a
+     * row came from (P-02).
+     *
+     * `reconciliation` (issue 2.7, FR-ACC-006) marks an adjustment the app posted to close the gap
+     * between the derived balance and a statement the user typed. **On that row the source is the
+     * rule that fired** — nothing else about it says why it exists, and `note` is deliberately left
+     * null rather than holding an un-localised sentence repeating the amount in the column beside it.
+     */
+    @ColumnInfo(name = "source")
+    val source: String,
+    /**
+     * `expense` | `income` | `transfer_out` | `transfer_in` | `adjustment` (issue 3.2; §20.2).
+     *
+     * **Direction is stored twice — here and as [amountMinor]'s sign — and they must never
+     * disagree.** The guard is that nothing outside `:data:repository` ever supplies this: it is
+     * derived at one mapping site from the amount and the write path, and `TransactionType.matches`
+     * states the rule once. SQLite cannot carry §20.2's `CHECK` constraint here because `ALTER TABLE
+     * … ADD COLUMN` cannot add one, so the invariant lives in a test instead of in the schema.
+     *
+     * **`defaultValue` is not decoration.** The 5 → 6 migration must add a `NOT NULL` column, which
+     * SQLite only permits with a `DEFAULT`; if this annotation omitted it, Room's schema validation
+     * would fail against the committed `6.json` at open time on every upgraded install. The
+     * migration then rewrites the placeholder into the right value per row.
+     */
+    @ColumnInfo(name = "type", defaultValue = "'expense'")
+    val type: String,
+    /**
+     * Links the two legs of a transfer (issue 3.2; FR-TXN-003). Null on every other row.
+     *
+     * Two rows share one id: the outflow from the source account and the inflow to the destination.
+     * That is what makes a transfer "a single logical record affecting two accounts atomically" —
+     * the pair is found, rendered and deleted by this column, never by matching amounts and dates.
+     */
+    @ColumnInfo(name = "transfer_id")
+    val transferId: String? = null,
+    /**
+     * When this row's booked day arrived and the app recorded it as posted (issue 3.4; FR-TXN-010).
+     * Null while the row is still future-dated.
+     *
+     * **This column does not gate a single balance, and that is deliberate.** Every amount query —
+     * `AccountDao.observeWithBalances`, the net-worth as-of read — bounds on
+     * `booked_on_iso_date <= :asOfIsoDate` and continues to, so a scheduled row is out of the
+     * figures because of its *date*. If posting were gated on this column instead, a
+     * `ScheduledTransactionWorker` deferred by Doze, a powered-off device or a locked session
+     * (SEC-002) would leave real money missing from the user's balance until the job next ran. The
+     * date cannot be deferred; a job can.
+     *
+     * What it is for: the worker's **idempotence key** — the `WHERE … IS NULL` clause is what makes
+     * a second run in the same day affect zero rows — and a durable record that the rollover
+     * happened, which issue 3.7's recurring-auto series and any later "posted today" surface read.
+     *
+     * Nullable, so `ALTER TABLE … ADD COLUMN` needs no `DEFAULT` and the entity needs no
+     * `@ColumnInfo(defaultValue = …)` — the trap [type] documents applies only to `NOT NULL`. The
+     * 7 → 8 migration still has to **backfill** it, or every row written before issue 3.4 reads as
+     * an unposted one.
+     */
+    @ColumnInfo(name = "posted_at_utc_millis")
+    val postedAtUtcMillis: Long? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+)
+
+/**
+ * One line of a split transaction (issue 3.3; FR-TXN-004, §20.1).
+ *
+ * Why:    a ₹1,000 supermarket trip is groceries *and* household *and* a bottle of wine, and
+ *         FR-TXN-004 requires "N lines with independent categories" whose amounts "sum exactly to
+ *         the parent amount". One `category_id` on the parent cannot express that, so the lines get
+ *         their own rows.
+ *
+ *         **A line does not move money.** The parent transaction holds the amount and is what every
+ *         balance sums (DB-001, ADR-0007); these rows only say how that one amount is *attributed*.
+ *         That is the whole reason this is a child table rather than more rows in `transactions`,
+ *         where the parent and its lines would both land in the balance and double-count it —
+ *         see `docs/adr/0009-splits-as-a-child-table.md`.
+ * Result: a Room row in `transaction_splits`.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-08-02 — Created for issue 3.3 (FR-TXN-004).
+ *
+ * **`profile_id` is denormalised onto the line**, duplicating the parent's. It is not redundant
+ * bookkeeping: `DemoDao`'s wipe and its residue count are both profile-scoped single-table queries
+ * (ADR-0006), and a table they cannot reach by `profile_id` alone would leave residue behind when a
+ * demo is exited. `MigrationSafetyTest` enforces the same rule on every table but `audit_log`.
+ */
+@Entity(
+    tableName = "transaction_splits",
+    indices = [
+        // Every read starts from the parent: "what are this transaction's lines?".
+        Index("transaction_id"),
+        // The demo wipe and the residue count both scope by profile.
+        Index("profile_id"),
+        Index("category_id"),
+    ],
+)
+data class TransactionSplitEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    @ColumnInfo(name = "transaction_id")
+    val transactionId: String,
+    /**
+     * MNY-001: paise, signed **the same way as the parent**.
+     *
+     * A line of an expense is negative like its parent, so `SUM(lines) = parent.amount_minor` is a
+     * plain comparison of two signed figures rather than a rule about magnitudes — which is exactly
+     * what FR-TXN-004's "sum exactly to the parent amount" asks to be checkable.
+     */
+    @ColumnInfo(name = "amount_minor")
+    val amountMinor: Long,
+    /**
+     * The category this line is attributed to. Null until issue 4.1 gives a real profile any
+     * categories at all — the same state `transactions.category_id` is in.
+     */
+    @ColumnInfo(name = "category_id")
+    val categoryId: String? = null,
+    @ColumnInfo(name = "note")
+    val note: String? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+)
+
+/**
+ * A free-text label the user can attach to any number of transactions (issue 3.6; §20.1).
+ *
+ * Why:    FR-TXN-007 requires the list to be searchable by tag and FR-TXN-008 requires bulk retag,
+ *         and neither is expressible with a column on `transactions` — a transaction has "tags
+ *         (many)" (SRS §5.3) and a tag belongs to many transactions. §20.1 names the two tables this
+ *         and [TransactionTagEntity] implement.
+ *
+ *         **A tag is not a category, and the difference is load-bearing.** A category answers "what
+ *         kind of spending was this?", is exactly one per transaction, and drives budgets and the
+ *         need/want/invest nature (issue 4.3). A tag answers "what was this *for*?" — `goa-trip`,
+ *         `reimbursable`, `business` — is unlimited per transaction, and drives nothing but search.
+ *         Modelling them as one thing would put `goa-trip` in a budget envelope.
+ * Result: a Room row in `tags`.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-08-04 — Created for issue 3.6 (FR-TXN-007, FR-TXN-008).
+ *
+ * **The unique index is on `(profile_id, name)`, not on `name`.** Two profiles — a real one and the
+ * demo — may each have a `travel` tag, and they are different rows; a global unique index would make
+ * entering the demo fail on the second profile's first collision.
+ */
+@Entity(
+    tableName = "tags",
+    indices = [Index(value = ["profile_id", "name"], unique = true)],
+)
+data class TagEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /**
+     * The label as the user typed it, trimmed.
+     *
+     * **Case is preserved but uniqueness is not case-sensitive** — the repository lower-cases before
+     * looking a tag up, so `Travel` and `travel` resolve to one row rather than becoming two chips
+     * the user cannot tell apart. Storing what they typed is what keeps the chip reading `Travel`.
+     */
+    @ColumnInfo(name = "name")
+    val name: String,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+)
+
+/**
+ * Attaches one [TagEntity] to one [TransactionEntity] (issue 3.6; §20.1).
+ *
+ * Why:    the many-to-many join. A row here is the *only* statement that a transaction carries a
+ *         tag — there is no denormalised copy on `transactions`, so retagging touches this table
+ *         alone and no second representation can drift out of step with it.
+ * Result: a Room row in `transaction_tags`.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-08-04 — Created for issue 3.6 (FR-TXN-007, FR-TXN-008).
+ *
+ * **`profile_id` is denormalised onto the join**, for exactly the reason [TransactionSplitEntity]
+ * carries one: `DemoDao`'s wipe and its residue count are profile-scoped single-table deletes
+ * (ADR-0006), and a table they cannot reach by `profile_id` alone leaves residue behind when the
+ * demo is exited. `MigrationSafetyTest` enforces it on every table but `audit_log`.
+ *
+ * **Soft-deleted rather than removed**, like everything else here (DB-002): untagging is undoable,
+ * and a hard `DELETE` in a bulk retag would be the one irreversible step in an otherwise reversible
+ * feature.
+ */
+@Entity(
+    tableName = "transaction_tags",
+    indices = [
+        // "which tags does this transaction have?" — the detail sheet and the list projection.
+        Index("transaction_id"),
+        // "which transactions carry this tag?" — the tag filter's `EXISTS` clause.
+        Index("tag_id"),
+        // The demo wipe and the residue count both scope by profile.
+        Index("profile_id"),
+    ],
+)
+data class TransactionTagEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    @ColumnInfo(name = "transaction_id")
+    val transactionId: String,
+    @ColumnInfo(name = "tag_id")
+    val tagId: String,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+)
+
+/**
+ * A spending category, optionally nested one level under a parent.
+ * Why:    categorisation drives budgets and every insight, and `nature` is what separates a need
+ *         from a want from an investment — the distinction the advice layer is built on.
+ * Result: a Room row in `category`.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-07-25 — Created for issue 1.6.
+ */
+@Entity(
+    tableName = "category",
+    indices = [Index("profile_id"), Index("parent_id")],
+)
+data class CategoryEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    @ColumnInfo(name = "name")
+    val name: String,
+    @ColumnInfo(name = "parent_id")
+    val parentId: String? = null,
+    /** `need` | `want` | `invest` | `asset` | `liability`. Set by issue 4.3's classifier. */
+    @ColumnInfo(name = "nature")
+    val nature: String,
+    /** True for the seeded defaults, so a user-created category can be told apart from ours. */
+    @ColumnInfo(name = "is_system")
+    val isSystem: Boolean,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+)
+
+/**
+ * A planned amount for one kind of spending in one month (issue 2.3; FR-BUD-001, FR-ONB-002).
+ *
+ * Why:    FR-BUD-001 allows a budget "per category or category-group", and at first run there are
+ *         no categories at all — issue 4.1 builds the editor. So the row supports both: a budget
+ *         either names a [categoryId] or, when it does not, carries a [nature] and is an envelope
+ *         for a whole group. Quick setup writes the second kind; issue 4.4's editor will write the
+ *         first, into these same columns rather than a new table.
+ * Result: a Room row in `budget`, added at schema version 3 by issue 2.3.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-07-27 — Created for issue 2.3 (FR-ONB-002, FR-BUD-001).
+ *
+ * **Both foreign keys are deliberately nullable**, and both are filled in by a later issue: 4.1
+ * attaches categories, and neither exists at onboarding. Under DB-003 a nullable column added now
+ * is free, while a NOT NULL one guessed now would need a migration to relax.
+ *
+ * **[source], [ruleId] and [ruleVersion] are the P-02 trail.** A budget the app proposed must be
+ * able to say which rule proposed it and at what version, or the user's drill-down shows a number
+ * with no derivation (AI-ARC-006). A budget the user typed carries `source = manual` and no rule.
+ */
+@Entity(
+    tableName = "budget",
+    indices = [
+        Index("profile_id", "period_start_iso_date"),
+        Index("category_id"),
+    ],
+)
+data class BudgetEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** Set when this budget is for one category (issue 4.4); null for a nature-level envelope. */
+    @ColumnInfo(name = "category_id")
+    val categoryId: String? = null,
+    /** `need` | `want` | `invest`. Set when [categoryId] is null — the group this envelope covers. */
+    @ColumnInfo(name = "nature")
+    val nature: String? = null,
+    /** TIM-002: the first day of the budget month, ISO `yyyy-MM-dd`. Never a midnight timestamp. */
+    @ColumnInfo(name = "period_start_iso_date")
+    val periodStartIsoDate: String,
+    /** MNY-001: paise. */
+    @ColumnInfo(name = "amount_minor")
+    val amountMinor: Long,
+    /** FR-BUD-001's optional rollover of an unused amount. Off by default. */
+    @ColumnInfo(name = "rollover_enabled")
+    val rolloverEnabled: Boolean = false,
+    /** `quick_setup` | `manual` | `suggested`. Where the figure came from (P-02). */
+    @ColumnInfo(name = "source")
+    val source: String,
+    /** The rulebook row that produced this amount, or null when the user typed it (AI-ARC-006). */
+    @ColumnInfo(name = "rule_id")
+    val ruleId: String? = null,
+    @ColumnInfo(name = "rule_version")
+    val ruleVersion: String? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+)
+
+/**
+ * A money movement the user expects to repeat (issue 2.3; FR-ONB-002, FR-TXN-006).
+ *
+ * Why:    quick setup captures a salary and a rent that recur every month, and FR-TXN-006 describes
+ *         the same shape arriving the other way — proposed by the detector in issue 3.7 and
+ *         confirmed by the user. Both are the same row, which is why [isConfirmed] exists rather
+ *         than the two living in separate tables: a rule the user has not confirmed must not start
+ *         creating transactions.
+ * Result: a Room row in `recurring_rule`, added at schema version 3 by issue 2.3.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-07-27 — Created for issue 2.3 (FR-ONB-002, FR-TXN-006).
+ *
+ * **[amountMinor] is signed exactly as `transactions` is** — positive is an inflow, negative an
+ * outflow — so a rule that fires produces a transaction without anything re-deciding the sign.
+ *
+ * **[seedKind] rather than a stored English label.** §21.6 puts every user-visible string in
+ * `strings.xml`; a row holding "Rent or EMI" could never be translated. Quick setup writes a code
+ * the UI resolves to a string resource, and [name] stays null and reserved for issue 3.7's rules,
+ * which are named after a real merchant and so *are* data rather than copy.
+ */
+@Entity(
+    tableName = "recurring_rule",
+    indices = [
+        Index("profile_id", "next_due_iso_date"),
+        Index("account_id"),
+    ],
+)
+data class RecurringRuleEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** Which account it moves through. Null until issue 2.5 gives the user an account to attach. */
+    @ColumnInfo(name = "account_id")
+    val accountId: String? = null,
+    /** Attached by issue 4.1/4.3 once categories exist. */
+    @ColumnInfo(name = "category_id")
+    val categoryId: String? = null,
+    /** A user- or merchant-supplied name (issue 3.7). Null for quick-setup rows — see [seedKind]. */
+    @ColumnInfo(name = "name")
+    val name: String? = null,
+    /** `income` | `rent_emi` | `savings` for a quick-setup row; null otherwise. A code, not copy. */
+    @ColumnInfo(name = "seed_kind")
+    val seedKind: String? = null,
+    /** MNY-001: paise, signed. Negative is an outflow, positive an inflow — as in `transactions`. */
+    @ColumnInfo(name = "amount_minor")
+    val amountMinor: Long,
+    /** `monthly`. A string, so a new cadence is not a migration. */
+    @ColumnInfo(name = "cadence")
+    val cadence: String,
+    /** TIM-002: the next occurrence, ISO `yyyy-MM-dd`. */
+    @ColumnInfo(name = "next_due_iso_date")
+    val nextDueIsoDate: String,
+    /** `quick_setup` | `detected` | `manual`. Provenance, so the UI can show where it came from. */
+    @ColumnInfo(name = "source")
+    val source: String,
+    /** FR-TXN-006: false until the user confirms. An unconfirmed rule creates nothing. */
+    @ColumnInfo(name = "is_confirmed")
+    val isConfirmed: Boolean = false,
+    /**
+     * FR-TXN-006: when the user said "not recurring", UTC epoch millis (TIM-001); null otherwise.
+     *
+     * **Deliberately not [deletedAtUtcMillis].** A tombstone means "this rule is gone"; a dismissal
+     * means "the detector was right that this merchant repeats, and the user still does not want a
+     * rule for it". Only the second must stop the detector proposing the same series next week, and
+     * a soft-deleted row cannot say that without also lying to every read that filters tombstones.
+     */
+    @ColumnInfo(name = "dismissed_at_utc_millis")
+    val dismissedAtUtcMillis: Long? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+)
+
+/**
+ * One security event. Never anything about the person it happened to.
+ *
+ * Why:    §21.6 bans PII and amounts from logs and routes security events here instead. That only
+ *         works if the table has nowhere to put PII, which is why there is no free-text column:
+ *         [event] and [method] hold `AuditEvent`/`AuditMethod` constant names, both closed sets.
+ *         A reviewer can confirm the rule by reading the four columns rather than by auditing every
+ *         call site.
+ * Result: a Room row in `audit_log`, added at schema version 2 by issue 2.2.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-07-26 — Created for issue 2.2 (SEC-002, §21.6).
+ *
+ * **Three deliberate absences.**
+ * - **No `profile_id`.** Unlike every other table this is not per-profile: the app lock gates the
+ *   whole app before any profile is selected, so at unlock time there is no profile to scope to.
+ * - **No soft delete.** A security log a caller can quietly retire is not a security log. Rows go
+ *   only when the whole database does (erase-all, SEC-006).
+ * - **No `updated_at`.** An event happened at an instant; it is never edited.
+ */
+@Entity(
+    tableName = "audit_log",
+    indices = [Index("occurred_at_utc_millis")],
+)
+data class AuditLogEntity(
+    @PrimaryKey(autoGenerate = true)
+    @ColumnInfo(name = "id")
+    val id: Long = 0L,
+    /** An `AuditEvent` constant name. A code from a closed set, never a sentence. */
+    @ColumnInfo(name = "event")
+    val event: String,
+    /** TIM-001: the exact instant, UTC epoch millis, from the injected `Clock`. */
+    @ColumnInfo(name = "occurred_at_utc_millis")
+    val occurredAtUtcMillis: Long,
+    /** An `AuditMethod` constant name, or null where the event had no factor. */
+    @ColumnInfo(name = "method")
+    val method: String? = null,
+)
+
+/**
+ * One day's net worth, computed and frozen (issue 2.6; FR-ACC-005, AI-ARC-006).
+ *
+ * Why:    FR-ACC-005 requires net worth to be "snapshotted daily", and the reason is that a *trend*
+ *         must not move under the user. Recomputing history from today's accounts would silently
+ *         rewrite it every time an account is archived, an opening balance corrected, or a
+ *         transaction back-dated — the chart would show a past that never happened. A stored row is
+ *         what makes issue 6.6's history exact rather than merely plausible.
+ * Result: a Room row in `net_worth_snapshot`, added at schema version 5 by issue 2.6.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-08-01 — Created for issue 2.6 (FR-ACC-005).
+ *
+ * **[id] is derived, never generated** — `<profile>:networth:<as-of-date>` — which is what makes the
+ * daily job idempotent under REPLACE: running twice on the same day updates one row rather than
+ * leaving two figures for one date. The same reasoning as `budgetId()` in `:data:repository`.
+ *
+ * **[engineId] and [engineVersion] are stored on every row (AI-ARC-006).** A snapshot outlives the
+ * code that produced it, and "why did it say ₹2,92,000 in August?" has an answer only if the row
+ * remembers which formula ran. Without them a future engine change would make the whole series
+ * unexplainable.
+ *
+ * **All three figures are stored, not just [netWorthMinor].** Recomputing the split from the total
+ * is impossible, and P-02 requires the working — a history point the user cannot break down into
+ * assets and liabilities is a number with no derivation.
+ */
+@Entity(
+    tableName = "net_worth_snapshot",
+    indices = [Index("profile_id", "as_of_iso_date")],
+)
+data class NetWorthSnapshotEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** TIM-002: the profile-zone day this figure describes, ISO `yyyy-MM-dd`. Never a timestamp. */
+    @ColumnInfo(name = "as_of_iso_date")
+    val asOfIsoDate: String,
+    /** MNY-001: paise. Signed — an overdrawn asset account legitimately reduces this. */
+    @ColumnInfo(name = "assets_minor")
+    val assetsMinor: Long,
+    /** MNY-001: paise, a positive magnitude — what the user owes, as the engine reports it. */
+    @ColumnInfo(name = "liabilities_minor")
+    val liabilitiesMinor: Long,
+    /** MNY-001: paise. `assets_minor - liabilities_minor`, stored so history cannot drift. */
+    @ColumnInfo(name = "net_worth_minor")
+    val netWorthMinor: Long,
+    /** The engine that produced this row (AI-ARC-003). */
+    @ColumnInfo(name = "engine_id")
+    val engineId: String,
+    /** That engine's version at the moment it ran (AI-ARC-006). */
+    @ColumnInfo(name = "engine_version")
+    val engineVersion: String,
+    /** TIM-001: when it was computed, which is not the same as the day it describes. */
+    @ColumnInfo(name = "computed_at_utc_millis")
+    val computedAtUtcMillis: Long,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+)

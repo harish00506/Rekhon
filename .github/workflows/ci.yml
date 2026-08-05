@@ -1,23 +1,26 @@
 # =============================================================================
 # CI — the maintenance workflow (SRS §21.3: "main is always releasable").
 #
-# Why:  Every merge to main must build, be tested, be lint-clean, and pass screenshot
-#       diffs — the SRS pins GitHub Actions for exactly this. This is the automated gate
-#       that the /pre-merge checklist mirrors for humans/agents.
-# What: build · unit test (with coverage) · ktlint/detekt/android-lint · Paparazzi
-#       screenshot diff · dependency scan · assemble. Runs offline-safe (P-04): no step
-#       depends on the app's backend.
-# Result: A red pipeline blocks the merge; a green one means main stayed releasable.
+# Why:  Every PR into an integration/release branch must build, be tested, be
+#       lint-clean, and enforce the architecture invariants — the SRS pins GitHub
+#       Actions for exactly this. This is the automated gate that /pre-merge mirrors.
+# What: convention/ARC-002 tests · build · unit + coverage · ktlint/detekt/android-lint ·
+#       assemble. Runs offline-safe (P-04): no step depends on the app's backend.
+# Result: A red pipeline blocks the merge; a green one means the branch stayed releasable.
 # Changelog:
 #   2026-07-17 — Created from SRS v1.7 §21.3, §21.5, §21.6, SEC-007.
+#   2026-07-19 — Issue 1.1: wired to the real Gradle tasks (skeleton now exists). Added
+#                dev/stage triggers, Android SDK setup, and the ARC-002 convention tests.
+#                OSV scan (issue 11.6) lands with its issue.
+#   2026-07-25 — Issue 1.8: Paparazzi screenshot diff enabled (JVM, no emulator required).
 # =============================================================================
 name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, stage, dev]
   pull_request:
-    branches: [main]
+    branches: [main, stage, dev]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -30,7 +33,7 @@ jobs:
   verify:
     name: Build · Test · Lint
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -52,20 +55,39 @@ jobs:
           sys.exit(1 if bad else 0)
           PY
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install required SDK packages
+        # compileSdk 36 (§21.3 pinned stack) + tools AGP needs to assemble/lint.
+        run: |
+          yes | sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" > /dev/null
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+
+      - name: Convention plugins · ARC-002 guard (TestKit)
+        # Enforces the module-boundary invariant (ARC-002) before anything else.
+        run: ./gradlew -p build-logic :convention:test --stacktrace
 
       - name: ktlint · detekt · Android lint
         run: ./gradlew ktlintCheck detekt lintDebug --stacktrace
 
       - name: Unit tests (+ coverage; money math must be 100%)
-        run: ./gradlew testDebugUnitTest koverVerify --stacktrace
+        # `unitTests`, not `testDebugUnitTest` (issue 2.6). The latter is an Android *variant* task,
+        # so it does not exist on the pure-Kotlin modules and — critically — never reached `:lint`.
+        # That left the fourteen tests covering the custom detectors (MNY-001, TIM-001, ARC-006, the
+        # PII-logging ban, the hardcoded-string ban) running in no CI step at all: a detector could
+        # be disabled outright and this job would stay green while the rules quietly stopped being
+        # enforced. Demonstrated by disabling MoneyDoubleDetector — `testDebugUnitTest` passed.
+        run: ./gradlew unitTests koverVerify --stacktrace
 
       - name: Paparazzi screenshot diff
+        # Wired by issue 1.8. Renders on the JVM, so no emulator is needed — which is the only
+        # reason this project has any visual coverage at all.
         run: ./gradlew verifyPaparazziDebug --stacktrace
-
-      - name: Dependency vulnerability scan (OSV, SEC-007)
-        run: ./gradlew dependencyCheckAnalyze --stacktrace || true
+      # - name: Dependency vulnerability scan     # wired by issue 11.6 (OSV, SEC-007)
+      #   run: ./gradlew dependencyCheckAnalyze --stacktrace || true
 
       - name: Assemble debug APK
         run: ./gradlew assembleDebug --stacktrace

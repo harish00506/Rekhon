@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Why:  §21.6 puts every user-visible string in resources — a hardcoded one cannot be translated
+        and cannot be checked for length at 200% font. `CfoHardcodedUiString` (issue 1.5) fails the
+        build on a literal in a :feature:* composable, so this file is not optional.
+  What: the accounts list, the editor, and the eleven FR-ACC-001 type labels.
+  Result: the whole feature's copy in one reviewable place.
+  Changelog: 2026-07-28 — Created for issue 2.5.
+-->
+<resources>
+    <string name="accounts_title">Accounts</string>
+    <string name="accounts_empty_title">No accounts yet</string>
+    <string name="accounts_empty_body">Add a bank account, a card or a loan and the app can start
+        tracking what you actually have.</string>
+    <string name="accounts_add">Add account</string>
+    <string name="accounts_show_archived">Show closed accounts</string>
+    <string name="accounts_archive">Close account</string>
+    <string name="accounts_unarchive">Reopen account</string>
+    <string name="accounts_delete">Delete</string>
+    <string name="accounts_archived_label">Closed</string>
+    <!-- The list row's second line: the institution when there is one, then what it opened with. -->
+    <string name="accounts_row_supporting">%1$s · opened with %2$s</string>
+    <string name="accounts_row_supporting_no_institution">Opened with %1$s</string>
+    <string name="accounts_error_dismiss">Dismiss</string>
+    <string name="accounts_error_storage">We couldn\'t reach your saved accounts. Try again.</string>
+    <string name="accounts_error_not_found">That account is no longer there.</string>
+    <string name="accounts_error_generic">Something went wrong. Try again.</string>
+
+    <!-- Issue 2.7 (FR-ACC-006): reconciling an account against a real statement. The copy has to
+         carry P-02 — the user sees what the app holds, what they typed, and the rule between the
+         two — because the adjustment it posts is a permanent row in their history. -->
+    <string name="accounts_reconcile">Reconcile</string>
+    <string name="accounts_reconcile_title">Reconcile %1$s</string>
+    <string name="accounts_reconcile_app_balance">What the app has</string>
+    <string name="accounts_reconcile_statement">Balance on your statement</string>
+    <string name="accounts_reconcile_statement_help">Enter it exactly as your bank shows it. For a
+        card or a loan, enter what you owe as a negative amount.</string>
+    <string name="accounts_reconcile_adjustment">Adjustment</string>
+    <!-- The rule that fired, in plain language (P-02). Shown even when the delta is zero. -->
+    <string name="accounts_reconcile_rule">Adjustment = statement balance − app balance</string>
+    <string name="accounts_reconcile_explain">This adds one adjustment transaction. Nothing already
+        in your history is changed.</string>
+    <string name="accounts_reconcile_in_step">The app already matches your statement. Nothing will
+        be added.</string>
+    <string name="accounts_reconcile_confirm">Post adjustment</string>
+    <string name="accounts_reconcile_cancel">Cancel</string>
+
+    <string name="account_editor_title_new">New account</string>
+    <string name="account_editor_title_edit">Edit account</string>
+    <string name="account_editor_name">Name</string>
+    <string name="account_editor_name_hint">What you call it, e.g. HDFC Salary</string>
+    <string name="account_editor_type">Type</string>
+    <string name="account_editor_institution">Bank or provider (optional)</string>
+    <string name="account_editor_opening_balance">Opening balance</string>
+    <!-- Says plainly why the balance is not editable here: it is derived, not stated (DB-001). -->
+    <string name="account_editor_opening_balance_help">What it held when you started tracking it.
+        The current balance is worked out from your transactions.</string>
+    <string name="account_editor_liability_help">For a card or a loan, enter what you owe as a
+        negative amount.</string>
+    <!-- Issue 2.6 (FR-ACC-005): the opt-out, for an account that is open but not yours to count. -->
+    <string name="account_editor_include_in_networth">Count towards net worth</string>
+    <string name="account_editor_include_in_networth_help">Turn this off for an account you use but
+        do not own — a company card, or one you hold for someone else. It stays in your list either
+        way.</string>
+    <string name="account_editor_save">Save</string>
+    <string name="account_editor_cancel">Cancel</string>
+    <string name="account_editor_error_validation">Check the name and the opening balance.</string>
+
+    <!-- FR-ACC-001's eleven types. The stored codes live in AccountType; these are only labels. -->
+    <string name="account_type_bank">Bank account</string>
+    <string name="account_type_cash">Cash</string>
+    <string name="account_type_credit_card">Credit card</string>
+    <string name="account_type_loan">Loan</string>
+    <string name="account_type_investment">Investment</string>
+    <string name="account_type_gold">Gold</string>
+    <string name="account_type_crypto">Crypto</string>
+    <string name="account_type_property">Property</string>
+    <string name="account_type_vehicle">Vehicle</string>
+    <string name="account_type_receivable">Money owed to you</string>
+    <string name="account_type_payable">Money you owe</string>
+</resources>

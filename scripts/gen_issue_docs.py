@@ -238,7 +238,7 @@ ALWAYS_SKILLS = ["test-driven-development", "incremental-implementation", "debug
 LABEL_RULES: dict[str, list[str]] = {
     "money": [
         "Money is `Long` paise end-to-end; no `Double`/`Float` on a monetary value (MNY-001).",
-        "Divisions/splits use HALF_EVEN with deterministic remainder distribution.",
+        "Splits distribute the remainder (largest-remainder, `Money.split`/`allocate`) so parts sum exactly; HALF_EVEN is for rounding a single value (`Money.percentOf`), and cannot make N parts sum to a whole.",
     ],
     "time": ["Date/calendar logic goes through the injected `Clock`; never `System.currentTimeMillis()` in domain (TIM-001)."],
     "core": ["`:core:model` and `:domain:*` stay pure Kotlin/JVM - no Android imports (ARC-002)."],
@@ -292,7 +292,7 @@ EPICS: dict[int, dict] = {
         "title": "Transactions & Capture",
         "phase": "SRS Phase 0/1 (SS5.3, SS5.4, SS18)",
         "summary": "<=3-tap transaction entry plus automated capture - transfers, splits, recurring detection, OCR receipts, and opt-in SMS parsing - all provenance-tagged.",
-        "rules": ["Add-txn stays <= 3 taps; every captured record is provenance-tagged by source (FR-TXN-004/AI-ARC-003)."],
+        "rules": ["Add-txn stays <= 3 taps; every captured record is provenance-tagged by source (FR-TXN-002/FR-TXN-009/AI-ARC-003)."],
     },
     4: {
         "title": "Categorisation & Budgets",
@@ -430,7 +430,7 @@ ISSUES: list[Issue] = [
       "MNY-001, MNY-002; SS21.4", "SS7 Money & Time Rules",
       "The `Money` value class - `Long` minor units (paise) end-to-end, HALF_EVEN division with remainder distribution so splits always sum. The single monetary type from DB to UI.",
       ["`Money` wraps `Long` paise; no `Double`/`Float` ever touches a monetary value (review-blocking, MNY-001).",
-       "Division uses explicit HALF_EVEN; `splitExact(n)` distributes the remainder so parts sum to the original (property test).",
+       "`split(n)`/`allocate(weights)` distribute the remainder so parts sum to the original exactly (property test); `percentOf(bps)` uses HALF_EVEN.",
        "Formatting uses Indian digit grouping (Rs 1,23,456.78); rates are integer basis points (MNY-002).",
        "100% test coverage on money math (golden + property + zero/negative boundaries)."],
       ["Any `Double`/`Float` on a monetary value fails review (MNY-001).",
@@ -525,21 +525,21 @@ ISSUES: list[Issue] = [
        "Amounts are stored as `Money` paise and covered by tests."],
       ["Seeds are user-entered; never invent a financial number (P-03)."]),
     I("2.4", 2, "Demo mode with sample data", "onboarding", "M", "2.1",
-      "SS5.1, SS33 (demo)", "SS6 Module Structure",
+      "SS5.1 (FR-ONB-004)", "SS6 Module Structure",
       "A demo mode that loads a labelled sample dataset so the app can be explored without entering real data - clearly marked and fully wipeable.",
       ["Demo loads a fixed sample dataset into an isolated/flagged profile, clearly labelled as demo.",
        "Exiting demo wipes the sample data with no residue in the real profile.",
        "The dataset is deterministic (seeded) and covered by a test."],
       ["Demo data is visibly labelled and isolated from real data (P-02)."]),
     I("2.5", 2, "Accounts CRUD (all types)", "accounts", "H", "1.6",
-      "SS5.7, SS11; FR-ACC-*", "SS5 Data Model",
-      "Create/read/update/soft-delete for every account type (bank, cash, wallet, card, loan, investment) - the entities balances and net worth are computed from.",
-      ["CRUD for every account type in SS11; soft-delete (`deleted_at`) and per-profile scoping.",
+      "SS5.7 (FR-ACC-001, FR-ACC-007), SS20.2", "SS5 Data Model",
+      "Create/read/update/archive/soft-delete for every account type FR-ACC-001 names - the entities balances and net worth are computed from.",
+      ["CRUD for every account type in FR-ACC-001; archive (FR-ACC-007), soft-delete (`deleted_at`) and per-profile scoping.",
        "Balances are `Money` paise; opening + running balance are correct (property test).",
        "The repository is the only DAO toucher (ARC-005); the ViewModel sees domain models only."],
       ["Repositories are the only classes touching DAOs (ARC-005)."]),
     I("2.6", 2, "Net worth = assets - liabilities + daily snapshot", "accounts;engine", "H", "2.5",
-      "SS5.7; FR-NW-*, P-03", "SS5 Data Model, SS7 Money & Time",
+      "SS5.7 (FR-ACC-005), SS20.3 (DB-001)", "SS5 Data Model, SS7 Money & Time",
       "The deterministic net-worth computation (assets - liabilities) plus a daily snapshot job so trend history is exact and reproducible.",
       ["Net worth = sum(assets) - sum(liabilities) in `Money` paise; the number comes from the engine, not the LLM (P-03).",
        "A daily snapshot is written via WorkManager on the injected `Clock`, idempotent per day.",
@@ -555,12 +555,16 @@ ISSUES: list[Issue] = [
 
     # ---------------- Epic 3 - Transactions & Capture ---------------- #
     I("3.1", 3, "Add transaction <= 3 taps (FAB)", "transactions;ui", "H", "2.5",
-      "SS5.3, SS18; FR-TXN-004", "SS6 Module Structure",
+      # FR-TXN-002, not -004. The SRS's -004 is *split transactions*, which is issue 3.3; this
+      # issue's requirement is "Add-transaction MUST be reachable in one tap (FAB) and completable
+      # in <= 3 taps for a common expense (amount -> category suggestion -> save)". Corrected while
+      # implementing 3.1 - the generated doc had cited the wrong id since the backlog was written.
+      "SS5.3, SS18; FR-TXN-002, FR-TXN-001, FR-TXN-009", "SS6 Module Structure",
       "The core capture path: add a transaction in <= 3 taps from the FAB - amount, category, account - the app's most-used flow.",
       ["Add-txn is reachable and completable in <= 3 taps (a Compose UI test asserts the tap count).",
        "Amount is `Money` paise; date via the injected `Clock`; the write goes through the repository.",
        "Validation for empty/invalid amount; fully offline."],
-      ["<= 3 taps is a hard requirement (FR-TXN-004); amounts are `Money` (MNY-001)."]),
+      ["<= 3 taps is a hard requirement (FR-TXN-002); amounts are `Money` (MNY-001)."]),
     I("3.2", 3, "Transfers (single logical record)", "transactions", "H", "3.1",
       "SS5.3; FR-TXN-*", "SS5 Data Model",
       "Account-to-account transfers modelled as one logical record (not two unlinked transactions) so net worth and category totals stay correct.",
@@ -570,25 +574,42 @@ ISSUES: list[Issue] = [
       ["A transfer is one logical record; it is not spending (P-03 correctness)."]),
     I("3.3", 3, "Split transactions (N lines)", "transactions;money", "H", "3.1;1.2",
       "SS5.3; FR-TXN-*, MNY-001", "SS7 Money & Time Rules",
-      "Split a single transaction across N category lines whose parts always sum to the parent amount, using `Money.splitExact` remainder distribution.",
+      "Split a single transaction across N category lines whose parts always sum to the parent amount, using `Money.split`/`allocate` remainder distribution.",
       ["N split lines sum exactly to the parent over random n/amount (property test, MNY-001).",
-       "The remainder is distributed via HALF_EVEN; each line carries its own category/nature.",
+       "The remainder is distributed largest-remainder-first (`Money.split`), so a 3-way split of 1000 is 333.34/333.33/333.33; each line carries its own category/nature.",
        "Editing a line re-balances; the UI shows the running remainder."],
-      ["Splits always sum to the parent; use `Money.splitExact` (MNY-001)."]),
+      ["Splits always sum to the parent; use `Money.split`/`allocate` (MNY-001)."]),
+    # FR-TXN-010, not "FR-TXN-*": these criteria used to cite no requirement id at all, and the
+    # WorkManager clause below was invented here rather than taken from the SRS, which says only
+    # "excluded from actuals but included in forecasts". Corrected while implementing 3.4, the third
+    # such correction after 3.1's wrong FR id and 3.3's non-existent API — distrust these criteria
+    # where they are more specific than the SRS section they cite. See ADR-0010.
     I("3.4", 3, "Future-dated transactions", "transactions", "M", "3.1",
-      "SS5.3; FR-TXN-*, TIM-001", "SS7 Money & Time Rules",
-      "Future-dated (scheduled) transactions that stay out of current balances until their date, using the injected `Clock` for rollover.",
-      ["Future-dated txns are excluded from current balance/spend until their date passes (injected `Clock`, TIM-001).",
-       "On date rollover they post automatically (WorkManager), idempotently.",
+      "SS5.3; FR-TXN-010, TIM-001, TIM-002", "SS7 Money & Time Rules",
+      "Future-dated (scheduled) transactions that stay out of actuals until their date and feed forecasts before it, using the injected `Clock`.",
+      ["Future-dated txns are excluded from actuals - balance, net worth and day totals - until their date passes (FR-TXN-010, injected `Clock`, TIM-001).",
+       "A scheduled txn is visible and labelled as scheduled, and is readable by forecasts before its date (FR-TXN-010's second clause).",
+       "Rollover needs no write: the same row counts on its own date. A daily WorkManager job records the posting idempotently, but no balance depends on it having run (ADR-0010).",
        "Covered by boundary tests (today vs tomorrow, zone/DST-safe)."],
-      ["Date logic via the injected `Clock`, never `System.currentTimeMillis()` (TIM-001)."]),
+      ["Date logic via the injected `Clock`, never `System.currentTimeMillis()` (TIM-001).",
+       "Never gate an amount on a background job: a deferred worker must not change a figure."]),
+    # Three corrections made while implementing 3.5, all of the same kind as 3.1/3.3/3.4's:
+    #   * The FR id was "AI-ARC-003", which governs *engine result* provenance (engineId,
+    #     engineVersion, confidence, evidence) and has nothing to say about a transaction row. No
+    #     engine writes a transaction, so "where applicable" was nowhere. The requirement is
+    #     FR-TXN-009. SS18 is the OCR workflow - relevant to where `ocr` comes from, not to this.
+    #   * "shown in the detail view" - there was no detail view, and no route was added for one.
+    #   * "a default is backfilled" - `source` has been TEXT NOT NULL since schema v1 and every
+    #     write path sets it, so there was nothing to backfill and no migration to write.
     I("3.5", 3, "Transaction source tracking", "transactions", "H", "3.1",
-      "SS5.3, SS18; AI-ARC-003", "SS5 Data Model",
-      "Every transaction records its source (manual, OCR, SMS, import, recurring) so categorisation confidence and audits can reason about provenance.",
-      ["Each txn carries a source enum + provenance (creating engine/version where applicable, AI-ARC-003).",
-       "Source is filterable and shown in the detail view (P-02).",
-       "A default is backfilled for manual entries; covered by tests."],
-      ["Provenance on every record (AI-ARC-003); show the source (P-02)."]),
+      "SS5.3; FR-TXN-009, P-02", "SS5 Data Model",
+      "Every transaction records where it came from, and the app shows it - so a row the user did not type explains itself.",
+      ["Every txn carries a source from FR-TXN-009's closed set; every write path stamps one (no row can lack it, so there is nothing to backfill - assert that rather than writing a migration).",
+       "The source is visible on the row and in a detail surface (P-02). The reconciliation adjustment is the test case: its note is null, so the source is the only thing explaining it.",
+       "The list is filterable by source. Note FR-TXN-007 (issue 3.6) does NOT list source among its filters, so this one belongs here.",
+       "Covered by tests, including a row whose stored source this build does not know."],
+      ["Provenance on every record; show the source (P-02).",
+       "AI-ARC-003 is about engine results, not transactions - do not add an engine/version column here."]),
     I("3.6", 3, "Search, filters, bulk edit", "transactions", "H", "3.1",
       "SS5.3; FR-TXN-*", "SS5 Data Model, SS6 Module Structure",
       "Full-text search, faceted filters (date/account/category/amount range), and safe bulk edit/recategorise over the transaction ledger.",
@@ -736,7 +757,7 @@ ISSUES: list[Issue] = [
        "The network is consent-gated; covered by tests with the backend absent."],
       ["Market data via the backend proxy only; degrade to cached + staleness (P-04)."]),
     I("6.6", 6, "Net-worth snapshots history", "wealth", "M", "2.6",
-      "SS5.7; FR-NW-*", "SS5 Data Model",
+      "SS5.7 (FR-ACC-005), SS20.3", "SS5 Data Model",
       "Persisted net-worth snapshot history with trend queries - an exact, reproducible time series from the daily snapshots (2.6).",
       ["Snapshot history is queryable by range; the trend derives from stored snapshots (no recompute drift).",
        "Values are `Money` paise; charts come from the design system; offline.",
@@ -1197,10 +1218,10 @@ def tracker_phases(issue: Issue) -> list[tuple[str, str]]:
     phases: list[tuple[str, str]] = [
         ("Dependencies clear or waived", f"deps: {deps_display(issue)}"),
         ("Branch created", "`git branch --show-current` -> feature/..."),
-        ("Failing tests written (TDD)", "new tests are red before implementation (`./gradlew testDebugUnitTest`)"),
+        ("Failing tests written (TDD)", "new tests are red before implementation (`./gradlew unitTests`)"),
         ("Implementation to acceptance criteria", "all acceptance criteria above are met"),
         ("Static analysis clean", "`./gradlew ktlintCheck detekt lintDebug` - no new warnings"),
-        ("Unit + coverage gate", "`./gradlew testDebugUnitTest koverVerify` - engine >= 85%, money 100%"),
+        ("Unit + coverage gate", "`./gradlew unitTests koverVerify` - engine >= 85%, money 100%"),
     ]
     if labels & {"database"}:
         phases.append(("Migration test green", "schema migration test passes; no destructive migration (DB-003)"))
@@ -1212,7 +1233,9 @@ def tracker_phases(issue: Issue) -> list[tuple[str, str]]:
     if labels & {"transactions", "dashboard", "onboarding", "accounts", "app", "e2e", "export", "widget", "backup"}:
         phases.append(("E2E smoke + airplane-mode", "`./gradlew connectedDebugAndroidTest` incl. airplane-mode (P-04)"))
     phases.append(("Docs + VERSION + CHANGELOG", "ENGINE.md/ADR as needed; `VERSION` + `CHANGELOG.md` bumped"))
-    phases.append(("Merge to `main` + push", "merged to `main`; Verification Log complete; pushed"))
+    # CLAUDE.md SS7: `dev` is the integration branch; `main` and `stage` are protected and PR-only,
+    # so no issue merges straight to `main`. The generator said otherwise until issue 2.5.
+    phases.append(("Merge to `dev` + push", "merged to `dev`; Verification Log complete; pushed"))
     return phases
 
 
@@ -1352,7 +1375,7 @@ def render_issue(issue: Issue, slug: str) -> str:
     lines.append("")
     lines.append("```text")
     lines.append("./gradlew ktlintCheck detekt lintDebug")
-    lines.append("./gradlew testDebugUnitTest koverVerify")
+    lines.append("./gradlew unitTests koverVerify")
     lines.append("# /run + /verify on an emulator; connectedDebugAndroidTest for core flows (incl. airplane-mode)")
     lines.append("```")
     lines.append("")
@@ -1400,8 +1423,8 @@ def render_tracker(issue: Issue, slug: str) -> str:
     lines.append("")
     lines.append(f"**Parent issue:** [{issue_file}]({issue_file})  ")
     lines.append(f"**Strategy:** {issue.summary}  ")
-    lines.append("**Branch (integration):** `main`  ")
-    lines.append(f"**Branch (implementation):** `{branch_name(issue, slug)}` -> merged to `main`")
+    lines.append("**Branch (integration):** `dev`  ")
+    lines.append(f"**Branch (implementation):** `{branch_name(issue, slug)}` -> merged to `dev`")
     lines.append("")
     lines.append("---")
     lines.append("")
@@ -1488,11 +1511,29 @@ def main() -> int:
     write_csv(ISSUES)
 
     file_count = 0
+    preserved: list[str] = []
     for issue in ISSUES:
         slug = slugify(issue.title)
         (ISSUES_DIR / f"{issue.id}-{slug}.md").write_text(polish(render_issue(issue, slug)), encoding="utf-8")
-        (ISSUES_DIR / f"{issue.id}-{slug}-tracker.md").write_text(polish(render_tracker(issue, slug)), encoding="utf-8")
-        file_count += 2
+        file_count += 1
+
+        # A tracker is hand-maintained once work starts: it carries the Verification Log, the phase
+        # checklist and the "what is proven, and what is not" section, none of which this script can
+        # regenerate. Overwriting one destroys the only record that a gate was ever run.
+        #
+        # Issue 2.5 found this the hard way -- a routine regeneration blanked all fourteen completed
+        # trackers back to "not started" in one command, and only git had them. So a tracker is now
+        # written **only when it does not already exist**; a started one is reported and left alone.
+        # To deliberately reset one, delete the file first.
+        tracker = ISSUES_DIR / f"{issue.id}-{slug}-tracker.md"
+        if tracker.exists() and "(not started)" not in tracker.read_text(encoding="utf-8"):
+            preserved.append(tracker.name)
+            continue
+        tracker.write_text(polish(render_tracker(issue, slug)), encoding="utf-8")
+        file_count += 1
+
+    if preserved:
+        print(f"  preserved {len(preserved)} tracker(s) with recorded progress (delete to regenerate)")
 
     epic_counts: dict[int, int] = {}
     for issue in ISSUES:

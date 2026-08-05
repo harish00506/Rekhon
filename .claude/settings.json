@@ -8,6 +8,7 @@
       "Bash(./gradlew lint:*)",
       "Bash(./gradlew koverVerify:*)",
       "Bash(./gradlew verifyPaparazzi:*)",
+      "Bash(./gradlew recordPaparazzi:*)",
       "Bash(./gradlew assembleDebug:*)",
       "Bash(git status)",
       "Bash(git diff:*)",

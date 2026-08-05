@@ -19,7 +19,8 @@ file:line), then give a one-line **MERGE / DO NOT MERGE** verdict.
 2. **Tests exist and pass** — domain logic covered; **≥ 85% engine coverage, 100% money math**.
    `!./gradlew test`  (report coverage from the JaCoCo/Kover summary if present)
 3. **UI covered** — ≥ 1 Compose UI test or Paparazzi screenshot test for changed UI state.
-   `!./gradlew verifyPaparazziDebug` (if UI changed)
+   `!./gradlew verifyPaparazziDebug` (if UI changed) — runs on the JVM, no device needed.
+   A new or changed design-system component needs its baseline re-recorded and committed.
 4. **Offline** — a changed core flow has an airplane-mode / backend-absent test case (P-04).
 5. **Accessibility & i18n** — strings externalised (no new hardcoded user-facing strings),
    dark mode verified, accessibility scan clean.

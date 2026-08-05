@@ -38,11 +38,11 @@ When working on any task, issue, or epic:
    **Privacy & isolation on every path**: per-profile/household scoping, soft-delete
    (`deleted_at`), provenance on every engine result (AI-ARC-003), no new off-device data
    flow without explicit, revocable consent (P-01).
-8. **Branch while working**: `feature/<id-with-dashes>-<short-slug>`.
+8. **Branch while working** (off `dev`): `feature/<id-with-dashes>-<short-slug>`.
 9. **Run + verify (required before Done)** — the app must be **run and observed working**; a
    green build or green `./gradlew test` does **not** close an issue.
    - **Static analysis:** `./gradlew ktlintCheck detekt lintDebug` — no new warnings (§21.6).
-   - **Unit + coverage:** `./gradlew testDebugUnitTest koverVerify` — **engine ≥ 85%, money
+   - **Unit + coverage:** `./gradlew unitTests koverVerify` — **engine ≥ 85%, money
      math 100%** (§21.5).
    - **Screenshots (if UI changed):** `./gradlew verifyPaparazziDebug`.
    - **AI data (if `ai/**` changed):** confirm JSON/YAML parse and IDs/versions were bumped
@@ -58,11 +58,12 @@ When working on any task, issue, or epic:
      convenience. If the issue touches the thin backend (§22), run it locally too and confirm
      the app still passes **with the backend absent** (P-04).
    - Log every command + result in the tracker **Verification Log** (step 11).
-10. **When task is complete**: commit and push to the **integration trunk (`main`) only** —
-    `main` is always releasable (§21.6, trunk-based). Merge/cherry-pick the feature work onto
-    the trunk, update the tracker + any `ENGINE.md`/ADR docs, bump `VERSION` + `CHANGELOG.md`
-    (see Versioning below), then push. Do not leave finished work only on a feature branch.
-    *(If the team runs a separate `dev` integration branch, substitute it for `main` here.)*
+10. **When task is complete**: open a PR from your `feature/<id>-<slug>` branch into **`dev`**
+    (the integration branch) — **never push straight to `main`/`stage`** (both protected,
+    PR-only, §21.6). In the PR, update the tracker + any `ENGINE.md`/ADR docs and bump
+    `VERSION` + `CHANGELOG.md` (see Versioning below). After it merges to `dev`, **promote by PR**:
+    `dev → stage` for live testing, then `stage → main` for release. Do not leave finished work
+    only on a feature branch.
 11. **Tracker + Verification Log (required when Done)** — create/update
     `docs/issues/<id>-<slug>-tracker.md` from [`_TRACKER_TEMPLATE.md`](_TRACKER_TEMPLATE.md).
     Must include:
@@ -137,8 +138,16 @@ Applies to every function, method, engine, or composable you add or change:
    change touches must pass, not just the new tests. A failing or skipped-for-convenience suite
    blocks Done. Passing suites are necessary but **not sufficient** — the running app must also
    be verified on an emulator per step 9.
-   - **Unit (domain/data/viewmodel):** `./gradlew testDebugUnitTest` (JUnit5, Turbine, MockK,
+   - **Unit (domain/data/viewmodel):** `./gradlew unitTests` (JUnit5, Turbine, MockK,
      Robolectric). Coverage gate: `./gradlew koverVerify` (engine ≥ 85%, money math 100%).
+
+     > **`unitTests`, not `testDebugUnitTest`** (issue 2.6). The latter is an Android *variant*
+     > task: it does not exist on the pure-Kotlin modules (`:core:model`, `:core:common`,
+     > `:domain:engines:*`) and never reached `:lint` at all — so the fourteen tests covering the
+     > custom detectors that make MNY-001, TIM-001 and ARC-006 build-failing ran in **no** command
+     > and in **no** CI step. Disabling `MoneyDoubleDetector` outright left `testDebugUnitTest`
+     > green. `unitTests` is a root aggregate over every module, matched by task name so a module
+     > added later is picked up without anyone remembering to register it.
    - **Screenshot:** `./gradlew verifyPaparazziDebug` for design-system components in
      light/dark/200% font.
    - **UI / user-flow (the Playwright analog):** Compose UI tests plus the **instrumented E2E

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  App manifest (issue 1.1). Declares the Hilt application + the single launcher activity.
+  allowBackup is false: the financial store is encrypted and backed up via our own E2EE
+  path (§23), never Android auto-backup.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application
+        android:name=".CfoApplication"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.AiPersonalCfo">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.AiPersonalCfo">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          Issue 2.6: remove WorkManager's automatic initializer.
+
+          `CfoApplication` implements `Configuration.Provider` so the daily net-worth snapshot worker
+          can be constructor-injected through Hilt's worker factory. That is on-demand
+          initialisation, and androidx.work's own lint rule (RemoveWorkManagerInitializer) fails the
+          build if the default `androidx.startup` initializer is left in place alongside it — the two
+          would race, and the one that won might be the one without our factory, which would then be
+          unable to build the worker at all.
+        -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
+    </application>
+
+</manifest>
