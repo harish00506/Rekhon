@@ -582,6 +582,16 @@ data class RecurringRuleEntity(
     /** FR-TXN-006: false until the user confirms. An unconfirmed rule creates nothing. */
     @ColumnInfo(name = "is_confirmed")
     val isConfirmed: Boolean = false,
+    /**
+     * FR-TXN-006: when the user said "not recurring", UTC epoch millis (TIM-001); null otherwise.
+     *
+     * **Deliberately not [deletedAtUtcMillis].** A tombstone means "this rule is gone"; a dismissal
+     * means "the detector was right that this merchant repeats, and the user still does not want a
+     * rule for it". Only the second must stop the detector proposing the same series next week, and
+     * a soft-deleted row cannot say that without also lying to every read that filters tombstones.
+     */
+    @ColumnInfo(name = "dismissed_at_utc_millis")
+    val dismissedAtUtcMillis: Long? = null,
     @ColumnInfo(name = "created_at_utc_millis")
     val createdAtUtcMillis: Long,
     @ColumnInfo(name = "updated_at_utc_millis")

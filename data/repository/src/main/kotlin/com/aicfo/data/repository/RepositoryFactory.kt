@@ -6,6 +6,7 @@ import com.aicfo.core.common.IdGenerator
 import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.datastore.SettingsStore
 import com.aicfo.domain.engines.networth.NetWorthEngine
+import com.aicfo.domain.engines.recurring.RecurringEngine
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -122,4 +123,26 @@ object RepositoryFactory {
         dispatchers: DispatcherProvider,
         activeProfileId: Flow<String>,
     ): TransactionRepository = RoomTransactionRepository(database, clock, ids, dispatchers, activeProfileId)
+
+    /**
+     * Builds the recurring-series store (issue 3.7, FR-TXN-006).
+     * Why:    takes the [engine] rather than constructing one, for the same reason [netWorth] does —
+     *         the proposal and the code that produced it stay assembled in the DI graph (ARC-003,
+     *         P-03) — and takes the whole [database] because the read spans `transactions` and
+     *         `recurring_rule`.
+     * Result: a [RecurringRepository] over the encrypted database.
+     * Input:  [database]; [engine] — finds every pattern; [clock] — TIM-001, and the lookback
+     *         window in the profile zone (TIM-002); [dispatchers]; [activeProfileId] — which
+     *         profile is proposed to, so the demo gets its own. **No `IdGenerator`**: a rule's id
+     *         is derived from the profile and the merchant, so confirming twice updates one row
+     *         rather than minting two (see `recurringRuleId`).
+     * Output: [RecurringRepository].
+     */
+    fun recurring(
+        database: CfoDatabase,
+        engine: RecurringEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        activeProfileId: Flow<String>,
+    ): RecurringRepository = RoomRecurringRepository(database, engine, clock, dispatchers, activeProfileId)
 }

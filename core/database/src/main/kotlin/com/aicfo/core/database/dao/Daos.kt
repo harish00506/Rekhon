@@ -655,6 +655,40 @@ interface TransactionDao {
     fun observeDistinctSources(profileId: String): Flow<List<String>>
 
     /**
+     * Observes the rows the recurring detector may look at (issue 3.7; FR-TXN-006).
+     *
+     * Why:    the detector is pure Kotlin and cannot decide *which* rows count, so every exclusion
+     *         lives here — and each one is a requirement, not a preference:
+     *         - `deleted_at_utc_millis IS NULL` — a tombstoned row is not evidence of anything.
+     *         - `merchant IS NOT NULL AND TRIM(merchant) <> ''` — FR-TXN-006 matches on merchant,
+     *           and "₹250 on the 3rd" with no payee is not a series a user could recognise. Filtered
+     *           in SQL rather than in Kotlin so the rows never leave the database in the first place.
+     *         - `transfer_id IS NULL` — money moving between the user's own accounts is not a bill
+     *           (FR-TXN-003); a standing transfer to savings would otherwise be proposed as one.
+     *         - `booked_on_iso_date <= :toIsoDate` — FR-TXN-010's scheduled rows are money that has
+     *           not moved yet. Detecting a pattern in payments the user has merely *planned* would
+     *           propose a rule from the app's own predictions.
+     *         - `>= :fromIsoDate` — the window, so the query cost stays bounded on a long ledger.
+     * Result: emits on every change to the ledger, oldest first. Empty for a new profile, which is
+     *         a real answer rather than a missing one.
+     * Input:  [profileId]; [fromIsoDate] and [toIsoDate] — ISO `yyyy-MM-dd` bounds, inclusive,
+     *         derived by the caller from the injected `Clock` (TIM-001/TIM-002).
+     * Output: `Flow<List<RecurringCandidateRow>>`.
+     */
+    @Query(
+        "SELECT id, merchant, amount_minor, booked_on_iso_date FROM transactions " +
+            "WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
+            "AND merchant IS NOT NULL AND TRIM(merchant) <> '' AND transfer_id IS NULL " +
+            "AND booked_on_iso_date >= :fromIsoDate AND booked_on_iso_date <= :toIsoDate " +
+            "ORDER BY booked_on_iso_date, id",
+    )
+    fun observeRecurringCandidates(
+        profileId: String,
+        fromIsoDate: String,
+        toIsoDate: String,
+    ): Flow<List<RecurringCandidateRow>>
+
+    /**
      * Sets the category on many transactions at once (issue 3.6; FR-TXN-008).
      *
      * Why:    FR-TXN-008's "multi-select recategorise", as one statement — a loop of single updates
@@ -767,6 +801,28 @@ interface TransactionDao {
 data class DayTotalRow(
     @ColumnInfo(name = "iso_date") val isoDate: String,
     @ColumnInfo(name = "total_minor") val totalMinor: Long,
+)
+
+/**
+ * One transaction as the recurring detector sees it (issue 3.7; FR-TXN-006).
+ *
+ * Why:  four columns, not a whole [TransactionEntity]. The detector matches on merchant, amount and
+ *       date and nothing else, and a projection this narrow means the query reads four columns
+ *       instead of eighteen across a two-year window — but more importantly it means the engine
+ *       *cannot* start matching on a field nobody agreed it should.
+ * Result: mapped straight onto the engine's `RecurringCandidate` by the repository.
+ * Changelog: 2026-08-05 — Created for issue 3.7.
+ *
+ * Input:  [id] — the transaction id; [merchant] — non-null and non-blank by the query's `WHERE`,
+ *         but typed nullable because the column is; [amountMinor] — signed paise (MNY-001);
+ *         [bookedOnIsoDate] — ISO `yyyy-MM-dd` (TIM-002).
+ * Output: a Room projection.
+ */
+data class RecurringCandidateRow(
+    @ColumnInfo(name = "id") val id: String,
+    @ColumnInfo(name = "merchant") val merchant: String?,
+    @ColumnInfo(name = "amount_minor") val amountMinor: Long,
+    @ColumnInfo(name = "booked_on_iso_date") val bookedOnIsoDate: String,
 )
 
 /**
@@ -1069,9 +1125,46 @@ interface RecurringRuleDao {
      */
     @Query(
         "SELECT * FROM recurring_rule WHERE profile_id = :profileId " +
-            "AND deleted_at_utc_millis IS NULL ORDER BY next_due_iso_date, id",
+            "AND deleted_at_utc_millis IS NULL AND dismissed_at_utc_millis IS NULL " +
+            "ORDER BY next_due_iso_date, id",
     )
     fun observeForProfile(profileId: String): Flow<List<RecurringRuleEntity>>
+
+    /**
+     * Observes the names of every rule a profile has *decided about* (issue 3.7; FR-TXN-006).
+     *
+     * Why:    FR-TXN-006's detector must propose a merchant only once. What stops it re-proposing
+     *         is not code but data — this list — which is what "decisions feed back as data, not
+     *         code" means in practice.
+     *
+     *         **No filter at all, deliberately.** Confirmed, still-pending, dismissed and
+     *         soft-deleted rows all count: each one is a merchant the user has already been shown.
+     *         Filtering tombstones here would resurrect a proposal the moment someone deleted the
+     *         rule it produced, which reads to the user as the app forgetting.
+     * Result: the merchant names to exclude from detection, lower-cased so the comparison matches
+     *         the engine's own normalisation without a second pass in Kotlin.
+     * Input:  [profileId]. Output: `Flow<List<String>>`; empty for a profile with no rules.
+     */
+    @Query("SELECT DISTINCT LOWER(name) FROM recurring_rule WHERE profile_id = :profileId AND name IS NOT NULL")
+    fun observeDecidedNames(profileId: String): Flow<List<String>>
+
+    /**
+     * Records that the user rejected a proposed series (issue 3.7; FR-TXN-006).
+     * Why:    P-07 — the app proposes and the user decides, so "no" has to be as durable as "yes".
+     *         Stamped rather than flagged so a future review can say *when* the user declined.
+     * Result: the rule leaves [observeForProfile] and its merchant stays in [observeDecidedNames].
+     * Input:  [id]; [dismissedAtUtcMillis] and [updatedAtUtcMillis] — from the injected `Clock`
+     *         (TIM-001). Output: rows affected.
+     */
+    @Query(
+        "UPDATE recurring_rule SET dismissed_at_utc_millis = :dismissedAtUtcMillis, " +
+            "updated_at_utc_millis = :updatedAtUtcMillis WHERE id = :id",
+    )
+    suspend fun dismiss(
+        id: String,
+        dismissedAtUtcMillis: Long,
+        updatedAtUtcMillis: Long,
+    ): Int
 
     /**
      * Points a profile's unattached rules of one source at an account (issue 2.5; FR-ONB-001).

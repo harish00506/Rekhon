@@ -44,6 +44,7 @@ import org.junit.Test
 class TransactionsViewModelTest {
     private val repository = FakeTransactionRepository()
     private val accounts = FakeAccountRepository()
+    private val recurring = FakeRecurringRepository()
 
     /** Input: none. Output: `viewModelScope` runs on a test dispatcher. */
     @Before
@@ -62,7 +63,7 @@ class TransactionsViewModelTest {
     @Test
     fun `an empty store renders the empty state, not a spinner`() =
         runTest {
-            val viewModel = TransactionsViewModel(repository, accounts)
+            val viewModel = TransactionsViewModel(repository, recurring, accounts)
 
             viewModel.uiState.test {
                 assertFalse(awaitItem().isLoading)
@@ -79,7 +80,7 @@ class TransactionsViewModelTest {
                 transaction { copy(id = "txn:2", bookedOn = "2026-08-01") },
             )
 
-            val headers = TransactionsViewModel(repository, accounts).dayHeaders()
+            val headers = TransactionsViewModel(repository, recurring, accounts).dayHeaders()
 
             assertEquals(listOf("2026-08-02", "2026-08-01"), headers.map { it.isoDate })
         }
@@ -95,7 +96,7 @@ class TransactionsViewModelTest {
                 transaction { copy(id = "txn:3", bookedOn = "2026-08-01") },
             )
 
-            val items = TransactionsViewModel(repository, accounts).listItems()
+            val items = TransactionsViewModel(repository, recurring, accounts).listItems()
 
             assertEquals(
                 listOf("day:2026-08-02", "txn:txn:1", "txn:txn:2", "day:2026-08-01", "txn:txn:3"),
@@ -111,7 +112,7 @@ class TransactionsViewModelTest {
                 transaction { copy(id = "txn:2", note = "older") },
             )
 
-            val rows = TransactionsViewModel(repository, accounts).rows()
+            val rows = TransactionsViewModel(repository, recurring, accounts).rows()
 
             assertEquals(listOf("newest", "older"), rows.map { it.noteOrNull() })
         }
@@ -127,7 +128,7 @@ class TransactionsViewModelTest {
                 transaction { copy(id = "txn:2", amount = Money(-250_00L)) },
             )
 
-            val headers = TransactionsViewModel(repository, accounts).dayHeaders()
+            val headers = TransactionsViewModel(repository, recurring, accounts).dayHeaders()
 
             assertEquals(Money(-950_00L), headers.single().total)
         }
@@ -140,7 +141,7 @@ class TransactionsViewModelTest {
                 transaction { copy(id = "txn:2", bookedOn = "2026-08-01", amount = Money(-700_00L)) },
             )
 
-            val headers = TransactionsViewModel(repository, accounts).dayHeaders()
+            val headers = TransactionsViewModel(repository, recurring, accounts).dayHeaders()
 
             assertEquals(listOf(Money(-250_00L), Money(-700_00L)), headers.map { it.total })
         }
@@ -150,7 +151,7 @@ class TransactionsViewModelTest {
         runTest {
             repository.failOnObserve = AppError.Storage("read")
 
-            TransactionsViewModel(repository, accounts).uiState.test {
+            TransactionsViewModel(repository, recurring, accounts).uiState.test {
                 val state = awaitItem()
                 assertFalse(state.isLoading)
                 // Non-null, not a particular code: the fake signals a broken read by throwing an
@@ -231,7 +232,7 @@ class TransactionsViewModelTest {
         runTest {
             accounts.setAccounts(account { copy(id = "account:1", name = "HDFC Savings") })
 
-            TransactionsViewModel(repository, accounts).uiState.test {
+            TransactionsViewModel(repository, recurring, accounts).uiState.test {
                 assertEquals(mapOf("account:1" to "HDFC Savings"), awaitItem().accountNames)
                 cancelAndIgnoreRemainingEvents()
             }
@@ -243,7 +244,7 @@ class TransactionsViewModelTest {
     fun `deleting a row hands the store the transaction id, not a transfer id`() =
         runTest {
             repository.setTransactions(transaction { copy(id = "txn:1") })
-            val viewModel = TransactionsViewModel(repository, accounts)
+            val viewModel = TransactionsViewModel(repository, recurring, accounts)
 
             viewModel.onEvent(TransactionsEvent.Delete("txn:1"))
 
@@ -255,7 +256,7 @@ class TransactionsViewModelTest {
         runTest {
             repository.setTransactions(transaction { copy(id = "txn:1") })
             repository.failWith = AppError.Storage("delete")
-            val viewModel = TransactionsViewModel(repository, accounts)
+            val viewModel = TransactionsViewModel(repository, recurring, accounts)
 
             viewModel.onEvent(TransactionsEvent.Delete("txn:1"))
 
@@ -270,7 +271,7 @@ class TransactionsViewModelTest {
     fun `dismissing the error clears it`() =
         runTest {
             repository.failWith = AppError.Storage("delete")
-            val viewModel = TransactionsViewModel(repository, accounts)
+            val viewModel = TransactionsViewModel(repository, recurring, accounts)
             viewModel.onEvent(TransactionsEvent.Delete("txn:1"))
 
             viewModel.onEvent(TransactionsEvent.DismissError)
@@ -291,7 +292,7 @@ class TransactionsViewModelTest {
                 transaction { copy(id = "txn:2", bookedOn = "2026-08-10") },
             )
 
-            TransactionsViewModel(repository, accounts).uiState.test {
+            TransactionsViewModel(repository, recurring, accounts).uiState.test {
                 assertEquals(listOf("2026-08-10", "2026-08-20"), awaitItem().upcoming.map { it.isoDate })
                 cancelAndIgnoreRemainingEvents()
             }
@@ -302,7 +303,7 @@ class TransactionsViewModelTest {
         runTest {
             repository.setUpcoming(transaction { copy(id = "txn:1", bookedOn = "2026-08-10") })
 
-            TransactionsViewModel(repository, accounts).uiState.test {
+            TransactionsViewModel(repository, recurring, accounts).uiState.test {
                 assertTrue(awaitItem().hasUpcoming)
                 cancelAndIgnoreRemainingEvents()
             }
@@ -315,7 +316,7 @@ class TransactionsViewModelTest {
             // the section has to re-implement or can forget.
             repository.setUpcoming(*transferLegs(bookedOn = "2026-08-10").toTypedArray())
 
-            TransactionsViewModel(repository, accounts).uiState.test {
+            TransactionsViewModel(repository, recurring, accounts).uiState.test {
                 val rows = awaitItem().upcoming.single().rows
                 assertEquals(1, rows.size)
                 assertTrue(rows.single() is TransactionRow.TransferPair)
@@ -333,7 +334,7 @@ class TransactionsViewModelTest {
                 transaction { copy(id = "txn:2", source = TransactionSource.MANUAL) },
             )
 
-            TransactionsViewModel(repository, accounts).uiState.test {
+            TransactionsViewModel(repository, recurring, accounts).uiState.test {
                 val state = awaitItem()
                 assertEquals(
                     listOf(TransactionSource.MANUAL, TransactionSource.RECONCILIATION),
@@ -349,7 +350,7 @@ class TransactionsViewModelTest {
         runTest {
             repository.setTransactions(transaction { copy(source = TransactionSource.MANUAL) })
 
-            TransactionsViewModel(repository, accounts).uiState.test {
+            TransactionsViewModel(repository, recurring, accounts).uiState.test {
                 assertFalse(awaitItem().hasSourceFilter)
                 cancelAndIgnoreRemainingEvents()
             }
@@ -364,7 +365,7 @@ class TransactionsViewModelTest {
                 transaction { copy(id = "txn:1", source = TransactionSource.MANUAL) },
                 transaction { copy(id = "txn:2", source = TransactionSource.RECONCILIATION) },
             )
-            val viewModel = TransactionsViewModel(repository, accounts)
+            val viewModel = TransactionsViewModel(repository, recurring, accounts)
 
             viewModel.onEvent(TransactionsEvent.SourceFilterSelected(TransactionSource.RECONCILIATION))
 
@@ -379,7 +380,7 @@ class TransactionsViewModelTest {
     @Test
     fun `typing a search term becomes a query`() =
         runTest {
-            val viewModel = TransactionsViewModel(repository, accounts)
+            val viewModel = TransactionsViewModel(repository, recurring, accounts)
 
             viewModel.onEvent(TransactionsEvent.SearchChanged("chai"))
             viewModel.listItems()
@@ -394,7 +395,7 @@ class TransactionsViewModelTest {
                 transaction { copy(id = "txn:1", merchant = "Chai Point") },
                 transaction { copy(id = "txn:2", merchant = "Big Bazaar") },
             )
-            val viewModel = TransactionsViewModel(repository, accounts)
+            val viewModel = TransactionsViewModel(repository, recurring, accounts)
 
             viewModel.onEvent(TransactionsEvent.SearchChanged("chai"))
 
@@ -404,7 +405,7 @@ class TransactionsViewModelTest {
     @Test
     fun `a chip and a search term compose rather than replacing one another`() =
         runTest {
-            val viewModel = TransactionsViewModel(repository, accounts)
+            val viewModel = TransactionsViewModel(repository, recurring, accounts)
 
             viewModel.onEvent(TransactionsEvent.SearchChanged("chai"))
             viewModel.onEvent(TransactionsEvent.SourceFilterSelected(TransactionSource.OCR))
@@ -418,7 +419,7 @@ class TransactionsViewModelTest {
     @Test
     fun `a filter from the sheet reaches the query whole`() =
         runTest {
-            val viewModel = TransactionsViewModel(repository, accounts)
+            val viewModel = TransactionsViewModel(repository, recurring, accounts)
             val filter = TransactionFilter(accountId = "account:1", minAmount = Money(100_00L))
 
             viewModel.onEvent(FilterEvent.Changed(filter))
@@ -432,7 +433,7 @@ class TransactionsViewModelTest {
         runTest {
             // The text is in a field the sheet does not own; wiping it from under the cursor would
             // read as the app losing what they said.
-            val viewModel = TransactionsViewModel(repository, accounts)
+            val viewModel = TransactionsViewModel(repository, recurring, accounts)
             viewModel.onEvent(TransactionsEvent.SearchChanged("chai"))
             viewModel.onEvent(TransactionsEvent.SourceFilterSelected(TransactionSource.OCR))
 
@@ -449,7 +450,7 @@ class TransactionsViewModelTest {
     @Test
     fun `the sheet opens and closes`() =
         runTest {
-            val viewModel = TransactionsViewModel(repository, accounts)
+            val viewModel = TransactionsViewModel(repository, recurring, accounts)
 
             viewModel.onEvent(FilterEvent.Opened)
             viewModel.uiState.test {
@@ -469,7 +470,7 @@ class TransactionsViewModelTest {
         runTest {
             repository.setTags(Tag(id = "tag:1", name = "goa-trip"))
 
-            TransactionsViewModel(repository, accounts).uiState.test {
+            TransactionsViewModel(repository, recurring, accounts).uiState.test {
                 assertEquals(listOf("goa-trip"), awaitItem().availableTags.map { it.name })
                 cancelAndIgnoreRemainingEvents()
             }
@@ -480,7 +481,7 @@ class TransactionsViewModelTest {
     @Test
     fun `selecting and deselecting a row toggles it`() =
         runTest {
-            val viewModel = TransactionsViewModel(repository, accounts)
+            val viewModel = TransactionsViewModel(repository, recurring, accounts)
 
             viewModel.onEvent(BulkEvent.Toggled("txn:1"))
             viewModel.uiState.test {
@@ -501,7 +502,7 @@ class TransactionsViewModelTest {
     fun `a selected row is marked as such in the list`() =
         runTest {
             repository.setTransactions(transaction { copy(id = "txn:1") })
-            val viewModel = TransactionsViewModel(repository, accounts)
+            val viewModel = TransactionsViewModel(repository, recurring, accounts)
 
             viewModel.onEvent(BulkEvent.Toggled("txn:1"))
 
@@ -514,7 +515,7 @@ class TransactionsViewModelTest {
         runTest {
             // Leaving twenty rows selected after changing them invites the user to change them again
             // by reflex.
-            val viewModel = TransactionsViewModel(repository, accounts)
+            val viewModel = TransactionsViewModel(repository, recurring, accounts)
             viewModel.onEvent(BulkEvent.Toggled("txn:1"))
             viewModel.onEvent(BulkEvent.Toggled("txn:2"))
 
@@ -530,7 +531,7 @@ class TransactionsViewModelTest {
     @Test
     fun `retagging sends the labels the user typed`() =
         runTest {
-            val viewModel = TransactionsViewModel(repository, accounts)
+            val viewModel = TransactionsViewModel(repository, recurring, accounts)
             viewModel.onEvent(BulkEvent.Toggled("txn:1"))
 
             viewModel.onEvent(BulkEvent.Retag(listOf("goa-trip", "work")))
@@ -541,7 +542,7 @@ class TransactionsViewModelTest {
     @Test
     fun `a bulk action on an empty selection asks the store for nothing`() =
         runTest {
-            val viewModel = TransactionsViewModel(repository, accounts)
+            val viewModel = TransactionsViewModel(repository, recurring, accounts)
 
             viewModel.onEvent(BulkEvent.Recategorise("cat:food"))
             viewModel.onEvent(BulkEvent.Delete)
@@ -555,7 +556,7 @@ class TransactionsViewModelTest {
             // The rows did not change, so dropping the selection would leave the user re-picking
             // twenty rows to retry.
             repository.failWith = AppError.Storage("bulk")
-            val viewModel = TransactionsViewModel(repository, accounts)
+            val viewModel = TransactionsViewModel(repository, recurring, accounts)
             viewModel.onEvent(BulkEvent.Toggled("txn:1"))
 
             viewModel.onEvent(BulkEvent.Recategorise("cat:food"))
@@ -575,7 +576,7 @@ class TransactionsViewModelTest {
             // both (FR-TXN-003); an undo that restored only the selection would bring back one leg
             // and leave the money it moved in one account with no counterpart.
             repository.deleteAllReturns = listOf("tfr:1:out", "tfr:1:in")
-            val viewModel = TransactionsViewModel(repository, accounts)
+            val viewModel = TransactionsViewModel(repository, recurring, accounts)
             viewModel.onEvent(BulkEvent.Toggled("tfr:1:out"))
 
             viewModel.onEvent(BulkEvent.Delete)
@@ -594,7 +595,7 @@ class TransactionsViewModelTest {
     fun `undo restores exactly the ids the delete reported`() =
         runTest {
             repository.deleteAllReturns = listOf("tfr:1:out", "tfr:1:in")
-            val viewModel = TransactionsViewModel(repository, accounts)
+            val viewModel = TransactionsViewModel(repository, recurring, accounts)
             viewModel.onEvent(BulkEvent.Toggled("tfr:1:out"))
             viewModel.onEvent(BulkEvent.Delete)
 
@@ -608,7 +609,7 @@ class TransactionsViewModelTest {
         runTest {
             // The second call would be a NotFound and would surface as an error banner over an
             // operation that had in fact succeeded.
-            val viewModel = TransactionsViewModel(repository, accounts)
+            val viewModel = TransactionsViewModel(repository, recurring, accounts)
             viewModel.onEvent(BulkEvent.Toggled("txn:1"))
             viewModel.onEvent(BulkEvent.Delete)
 
@@ -625,7 +626,7 @@ class TransactionsViewModelTest {
     @Test
     fun `letting the snackbar time out disarms undo without restoring`() =
         runTest {
-            val viewModel = TransactionsViewModel(repository, accounts)
+            val viewModel = TransactionsViewModel(repository, recurring, accounts)
             viewModel.onEvent(BulkEvent.Toggled("txn:1"))
             viewModel.onEvent(BulkEvent.Delete)
 
@@ -647,7 +648,7 @@ class TransactionsViewModelTest {
             // the whole list to resolve an id against once the list is paged, and every row already
             // knows what it was built from.
             val tapped = transaction { copy(id = "txn:1", note = "Chai") }
-            val viewModel = TransactionsViewModel(repository, accounts)
+            val viewModel = TransactionsViewModel(repository, recurring, accounts)
 
             viewModel.onEvent(TransactionsEvent.RowTapped(tapped))
 
@@ -660,13 +661,101 @@ class TransactionsViewModelTest {
     @Test
     fun `dismissing closes the sheet`() =
         runTest {
-            val viewModel = TransactionsViewModel(repository, accounts)
+            val viewModel = TransactionsViewModel(repository, recurring, accounts)
             viewModel.onEvent(TransactionsEvent.RowTapped(transaction()))
 
             viewModel.onEvent(TransactionsEvent.DetailDismissed)
 
             viewModel.uiState.test {
                 assertNull(awaitItem().detail)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    // --- recurring detection (issue 3.7; FR-TXN-006) ----------------------------------------------
+
+    @Test
+    fun `a detected series reaches the state`() =
+        runTest {
+            recurring.setSuggestions(listOf(series()))
+
+            TransactionsViewModel(repository, recurring, accounts).uiState.test {
+                val state = awaitItem()
+                assertEquals(listOf("Landlord"), state.suggestions.map { it.merchant })
+                assertTrue(state.hasSuggestions)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `confirming hands the whole series to the store and the card goes`() =
+        runTest {
+            // FR-TXN-006's "user confirms to create a Recurring Rule". The *series* is passed, not a
+            // merchant name: the amount and next-due date the engine derived are what get stored.
+            val proposal = series()
+            recurring.setSuggestions(listOf(proposal))
+            val viewModel = TransactionsViewModel(repository, recurring, accounts)
+
+            viewModel.onEvent(RecurringEvent.Confirm(proposal))
+
+            assertEquals(listOf(proposal), recurring.confirmed)
+            viewModel.uiState.test {
+                assertTrue(awaitItem().suggestions.isEmpty())
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `dismissing records the rejection and the card goes`() =
+        runTest {
+            val proposal = series(merchant = "Netflix", minor = -649_00L)
+            recurring.setSuggestions(listOf(proposal))
+            val viewModel = TransactionsViewModel(repository, recurring, accounts)
+
+            viewModel.onEvent(RecurringEvent.Dismiss(proposal))
+
+            assertEquals(listOf(proposal), recurring.dismissed)
+            assertTrue("a rejection is not a confirmation", recurring.confirmed.isEmpty())
+            viewModel.uiState.test {
+                assertTrue(awaitItem().suggestions.isEmpty())
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `a refused write surfaces and leaves the card in place`() =
+        runTest {
+            // The user's answer was not recorded, so they must be able to give it again — hiding the
+            // card here would leave the screen disagreeing with the database.
+            val proposal = series()
+            recurring.setSuggestions(listOf(proposal))
+            recurring.failWith = AppError.Storage("disk")
+            val viewModel = TransactionsViewModel(repository, recurring, accounts)
+
+            viewModel.onEvent(RecurringEvent.Confirm(proposal))
+
+            viewModel.uiState.test {
+                val state = awaitItem()
+                assertEquals("storage", state.errorCode)
+                assertEquals(listOf("Landlord"), state.suggestions.map { it.merchant })
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `the section is hidden while the user is selecting rows`() =
+        runTest {
+            // A proposal is not part of the selection a bulk action operates on, and a Confirm button
+            // beside an action bar counting rows would invite the user to think the two are related.
+            recurring.setSuggestions(listOf(series()))
+            val viewModel = TransactionsViewModel(repository, recurring, accounts)
+
+            viewModel.onEvent(BulkEvent.Toggled("t1"))
+
+            viewModel.uiState.test {
+                val state = awaitItem()
+                assertFalse(state.hasSuggestions)
+                assertTrue("hidden, not discarded — leaving selection brings it back", state.suggestions.isNotEmpty())
                 cancelAndIgnoreRemainingEvents()
             }
         }

@@ -405,6 +405,32 @@ internal object Migrations {
         }
 
     /**
+     * 9 → 10: adds `recurring_rule.dismissed_at_utc_millis` (issue 3.7; FR-TXN-006).
+     *
+     * Why:    FR-TXN-006 lets the user reject a proposed series, and a rejection has to be *stored*
+     *         or the detector proposes the same merchant again on the next read — the app arguing
+     *         with a decision the user already made. The existing columns cannot carry it:
+     *         `is_confirmed = false` is what a *pending* proposal looks like, and
+     *         `deleted_at_utc_millis` means the row is gone, which every read already filters out.
+     * What:   one nullable `ADD COLUMN`. **Nullable on purpose** — null already means "not
+     *         dismissed" for every existing row, so there is nothing to backfill and no `DEFAULT`
+     *         to keep in sync with an entity annotation. The trap [MIGRATION_5_6] documents (a
+     *         `NOT NULL` column whose SQL default must match `@ColumnInfo(defaultValue)` exactly)
+     *         does not apply here, precisely because this column is allowed to be absent.
+     * Result: an upgraded installation keeps every rule and can record a rejection.
+     * Input:  [SupportSQLiteDatabase] — the database mid-upgrade. Output: none (executes DDL).
+     *
+     * The DDL matches what Room generates for `RecurringRuleEntity`; the committed `schemas/10.json`
+     * is the reference, and `MigrationRoundTripTest` fails on a device if the two drift.
+     */
+    val MIGRATION_9_10 =
+        object : Migration(VERSION_9, VERSION_10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `recurring_rule` ADD COLUMN `dismissed_at_utc_millis` INTEGER")
+            }
+        }
+
+    /**
      * Creates `tags` and its unique index (issue 3.6).
      * Why:    one function per table, the convention [createBudget] set — each block stays short
      *         enough to check line by line against the entity it mirrors.
@@ -476,6 +502,7 @@ internal object Migrations {
             MIGRATION_6_7,
             MIGRATION_7_8,
             MIGRATION_8_9,
+            MIGRATION_9_10,
         )
 
     /** Named so the version pair reads as a schema version rather than an unexplained literal. */
@@ -499,6 +526,9 @@ internal object Migrations {
     /** The version issue 3.4 introduced, and the one issue 3.6 upgrades from. */
     private const val VERSION_8 = 8
 
-    /** Matches `CfoDatabase.VERSION` at the time this migration was written (issue 3.6). */
+    /** The version issue 3.6 introduced, and the one issue 3.7 upgrades from. */
     private const val VERSION_9 = 9
+
+    /** Matches `CfoDatabase.VERSION` at the time this migration was written (issue 3.7). */
+    private const val VERSION_10 = 10
 }

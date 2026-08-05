@@ -16,8 +16,10 @@ import com.aicfo.core.model.Transaction
 import com.aicfo.core.model.TransactionType
 import com.aicfo.data.repository.AccountRepository
 import com.aicfo.data.repository.FilteredTransaction
+import com.aicfo.data.repository.RecurringRepository
 import com.aicfo.data.repository.TransactionFilter
 import com.aicfo.data.repository.TransactionRepository
+import com.aicfo.domain.engines.recurring.RecurringSeries
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -51,11 +53,14 @@ import javax.inject.Inject
  * Input:  [repository] — the transactions store. Output: an observable screen state.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
+@Suppress("TooManyFunctions") // One private handler per event group (filter, bulk, recurring):
+// the count tracks FR-TXN-006/007/008, and merging them would push `onEvent` past its own ceiling.
 @HiltViewModel
 class TransactionsViewModel
     @Inject
     constructor(
         private val repository: TransactionRepository,
+        private val recurring: RecurringRepository,
         accounts: AccountRepository,
     ) : ViewModel() {
         // Issue 3.4 note for the reader: this class has no `Clock`, on purpose. "Is this row
@@ -175,6 +180,18 @@ class TransactionsViewModel
                     _uiState.update { it.copy(isLoading = false, errorCode = failure.toAppError().code) }
                 }
                 .launchIn(viewModelScope)
+
+            // Issue 3.7: collected separately rather than folded into the `combine` above, and not
+            // only because five is the typed overload's limit. A proposal is *optional* — if the
+            // detector or its query fails, the section renders nothing and the ledger above it is
+            // untouched, where a sixth source in that combine would take the whole screen down with
+            // it (P-04). It is also why the catch sets no `errorCode`: there is nothing the user
+            // could do about a suggestion that did not arrive, and a banner over their transactions
+            // for a feature they never asked for is worse than its absence.
+            recurring.observeSuggestions()
+                .onEach { series -> _uiState.update { it.copy(suggestions = series) } }
+                .catch { _uiState.update { it.copy(suggestions = emptyList()) } }
+                .launchIn(viewModelScope)
         }
 
         /**
@@ -191,6 +208,7 @@ class TransactionsViewModel
             when (event) {
                 is FilterEvent -> applyFilter(event)
                 is BulkEvent -> applyBulk(event)
+                is RecurringEvent -> applyRecurring(event)
                 is TransactionsEvent.Delete -> delete(event.transactionId)
                 TransactionsEvent.DismissError -> _uiState.update { it.copy(errorCode = null) }
                 is TransactionsEvent.SearchChanged -> setFilter(currentFilter.copy(query = event.query))
@@ -236,6 +254,44 @@ class TransactionsViewModel
                 BulkEvent.Delete -> deleteSelection()
                 BulkEvent.Undo -> undo()
                 BulkEvent.UndoDismissed -> _uiState.update { it.copy(undo = null) }
+            }
+        }
+
+        /**
+         * Applies the user's answer to a proposed series (issue 3.7; FR-TXN-006).
+         * Why:    split from [onEvent] for the same reason [applyFilter] is. Both answers are the
+         *         same write with a different flag, so both go through [decide] — what must not
+         *         differ between them is the merchant name recorded, which is the only thing
+         *         stopping the proposal coming back.
+         * Result: the decision is stored and the card leaves the list.
+         * Input:  [event]. Output: none.
+         * Changelog: 2026-08-05 — Created for issue 3.7.
+         */
+        private fun applyRecurring(event: RecurringEvent) {
+            when (event) {
+                is RecurringEvent.Confirm -> decide(event.series) { recurring.confirm(it) }
+                is RecurringEvent.Dismiss -> decide(event.series) { recurring.dismiss(it) }
+            }
+        }
+
+        /**
+         * Records one decision and lets the repository re-emit (issue 3.7; FR-TXN-006).
+         * Why:    **the card is not removed here.** Dropping it from the state optimistically would
+         *         make it vanish on a write that failed, and the section would then disagree with
+         *         the database until the next emission. `observeSuggestions` re-runs on the write,
+         *         so the card leaves because the decision is stored, not because the screen hid it.
+         * Result: `Err` surfaces as an `errorCode` and the card stays, which is the honest outcome —
+         *         the user's answer was not recorded, so they should be able to give it again.
+         * Input:  [series] — the proposal; [write] — confirm or dismiss. Output: none.
+         * Changelog: 2026-08-05 — Created for issue 3.7.
+         */
+        private fun decide(
+            series: RecurringSeries,
+            write: suspend (RecurringSeries) -> Result<Unit, AppError>,
+        ) {
+            viewModelScope.launch {
+                val outcome = write(series)
+                if (outcome is Err) _uiState.update { it.copy(errorCode = outcome.error.code) }
             }
         }
 

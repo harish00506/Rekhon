@@ -12,6 +12,42 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > reach writing to it; this epic makes a transaction theirs to create — by hand first, then by
 > transfer, split, receipt and SMS.
 
+### [0.3.8] — Issue 3.7: recurring detection  (2026-08-05)
+
+- **Implemented:** the ledger now notices a pattern in itself. A deterministic detector proposes a
+  recurring series when two or more transactions share a merchant, an amount within tolerance and a
+  regular cadence; the user confirms or rejects it on the transactions list (FR-TXN-006).
+  - **A new engine, `:domain:engines:recurring`** (pure Kotlin, ARC-002). It groups by normalised
+    merchant, classifies the **median** gap as weekly/monthly/yearly, and then checks **every** gap
+    against the rulebook's tolerance — the second step is the one that matters: classifying on the
+    median alone would propose 1 Mar / 31 Mar / 30 Apr / 30 Jun as a monthly bill the user never had.
+  - **No floating point anywhere on the money path** (MNY-001). The 5% amount tolerance is checked by
+    cross-multiplication rather than by dividing into a ratio, and both medians are *lower* medians,
+    so no rounding decision arises and the amount shown for confirmation is one actually paid. The
+    next-due date uses `java.time`, not `+30 days`: 31 Jan + one month is 28 Feb, not 2 March.
+  - **The thresholds are a rulebook row**, `RULE-RECUR-DETECT` in `ai/rules/rules-kb.json`
+    (`min_occurrences: 2`, `amount_tolerance_pct: 5`, `cadence_tolerance_days: 2/4/10`), mirrored as
+    an injected `RecurringRules` per **ADR-0005** and guarded by a `RulebookDriftTest` that was
+    verified to bite by tampering with the rulebook before it was trusted (CLAUDE.md §6).
+  - **A rejection is stored** (schema **v9 → v10**): `recurring_rule.dismissed_at_utc_millis`, one
+    nullable `ADD COLUMN`, no backfill. It is deliberately *not* a tombstone — "the user said no" has
+    to keep the merchant out of the detector while `deleted_at_utc_millis` means the rule is gone.
+    That is what makes the acceptance criterion "decisions feed back as data, not code" literal: the
+    exclusion is a row read back on the next emission, not a flag in the UI.
+  - **The card shows its working** (P-02): merchant, amount, cadence, and the *dates* of the payments
+    that matched — a claim the user can check against their own memory rather than a verdict they
+    have to trust. Rule ids are derived (`<profile>:recurring:<merchant>`), so confirming twice
+    updates one row rather than minting two.
+  - **It proposes only** (P-07). Nothing here posts a transaction or moves money; a confirmed rule
+    predicts, and wiring it into the forecast is issue 9.2's.
+- **Verified:** 1 714 unit tests green (debug + release variants); engine coverage 100% line (gate 85%); ktlint, detekt,
+  `lintDebug` and Paparazzi clean; 14 device migration tests including the 9 → 10 round trip. Driven
+  by hand on the emulator **in airplane mode** (P-04): five series detected from the demo ledger,
+  one confirmed and one rejected, and the screen re-opened to prove both decisions stayed.
+- **Not in scope:** auto-posting (P-07; issue 9.2 owns the forecast), a recurring-rules manager
+  (FR-SET-001 puts it in Settings), and merchant aliasing — matching is on the merchant string until
+  issue 4.1 lands `merchant_id`.
+
 ### [0.3.7] — Issue 3.6: search, filters and bulk edit  (2026-08-04)
 
 - **Implemented:** the transaction list stopped being a 30-day window and became the whole ledger —

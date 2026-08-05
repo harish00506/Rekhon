@@ -597,6 +597,73 @@ class TransactionsFlowTest {
         compose.onNodeWithText("account:1").assertIsDisplayed()
     }
 
+    // --- recurring detection (issue 3.7; FR-TXN-006) ----------------------------------------------
+
+    @Test
+    fun `a proposed series shows its merchant, amount, cadence and the dates behind it`() {
+        // P-02: the card shows its working. "We think you have a subscription" is a verdict the user
+        // has to take on trust; the dates are a claim they can check against their own memory.
+        setContent(state = TransactionsUiState(isLoading = false, suggestions = listOf(series())))
+
+        compose.onNodeWithText(text(R.string.transactions_recurring_title)).assertIsDisplayed()
+        compose.onNodeWithText("Landlord").assertIsDisplayed()
+        compose.onNodeWithText("-₹25,000.00", substring = true).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.transactions_cadence_monthly), substring = true).assertIsDisplayed()
+        compose.onNodeWithText("3 payments", substring = true).assertIsDisplayed()
+        compose.onNodeWithText(TransactionLabels.dayHeader("2026-06-03"), substring = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `the occurrence count is an ICU plural`() {
+        // "1 payments" is the kind of thing that ships because nobody built a two-occurrence fixture.
+        setContent(
+            state =
+                TransactionsUiState(
+                    isLoading = false,
+                    suggestions = listOf(series(dates = listOf("2026-07-03", "2026-08-03"))),
+                ),
+        )
+
+        compose.onNodeWithText("2 payments", substring = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `confirming raises the event with the series`() {
+        val events = mutableListOf<TransactionsEvent>()
+        val proposal = series()
+        setContent(
+            state = TransactionsUiState(isLoading = false, suggestions = listOf(proposal)),
+            onEvent = { events += it },
+        )
+
+        compose.onNodeWithText(text(R.string.transactions_recurring_confirm)).performClick()
+
+        assertEquals(listOf(RecurringEvent.Confirm(proposal)), events)
+    }
+
+    @Test
+    fun `rejecting raises the event with the series`() {
+        val events = mutableListOf<TransactionsEvent>()
+        val proposal = series()
+        setContent(
+            state = TransactionsUiState(isLoading = false, suggestions = listOf(proposal)),
+            onEvent = { events += it },
+        )
+
+        compose.onNodeWithText(text(R.string.transactions_recurring_reject)).performClick()
+
+        assertEquals(listOf(RecurringEvent.Dismiss(proposal)), events)
+    }
+
+    @Test
+    fun `the section is absent when there is nothing to propose`() {
+        // The common case, and the one that must cost the screen nothing: a heading over an empty
+        // section would push every user's transactions down to tell almost none of them anything.
+        setContent(items = day(transaction()))
+
+        compose.onNodeWithText(text(R.string.transactions_recurring_title)).assertDoesNotExist()
+    }
+
     // --- fixtures ----------------------------------------------------------------------------------
 
     /**
