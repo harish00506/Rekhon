@@ -27,8 +27,9 @@ import kotlin.math.abs
  * `internal` per ARC-003 — constructed only by [RecurringEngineFactory].
  *
  * **There is not a `Double` in this file** (MNY-001). Amount tolerance is checked by
- * cross-multiplication rather than by dividing into a ratio, so no rounding decision arises at all;
- * the two medians are *lower* medians for the same reason (see [lowerMedian]).
+ * cross-multiplication rather than by dividing into a ratio, so no rounding decision arises at all,
+ * and both medians are *lower* medians for the same reason (see [lowerMedian] and
+ * [representativeAmount]).
  */
 internal class DefaultRecurringEngine : RecurringEngine {
     override fun detect(input: RecurringInput): Result<List<RecurringSeries>, AppError> =
@@ -74,7 +75,7 @@ internal class DefaultRecurringEngine : RecurringEngine {
         val gaps = dates.zipWithNext { earlier, later -> ChronoUnit.DAYS.between(earlier, later) }
         val cadence = classify(gaps, rules) ?: return null
 
-        val medianAmount = Money(sorted.map { it.amount.minor }.lowerMedian())
+        val medianAmount = sorted.map { it.amount }.representativeAmount()
         if (!sorted.all { it.amount.within(medianAmount, rules.amountTolerancePct) }) return null
 
         return RecurringSeries(
@@ -168,21 +169,40 @@ internal class DefaultRecurringEngine : RecurringEngine {
 
 /**
  * The lower of the two middle values, for an odd or even count alike.
- * Why:    a true median of an even-sized list averages the middle pair, and averaging paise
- *         introduces a division and therefore a rounding decision (MNY-001) for no benefit — the
- *         figure is a *representative* amount shown for confirmation, not a total that has to
- *         reconcile. Picking one real observed value keeps the detector free of rounding entirely
- *         and means the amount the user is asked to confirm is one they actually paid.
- *
- *         **It sorts by the signed value**, so for an even count of outflows it picks the *more
- *         negative* — the larger expense. Which of the two middle values is "the" median is
- *         arbitrary for an even count whichever way it is defined; what matters under P-08 is that
- *         it is fixed, so `RecurringEngineTest` pins it rather than leaving it to be discovered.
+ * Why:    a true median of an even-sized list averages the middle pair, and averaging introduces a
+ *         division and therefore a rounding decision for no benefit here — the gap is a *classifier*
+ *         input, not a total that has to reconcile. Picking one observed value keeps the detector
+ *         free of rounding entirely.
  * Result: an element of the list. Input: the receiver — never empty; the caller has already
  *         required at least two occurrences. Output: [Long].
  * Changelog: 2026-08-05 — Created for issue 3.7.
+ *            2026-08-05 — Narrowed to gaps only; amounts now go through [representativeAmount],
+ *            which is sign-blind. See that function for why.
  */
 private fun List<Long>.lowerMedian(): Long = sorted()[(size - 1) / 2]
+
+/**
+ * The series' representative amount: the lower median **by magnitude**.
+ *
+ * Why:    the same no-rounding argument as [lowerMedian] — the figure is one the user is asked to
+ *         confirm, so it should be an amount they actually paid rather than an average nobody was
+ *         charged (MNY-001).
+ *
+ *         **Ordered by magnitude, not by the signed value, and that is the point.** The amount
+ *         tolerance is a band *relative to this figure*, so which of the two middle values an even
+ *         count picks decides whether a borderline series is accepted. Sorting by the signed value
+ *         made that decision depend on the direction of the money: for two outflows it picked the
+ *         more negative — the larger expense, and therefore the wider band — while for two inflows
+ *         of the same spread it picked the smaller, and the narrower one. Two mirror-image ledgers
+ *         would then have been judged by different rules, which is a difference no requirement asks
+ *         for and no user could predict. `abs` is sign-blind, so income and spending are held to the
+ *         same standard.
+ * Result: an element of the list — the observed amount whose magnitude is the lower median.
+ * Input:  the receiver — the occurrences' amounts, never empty. Output: [Money].
+ * Changelog: 2026-08-05 — Created for issue 3.7, replacing a signed median whose tolerance band
+ *            depended on whether the series was income or spending.
+ */
+private fun List<Money>.representativeAmount(): Money = sortedBy { abs(it.minor) }[(size - 1) / 2]
 
 /**
  * Whether one amount is close enough to the series median.

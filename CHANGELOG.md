@@ -40,10 +40,22 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
     updates one row rather than minting two.
   - **It proposes only** (P-07). Nothing here posts a transaction or moves money; a confirmed rule
     predicts, and wiring it into the forecast is issue 9.2's.
-- **Verified:** 1 714 unit tests green (debug + release variants); engine coverage 100% line (gate 85%); ktlint, detekt,
-  `lintDebug` and Paparazzi clean; 14 device migration tests including the 9 → 10 round trip. Driven
-  by hand on the emulator **in airplane mode** (P-04): five series detected from the demo ledger,
-  one confirmed and one rejected, and the screen re-opened to prove both decisions stayed.
+  - **Income and spending share one tolerance.** The representative amount is the lower median **by
+    magnitude**, not by signed value. The band is relative to that figure, so ordering by sign made
+    it depend on the direction of the money — two outflows were measured against the larger expense
+    and two inflows of the same spread against the smaller, and a mirror-image ledger got a
+    different answer.
+- **Fixed:** `:app:connectedDebugAndroidTest` — named in the Definition of Done's phase 8 — had **no
+  `androidTest` source set at all**, so it ran zero tests and reported success. Every issue that
+  ticked that phase ticked a no-op. `CfoSmokeTest` now boots the **real** Hilt graph against the
+  **real** SQLCipher database and drives the recurring flow end to end; proven to bite by renaming
+  the section heading and watching it go red. Same failure mode as the coverage gate in the
+  2026-07-25 governance audit.
+- **Verified:** 1 714 unit tests green (debug + release variants); engine coverage 100% line (gate
+  85%); ktlint, detekt, `lintDebug` and Paparazzi clean; 16 instrumented tests on device — 14
+  migration cases including the 9 → 10 round trip, plus the 2 new app smoke cases. Driven by hand on
+  the emulator **in airplane mode** (P-04): five series detected from the demo ledger, one confirmed
+  and one rejected, and the screen re-opened to prove both decisions stayed.
 - **Not in scope:** auto-posting (P-07; issue 9.2 owns the forecast), a recurring-rules manager
   (FR-SET-001 puts it in Settings), and merchant aliasing — matching is on the merchant string until
   issue 4.1 lands `merchant_id`.

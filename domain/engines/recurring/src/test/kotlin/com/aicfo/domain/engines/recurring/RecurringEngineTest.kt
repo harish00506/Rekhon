@@ -174,18 +174,33 @@ class RecurringEngineTest {
     }
 
     @Test
-    fun `on an even count the median is the lower signed amount - for expenses, the larger one`() {
-        // Pinned rather than left to chance. `lowerMedian` sorts by the **signed** minor value, so
-        // for two outflows it picks the more negative — the bigger expense. That is a real observed
-        // amount either way and the choice must be deterministic (P-08); this test is what stops it
-        // silently becoming the other one, which would move the tolerance the next test relies on.
-        val ledger =
-            listOf(
-                candidate("t:1", "Water", -1_000_00L, "2026-06-01"),
-                candidate("t:2", "Water", -1_020_00L, "2026-07-01"),
-            )
+    fun `on an even count the representative amount is the smaller magnitude, whatever the sign`() {
+        // The tolerance band is relative to this figure, so which of the two middle values an even
+        // count picks decides whether a borderline series is accepted. Ordered by **magnitude**, so
+        // that decision does not depend on the direction of the money — see `representativeAmount`.
+        val spending = twoAmounts(-1_000_00L, -1_020_00L)
+        val income = twoAmounts(1_000_00L, 1_020_00L)
 
-        assertEquals(Money(-1_020_00L), engine.detect(input(ledger)).expectOk().single().medianAmount)
+        assertEquals(Money(-1_000_00L), engine.detect(input(spending)).expectOk().single().medianAmount)
+        assertEquals(Money(1_000_00L), engine.detect(input(income)).expectOk().single().medianAmount)
+    }
+
+    @Test
+    fun `income and spending are judged by the same tolerance`() {
+        // The defect this replaced: with a *signed* median, two outflows were measured against the
+        // larger expense (a wider band) while two inflows of the same spread were measured against
+        // the smaller (a narrower one) — so a mirror-image ledger got a different answer. At two
+        // occurrences the median is 1,000.00 either way, and 5% of that is 50.00.
+        val atEdge = { sign: Long -> twoAmounts(sign * 1_000_00L, sign * 1_050_00L) }
+        val pastEdge = { sign: Long -> twoAmounts(sign * 1_000_00L, sign * 1_050_01L) }
+
+        assertEquals(1, engine.detect(input(atEdge(-1L))).expectOk().size)
+        assertEquals(1, engine.detect(input(atEdge(1L))).expectOk().size)
+        assertTrue(engine.detect(input(pastEdge(-1L))).expectOk().isEmpty())
+        assertTrue(
+            "a mirror-image ledger must get the same answer",
+            engine.detect(input(pastEdge(1L))).expectOk().isEmpty(),
+        )
     }
 
     @Test
@@ -317,6 +332,12 @@ class RecurringEngineTest {
         first: String,
         second: String,
     ) = listOf(candidate("t:1", "Water", -1_000_00L, first), candidate("t:2", "Water", -1_000_00L, second))
+
+    /** Result: two monthly charges to one merchant at the given amounts. Output: the candidates. */
+    private fun twoAmounts(
+        first: Long,
+        second: Long,
+    ) = listOf(candidate("t:1", "Water", first, "2026-06-01"), candidate("t:2", "Water", second, "2026-07-01"))
 
     /** Result: an engine input at the frozen instant. Input: [candidates], [rules]. */
     private fun input(

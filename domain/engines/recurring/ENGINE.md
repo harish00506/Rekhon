@@ -53,9 +53,13 @@ interface RecurringEngine {
 4. Gaps = whole days between consecutive dates. **Classify on the lower median gap**, then **verify
    every gap** against `|gap − periodDays| ≤ cadence_tolerance_days[cadence]`. Both steps are
    needed: the median alone accepts 1 Mar / 31 Mar / 30 Apr / 30 Jun as "monthly".
-5. `medianAmount` = the lower median of the signed minor values. Reject unless every amount
-   satisfies `|amount − median| × 100 ≤ |median| × amount_tolerance_pct` — cross-multiplied, so
-   there is no division and no floating point on a money path (MNY-001).
+5. `medianAmount` = the lower median **by magnitude** (`sortedBy { abs(minor) }`). Reject unless
+   every amount satisfies `|amount − median| × 100 ≤ |median| × amount_tolerance_pct` —
+   cross-multiplied, so there is no division and no floating point on a money path (MNY-001).
+   Ordering by magnitude rather than by the signed value is what keeps income and spending held to
+   the same tolerance: the band is relative to this figure, so a signed median would have measured
+   two outflows against the larger expense (a wider band) and two inflows of the same spread against
+   the smaller (a narrower one), and a mirror-image ledger would have been judged differently.
 6. `nextDueIsoDate` = last occurrence advanced by `plusWeeks(1)` / `plusMonths(1)` / `plusYears(1)`.
    Calendar arithmetic, **not** `plusDays(periodDays)`: 31 Jan + one month is 28 Feb, not 2 March.
 7. `confidenceBps` = `10000 − worstDeviation × 10000 / (tolerance + 1)`, clamped to `0..10000`
@@ -106,6 +110,8 @@ transaction ids precisely so the card can point at them. The cited rule is `RULE
   irregular gap in an otherwise clean series.
 - Boundaries, from both sides: the monthly gap tolerance at 34 and 35 days; the amount tolerance at
   50.00 and 50.01; a zero median requiring exactness; an injected `minOccurrences = 4`.
+- Sign symmetry: a mirror-image ledger (every amount negated) gets the same answer, and the
+  representative amount is the smaller magnitude whichever direction the money runs.
 - Property tests over 300 seeded ledgers: occurrences are real, distinct and never double-counted;
   the next due date is always after the last occurrence; the median is always an amount actually
   paid; input order never changes the output.

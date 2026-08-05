@@ -88,6 +88,16 @@ dependencies {
     testImplementation(platform(libs.androidx.compose.bom))
     testImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+
+    // Issue 3.7: the E2E smoke. `:app:connectedDebugAndroidTest` is named in the Definition of Done
+    // (`docs/issues/00-issue-workflow.md` phase 8) and had **no source set at all** until now, so the
+    // task passed by running zero tests — the governance audit's failure mode exactly. These four
+    // lines are what make it a gate. No Hilt testing artifact is needed: the smoke runs against the
+    // *real* `@HiltAndroidApp` graph and the real SQLCipher database, which is the whole point.
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    androidTestImplementation(libs.androidx.test.junit)
+    androidTestImplementation(libs.androidx.test.runner)
     // FakeClock (issue 1.3) — the app lock's timeout and lockout are clock-driven.
     testImplementation(testFixtures(project(":core:common")))
 }
