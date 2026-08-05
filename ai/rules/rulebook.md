@@ -38,6 +38,7 @@ evaluate: RuleEngine.evaluate(ruleId, FeatureSnapshot)
 | RULE-COOL-OFF | Discretionary buy > 1% of annual income → Purchase Advisor + optional 24h cool-off | Purchase Advisor |
 | RULE-EMERG-FIRST | No goal below Emergency Fund funded while runway < 3 months | Goal waterfall, AI-FOO |
 | RULE-LIFESTYLE | Income up ≥ 10% → suggest ≥ 50% of the raise to savings | Insight feed |
+| RULE-RECUR-DETECT | ≥ 2 transactions on one merchant, amounts within 5%, gaps within 2/4/10 days of weekly/monthly/yearly → propose a recurring series (user confirms) | Recurring detector |
 
 ## §29.3 Investment
 

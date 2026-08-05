@@ -108,6 +108,10 @@ fun TransactionsContent(
             ListHeader(uiState = uiState, items = items, onEvent = onEvent)
 
             LazyColumn(verticalArrangement = Arrangement.spacedBy(CfoDimens.spaceSm)) {
+                // Issue 3.7, above the scheduled rows: a question the app is asking is the one thing
+                // on this screen a user cannot find by scrolling. It renders nothing when there is
+                // nothing to propose, which is the common case.
+                recurringSection(uiState = uiState, onEvent = onEvent)
                 scheduledSection(uiState = uiState, onEvent = onEvent)
 
                 // `itemKey` off the sealed item's own key, so a page arriving does not re-render or

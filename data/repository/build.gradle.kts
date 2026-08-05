@@ -30,6 +30,9 @@ dependencies {
     // Issue 2.6: the net-worth engine FR-ACC-005 requires; the repository hands it balances
     // and stores what it returns, computing nothing of its own (P-03).
     api(project(":domain:engines:networth"))
+    // Issue 3.7: FR-TXN-006's detector. `api` — RecurringSeries is what observeSuggestions emits,
+    // so the transactions ViewModel must be able to name it (the reasoning `:networth` set above).
+    api(project(":domain:engines:recurring"))
 
     // withTransaction — the atomicity guarantee applySeeds is built on (issue 2.3).
     implementation(libs.room.ktx)

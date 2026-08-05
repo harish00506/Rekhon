@@ -112,9 +112,10 @@ abstract class CfoDatabase : RoomDatabase() {
          * (`transactions.type`, `transactions.transfer_id`; FR-TXN-003) · 7 — issue 3.3
          * (`transaction_splits`; FR-TXN-004) · 8 — issue 3.4
          * (`transactions.posted_at_utc_millis`; FR-TXN-010) · 9 — issue 3.6 (`tags`,
-         * `transaction_tags`; FR-TXN-007, FR-TXN-008).
+         * `transaction_tags`; FR-TXN-007, FR-TXN-008) · 10 — issue 3.7
+         * (`recurring_rule.dismissed_at_utc_millis`; FR-TXN-006).
          */
-        const val VERSION = 9
+        const val VERSION = 10
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"

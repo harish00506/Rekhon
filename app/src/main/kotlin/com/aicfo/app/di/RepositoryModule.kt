@@ -9,9 +9,11 @@ import com.aicfo.data.repository.AccountRepository
 import com.aicfo.data.repository.DemoModeRepository
 import com.aicfo.data.repository.NetWorthRepository
 import com.aicfo.data.repository.QuickSetupRepository
+import com.aicfo.data.repository.RecurringRepository
 import com.aicfo.data.repository.RepositoryFactory
 import com.aicfo.data.repository.TransactionRepository
 import com.aicfo.domain.engines.networth.NetWorthEngine
+import com.aicfo.domain.engines.recurring.RecurringEngine
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -131,4 +133,23 @@ object RepositoryModule {
         demoMode: DemoModeRepository,
     ): TransactionRepository =
         RepositoryFactory.transactions(database, clock, ids, dispatchers, demoMode.activeProfileId)
+
+    /**
+     * The recurring-series store (issue 3.7; FR-TXN-006).
+     * Why:    takes the engine rather than building one, for the same reason the net-worth binding
+     *         does (ARC-003, P-03). Follows the demo like every binding above it, so the sample data
+     *         proposes its own series and they leave with it (ADR-0006).
+     * Result: a [RecurringRepository]. Input: [database], [engine], [clock], [dispatchers],
+     *         [demoMode]. Output: the repository.
+     * Changelog: 2026-08-05 — Created for issue 3.7.
+     */
+    @Provides
+    @Singleton
+    fun provideRecurringRepository(
+        database: CfoDatabase,
+        engine: RecurringEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        demoMode: DemoModeRepository,
+    ): RecurringRepository = RepositoryFactory.recurring(database, engine, clock, dispatchers, demoMode.activeProfileId)
 }

@@ -4,6 +4,8 @@ import com.aicfo.domain.engines.networth.NetWorthEngine
 import com.aicfo.domain.engines.networth.NetWorthEngineFactory
 import com.aicfo.domain.engines.quicksetup.QuickSetupEngine
 import com.aicfo.domain.engines.quicksetup.QuickSetupEngineFactory
+import com.aicfo.domain.engines.recurring.RecurringEngine
+import com.aicfo.domain.engines.recurring.RecurringEngineFactory
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -52,4 +54,16 @@ object EngineModule {
     @Provides
     @Singleton
     fun provideNetWorthEngine(): NetWorthEngine = NetWorthEngineFactory.create()
+
+    /**
+     * The recurring detector (issue 3.7; FR-TXN-006).
+     * Why:    the one place the ledger is searched for a repeating pattern. It proposes and the user
+     *         decides (P-07); the repository writes only what they confirmed, and computes nothing
+     *         of its own (P-03).
+     * Result: a [RecurringEngine]. Input: none. Output: the engine.
+     * Changelog: 2026-08-05 — Created for issue 3.7.
+     */
+    @Provides
+    @Singleton
+    fun provideRecurringEngine(): RecurringEngine = RecurringEngineFactory.create()
 }

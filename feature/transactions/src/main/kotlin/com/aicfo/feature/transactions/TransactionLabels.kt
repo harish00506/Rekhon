@@ -4,6 +4,7 @@ import androidx.annotation.StringRes
 import com.aicfo.core.common.AppError
 import com.aicfo.core.model.TransactionSource
 import com.aicfo.core.model.TransactionType
+import com.aicfo.domain.engines.recurring.Cadence
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -142,5 +143,22 @@ internal object TransactionLabels {
             TransactionType.INCOME -> R.string.transactions_type_income
             TransactionType.ADJUSTMENT -> R.string.transactions_type_adjustment
             TransactionType.TRANSFER_OUT, TransactionType.TRANSFER_IN -> R.string.transactions_type_transfer
+        }
+
+    /**
+     * The word for a detected cadence (issue 3.7; FR-TXN-006).
+     *
+     * Why: the engine returns a [Cadence] enum and never copy — `:domain:*` holds no user-visible
+     *      strings (§21.6) and could not translate one if it did. This is the only place a cadence
+     *      is named, and the `when` is exhaustive so a fourth cadence cannot ship unworded.
+     * Result: a string resource id, always. Input: [cadence]. Output: `@StringRes Int`.
+     * Changelog: 2026-08-05 — Created for issue 3.7 (FR-TXN-006).
+     */
+    @StringRes
+    fun cadenceName(cadence: Cadence): Int =
+        when (cadence) {
+            Cadence.WEEKLY -> R.string.transactions_cadence_weekly
+            Cadence.MONTHLY -> R.string.transactions_cadence_monthly
+            Cadence.YEARLY -> R.string.transactions_cadence_yearly
         }
 }

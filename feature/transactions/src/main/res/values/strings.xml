@@ -126,6 +126,38 @@
     <string name="transactions_tags_hint">Tags, comma separated</string>
 
     <!--
+      Recurring detection (issue 3.7, FR-TXN-006). The heading says what the section *is* rather
+      than what the app concluded: "Looks like a repeat" is a hypothesis the user is being asked to
+      confirm, where "Your subscriptions" would be the app asserting something it does not know
+      (P-07 - it proposes, the user decides).
+    -->
+    <string name="transactions_recurring_title">Looks like a repeat</string>
+    <string name="transactions_recurring_confirm">Yes, it repeats</string>
+    <!--
+      Not "Dismiss" or "No": the button says what the user is *asserting*, so the record it writes
+      is legible from the label. Dismissing is a decision the app keeps, not a way to close a card.
+    -->
+    <string name="transactions_recurring_reject">Not recurring</string>
+    <!--
+      The evidence (P-02). ICU plural - "1 payments" must not appear - and the dates are appended by
+      the composable from TransactionLabels, never interpolated into a translated sentence, because
+      date order differs by locale.
+    -->
+    <plurals name="transactions_recurring_occurrences">
+        <item quantity="one">%1$d payment</item>
+        <item quantity="other">%1$d payments</item>
+    </plurals>
+    <!-- The projection, so the proposal says what confirming it would predict. -->
+    <string name="transactions_recurring_next_due">Next due %1$s</string>
+    <!--
+      §20.1's cadence codes as words. The engine returns a Cadence enum and never copy (:domain:*
+      holds no user-visible strings), so this is the only place a cadence is named.
+    -->
+    <string name="transactions_cadence_weekly">Weekly</string>
+    <string name="transactions_cadence_monthly">Monthly</string>
+    <string name="transactions_cadence_yearly">Yearly</string>
+
+    <!--
       The detail sheet (issue 3.5). Field labels only - every value is rendered by CfoAmountText,
       TransactionLabels or the account-name map, never interpolated into a string.
     -->

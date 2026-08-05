@@ -561,6 +561,72 @@ class MigrationRoundTripTest {
         migrated.close()
     }
 
+    /**
+     * 9 → 10 adds `recurring_rule.dismissed_at_utc_millis` (issue 3.7; FR-TXN-006).
+     *
+     * Input:  a version-9 database holding a confirmed quick-setup rule with an exact paise amount.
+     * Output: asserts the rule survives untouched with `dismissed_at_utc_millis` null — the truth
+     *         for every pre-existing row, which is why the migration backfills nothing — and that
+     *         the column is writable, which is what a rejection is.
+     *
+     * **Nullable, so the trap is the 8 → 9 one rather than the 5 → 6 one**: there is no `DEFAULT` to
+     * keep in step with an entity annotation, but a migration that recreated `recurring_rule` on its
+     * way to adding the column would validate perfectly against `schemas/10.json` and lose the
+     * user's rules. The amount is asserted byte for byte for the reason `migrate1To2` gives
+     * (MNY-001).
+     *
+     * **The distinction is asserted, not assumed.** A dismissed rule must leave `observeForProfile`
+     * while still being *found* by `observeDecidedNames` — that difference is the whole mechanism
+     * stopping a rejected proposal from coming back, and a column that quietly behaved like
+     * `deleted_at_utc_millis` would break it invisibly.
+     */
+    @Test
+    fun migrate9To10_preservesRulesAndAcceptsDismissal() {
+        helper.createDatabase(TEST_DB, 9).use { db ->
+            db.execSQL(
+                "INSERT INTO recurring_rule (id, profile_id, name, amount_minor, cadence, " +
+                    "next_due_iso_date, source, is_confirmed, created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('r1','p1','Landlord',-2500000,'monthly','2026-09-03','quick_setup',1," +
+                    "1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 10, true, Migrations.MIGRATION_9_10)
+
+        migrated.query(
+            "SELECT amount_minor, dismissed_at_utc_millis FROM recurring_rule WHERE id = 'r1'",
+        ).use { cursor ->
+            assertTrue("the pre-migration rule must still be there", cursor.moveToFirst())
+            assertEquals("MNY-001: the amount must survive byte for byte", -2500000L, cursor.getLong(0))
+            assertTrue("no backfill: an existing rule has not been dismissed", cursor.isNull(1))
+        }
+
+        migrated.execSQL(
+            "INSERT INTO recurring_rule (id, profile_id, name, amount_minor, cadence, " +
+                "next_due_iso_date, source, is_confirmed, dismissed_at_utc_millis, " +
+                "created_at_utc_millis, updated_at_utc_millis) " +
+                "VALUES ('r2','p1','Netflix',-64900,'monthly','2026-09-04','detected',0,1767312000000," +
+                "1767312000000,1767312000000)",
+        )
+
+        // Dismissed rows leave the ordinary read...
+        migrated.query(
+            "SELECT COUNT(*) FROM recurring_rule WHERE profile_id = 'p1' " +
+                "AND deleted_at_utc_millis IS NULL AND dismissed_at_utc_millis IS NULL",
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("only the confirmed rule is live", 1, cursor.getInt(0))
+        }
+        // ...but stay on record as a merchant the user has already answered.
+        migrated.query(
+            "SELECT COUNT(DISTINCT LOWER(name)) FROM recurring_rule WHERE profile_id = 'p1' AND name IS NOT NULL",
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("a rejection is a decision, not an absence", 2, cursor.getInt(0))
+        }
+        migrated.close()
+    }
+
     private companion object {
         const val TEST_DB = "migration-test.db"
     }

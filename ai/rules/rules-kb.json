@@ -104,6 +104,19 @@
       "enabled": true,
       "version": "1.0"
     },
+    {
+      "rule_id": "RULE-RECUR-DETECT",
+      "domain": "saving",
+      "name": "Propose a recurring series when >= 2 transactions share a merchant, an amount within tolerance, and a regular cadence.",
+      "formula_id": "recurring_series_match",
+      "params_json": { "min_occurrences": 2, "amount_tolerance_pct": 5, "cadence_tolerance_days": { "weekly": 2, "monthly": 4, "yearly": 10 } },
+      "severity": "info",
+      "rationale": "Subscriptions and bills are the spending a user forgets they authorised; naming them is the precondition for forecasting and for cancelling them. Proposes only - the user confirms (P-07, FR-TXN-006).",
+      "source_note": "FR-TXN-006 (SRS 5.3). Tolerances chosen so a bill that moves for a weekend or a short month still matches.",
+      "consumed_by": ["recurring_detector"],
+      "enabled": true,
+      "version": "1.0"
+    },
 
     {
       "rule_id": "RULE-AGE-EQUITY",

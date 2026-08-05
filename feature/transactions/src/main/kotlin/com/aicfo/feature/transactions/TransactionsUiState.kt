@@ -9,6 +9,7 @@ import com.aicfo.core.model.Tag
 import com.aicfo.core.model.Transaction
 import com.aicfo.core.model.TransactionSource
 import com.aicfo.data.repository.TransactionFilter
+import com.aicfo.domain.engines.recurring.RecurringSeries
 import java.time.LocalDate
 import java.time.LocalTime
 
@@ -537,6 +538,27 @@ sealed interface BulkEvent : TransactionsEvent {
 }
 
 /**
+ * The two answers a user can give a proposed series (issue 3.7; FR-TXN-006).
+ *
+ * Why:  grouped for the same reason [FilterEvent] and [BulkEvent] are — they arrive together, they
+ *       are handled in one `is RecurringEvent ->` branch, and flattening them into the parent pushes
+ *       `onEvent` past detekt's cyclomatic-complexity ceiling.
+ *
+ *       **Both carry the whole [RecurringSeries]**, not a merchant name. The repository writes the
+ *       amount, cadence and next-due date the engine derived, and a screen that passed back only an
+ *       identifier would force a second lookup against a list that has since re-emitted.
+ * Result: adding a third answer cannot silently grow the list's main event handler.
+ * Changelog: 2026-08-05 — Created for issue 3.7.
+ */
+sealed interface RecurringEvent : TransactionsEvent {
+    /** The user accepted the proposal — FR-TXN-006's "user confirms to create a Recurring Rule". */
+    data class Confirm(val series: RecurringSeries) : RecurringEvent
+
+    /** The user said it is not recurring. Recorded, so it is never proposed again (P-07). */
+    data class Dismiss(val series: RecurringSeries) : RecurringEvent
+}
+
+/**
  * Everything the recent-transactions list renders, as one value (issue 3.1; ARC-004).
  *
  * Why:  the save has to be *observable* — a capture path whose result the user cannot see is one
@@ -615,6 +637,15 @@ data class TransactionsUiState(
      * where the row carries one leg's id.
      */
     val detail: Transaction? = null,
+    /**
+     * The recurring series the detector is proposing (issue 3.7; FR-TXN-006).
+     *
+     * **Proposals, not rules.** Nothing here exists in the database yet; each one is a pattern the
+     * engine found in rows the user already entered, waiting for the confirmation FR-TXN-006
+     * requires (P-07). Empty is the normal state — a new profile has no series, and the section
+     * renders nothing rather than an empty-state apology.
+     */
+    val suggestions: List<RecurringSeries> = emptyList(),
     val errorCode: String? = null,
 ) {
     /** Whether the user is picking rows for a bulk action (issue 3.6; FR-TXN-008). */
@@ -622,6 +653,15 @@ data class TransactionsUiState(
 
     /** Whether the scheduled section has anything to show (issue 3.4). */
     val hasUpcoming: Boolean get() = upcoming.isNotEmpty()
+
+    /**
+     * Whether the recurring section has anything to propose (issue 3.7; FR-TXN-006).
+     *
+     * **Hidden while selecting**, because a proposal is not part of the selection a bulk action
+     * operates on, and offering a Confirm button beside an action bar counting rows would invite the
+     * user to think the two are related.
+     */
+    val hasSuggestions: Boolean get() = suggestions.isNotEmpty() && !isSelecting
 
     /** The search text, so the field is a pure function of the state (issue 3.6). */
     val searchQuery: String get() = filter.query.orEmpty()
