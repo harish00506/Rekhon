@@ -466,6 +466,14 @@ sealed interface TransactionsEvent {
     /** The user closed the detail sheet. */
     data object DetailDismissed : TransactionsEvent
 
+    /**
+     * FR-OCR-005: delete the image, keep the transaction (issue 3.8).
+     *
+     * Carries the attachment id rather than reading it from the open sheet, so the event says
+     * exactly what it removes — and cannot remove a different receipt if the sheet has moved on.
+     */
+    data class ReceiptDeleted(val attachmentId: String) : TransactionsEvent
+
     /** The user typed in the search field (issue 3.6; FR-TXN-007). */
     data class SearchChanged(val query: String) : TransactionsEvent
 }
@@ -637,6 +645,16 @@ data class TransactionsUiState(
      * where the row carries one leg's id.
      */
     val detail: Transaction? = null,
+    /**
+     * The receipt attached to the open transaction, decrypted for display, or `null` (issue 3.8;
+     * FR-OCR-005).
+     *
+     * **The plaintext lives only as long as the sheet does.** It is not written to a file, not
+     * cached and not logged — the one durable copy is the encrypted blob the repository keeps
+     * (P-01). `null` covers three cases the sheet renders identically: the transaction was typed, the
+     * image has been deleted, or it has not been decrypted yet.
+     */
+    val detailReceipt: ReceiptImage? = null,
     /**
      * The recurring series the detector is proposing (issue 3.7; FR-TXN-006).
      *
@@ -851,3 +869,22 @@ sealed interface TransactionRow {
         override val netAmount: Money get() = Money.ZERO
     }
 }
+
+/**
+ * A decrypted receipt, held only while its sheet is open (issue 3.8; FR-OCR-005, P-01).
+ *
+ * Why:    the id travels with the bytes because the delete action needs it, and a plain `class`
+ *         rather than a `data class` because a generated `equals` over a [ByteArray] compares
+ *         references — a trap dressed as a convenience. The state class holding this is compared on
+ *         every update, so identity comparison is also the behaviour that is wanted: the same
+ *         instance is the same receipt.
+ * Result: the type of [TransactionsUiState.detailReceipt].
+ * Changelog: 2026-08-06 — Created for issue 3.8.
+ *
+ * Input:  [attachmentId] — the row this came from; [bytes] — the decrypted JPEG.
+ * Output: an immutable value.
+ */
+class ReceiptImage(
+    val attachmentId: String,
+    val bytes: ByteArray,
+)

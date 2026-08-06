@@ -232,6 +232,57 @@
       One line per AppError.code the add screen can surface. The state carries the code, never a
       message, so the wording is reviewable and translatable here rather than assembled in Kotlin.
     -->
+    <!--
+      Receipt scanning (issue 3.8, FR-OCR-001..006). The heading says what the screen *is asking* —
+      the parser proposes and the user confirms (P-07), so "Check the receipt" rather than
+      "Receipt", which would imply the app had already decided.
+    -->
+    <string name="receipt_title">Check the receipt</string>
+    <string name="receipt_capture_prompt">Take a photo of the receipt, or pick one you already have.</string>
+    <string name="receipt_take_photo">Take photo</string>
+    <string name="receipt_choose_photo">Choose photo</string>
+    <string name="receipt_scanning">Reading the receipt…</string>
+    <!--
+      FR-OCR-002, said plainly. Worded as a promise about the receipt rather than as a boast about
+      the technology: the user cares that the photo stays on the phone, not which library read it.
+    -->
+    <string name="receipt_on_device">Read on this phone. The photo never leaves it.</string>
+    <string name="receipt_amount">Amount</string>
+    <string name="receipt_date">Date</string>
+    <string name="receipt_date_hint">yyyy-mm-dd</string>
+    <string name="receipt_merchant">Merchant</string>
+    <string name="receipt_tax">GST</string>
+    <string name="receipt_account">Account</string>
+    <string name="receipt_save">Save</string>
+    <string name="receipt_cancel">Cancel</string>
+    <string name="receipt_retake">Use a different photo</string>
+    <!--
+      FR-OCR-004's flag. **A word, not only a colour** — a colour alone is invisible to a screen
+      reader and to a colour-blind user, and this is the one marker telling them which figure the app
+      is unsure about. Used as the field's supporting text and as its content description.
+    -->
+    <string name="receipt_low_confidence">Check this — we weren\'t sure</string>
+    <!--
+      FR-OCR-006. "Looks like you already have this" rather than "Duplicate found": the guard is a
+      heuristic on amount and date, and two identical coffees on one day are a real thing that
+      happens. The app says what it noticed; the user decides which it was.
+    -->
+    <string name="receipt_duplicate_title">Looks like you already have this</string>
+    <string name="receipt_duplicate_merge">Attach to this one</string>
+    <string name="receipt_duplicate_save_anyway">No, save a new one</string>
+
+    <!-- The detail sheet's receipt row (FR-OCR-005). -->
+    <string name="transactions_detail_receipt">Receipt</string>
+    <string name="transactions_detail_receipt_image">The scanned receipt</string>
+    <!--
+      FR-OCR-005's "delete image while keeping the transaction" — worded so the label itself says the
+      transaction survives, because a bare "Delete" beside a transaction reads as deleting the
+      transaction.
+    -->
+    <string name="transactions_detail_receipt_delete">Delete the photo, keep the transaction</string>
+
+    <string name="add_txn_scan">Scan a receipt</string>
+
     <string name="add_txn_error_validation">Check the amount and try again.</string>
     <string name="add_txn_error_not_found">That account is no longer available.</string>
     <string name="add_txn_error_storage">Couldn\'t save that. Please try again.</string>

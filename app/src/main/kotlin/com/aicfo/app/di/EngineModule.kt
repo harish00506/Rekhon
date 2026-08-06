@@ -1,14 +1,22 @@
 package com.aicfo.app.di
 
+import android.content.Context
+import com.aicfo.core.crypto.ReceiptImageStore
+import com.aicfo.core.crypto.ReceiptImageStoreFactory
 import com.aicfo.domain.engines.networth.NetWorthEngine
 import com.aicfo.domain.engines.networth.NetWorthEngineFactory
 import com.aicfo.domain.engines.quicksetup.QuickSetupEngine
 import com.aicfo.domain.engines.quicksetup.QuickSetupEngineFactory
+import com.aicfo.domain.engines.receipt.ReceiptEngine
+import com.aicfo.domain.engines.receipt.ReceiptEngineFactory
 import com.aicfo.domain.engines.recurring.RecurringEngine
 import com.aicfo.domain.engines.recurring.RecurringEngineFactory
+import com.aicfo.ml.ocr.ReceiptTextRecognizer
+import com.aicfo.ml.ocr.ReceiptTextRecognizerFactory
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
@@ -66,4 +74,47 @@ object EngineModule {
     @Provides
     @Singleton
     fun provideRecurringEngine(): RecurringEngine = RecurringEngineFactory.create()
+
+    /**
+     * The receipt parser (issue 3.8; FR-OCR-003, §18.1).
+     * Why:    the one place recognised text becomes an amount, a date and a merchant. It reads text
+     *         someone else recognised and computes every figure itself (P-03); the recogniser above
+     *         it is Android-only and lives in `:ml:ocr`, which is why the two are separate bindings.
+     * Result: a [ReceiptEngine]. Input: none. Output: the engine.
+     * Changelog: 2026-08-06 — Created for issue 3.8.
+     */
+    @Provides
+    @Singleton
+    fun provideReceiptEngine(): ReceiptEngine = ReceiptEngineFactory.create()
+
+    /**
+     * The on-device text recogniser (issue 3.8; FR-OCR-002, P-01, P-04).
+     * Why:    bound here beside the parser it feeds, though it is not an engine in the `:domain:*`
+     *         sense — it is the only other class in the receipt pipeline whose implementation is
+     *         `internal` behind a factory, and keeping the pair together is what makes the split
+     *         legible: this one needs a device, the one above it does not.
+     *
+     *         **A singleton because the model is loaded once.** Building a client per scan would
+     *         reload it on every photograph, which is a visible pause on the screen the user is
+     *         already waiting on.
+     * Result: a [ReceiptTextRecognizer]. Input: none. Output: the recogniser.
+     * Changelog: 2026-08-06 — Created for issue 3.8.
+     */
+    @Provides
+    @Singleton
+    fun provideReceiptTextRecognizer(): ReceiptTextRecognizer = ReceiptTextRecognizerFactory.create()
+
+    /**
+     * The encrypted receipt store (issue 3.8; FR-OCR-005, SEC-003).
+     * Why:    assembled by its factory over a **keyset of its own**, so a compromise or a rotation of
+     *         the attachment key is not one of the database key. The same seam
+     *         `KeystoreMacFactory.createVerifier` uses for the PIN.
+     * Result: a [ReceiptImageStore]. Input: [context]. Output: the store.
+     * Changelog: 2026-08-06 — Created for issue 3.8.
+     */
+    @Provides
+    @Singleton
+    fun provideReceiptImageStore(
+        @ApplicationContext context: Context,
+    ): ReceiptImageStore = ReceiptImageStoreFactory.create(context)
 }

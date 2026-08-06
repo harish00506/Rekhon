@@ -701,3 +701,70 @@ data class NetWorthSnapshotEntity(
     @ColumnInfo(name = "deleted_at_utc_millis")
     val deletedAtUtcMillis: Long? = null,
 )
+
+/**
+ * A file attached to a transaction — for now, a scanned receipt (issue 3.8; FR-OCR-005, §20.1).
+ *
+ * Why:    FR-OCR-005 is a MUST with two halves: *"The original image MUST be stored encrypted and
+ *         linked as an attachment; user can delete image while keeping the transaction."* The second
+ *         half is what decides this table's shape. **There is no BLOB column here, deliberately.**
+ *         Putting the image bytes in the row would mean the receipt lives inside the database file,
+ *         and "delete the image, keep the transaction" would become a rewrite of the row rather than
+ *         the deletion of a file — with the old bytes still recoverable from SQLite's freelist until
+ *         a VACUUM nobody scheduled. [fileName] names a separately encrypted blob in app-private
+ *         storage instead, so erasing the image is `File.delete()` and is complete.
+ * Result: a Room row in `attachments`, added at schema version 11 by issue 3.8.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-08-06 — Created for issue 3.8 (FR-OCR-005).
+ *
+ * **No foreign key on [transactionId], matching every other table here.** §20 asks for foreign keys,
+ * and this schema has consistently used soft delete plus scoped queries instead: with `deleted_at`
+ * tombstones a real `ON DELETE CASCADE` would fire on a *hard* delete that never happens, while the
+ * tombstoned parent it should have followed stays behind. The link is enforced by the repository,
+ * which is the only class allowed to write either side (ARC-005).
+ */
+@Entity(
+    tableName = "attachments",
+    indices = [Index("transaction_id"), Index("profile_id")],
+)
+data class AttachmentEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** The transaction this belongs to. One transaction may hold several attachments. */
+    @ColumnInfo(name = "transaction_id")
+    val transactionId: String,
+    /**
+     * `receipt` today. A code from a closed set, never copy — the UI maps it to a word, so a
+     * translation never reaches the database (§21.6).
+     */
+    @ColumnInfo(name = "kind")
+    val kind: String,
+    /**
+     * The ciphertext blob's file name inside app-private storage — **not a path**.
+     *
+     * A stored absolute path would break the moment Android moved the app's data directory, which it
+     * does on restore-to-a-new-device. The directory is resolved at read time by the image store.
+     */
+    @ColumnInfo(name = "file_name")
+    val fileName: String,
+    /** e.g. `image/jpeg`. What the *plaintext* was, so a future export knows what it is handing over. */
+    @ColumnInfo(name = "mime_type")
+    val mimeType: String,
+    /** The plaintext size in bytes, so a settings screen can say what receipts are costing. */
+    @ColumnInfo(name = "byte_size")
+    val byteSize: Long,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    /**
+     * FR-OCR-005's "delete image while keeping the transaction": this is stamped **and** the blob is
+     * erased. The tombstone stays so a later sync can see the attachment was removed rather than
+     * never having existed.
+     */
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+)

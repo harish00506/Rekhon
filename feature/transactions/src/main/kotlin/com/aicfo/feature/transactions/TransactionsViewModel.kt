@@ -10,12 +10,14 @@ import com.aicfo.core.common.AppError
 import com.aicfo.core.common.Err
 import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
+import com.aicfo.core.common.getOrNull
 import com.aicfo.core.common.toAppError
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.Transaction
 import com.aicfo.core.model.TransactionType
 import com.aicfo.data.repository.AccountRepository
 import com.aicfo.data.repository.FilteredTransaction
+import com.aicfo.data.repository.ReceiptRepository
 import com.aicfo.data.repository.RecurringRepository
 import com.aicfo.data.repository.TransactionFilter
 import com.aicfo.data.repository.TransactionRepository
@@ -28,6 +30,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
@@ -61,6 +64,7 @@ class TransactionsViewModel
     constructor(
         private val repository: TransactionRepository,
         private val recurring: RecurringRepository,
+        private val receipts: ReceiptRepository,
         accounts: AccountRepository,
     ) : ViewModel() {
         // Issue 3.4 note for the reader: this class has no `Clock`, on purpose. "Is this row
@@ -214,8 +218,64 @@ class TransactionsViewModel
                 is TransactionsEvent.SearchChanged -> setFilter(currentFilter.copy(query = event.query))
                 is TransactionsEvent.SourceFilterSelected ->
                     setFilter(currentFilter.copy(source = event.source))
-                is TransactionsEvent.RowTapped -> _uiState.update { it.copy(detail = event.transaction) }
-                TransactionsEvent.DetailDismissed -> _uiState.update { it.copy(detail = null) }
+                is TransactionsEvent.RowTapped -> openDetail(event.transaction)
+                TransactionsEvent.DetailDismissed ->
+                    _uiState.update { it.copy(detail = null, detailReceipt = null) }
+
+                is TransactionsEvent.ReceiptDeleted -> deleteReceipt(event.attachmentId)
+            }
+        }
+
+        /**
+         * Opens the detail sheet and looks for the row's receipt (issue 3.8; FR-OCR-005).
+         * Why:    the image is fetched **when the sheet opens**, not carried on every row of the
+         *         list: a paged ledger would otherwise decrypt a photograph for each visible
+         *         transaction, and P-01 says the plaintext should exist for as long as it is being
+         *         looked at and no longer.
+         *
+         *         `first()` rather than a collected flow: the sheet is short-lived and an attachment
+         *         does not change while it is open — the one thing that *can* change it is the
+         *         delete button, which updates the state itself.
+         * Result: the sheet opens immediately; the receipt appears when it has been decrypted, or
+         *         never, which is what a transaction with no receipt looks like.
+         * Input:  [transaction] — the tapped row. Output: none (launches on `viewModelScope`).
+         * Changelog: 2026-08-06 — Created for issue 3.8.
+         */
+        private fun openDetail(transaction: Transaction) {
+            _uiState.update { it.copy(detail = transaction, detailReceipt = null) }
+            viewModelScope.launch {
+                val attachment = receipts.observeAttachment(transaction.id).firstOrNull()
+                val image = attachment?.let { receipts.readImage(it).getOrNull() }
+                if (attachment != null && image != null) {
+                    // Guarded on the sheet still showing the same row: decryption is off the main
+                    // thread, and a user who closed one sheet and opened another must not be handed
+                    // the previous receipt.
+                    _uiState.update { state ->
+                        if (state.detail?.id != transaction.id) {
+                            state
+                        } else {
+                            state.copy(detailReceipt = ReceiptImage(attachment.id, image))
+                        }
+                    }
+                }
+            }
+        }
+
+        /**
+         * FR-OCR-005: deletes the image and keeps the transaction (issue 3.8).
+         * Why:    the sheet stays open on success, showing the transaction without its receipt —
+         *         which is the requirement's whole point, and closing the sheet would leave the user
+         *         unable to see that the row survived.
+         * Result: `detailReceipt` cleared, or `errorCode` set with the image untouched.
+         * Input:  [attachmentId]. Output: none (launches on `viewModelScope`).
+         * Changelog: 2026-08-06 — Created for issue 3.8.
+         */
+        private fun deleteReceipt(attachmentId: String) {
+            viewModelScope.launch {
+                when (val outcome = receipts.deleteImage(attachmentId)) {
+                    is Ok -> _uiState.update { it.copy(detailReceipt = null) }
+                    is Err -> _uiState.update { it.copy(errorCode = outcome.error.code) }
+                }
             }
         }
 

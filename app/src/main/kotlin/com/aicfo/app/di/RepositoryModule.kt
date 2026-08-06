@@ -3,17 +3,21 @@ package com.aicfo.app.di
 import com.aicfo.core.common.Clock
 import com.aicfo.core.common.DispatcherProvider
 import com.aicfo.core.common.IdGenerator
+import com.aicfo.core.crypto.ReceiptImageStore
 import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.datastore.SettingsStore
 import com.aicfo.data.repository.AccountRepository
 import com.aicfo.data.repository.DemoModeRepository
 import com.aicfo.data.repository.NetWorthRepository
 import com.aicfo.data.repository.QuickSetupRepository
+import com.aicfo.data.repository.ReceiptRepository
 import com.aicfo.data.repository.RecurringRepository
 import com.aicfo.data.repository.RepositoryFactory
 import com.aicfo.data.repository.TransactionRepository
 import com.aicfo.domain.engines.networth.NetWorthEngine
+import com.aicfo.domain.engines.receipt.ReceiptEngine
 import com.aicfo.domain.engines.recurring.RecurringEngine
+import com.aicfo.ml.ocr.ReceiptTextRecognizer
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -152,4 +156,40 @@ object RepositoryModule {
         dispatchers: DispatcherProvider,
         demoMode: DemoModeRepository,
     ): RecurringRepository = RepositoryFactory.recurring(database, engine, clock, dispatchers, demoMode.activeProfileId)
+
+    /**
+     * The receipt pipeline (issue 3.8; FR-OCR-001..006).
+     * Why:    takes [transactions] rather than writing the ledger row itself, so the stamping and
+     *         validation rules FR-TXN-010 needs have one home. Follows the demo like every binding
+     *         above it, so a scan taken in the demo leaves with it — including its encrypted image
+     *         (ADR-0006).
+     * Result: a [ReceiptRepository]. Input: [database], [transactions], [recognizer], [engine],
+     *         [images], [clock], [ids], [dispatchers], [demoMode]. Output: the repository.
+     * Changelog: 2026-08-06 — Created for issue 3.8.
+     */
+    @Provides
+    @Singleton
+    @Suppress("LongParameterList") // Hilt reads the signature; each argument is one binding.
+    fun provideReceiptRepository(
+        database: CfoDatabase,
+        transactions: TransactionRepository,
+        recognizer: ReceiptTextRecognizer,
+        engine: ReceiptEngine,
+        images: ReceiptImageStore,
+        clock: Clock,
+        ids: IdGenerator,
+        dispatchers: DispatcherProvider,
+        demoMode: DemoModeRepository,
+    ): ReceiptRepository =
+        RepositoryFactory.receipts(
+            database = database,
+            transactions = transactions,
+            recognizer = recognizer,
+            engine = engine,
+            images = images,
+            clock = clock,
+            ids = ids,
+            dispatchers = dispatchers,
+            activeProfileId = demoMode.activeProfileId,
+        )
 }

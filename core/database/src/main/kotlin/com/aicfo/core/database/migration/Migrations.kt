@@ -431,6 +431,63 @@ internal object Migrations {
         }
 
     /**
+     * 10 → 11: adds `attachments` for encrypted receipt images (issue 3.8; FR-OCR-005).
+     *
+     * Why:    FR-OCR-005 requires a scanned receipt to be "stored encrypted and linked as an
+     *         attachment", and §20.1 already names the table. Nothing in the existing schema can
+     *         carry it: a column on `transactions` would allow exactly one file per row and would
+     *         put the link on the wrong side of "delete the image, keep the transaction".
+     * What:   one `CREATE TABLE IF NOT EXISTS` plus its two indices. **Purely additive** — no
+     *         existing table, column or row is read or altered, which is the shape every migration
+     *         in this app should have unless there is a written reason otherwise.
+     * Result: an upgraded installation gains an empty `attachments` and keeps everything else.
+     * Input:  [SupportSQLiteDatabase] — the database mid-upgrade. Output: none (executes DDL).
+     *
+     * The DDL matches what Room generates for `AttachmentEntity`; the committed `schemas/11.json`
+     * is the reference, and `MigrationRoundTripTest` fails on a device if the two drift.
+     */
+    val MIGRATION_10_11 =
+        object : Migration(VERSION_10, VERSION_11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                createAttachments(db)
+            }
+        }
+
+    /**
+     * Creates `attachments` and its indices (issue 3.8).
+     * Why:    one function per table, the convention [createBudget] set — each block stays short
+     *         enough to check line by line against the entity it mirrors.
+     *
+     *         **Two indices, and both are read.** `transaction_id` is how the detail sheet finds a
+     *         row's receipt; `profile_id` is how the demo wipe reaches these rows at all (ADR-0006).
+     * Result: the table exists. Input: [db]. Output: none (executes DDL).
+     */
+    private fun createAttachments(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `attachments` (" +
+                "`id` TEXT NOT NULL, " +
+                "`profile_id` TEXT NOT NULL, " +
+                "`transaction_id` TEXT NOT NULL, " +
+                "`kind` TEXT NOT NULL, " +
+                "`file_name` TEXT NOT NULL, " +
+                "`mime_type` TEXT NOT NULL, " +
+                "`byte_size` INTEGER NOT NULL, " +
+                "`created_at_utc_millis` INTEGER NOT NULL, " +
+                "`updated_at_utc_millis` INTEGER NOT NULL, " +
+                "`deleted_at_utc_millis` INTEGER, " +
+                "PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_attachments_transaction_id` " +
+                "ON `attachments` (`transaction_id`)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_attachments_profile_id` " +
+                "ON `attachments` (`profile_id`)",
+        )
+    }
+
+    /**
      * Creates `tags` and its unique index (issue 3.6).
      * Why:    one function per table, the convention [createBudget] set — each block stays short
      *         enough to check line by line against the entity it mirrors.
@@ -503,6 +560,7 @@ internal object Migrations {
             MIGRATION_7_8,
             MIGRATION_8_9,
             MIGRATION_9_10,
+            MIGRATION_10_11,
         )
 
     /** Named so the version pair reads as a schema version rather than an unexplained literal. */
@@ -529,6 +587,9 @@ internal object Migrations {
     /** The version issue 3.6 introduced, and the one issue 3.7 upgrades from. */
     private const val VERSION_9 = 9
 
-    /** Matches `CfoDatabase.VERSION` at the time this migration was written (issue 3.7). */
+    /** The version issue 3.7 introduced, and the one issue 3.8 upgrades from. */
     private const val VERSION_10 = 10
+
+    /** Matches `CfoDatabase.VERSION` at the time this migration was written (issue 3.8). */
+    private const val VERSION_11 = 11
 }

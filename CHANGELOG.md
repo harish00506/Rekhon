@@ -12,6 +12,74 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > reach writing to it; this epic makes a transaction theirs to create — by hand first, then by
 > transfer, split, receipt and SMS.
 
+### [0.3.9] — Issue 3.8: OCR receipt scanning (ML Kit)  (2026-08-06)
+
+- **Implemented:** the app can read. Point it at a receipt — from the camera or the gallery — and it
+  extracts the total, the date, the merchant and the GST on-device, pre-fills a review screen, and
+  keeps the original image encrypted beside the transaction (FR-OCR-001..006).
+  - **Nothing leaves the device, and there is no code path that could carry it** (FR-OCR-002, P-01).
+    ML Kit's **bundled** text-recognition model ships inside the APK rather than the thin variant
+    that downloads it from Play Services, so recognition also works on first launch in airplane mode
+    (P-04). The whole flow was verified with airplane mode on.
+  - **No `CAMERA` permission, and no storage permission** — deliberately, and it is why capture uses
+    `ActivityResultContracts.TakePicture` and the system photo picker rather than CameraX. The
+    camera app owns the camera; this app is handed one scratch file through a `FileProvider` scoped
+    to a single cache directory.
+  - **A new engine, `:domain:engines:receipt`** (pure Kotlin, ARC-002), implementing §18.1's pipeline
+    literally. The load-bearing rule is that **an amount is only a candidate if it is written like
+    money** — a currency marker, or a decimal point: without it `GST 18%` above `Bill No 20260406`
+    reads as a ₹20,260,406 purchase. Every figure comes out of `MoneyFormatter.parse`, which refuses
+    anything not exactly representable in paise; every confidence is integer basis points. **There is
+    not a `Double` in the module** (MNY-001, MNY-002). Dates are read **day-first**, because
+    `03/04/2026` is 3 April in every shop in India.
+  - **The ≥ 95% gate is real** (§18.1, §21.5): 46 frozen anonymised receipts in
+    `eval/receipts.txt`, six of them deliberately awkward, asserting total-amount accuracy ≥ 95% and
+    field-complete ≥ 80% — plus a counterweight that a correct read is usually *not* flagged, so the
+    parser cannot pass by flagging everything. Verified to bite by mis-labelling three fixtures.
+    `ENGINE.md` states plainly what the set does **not** prove: it was written alongside the parser,
+    so it is regression protection rather than an independent accuracy estimate.
+  - **The image is encrypted at rest** (FR-OCR-005, SEC-003): Tink AEAD over an Android Keystore
+    keyset **of its own**, so rotating or destroying the attachment key is not the database key.
+    EXIF is stripped by decoding and re-encoding — one operation, so it cannot be forgotten — which
+    matters because a phone writes the GPS coordinates of where a photo was taken into it. The
+    attachment id is the AEAD's associated data, so a blob cannot be moved between rows.
+  - **A new table** (schema **v10 → v11**): `attachments`, additive, with **no BLOB column** — the
+    bytes live in a separate encrypted file so "delete the image, keep the transaction" is a file
+    deletion rather than a row rewrite that leaves the old bytes in SQLite's freelist.
+  - **The duplicate guard is FR-OCR-006 in SQL**: a `manual` or `sms` row within **±1% and ±1 day**
+    is offered as a merge instead of a second transaction. The band is computed in integer paise
+    before the query, never as `amount * 0.99`. "Save a new one" exists because the guard is a
+    heuristic and two identical coffees on one afternoon are real (P-07).
+  - **Low-confidence fields are flagged in words, not only in colour** (FR-OCR-004), as supporting
+    text *and* a content description — the marker is invisible to a screen reader otherwise. Save is
+    disabled until there is an amount and a date, and the ViewModel refuses too, because a disabled
+    button is a rendering.
+- **Fixed — found by running it, not by reading it.** Every unit test passed before the app was put
+  on a device, and the device found two things nothing else could have:
+  - **Recognised blocks are a receipt's *cells*, not its rows.** `GRAND TOTAL     365.80` came back
+    as two blocks side by side, so every line-based heuristic saw a keyword with no amount and fell
+    through to an item price — ₹248.00 offered as the total. Single-line blocks within
+    `same_row_bps` of each other are now joined into one logical line, which is what §18.1's "near
+    keywords" means on a two-column layout and the reason `RecognizedBlock` carries a position.
+  - **ML Kit returns `365.8` for a printed `365.80`.** One decimal digit is now accepted: it is
+    *tens* of paise, and `MoneyFormatter` pads it exactly. The guards on either side of the pattern
+    carry the cost — without them `04.08.2026` would read as ₹4.08, which has its own test.
+  - **A receipt could not be saved at all**, because `stampsFor` refuses a past date and a receipt is
+    by definition already spent. Back-dating is now decided by **provenance**: a row read off a
+    record may be back-dated, a row a person types may not. **ADR-0011** records the trade-off — the
+    frozen daily net-worth series does not follow a back-dated row — and names who owes the fix.
+  - **A blob was silently not deleted on Windows.** Attachment ids are `att:<uuid>`, and a colon in a
+    path is an NTFS alternate-data-stream separator, so the write went to a stream and the delete
+    reported success while leaving the data. The file name is now derived from the sanitised id; the
+    AEAD binding still uses the full one. A regression test covers it.
+- **Requirements:** FR-OCR-001, FR-OCR-002, FR-OCR-003, FR-OCR-004, FR-OCR-005, FR-OCR-006,
+  FR-TXN-009; SRS §18.1, §20.1; MNY-001, MNY-002, TIM-001, TIM-002, DB-003, SEC-003, ARC-002/003/005,
+  AI-ARC-003/006; P-01, P-02, P-03, P-04, P-07, P-08.
+- **Deliberately not in scope:** line items (FR-OCR-003 calls them best-effort — qty–name–price table
+  detection is its own project), multi-page stitching (FR-OCR-001 says MAY), a merchant knowledge
+  base (issue 4.1 owns `merchant_id`; guessing a name the user never saw is worse than blank), an
+  in-app camera preview, and any way to share a receipt out of the app.
+
 ### [0.3.8] — Issue 3.7: recurring detection  (2026-08-05)
 
 - **Implemented:** the ledger now notices a pattern in itself. A deterministic detector proposes a

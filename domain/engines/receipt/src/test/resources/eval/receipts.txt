@@ -1,0 +1,612 @@
+# =============================================================================
+# Frozen receipt evaluation set — the ≥ 95% total-amount gate (issue 3.8; SRS §18.1, §21.5).
+#
+# Why:  §18.1 sets two numeric targets — "total-amount accuracy ≥ 95% on printed receipts,
+#       ≥ 80% field-complete extraction" — and §21.5 says AI evaluation runs against frozen
+#       labelled datasets with regression thresholds that block merges. ReceiptEvalTest is that
+#       gate. These are the receipts; the labels are what a person reads off them.
+# What: forty-six anonymised receipt texts of the kind ML Kit returns for Indian printed bills —
+#       supermarkets, restaurants, fuel, pharmacy, e-commerce, autos, utilities — each labelled
+#       with the total in paise, the date and the merchant. The last six are deliberately awkward;
+#       see the comment above them.
+# Result: changing a heuristic and losing accuracy fails the build.
+# Changelog: 2026-08-06 — Created for issue 3.8.
+#
+# **What this set does and does not prove.** It was written alongside the parser, so its 100%
+# total-amount score is *not* an independent estimate of how the app performs on a real photograph
+# — it is regression protection: a heuristic edit that breaks one of these shapes fails the build.
+# The independent measurement is the device run, against receipts nobody wrote for this file.
+#
+# **A text file, not JSON, on purpose.** `:domain:*` is pure Kotlin with no serialisation
+# dependency (ARC-002), so a JSON fixture would mean hand-rolling a parser in a test — thirty
+# lines of bracket counting whose bugs would look like parser bugs. This format is read by six
+# lines of `split`.
+#
+# **Every amount here is invented.** No real person's receipt is in this repository (P-01).
+#
+# Format: `# key=value` header lines, then the recognised text, then `===` on its own line.
+#         `date=` and `merchant=` may be empty, meaning the receipt genuinely does not show one.
+# =============================================================================
+
+# merchant=BIG BAZAAR
+# total=36580
+# date=2026-08-04
+BIG BAZAAR
+KORAMANGALA BENGALURU
+GSTIN 29AABCB1234F1Z5
+Bill No 20260406
+Date 04/08/2026
+Milk 1L 62.00
+Atta 5kg 248.00
+CGST 9% 27.90
+SGST 9% 27.90
+GRAND TOTAL 365.80
+THANK YOU VISIT AGAIN
+===
+
+# merchant=RELIANCE FRESH
+# total=112450
+# date=2026-07-29
+RELIANCE FRESH
+STORE 4471 PUNE
+29/07/2026 19:42
+Basmati Rice 5kg 549.00
+Toor Dal 1kg 178.50
+Sunflower Oil 2L 289.00
+Tomato 1kg 42.00
+SUB TOTAL 1058.50
+CGST 33.00
+SGST 33.00
+TOTAL 1124.50
+===
+
+# merchant=CAFE COFFEE DAY
+# total=48000
+# date=2026-08-01
+CAFE COFFEE DAY
+INDIRANAGAR
+01/08/2026
+2 Cappuccino 320.00
+1 Choco Croissant 160.00
+TOTAL 480.00
+Paid by UPI
+===
+
+# merchant=INDIAN OIL
+# total=200000
+# date=2026-08-03
+INDIAN OIL
+HSR LAYOUT OUTLET
+03/08/2026 08:15
+Product PETROL
+Rate 104.86
+Volume 19.07 L
+AMOUNT 2000.00
+===
+
+# merchant=APOLLO PHARMACY
+# total=76540
+# date=2026-07-18
+APOLLO PHARMACY
+JAYANAGAR
+Invoice 5512/26
+Date 18/07/2026
+Crocin 650 x2 44.00
+Vitamin D3 x1 385.00
+Thermometer 299.00
+Discount -25.60
+NET PAYABLE 765.40
+===
+
+# merchant=AMAZON
+# total=249900
+# date=2026-06-11
+AMAZON
+Order 402-8817263-9917123
+Order Date 11/06/2026
+Bluetooth Headphones
+Sold by Cloudtail India
+Item 2117.80
+IGST 18% 381.20
+Grand Total Rs 2499.00
+===
+
+# merchant=SWIGGY
+# total=54700
+# date=2026-08-02
+SWIGGY
+Order 187762311
+02/08/2026
+Paneer Butter Masala 320.00
+Butter Naan x2 90.00
+Delivery Fee 35.00
+Taxes 52.00
+TOTAL PAID 547.00
+===
+
+# merchant=DMART
+# total=189900
+# date=2026-07-05
+DMART
+WHITEFIELD
+05.07.2026
+Detergent 5kg 549.00
+Sugar 5kg 265.00
+Biscuits Combo 185.00
+Cooking Oil 5L 899.00
+TOTAL 1899.00
+===
+
+# merchant=MORE SUPERMARKET
+# total=43225
+# date=2026-07-22
+MORE SUPERMARKET
+BTM LAYOUT
+Bill 88231
+22-07-2026
+Bread 45.00
+Eggs 30pc 210.00
+Curd 1kg 92.00
+CGST 2.5% 42.63
+SGST 2.5% 42.62
+TOTAL AMOUNT 432.25
+===
+
+# merchant=BESCOM
+# total=141200
+# date=2026-07-15
+BESCOM
+ELECTRICITY BILL
+Consumer 4477112
+Billing Date 15/07/2026
+Units 312
+Energy Charges 1198.00
+Fixed Charges 145.00
+Tax 69.00
+NET AMOUNT PAYABLE 1412.00
+===
+
+# merchant=DECATHLON
+# total=349900
+# date=2026-05-30
+DECATHLON
+SARJAPUR ROAD
+30/05/2026
+Running Shoes 2999.00
+Sports Socks x3 297.00
+Water Bottle 203.00
+TOTAL 3499.00
+===
+
+# merchant=NILGIRIS
+# total=27350
+# date=2026-08-05
+NILGIRIS
+FRAZER TOWN
+05/08/2026 11:03
+Brown Bread 55.00
+Cheese Slices 145.00
+Jam 73.50
+TOTAL 273.50
+===
+
+# merchant=PVR CINEMAS
+# total=94000
+# date=2026-07-26
+PVR CINEMAS
+FORUM MALL
+26/07/2026
+2 Tickets Audi 4
+Ticket Price 800.00
+Convenience Fee 60.00
+CGST 40.00
+SGST 40.00
+TOTAL 940.00
+===
+
+# merchant=CROMA
+# total=1899900
+# date=2026-04-14
+CROMA
+MG ROAD
+Invoice CRM/26/88123
+14/04/2026
+Washing Machine 6.5kg
+Basic 16101.69
+GST 18% 2897.31
+GRAND TOTAL 18999.00
+===
+
+# merchant=UBER
+# total=28700
+# date=2026-08-06
+UBER
+Trip 8812771
+06/08/2026
+Koramangala to Whitefield
+Trip Fare 254.00
+Booking Fee 18.00
+Taxes 15.00
+TOTAL 287.00
+===
+
+# merchant=HALDIRAM
+# total=62500
+# date=2026-06-19
+HALDIRAM
+JP NAGAR
+Bill 4471
+19/06/2026
+Chole Bhature x2 380.00
+Lassi x2 180.00
+CGST 32.50
+SGST 32.50
+TOTAL 625.00
+===
+
+# merchant=LIFESTYLE
+# total=245000
+# date=2026-03-08
+LIFESTYLE
+PHOENIX MALL
+08/03/2026
+Formal Shirt 1799.00
+Belt 651.00
+TOTAL PAYABLE 2450.00
+===
+
+# merchant=JIO
+# total=39900
+# date=2026-07-02
+JIO
+RECHARGE RECEIPT
+Mobile 98XXXXXX21
+02/07/2026
+Plan 84 Days Unlimited
+Amount 338.14
+GST 60.86
+TOTAL 399.00
+===
+
+# merchant=NANDINI MILK PARLOUR
+# total=13400
+# date=
+NANDINI MILK PARLOUR
+BASAVANAGUDI
+Toned Milk 6 x 25.00 150.00
+Curd 500g 30.00
+Discount -46.00
+TOTAL 134.00
+===
+
+# merchant=SPENCERS
+# total=88760
+# date=2026-07-11
+SPENCERS
+HRBR LAYOUT
+11/07/2026 20:11
+Chicken 1kg 289.00
+Paneer 200g 98.00
+Frozen Peas 82.00
+Ice Cream 1L 349.00
+Rounding -0.60
+GRAND TOTAL 887.60
+===
+
+# merchant=SHELL
+# total=150000
+# date=2026-08-05
+SHELL
+BELLANDUR
+05/08/2026 07:44
+DIESEL
+Rate 91.25
+Litres 16.44
+AMOUNT PAYABLE 1500.00
+===
+
+# merchant=ZOMATO
+# total=41200
+# date=2026-07-31
+ZOMATO
+Order 99127763
+31/07/2026
+Veg Biryani 249.00
+Raita 60.00
+Platform Fee 10.00
+GST 43.00
+Delivery 50.00
+TOTAL 412.00
+===
+
+# merchant=MEDPLUS
+# total=52380
+# date=2026-06-27
+MEDPLUS
+KAMMANAHALLI
+Invoice 7781/2026
+27/06/2026
+Azithromycin 500 118.00
+Paracetamol 32.00
+Cough Syrup 149.00
+Multivitamin 249.80
+Discount -25.00
+NET AMOUNT 523.80
+===
+
+# merchant=FLIPKART
+# total=129900
+# date=2026-02-17
+FLIPKART
+Order OD4471882712
+17/02/2026
+Cotton Bedsheet Set
+Item Price 1100.85
+IGST 198.15
+Grand Total Rs 1299.00
+===
+
+# merchant=BHARAT PETROLEUM
+# total=100000
+# date=2026-07-20
+BHARAT PETROLEUM
+OLD AIRPORT ROAD
+20/07/2026
+PETROL
+Rate 104.92
+Volume 9.53
+AMOUNT 1000.00
+===
+
+# merchant=THIRD WAVE COFFEE
+# total=52500
+# date=2026-08-04
+THIRD WAVE COFFEE
+KORAMANGALA 5TH BLOCK
+04/08/2026 09:12
+Flat White 280.00
+Almond Croissant 195.00
+CGST 2.5% 11.88
+SGST 2.5% 11.87
+Rounding 0.25
+TOTAL 525.00
+===
+
+# merchant=CENTRAL MALL
+# total=379900
+# date=2026-01-25
+CENTRAL MALL
+BELLANDUR
+25/01/2026
+Jacket 2999.00
+T Shirt x2 800.00
+TOTAL 3799.00
+===
+
+# merchant=AUTO RICKSHAW
+# total=9000
+# date=
+AUTO RICKSHAW RECEIPT
+Meter Fare 82.00
+Waiting 8.00
+TOTAL 90.00
+===
+
+# merchant=STARBUCKS
+# total=71000
+# date=2026-07-09
+STARBUCKS
+UB CITY
+09/07/2026
+Caffe Latte Tall 385.00
+Blueberry Muffin 260.00
+CGST 32.50
+SGST 32.50
+TOTAL 710.00
+===
+
+# merchant=BIGBASKET
+# total=234500
+# date=2026-06-03
+BIGBASKET
+Order BB88127763
+03/06/2026
+Groceries 42 items
+Item Total 2298.00
+Delivery 47.00
+TOTAL PAYABLE 2345.00
+===
+
+# merchant=TITAN WORLD
+# total=899500
+# date=2026-05-12
+TITAN WORLD
+COMMERCIAL STREET
+12/05/2026
+Wrist Watch Model 1782
+Basic 7622.88
+GST 18% 1372.12
+GRAND TOTAL 8995.00
+===
+
+# merchant=HP PETROL PUMP
+# total=50000
+# date=2026-08-06
+HP PETROL PUMP
+SILK BOARD
+06/08/2026 18:02
+PETROL
+Rate 104.86
+Volume 4.77
+AMOUNT 500.00
+===
+
+# merchant=NATURALS ICE CREAM
+# total=32000
+# date=2026-07-28
+NATURALS ICE CREAM
+KORAMANGALA
+28/07/2026
+Tender Coconut x2 200.00
+Mango Scoop 120.00
+TOTAL 320.00
+===
+
+# merchant=AKSHAYA PATRA CANTEEN
+# total=18000
+# date=2026-07-14
+AKSHAYA PATRA CANTEEN
+Token 4471
+14/07/2026
+Meals x2 180.00
+TOTAL 180
+===
+
+# merchant=VODAFONE IDEA
+# total=29900
+# date=2026-06-08
+VODAFONE IDEA
+POSTPAID BILL
+Account 4471882
+Bill Date 08/06/2026
+Monthly Rental 253.39
+GST 45.61
+TOTAL AMOUNT DUE 299.00
+===
+
+# merchant=IKEA
+# total=459900
+# date=2026-04-02
+IKEA
+NAGASANDRA
+02/04/2026
+Bookshelf BILLY 3499.00
+Cushion Covers x4 796.00
+Assembly Fee 304.00
+TOTAL 4599.00
+===
+
+# merchant=BANGALORE METRO
+# total=6000
+# date=2026-08-05
+BANGALORE METRO
+SMART CARD RECHARGE
+Card 88127763
+05/08/2026
+Recharge Amount 60.00
+===
+
+# merchant=CHAI POINT
+# total=17000
+# date=2026-08-06
+CHAI POINT
+INDIRANAGAR
+06/08/2026 16:20
+Masala Chai x2 90.00
+Samosa x2 80.00
+TOTAL 170
+===
+
+# merchant=WESTSIDE
+# total=159900
+# date=2026-03-21
+WESTSIDE
+GARUDA MALL
+21/03/2026
+Kurta 1199.00
+Scarf 400.00
+TOTAL PAYABLE 1599.00
+===
+
+# merchant=SANGEETHA MOBILES
+# total=1749900
+# date=2026-02-05
+SANGEETHA MOBILES
+JAYANAGAR 4TH BLOCK
+Invoice SM/26/9912
+05/02/2026
+Smartphone 128GB
+Basic 14829.66
+GST 18% 2669.34
+GRAND TOTAL 17499.00
+===
+
+# -----------------------------------------------------------------------------
+# The awkward six. Real OCR output is not tidy, and a set made only of clean bills
+# would flatter the parser. Each of these is a shape a scanner genuinely produces:
+# no space after the label, the figure printed on the line below it, a misread
+# letter in the keyword, `/-` after the amount, a dotted date, and a merchant name
+# broken across two lines. Two of them are read correctly only by the low-confidence
+# fallback, which is exactly what FR-OCR-004's flag exists to tell the user.
+# -----------------------------------------------------------------------------
+
+# merchant=VASUDEV ADIGAS
+# total=124000
+# date=2026-07-25
+VASUDEV ADIGAS
+RAJAJINAGAR
+25/07/2026
+Masala Dosa x2 320.00
+Filter Coffee x2 120.00
+Rava Idli 800.00
+TOTAL:1240.00
+===
+
+# merchant=KALYAN SILKS
+# total=124600
+# date=2026-06-15
+KALYAN SILKS
+CHICKPET
+15/06/2026
+Cotton Saree 899.00
+Blouse Piece 157.00
+TOTAL
+1246.00
+===
+
+# merchant=SRI KRISHNA SWEETS
+# total=58500
+# date=2026-08-02
+SRI KRISHNA SWEETS
+MALLESHWARAM
+02/08/2026
+Mysore Pak 500g 320.00
+Kaju Katli 250g 265.00
+TOTAI 585.00
+===
+
+# merchant=GRAND SWEETS
+# total=245000
+# date=2026-05-19
+GRAND SWEETS
+ADYAR
+19/05/2026
+Assorted Box 1kg
+NET PAYABLE Rs.2,450/-
+===
+
+# merchant=NAMMA MEDICALS
+# total=41800
+# date=2026-08-03
+NAMMA MEDICALS
+BANASHANKARI
+Dt: 3.8.2026
+Antacid Syrup 148.00
+Bandage Roll 90.00
+ORS Sachets x6 180.00
+TOTAL 418.00
+===
+
+# merchant=SHREE
+# total=93500
+# date=2026-07-08
+SHREE
+ANNAPOORNA MESS
+GANDHI BAZAAR
+08/07/2026
+North Indian Thali x2 640.00
+Sweet Lassi x2 240.00
+CGST 27.50
+SGST 27.50
+TOTAL 935.00
+===

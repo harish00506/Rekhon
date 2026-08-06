@@ -117,6 +117,19 @@
       "enabled": true,
       "version": "1.0"
     },
+    {
+      "rule_id": "RULE-RECEIPT-PARSE",
+      "domain": "purchase",
+      "name": "Read a receipt's total, date, merchant and GST from recognised text, and flag a field below the confidence floor for review.",
+      "formula_id": "receipt_field_extract",
+      "params_json": { "total_keywords": ["total", "grand", "amount", "payable"], "tax_keywords": ["gst", "cgst", "sgst"], "low_confidence_bps": 6000, "merchant_top_region_bps": 3000, "same_row_bps": 200, "duplicate_amount_tolerance_pct": 1, "duplicate_date_tolerance_days": 1 },
+      "severity": "info",
+      "rationale": "A scanned receipt is a proposal, not a fact: the parser says what it read and how sure it is, and the user corrects it before anything is saved (P-02, P-07, FR-OCR-003/004). The duplicate band is what stops one purchase being recorded twice when the bank SMS already logged it (FR-OCR-006).",
+      "source_note": "FR-OCR-003..006 and SRS 18.1's pipeline. Keywords are the ones printed on Indian retail receipts; the confidence floor is where a field is worth flagging rather than silently accepting. same_row_bps is how close two recognised blocks must sit vertically to be the same printed row, which is how a label in one column is paired with its amount in another.",
+      "consumed_by": ["receipt_parser"],
+      "enabled": true,
+      "version": "1.0"
+    },
 
     {
       "rule_id": "RULE-AGE-EQUITY",

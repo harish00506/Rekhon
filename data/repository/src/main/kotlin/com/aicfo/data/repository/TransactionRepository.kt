@@ -530,6 +530,17 @@ data class TransactionDraft(
      * exists to prevent.
      */
     val bookedAt: LocalTime? = null,
+    /**
+     * Where this row came from (issue 3.8; FR-TXN-009).
+     *
+     * Why a **default** rather than a required argument: every existing caller is the user typing a
+     * transaction by hand, and making them all say so would be three edits that change nothing. The
+     * receipt scanner passes `OCR`, and issue 3.9's SMS parser will pass `SMS`.
+     *
+     * Deliberately still not something the *user* picks — FR-TXN-009 is provenance, and a provenance
+     * a person can choose is a claim rather than a record. The add-transaction screen never sets it.
+     */
+    val source: TransactionSource = TransactionSource.MANUAL,
 )
 
 /**
@@ -653,7 +664,7 @@ internal class RoomTransactionRepository(
         // Issue 3.4: the booked day and the three stamps it implies, resolved once (FR-TXN-010).
         // `null` means the date is in the past, which this issue does not support — see `stampsFor`.
         val stamps =
-            clock.stampsFor(validated.bookedOn, validated.bookedAt)
+            clock.stampsFor(validated.bookedOn, validated.bookedAt, validated.source.recordsAPastEvent())
                 ?: return Err(AppError.Validation("bookedOn"))
         // Today, not the booked day: the account lookup only proves the account is live, and its
         // balance is read as at now (issue 3.4 bounded `findWithBalance` by date).
@@ -683,9 +694,10 @@ internal class RoomTransactionRepository(
                         categoryId = validated.categoryId,
                         merchant = validated.merchant,
                         note = validated.note,
-                        // FR-TXN-009. This flow is the one the user typed by hand; OCR (3.8), SMS
-                        // (3.9) and import (5.4) stamp their own.
-                        source = TransactionSource.MANUAL.storedValue,
+                        // FR-TXN-009. Defaults to `manual` on the draft, which is what every screen
+                        // that lets a person type a transaction leaves it as; the receipt scanner
+                        // (issue 3.8) passes `ocr` and issue 3.9's SMS parser will pass `sms`.
+                        source = validated.source.storedValue,
                         // Derived from the sign, never taken from the caller — the whole of the
                         // type/sign invariant is this one expression plus the transfer legs below.
                         type = validated.amount.directionType().storedValue,
@@ -1254,3 +1266,32 @@ internal fun TransactionWithSplits.toTransaction(): Transaction? =
  * Changelog: 2026-08-02 — Created for issue 3.1.
  */
 internal fun CategoryEntity.toCategory(): Category = Category(id = id, name = name)
+
+/**
+ * Whether a row's provenance means it describes something that already happened (ADR-0011).
+ *
+ * Why:    **the provenance decides whether back-dating is allowed, and that is the honest rule.** A
+ *         transaction the user *typed* is subject to issue 3.4's refusal — back-dating by hand
+ *         leaves the frozen `net_worth_snapshot` series behind, and the add screen's date picker
+ *         does not offer a past day anyway. A transaction *read off a record* is the opposite case:
+ *         a receipt (FR-OCR-003) or a bank SMS (issue 3.9) is evidence of money that has already
+ *         moved, and refusing its date would mean storing a date the user never saw.
+ *
+ *         Written as an exhaustive `when` rather than `!= MANUAL`, so a source added later has to be
+ *         classified deliberately instead of inheriting whichever answer the shorthand gave.
+ * Result: `true` when a booked day before today should be accepted.
+ * Input:  the receiver — the row's provenance (FR-TXN-009). Output: [Boolean].
+ * Changelog: 2026-08-06 — Created for issue 3.8; see ADR-0011.
+ */
+internal fun TransactionSource.recordsAPastEvent(): Boolean =
+    when (this) {
+        // Typed by a person, now. Issue 3.4's rule stands.
+        TransactionSource.MANUAL -> false
+        // Read off evidence of a purchase or a payment that has already happened.
+        TransactionSource.OCR, TransactionSource.SMS, TransactionSource.IMPORT -> true
+        // Posted by the app for a day that has arrived, or written against a statement the user
+        // typed — both describe the past by construction.
+        TransactionSource.RECURRING_AUTO, TransactionSource.RECONCILIATION -> true
+        // Sample data, seeded across a made-up history (ADR-0006).
+        TransactionSource.DEMO -> true
+    }
