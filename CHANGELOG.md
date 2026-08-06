@@ -12,6 +12,48 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > reach writing to it; this epic makes a transaction theirs to create — by hand first, then by
 > transfer, split, receipt and SMS.
 
+### [0.3.10] — Back-dating, and a net-worth series that repairs itself  (2026-08-06)
+
+- **Implemented:** any transaction can now be recorded on the day it actually happened — typed,
+  transferred, split or scanned. The add screen's date picker offers past days, and the repository
+  no longer refuses them (ADR-0012, superseding ADR-0011).
+- **Why it was blocked, and what unblocked it.** Issue 3.4 refused a past date for a real reason:
+  `net_worth_snapshot` holds one **frozen** row per past day — a trend must not move under the user
+  (FR-ACC-005) — and nothing recomputed them, so a row inserted into last week left those days'
+  stored figures behind. Issue 3.8 needed back-dating anyway (a receipt is already spent) and
+  ADR-0011 opened a narrow provenance-based door while recording the stale history as debt. This
+  pays that debt, which removed the reason for the rule, so the rule went too.
+- **`NetWorthRepository.repairStaleHistory()`** recomputes exactly the stored days a later write
+  invalidated, and nothing else:
+  - **The staleness is derived, not tracked.** No `dirty` flag and no repair queue — a flag is state
+    a write path can silently fail to set. One query joins snapshots to the transactions booked on or
+    before them and compares `updated_at` **and** `deleted_at` against `computed_at`. Both terms are
+    needed: `updated_at` catches a row created or edited, `deleted_at` catches one removed, because
+    `softDelete` deliberately does not touch `updated_at`. It is the only query in that file that does
+    not filter tombstones, because a deleted transaction is precisely the change being looked for.
+  - **It never invents history.** The earliest day it can touch is the earliest already stored, so a
+    transaction back-dated to before the user had the app corrects today's figure and conjures
+    nothing for the years in between (P-03).
+  - **A day nobody changed is never rewritten**, which is what keeps FR-ACC-005's freeze intact. The
+    normal run rewrites zero days, and a test asserts exactly that.
+  - Capped at `MAX_BACKFILL_DAYS` per call; a repaired day stops being reported as stale, so
+    successive runs converge rather than repeating themselves.
+- **Only `NetWorthSnapshotWorker` calls it**, before its existing backfill — order asserted by a
+  test. The alternative, having every write path that can back-date notify the net-worth series,
+  would put knowledge of a reporting table into the ledger and be one more thing a future write path
+  could forget.
+- **Balances were never affected** and still are not: they are derived from the ledger on every read
+  (ADR-0007), so a back-dated row is in the dashboard figure the moment it is saved. Verified on the
+  emulator — a ₹1,234.50 expense booked three days back landed on its own day and moved net worth
+  immediately.
+- **Deleted rather than added:** `Clock.stampsFor`'s `allowPast` parameter,
+  `TransactionSource.recordsAPastEvent()`, and the date picker's `selectableDates` bound. The
+  `AddTransactionUiState` field that carried the bound is renamed `todayInProfileZone`, because it
+  now only seeds the picker and a field called `earliestBookableDate` that bounds nothing is a lie
+  waiting to be believed.
+- **Requirements:** FR-TXN-001, FR-TXN-010, FR-ACC-005, FR-OCR-003; TIM-002, DB-004, ARC-005;
+  P-02, P-03, P-08. **ADR-0012** (supersedes ADR-0011).
+
 ### [0.3.9] — Issue 3.8: OCR receipt scanning (ML Kit)  (2026-08-06)
 
 - **Implemented:** the app can read. Point it at a receipt — from the camera or the gallery — and it

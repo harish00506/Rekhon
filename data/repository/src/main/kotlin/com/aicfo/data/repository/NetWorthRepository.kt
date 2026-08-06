@@ -103,6 +103,34 @@ interface NetWorthRepository {
      */
     suspend fun snapshotUpToToday(): Result<Int, AppError>
 
+    /**
+     * Recomputes the stored days a later write has invalidated (ADR-0012; FR-ACC-005).
+     *
+     * Why: [snapshotUpToToday] deliberately never rewrites a day it has already recorded — a
+     *         *trend* must not move under the user. That holds while every transaction is booked on
+     *         the day it is entered, and stops holding the moment one is not: a receipt scanned
+     *         today for last Tuesday, or an old row deleted, changes what those days were worth and
+     *         nothing else would ever correct them.
+     *
+     *         **This is the narrowest possible exception to the freeze**, and it is what makes
+     *         back-dating honest rather than merely allowed. It rewrites only days whose figure is
+     *         *demonstrably* wrong — see `NetWorthSnapshotDao.findEarliestStaleDay`, which derives
+     *         that from the rows themselves rather than from a flag any write path could forget to
+     *         set. A day nobody changed is never touched.
+     *
+     *         **It never invents history.** The earliest day it can repair is the earliest day
+     *         already stored, because the detection query starts from stored snapshots. A
+     *         transaction back-dated to before the user had the app corrects nothing, which is
+     *         right: there is no figure for those days to be wrong (P-03).
+     * Result: `Ok(n)` — how many stored days were recomputed, `0` on the normal run where nothing is
+     *         stale — or `Err(Storage)` with **nothing** rewritten; the days land in one transaction.
+     *         Capped at [MAX_BACKFILL_DAYS] per call for the reason that constant gives; the next
+     *         call continues, because a repaired day stops being reported as stale.
+     * Input:  none (today comes from the injected `Clock`, TIM-001).
+     * Output: `Result<Int, AppError>`.
+     */
+    suspend fun repairStaleHistory(): Result<Int, AppError>
+
     companion object {
         /**
          * How many days a single backfill will write at most.
@@ -129,6 +157,8 @@ interface NetWorthRepository {
  * Output: a working repository.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
+@Suppress("TooManyFunctions") // See the interface: one implementation per gateway plus the private
+// steps each needs (ARC-003/ARC-005) — the same note `RoomTransactionRepository` carries.
 internal class RoomNetWorthRepository(
     private val database: CfoDatabase,
     private val engine: NetWorthEngine,
@@ -177,6 +207,52 @@ internal class RoomNetWorthRepository(
                 rows.size
             }
         }
+
+    override suspend fun repairStaleHistory(): Result<Int, AppError> =
+        withContext(dispatchers.io) {
+            runCatchingToResult {
+                val profileId = activeProfileId.first()
+                val days = staleDaysUpTo(profileId, clock.today())
+                if (days.isEmpty()) return@runCatchingToResult 0
+
+                val now = clock.nowUtcMillis()
+                val rows = days.map { day -> snapshotRow(profileId, day.toString(), now) }
+                // One transaction, for the reason `snapshotUpToToday` gives: a repair that landed
+                // half its days would leave the series internally inconsistent rather than merely
+                // stale, which is worse than not having run.
+                database.withTransaction { database.netWorthSnapshotDao().upsertAll(rows) }
+                rows.size
+            }
+        }
+
+    /**
+     * The stored days whose figures a later write has invalidated, oldest first.
+     * Why:    the repair's whole decision, in one place. It starts at the earliest day the DAO says
+     *         is stale and runs forward to today — every day after a changed one is affected too,
+     *         because net worth as at a day counts every transaction booked on or before it.
+     *
+     *         **Bounded above by today, not by the last stored day.** A day between the stale one
+     *         and today that was never snapshotted (the device was off) gets one written here, which
+     *         is a gap closed rather than history invented — the figure is derived from the same
+     *         transactions that day would have produced.
+     * Result: the days to rewrite, empty on the normal run; at most
+     *         [NetWorthRepository.MAX_BACKFILL_DAYS] entries.
+     * Input:  [profileId]; [today] — from the injected `Clock`. Output: the days.
+     * Changelog: 2026-08-06 — Created for the back-dating follow-up; see ADR-0012.
+     */
+    private suspend fun staleDaysUpTo(
+        profileId: String,
+        today: LocalDate,
+    ): List<LocalDate> {
+        val earliest =
+            database.netWorthSnapshotDao().findEarliestStaleDay(profileId) ?: return emptyList()
+        val from = runCatching { LocalDate.parse(earliest) }.getOrNull() ?: return emptyList()
+        if (from.isAfter(today)) return emptyList()
+        return generateSequence(from) { it.plusDays(1) }
+            .takeWhile { !it.isAfter(today) }
+            .take(NetWorthRepository.MAX_BACKFILL_DAYS)
+            .toList()
+    }
 
     /**
      * The days that still need a snapshot, oldest first.

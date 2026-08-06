@@ -44,12 +44,13 @@ internal data class BookingStamps(
  *         This function is where a date the user picked becomes that exclusion, and it makes three
  *         decisions that are each easy to get wrong at a call site:
  *
- *         **A past date is refused unless [allowPast] says otherwise.** Back-dating is not
- *         harmless: `net_worth_snapshot` already holds one written row per past day, and nothing
- *         recomputes them, so a row inserted into last week leaves those days' stored figures
- *         behind today's. Issue 3.8 needed it anyway — FR-OCR-003 makes a receipt's date a MUST and
- *         a receipt is by definition already spent — so the refusal became opt-out rather than
- *         absolute. **ADR-0011** records the trade-off and who owes the recompute.
+ *         **Any day is accepted, past or future.** Issue 3.4 refused the past, because
+ *         `net_worth_snapshot` holds one frozen row per past day and nothing recomputed them — a row
+ *         inserted into last week left those days' stored figures behind. That was true until
+ *         `NetWorthRepository.repairStaleHistory` was written, which corrects exactly the days a
+ *         back-dated row invalidates. With the consequence fixed, the refusal was the only thing
+ *         left, and a rule with no remaining reason is a rule to delete. **ADR-0012** records it and
+ *         supersedes ADR-0011's narrower provenance-based version.
  *
  *         **A future row's instant is the start of its own day, not now.** The recent list orders by
  *         `occurred_at_utc_millis`, so stamping "now" would sort a payment scheduled for next month
@@ -66,28 +67,27 @@ internal data class BookingStamps(
  *         `ZoneId` rather than by adding milliseconds to a midnight — `ZonedDateTime` moves to the
  *         first valid instant on a day whose local clock skips the chosen hour, where arithmetic on
  *         an offset would silently land an hour earlier or on the previous day.
- * Result: the stamps, or `null` when [bookedOn] is before today and [allowPast] is `false` — which
- *         the caller reports as `AppError.Validation("bookedOn")`. `null` rather than an exception
- *         because §5 forbids exceptions across a layer boundary.
+ * Result: the stamps. Non-null today — the signature stays nullable because `create`,
+ *         `createTransfer` and `createSplit` all report a `null` as
+ *         `AppError.Validation("bookedOn")`, and keeping the seam costs one `?:` at three call
+ *         sites while leaving somewhere for a future refusal to live.
  * Input:  the receiver — the injected [Clock] (TIM-001, never the wall clock); [bookedOn] — the day
  *         the user picked, or `null` to mean today, which is what every caller before issue 3.4
  *         meant implicitly; [atTime] — the time of day (FR-TXN-001's "date-time"), or `null` to
- *         keep the stamped default; [allowPast] — **defaulted to `false`, so every caller written
- *         before issue 3.8 keeps the rule it was written under** and only the receipt path opts in.
+ *         keep the stamped default.
  * Output: `BookingStamps?`.
  * Changelog: 2026-08-03 — Created for issue 3.4 (FR-TXN-010).
  *            2026-08-03 — [atTime], so FR-TXN-001's "date-time" is a thing the user can state
  *            rather than one the app always assumes.
- *            2026-08-06 — [allowPast] for issue 3.8 (FR-OCR-003); see ADR-0011.
+ *            2026-08-06 — [allowPast] for issue 3.8 (FR-OCR-003), then removed with the refusal
+ *            itself once `repairStaleHistory` made back-dating safe for every path; see ADR-0012.
  */
 internal fun Clock.stampsFor(
     bookedOn: LocalDate?,
     atTime: LocalTime? = null,
-    allowPast: Boolean = false,
 ): BookingStamps? {
     val today = today()
     val date = bookedOn ?: today
-    if (date.isBefore(today) && !allowPast) return null
     val now = nowUtcMillis()
     val isToday = date == today
     // A back-dated row is *already* posted: the day has arrived and the money has moved, so

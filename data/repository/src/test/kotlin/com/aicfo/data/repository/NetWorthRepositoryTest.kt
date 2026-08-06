@@ -29,6 +29,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 
@@ -486,18 +487,133 @@ class NetWorthRepositoryTest {
         updatedAtUtcMillis = clock.nowUtcMillis(),
     )
 
-    /** Result: a transaction row. Input: see the parameters. Output: none (suspends). */
+    // --- repairing back-dated history (ADR-0012) ---------------------------------------------------
+
+    @Test
+    fun `a back-dated transaction makes the days it lands in stale`() =
+        runTest {
+            insertAccount("a:bank", AccountType.BANK, 1_00_000_00L)
+            repository.snapshotUpToToday().expectOk()
+
+            // Booked into a day already snapshotted, and written *after* that day was computed —
+            // which is exactly the condition `findEarliestStaleDay` derives.
+            clock.advanceBy(ONE_MINUTE)
+            insertTransaction("t:backdated", "a:bank", -5_000_00L, bookedOn = TODAY)
+
+            assertEquals(TODAY, database.netWorthSnapshotDao().findEarliestStaleDay(PROFILE))
+        }
+
+    @Test
+    fun `the repair rewrites the stale day with the figure it should always have had`() =
+        runTest {
+            insertAccount("a:bank", AccountType.BANK, 1_00_000_00L)
+            repository.snapshotUpToToday().expectOk()
+            assertEquals(Money(1_00_000_00L), repository.observeLatest().first()!!.netWorth)
+
+            clock.advanceBy(ONE_MINUTE)
+            insertTransaction("t:backdated", "a:bank", -5_000_00L, bookedOn = TODAY)
+
+            assertEquals(1, repository.repairStaleHistory().expectOk())
+            assertEquals(
+                "the stored history must agree with the ledger it is derived from",
+                Money(95_000_00L),
+                repository.observeLatest().first()!!.netWorth,
+            )
+        }
+
+    @Test
+    fun `deleting an old transaction also makes its days stale`() =
+        runTest {
+            // `softDelete` deliberately does not touch `updated_at`, so the detection needs its
+            // `deleted_at` term — without it a removed row would silently leave history overstated.
+            insertAccount("a:bank", AccountType.BANK, 1_00_000_00L)
+            insertTransaction("t:old", "a:bank", -5_000_00L, bookedOn = TODAY)
+            repository.snapshotUpToToday().expectOk()
+
+            clock.advanceBy(ONE_MINUTE)
+            database.transactionDao().softDelete("t:old", clock.nowUtcMillis())
+
+            assertEquals(1, repository.repairStaleHistory().expectOk())
+            assertEquals(Money(1_00_000_00L), repository.observeLatest().first()!!.netWorth)
+        }
+
+    @Test
+    fun `a run with nothing stale rewrites nothing`() =
+        runTest {
+            // The normal case, and the one that matters most: a frozen series must stay frozen
+            // (FR-ACC-005). If this ever wrote a row, every trend in the app would move on its own.
+            insertAccount("a:bank", AccountType.BANK, 1_00_000_00L)
+            repository.snapshotUpToToday().expectOk()
+
+            assertEquals(0, repository.repairStaleHistory().expectOk())
+            assertNull(database.netWorthSnapshotDao().findEarliestStaleDay(PROFILE))
+        }
+
+    @Test
+    fun `a repaired day stops being reported as stale`() =
+        runTest {
+            // What makes the cap safe: successive runs converge rather than repeating the same work.
+            insertAccount("a:bank", AccountType.BANK, 1_00_000_00L)
+            repository.snapshotUpToToday().expectOk()
+            clock.advanceBy(ONE_MINUTE)
+            insertTransaction("t:backdated", "a:bank", -5_000_00L, bookedOn = TODAY)
+            repository.repairStaleHistory().expectOk()
+
+            assertEquals(0, repository.repairStaleHistory().expectOk())
+        }
+
+    @Test
+    fun `a transaction booked before any snapshot corrects the stored days and invents no others`() =
+        runTest {
+            // A 2020 purchase really does change what today is worth — net worth as at a day counts
+            // every transaction booked on or before it — so today's stored figure is stale and gets
+            // rewritten. What must **not** happen is a snapshot appearing for 2020: reconstructing
+            // years the user never had the app for would be inventing data (P-03), the same argument
+            // `snapshotUpToToday` makes for its first ever run.
+            insertAccount("a:bank", AccountType.BANK, 1_00_000_00L)
+            repository.snapshotUpToToday().expectOk()
+
+            clock.advanceBy(ONE_MINUTE)
+            insertTransaction("t:ancient", "a:bank", -5_000_00L, bookedOn = "2020-01-01")
+
+            assertEquals("only the one stored day", 1, repository.repairStaleHistory().expectOk())
+            assertEquals(Money(95_000_00L), repository.observeLatest().first()!!.netWorth)
+            assertNull(
+                "no history may be conjured for a day the app never saw",
+                database.netWorthSnapshotDao().findForDate(PROFILE, "2020-01-01"),
+            )
+        }
+
+    @Test
+    fun `another profile's back-dated row never touches this one's history`() =
+        runTest {
+            insertAccount("a:bank", AccountType.BANK, 1_00_000_00L)
+            repository.snapshotUpToToday().expectOk()
+
+            clock.advanceBy(ONE_MINUTE)
+            insertTransaction("t:demo", "a:bank", -5_000_00L, bookedOn = TODAY, profileId = DEMO_PROFILE)
+
+            assertEquals(0, repository.repairStaleHistory().expectOk())
+        }
+
+    /**
+     * Result: a transaction row. Input: see the parameters. Output: none (suspends).
+     *
+     * `@Suppress("LongParameterList")`: a row fixture — the count is the table's, not a design choice.
+     */
+    @Suppress("LongParameterList")
     private suspend fun insertTransaction(
         id: String,
         accountId: String,
         amountMinor: Long,
         bookedOn: String,
         deleted: Boolean = false,
+        profileId: String = PROFILE,
     ) {
         database.transactionDao().upsert(
             TransactionEntity(
                 id = id,
-                profileId = PROFILE,
+                profileId = profileId,
                 accountId = accountId,
                 amountMinor = amountMinor,
                 currencyCode = "INR",
@@ -564,6 +680,15 @@ class NetWorthRepositoryTest {
 
         /** The profile-zone day [MID_MARCH_MILLIS] falls on. */
         const val TODAY = "2026-03-17"
+
+        /**
+         * Enough to put a write strictly after a snapshot's `computed_at`, without crossing midnight.
+         *
+         * The repair's whole detection is a `>` on two timestamps, so a fixture that wrote a
+         * transaction at the same millisecond as the snapshot would report nothing stale and the
+         * test would pass for the wrong reason.
+         */
+        val ONE_MINUTE: Duration = Duration.ofMinutes(1)
     }
 }
 

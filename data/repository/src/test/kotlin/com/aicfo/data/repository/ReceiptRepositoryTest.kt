@@ -180,17 +180,6 @@ class ReceiptRepositoryTest {
         }
 
     @Test
-    fun `a hand-typed transaction still may not be back-dated`() =
-        runTest {
-            // The other half of ADR-0011: the provenance decides, so issue 3.4's rule is untouched
-            // for the screen a person types into.
-            val account = newAccount()
-            val typed = draft(account).copy(source = TransactionSource.MANUAL)
-
-            assertTrue(transactions.create(typed) is Err)
-        }
-
-    @Test
     fun `a receipt the user chose not to keep saves the transaction alone`() =
         runTest {
             val account = newAccount()

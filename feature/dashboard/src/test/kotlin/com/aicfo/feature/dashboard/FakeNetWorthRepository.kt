@@ -43,6 +43,8 @@ internal class FakeNetWorthRepository : NetWorthRepository {
 
     override suspend fun snapshotUpToToday(): Result<Int, AppError> = Ok(0)
 
+    override suspend fun repairStaleHistory(): Result<Int, AppError> = Ok(0)
+
     /**
      * Publishes a snapshot.
      * Result: collectors see the figure. Input: [netWorthMinor] — paise, signed. Output: none.

@@ -1,10 +1,16 @@
 # ADR-0011 — A scanned receipt may be back-dated; the daily net-worth series does not follow it
 
-- **Status:** accepted
+- **Status:** superseded by [ADR-0012](0012-back-dating-and-the-repairable-net-worth-series.md) (2026-08-06)
 - **Date:** 2026-08-06
 - **Deciders:** Harish G (solo), implementing issue 3.8
 - **SRS refs:** §5.4 (FR-OCR-003, FR-OCR-004), §5.3 (FR-TXN-010), §5.1 (FR-ACC-005), §18.1,
   §21.4 (TIM-002), P-02, P-07
+
+> **Superseded the same day.** This ADR allowed back-dating for a *receipt* and left the daily
+> net-worth series knowingly stale, naming the recompute as debt for whichever issue needed it next.
+> ADR-0012 wrote that recompute, which removed the reason for the narrow rule — back-dating is now
+> allowed on every path and the series repairs itself. The record below stands as the reasoning at
+> the time; the provenance-based `recordsAPastEvent` rule it describes no longer exists.
 
 ## Context
 

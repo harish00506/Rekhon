@@ -77,22 +77,28 @@ data class AddTransactionUiState(
     /** Whether the time picker is open. Part of the state so a test can drive it. */
     val isTimePickerOpen: Boolean = false,
     /**
-     * The earliest day the picker offers — today, in the profile zone (issue 3.4).
+     * Today, in the profile zone (issue 3.4).
      *
      * Supplied by the ViewModel from the injected `Clock` rather than read in the composable, and
      * defaulted to the epoch so a preview or a test that does not care renders without a clock. Its
      * real value arrives with the first state emission.
      *
+     * **It seeds the picker; it no longer bounds it.** Until ADR-0012 this was
+     * `todayInProfileZone` and the picker refused every day before it, because a back-dated row
+     * left the frozen net-worth series behind. `NetWorthRepository.repairStaleHistory` fixed the
+     * consequence, so the bound went with it — the field is now only where the picker opens and what
+     * "Today" means (see `withDate`).
+     *
      * **`ofEpochDay(0)`, not `LocalDate.EPOCH`** — that constant is API 34 and this app's minSdk is
      * 26 (NFR-008). Caught by `lintDebug`, not by any test: every unit test runs on the JVM, where
      * the constant exists, so this would have compiled, passed and crashed on a real phone.
      */
-    val earliestBookableDate: LocalDate = LocalDate.ofEpochDay(0),
+    val todayInProfileZone: LocalDate = LocalDate.ofEpochDay(0),
     /**
      * The current time of day in the profile zone, for seeding the time picker (FR-TXN-001).
      *
      * Supplied by the ViewModel from the injected `Clock` for the same reason
-     * [earliestBookableDate] is: a composable may not read a clock (TIM-001), and the profile zone
+     * [todayInProfileZone] is: a composable may not read a clock (TIM-001), and the profile zone
      * is not the device's. Only ever a starting position — nothing is decided by it.
      */
     val nowInProfileZone: LocalTime = LocalTime.MIDNIGHT,
