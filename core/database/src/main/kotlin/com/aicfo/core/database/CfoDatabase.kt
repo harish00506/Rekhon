@@ -3,6 +3,7 @@ package com.aicfo.core.database
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import com.aicfo.core.database.dao.AccountDao
+import com.aicfo.core.database.dao.AttachmentDao
 import com.aicfo.core.database.dao.AuditLogDao
 import com.aicfo.core.database.dao.BudgetDao
 import com.aicfo.core.database.dao.CategoryDao
@@ -14,6 +15,7 @@ import com.aicfo.core.database.dao.TagDao
 import com.aicfo.core.database.dao.TransactionDao
 import com.aicfo.core.database.dao.TransactionSplitDao
 import com.aicfo.core.database.entity.AccountEntity
+import com.aicfo.core.database.entity.AttachmentEntity
 import com.aicfo.core.database.entity.AuditLogEntity
 import com.aicfo.core.database.entity.BudgetEntity
 import com.aicfo.core.database.entity.CategoryEntity
@@ -57,6 +59,7 @@ import com.aicfo.core.database.entity.TransactionTagEntity
         NetWorthSnapshotEntity::class,
         TagEntity::class,
         TransactionTagEntity::class,
+        AttachmentEntity::class,
     ],
     version = CfoDatabase.VERSION,
     exportSchema = true,
@@ -93,6 +96,9 @@ abstract class CfoDatabase : RoomDatabase() {
     /** Input: none. Output: the tag DAO (issue 3.6, FR-TXN-007/FR-TXN-008). */
     abstract fun tagDao(): TagDao
 
+    /** Input: none. Output: the attachment DAO (issue 3.8, FR-OCR-005). */
+    abstract fun attachmentDao(): AttachmentDao
+
     /**
      * Input:  none. Output: the demo wipe DAO (issue 2.4, FR-ONB-004).
      *
@@ -113,9 +119,10 @@ abstract class CfoDatabase : RoomDatabase() {
          * (`transaction_splits`; FR-TXN-004) · 8 — issue 3.4
          * (`transactions.posted_at_utc_millis`; FR-TXN-010) · 9 — issue 3.6 (`tags`,
          * `transaction_tags`; FR-TXN-007, FR-TXN-008) · 10 — issue 3.7
-         * (`recurring_rule.dismissed_at_utc_millis`; FR-TXN-006).
+         * (`recurring_rule.dismissed_at_utc_millis`; FR-TXN-006) · 11 — issue 3.8 (`attachments`;
+         * FR-OCR-005).
          */
-        const val VERSION = 10
+        const val VERSION = 11
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"

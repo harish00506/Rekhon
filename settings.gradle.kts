@@ -59,6 +59,7 @@ include(":domain:engines:forecast") // representative engine stub
 include(":domain:engines:quicksetup") // FR-ONB-002 seeds -> budget envelopes + emergency target
 include(":domain:engines:networth")    // FR-ACC-005 assets - liabilities + the daily snapshot
 include(":domain:engines:recurring")   // FR-TXN-006 proposes recurring series from the ledger
+include(":domain:engines:receipt")     // FR-OCR-003 reads total/date/merchant/GST off recognised text
 include(":domain:usecase")
 
 // :data:*                  the ONLY DAO/network touchers (ARC-005)

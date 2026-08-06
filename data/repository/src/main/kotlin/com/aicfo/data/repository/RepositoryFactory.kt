@@ -3,10 +3,13 @@ package com.aicfo.data.repository
 import com.aicfo.core.common.Clock
 import com.aicfo.core.common.DispatcherProvider
 import com.aicfo.core.common.IdGenerator
+import com.aicfo.core.crypto.ReceiptImageStore
 import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.datastore.SettingsStore
 import com.aicfo.domain.engines.networth.NetWorthEngine
+import com.aicfo.domain.engines.receipt.ReceiptEngine
 import com.aicfo.domain.engines.recurring.RecurringEngine
+import com.aicfo.ml.ocr.ReceiptTextRecognizer
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -145,4 +148,46 @@ object RepositoryFactory {
         dispatchers: DispatcherProvider,
         activeProfileId: Flow<String>,
     ): RecurringRepository = RoomRecurringRepository(database, engine, clock, dispatchers, activeProfileId)
+
+    /**
+     * Builds the receipt pipeline (issue 3.8, FR-OCR-001..006).
+     * Why:    takes the [recognizer], the [engine] and the [images] store rather than constructing
+     *         any of them, for the same reason [recurring] does — each is behind its own factory and
+     *         its implementation is `internal` to its module (ARC-003). It also takes
+     *         [transactions], because writing a transaction is already that repository's job and a
+     *         second copy of the stamping and validation rules would drift from the first.
+     * Result: a [ReceiptRepository] over the encrypted database and the encrypted blob store.
+     * Input:  [database]; [transactions] — writes the ledger row; [recognizer] — on-device OCR
+     *         (FR-OCR-002); [engine] — the parser (P-03); [images] — FR-OCR-005's encrypted store;
+     *         [clock] — TIM-001, and the parser's "today" in the profile zone (TIM-002); [ids] —
+     *         mints attachment ids; [dispatchers]; [activeProfileId] — which profile is scanned
+     *         into, so the demo gets its own receipts and loses them with it (ADR-0006).
+     * Output: [ReceiptRepository].
+     *
+     * `@Suppress("LongParameterList")`: one argument per collaborator. See `RoomReceiptRepository` —
+     * that class exists precisely to be the one place the four halves of FR-OCR meet.
+     */
+    @Suppress("LongParameterList")
+    fun receipts(
+        database: CfoDatabase,
+        transactions: TransactionRepository,
+        recognizer: ReceiptTextRecognizer,
+        engine: ReceiptEngine,
+        images: ReceiptImageStore,
+        clock: Clock,
+        ids: IdGenerator,
+        dispatchers: DispatcherProvider,
+        activeProfileId: Flow<String>,
+    ): ReceiptRepository =
+        RoomReceiptRepository(
+            database = database,
+            transactions = transactions,
+            recognizer = recognizer,
+            engine = engine,
+            images = images,
+            clock = clock,
+            ids = ids,
+            dispatchers = dispatchers,
+            activeProfileId = activeProfileId,
+        )
 }

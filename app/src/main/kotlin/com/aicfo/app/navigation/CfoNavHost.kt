@@ -12,6 +12,7 @@ import com.aicfo.feature.accounts.AccountsScreen
 import com.aicfo.feature.dashboard.DashboardScreen
 import com.aicfo.feature.onboarding.OnboardingScreen
 import com.aicfo.feature.transactions.AddTransactionScreen
+import com.aicfo.feature.transactions.ReceiptReviewScreen
 import com.aicfo.feature.transactions.TransactionsScreen
 
 /**
@@ -30,6 +31,7 @@ import com.aicfo.feature.transactions.TransactionsScreen
  *            2026-07-28 — Issue 2.4: onboarding gained a second exit — into the demo.
  *            2026-07-28 — Issue 2.5: accounts, and the first destination that takes an argument.
  *            2026-08-02 — Issue 3.1: the add-transaction destination the global FAB opens.
+ *            2026-08-06 — Issue 3.8: the receipt review destination, reached from the add screen.
  *
  * Input:  [startDestination] — decided by `MainViewModel` from the stored onboarding flag;
  *         [modifier]; [navController] — hoisted so a test or a preview can supply its own.
@@ -60,7 +62,16 @@ fun CfoNavHost(
             // popBackStack for the same reason the editor below does: the capture screen was pushed
             // on top of whatever the user was looking at, and saving must return them there — the FAB
             // is global, so "wherever they were" is genuinely any destination.
-            AddTransactionScreen(onDone = { navController.popBackStack() })
+            AddTransactionScreen(
+                onDone = { navController.popBackStack() },
+                onScanReceipt = { navController.navigate(CfoRoute.ReceiptReview) },
+            )
+        }
+        composable<CfoRoute.ReceiptReview> {
+            // popBackStack, not a pop back to the dashboard: the add screen is still underneath, so
+            // a user who scanned a receipt and changed their mind lands back on the form they had
+            // already started filling in (issue 3.8).
+            ReceiptReviewScreen(onDone = { navController.popBackStack() })
         }
         composable<CfoRoute.Accounts> {
             AccountsScreen(

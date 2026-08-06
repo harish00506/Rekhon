@@ -14,7 +14,7 @@ android {
 
     defaultConfig {
         applicationId = "com.aicfo.personalcfo"
-        versionCode = 16
+        versionCode = 17
         versionName = rootProject.file("VERSION").readText().trim()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -75,6 +75,13 @@ dependencies {
     implementation(project(":core:crypto"))
     implementation(project(":data:repository"))
     implementation(libs.androidx.biometric)
+
+    // Issue 3.8: the DI graph binds the on-device recogniser (FR-OCR-002) and the receipt parser
+    // (FR-OCR-003) by name, so :app compiles against both. Declared explicitly rather than relying
+    // on :data:repository's `api` to leak them in — a binding whose type arrived by accident breaks
+    // the day that module reorganises its dependencies.
+    implementation(project(":ml:ocr"))
+    implementation(project(":domain:engines:receipt"))
 
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  :feature:transactions' manifest contribution (issue 3.8; FR-OCR-001, P-01).
+
+  Why:  FR-OCR-001 requires camera capture, and `ActivityResultContracts.TakePicture` hands the
+        system camera a URI to write into — which needs a `FileProvider`. It is declared **here
+        rather than in :app** because the only code that uses it is `ReceiptReviewScreen`, three
+        files away; a provider declared in the app module for a feature module's use is a coupling
+        that nothing points at.
+
+        **There is deliberately no `<uses-permission>` in this file at all.** The system camera app
+        owns the camera and the photo picker owns the gallery, so this app never asks for `CAMERA`
+        or for storage access — the strongest reading of P-01 for a feature whose input is a
+        photograph of the user's life.
+  Result: the camera can be handed one scratch file; see res/xml/cfo_file_paths.xml for the scope.
+  Changelog: 2026-08-06 — Created for issue 3.8.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/cfo_file_paths" />
+        </provider>
+    </application>
+</manifest>

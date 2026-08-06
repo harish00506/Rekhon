@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  What the FileProvider is allowed to share (issue 3.8; FR-OCR-001, P-01).
+
+  Why:  the camera app has to be handed a destination to write into, and a `FileProvider` grant is
+        the only way to give another app a path inside this app's private storage. **Exactly one
+        directory is exposed** — the capture scratch folder inside `cacheDir` — so a grant issued for
+        a receipt photo cannot reach the encrypted database, the receipt blobs beside it, or the
+        keyset files. A `<files-path path="."/>` would have been shorter and would have shared
+        everything.
+  Result: the camera can write one photo and nothing else is reachable.
+  Changelog: 2026-08-06 — Created for issue 3.8.
+-->
+<paths>
+    <cache-path
+        name="receipt-capture"
+        path="receipt-capture/" />
+</paths>

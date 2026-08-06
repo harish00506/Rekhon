@@ -27,6 +27,13 @@ dependencies {
     // api: QuickSetupPlan and BudgetEnvelope appear on QuickSetupRepository's public surface, so
     // the ViewModels that call it must be able to name them (issue 2.3).
     api(project(":domain:engines:quicksetup"))
+    // Issue 3.8: the receipt pipeline. `api` on all three, because ReceiptFields, RecognizedText
+    // and StoredImage all appear on ReceiptRepository's public surface — the ViewModel pre-fills
+    // from the first and the DI graph names the others (FR-OCR-002/003/005).
+    api(project(":domain:engines:receipt"))
+    api(project(":ml:ocr"))
+    api(project(":core:crypto"))
+
     // Issue 2.6: the net-worth engine FR-ACC-005 requires; the repository hands it balances
     // and stores what it returns, computing nothing of its own (P-03).
     api(project(":domain:engines:networth"))

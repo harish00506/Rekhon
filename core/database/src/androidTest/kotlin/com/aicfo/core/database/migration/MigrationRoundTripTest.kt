@@ -627,6 +627,60 @@ class MigrationRoundTripTest {
         migrated.close()
     }
 
+    /**
+     * 10 → 11 adds `attachments` (issue 3.8; FR-OCR-005).
+     *
+     * Input:  a version-10 database holding a transaction with an exact paise amount.
+     * Output: asserts the transaction survives untouched, the new table exists and accepts a
+     *         receipt row, and — the half of FR-OCR-005 that matters — tombstoning that row leaves
+     *         the transaction alone.
+     *
+     * **Purely additive, so the failure this guards against is a migration that recreated an
+     * existing table on its way to adding a new one**: that would validate perfectly against
+     * `schemas/11.json` and lose the user's ledger. The amount is asserted byte for byte for the
+     * reason `migrate1To2` gives (MNY-001).
+     */
+    @Test
+    fun migrate10To11_preservesTransactionsAndAcceptsAttachments() {
+        helper.createDatabase(TEST_DB, 10).use { db ->
+            db.execSQL(
+                "INSERT INTO transactions (id, profile_id, account_id, amount_minor, currency_code, " +
+                    "occurred_at_utc_millis, booked_on_iso_date, source, type, " +
+                    "created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('t1','p1','a1',-36580,'INR',1767312000000,'2026-08-04','ocr','expense'," +
+                    "1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 11, true, Migrations.MIGRATION_10_11)
+
+        migrated.query("SELECT amount_minor FROM transactions WHERE id = 't1'").use { cursor ->
+            assertTrue("the pre-migration transaction must still be there", cursor.moveToFirst())
+            assertEquals("MNY-001: the amount must survive byte for byte", -36580L, cursor.getLong(0))
+        }
+
+        migrated.execSQL(
+            "INSERT INTO attachments (id, profile_id, transaction_id, kind, file_name, mime_type, " +
+                "byte_size, created_at_utc_millis, updated_at_utc_millis) " +
+                "VALUES ('at1','p1','t1','receipt','at1.bin','image/jpeg',48213," +
+                "1767312000000,1767312000000)",
+        )
+        migrated.query(
+            "SELECT COUNT(*) FROM attachments WHERE transaction_id = 't1' AND deleted_at_utc_millis IS NULL",
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("the receipt must be linked to its transaction", 1, cursor.getInt(0))
+        }
+
+        // FR-OCR-005's second half: the image goes, the transaction stays.
+        migrated.execSQL("UPDATE attachments SET deleted_at_utc_millis = 1767312000000 WHERE id = 'at1'")
+        migrated.query("SELECT COUNT(*) FROM transactions WHERE id = 't1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("deleting the image must not touch the transaction", 1, cursor.getInt(0))
+        }
+        migrated.close()
+    }
+
     private companion object {
         const val TEST_DB = "migration-test.db"
     }

@@ -5,13 +5,25 @@ plugins {
 
 android {
     namespace = "com.aicfo.core.crypto"
+
+    testOptions {
+        // Robolectric needs the merged Android resources to boot its runtime. Added for issue 3.8:
+        // ReceiptImagePrivacy decodes a real Bitmap, so its round trip needs an Android runtime.
+        unitTests.isIncludeAndroidResources = true
+    }
 }
 
 dependencies {
-    // Result/AppError (§21.6) — nothing here throws across a boundary.
-    implementation(project(":core:common"))
+    // api, not implementation: StoredImage and AppError appear on ReceiptImageStore's public
+    // surface (issue 3.8), so :data:repository must be able to name them.
+    api(project(":core:common"))
 
     // SEC-003 is absolute: Tink primitives only. There is no javax.crypto in this module, and the
-    // one Keystore touch (KeystoreMacFactory) goes through Tink's own Android integration.
-    implementation(libs.tink.android)
+    // two Keystore touches (KeystoreMacFactory, ReceiptImageStoreFactory) go through Tink's own
+    // Android integration.
+    api(libs.tink.android)
+
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

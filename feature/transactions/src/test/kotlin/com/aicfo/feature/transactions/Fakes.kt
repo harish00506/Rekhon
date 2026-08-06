@@ -22,12 +22,16 @@ import com.aicfo.core.model.Transfer
 import com.aicfo.data.repository.AccountDraft
 import com.aicfo.data.repository.AccountRepository
 import com.aicfo.data.repository.FilteredTransaction
+import com.aicfo.data.repository.ReceiptAttachment
+import com.aicfo.data.repository.ReceiptRepository
+import com.aicfo.data.repository.ReceiptScan
 import com.aicfo.data.repository.RecurringRepository
 import com.aicfo.data.repository.SplitDraft
 import com.aicfo.data.repository.TransactionDraft
 import com.aicfo.data.repository.TransactionFilter
 import com.aicfo.data.repository.TransactionRepository
 import com.aicfo.data.repository.TransferDraft
+import com.aicfo.domain.engines.receipt.ReceiptFields
 import com.aicfo.domain.engines.recurring.Cadence
 import com.aicfo.domain.engines.recurring.RecurringOccurrence
 import com.aicfo.domain.engines.recurring.RecurringRules
@@ -35,6 +39,7 @@ import com.aicfo.domain.engines.recurring.RecurringSeries
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
+import java.time.LocalDate
 
 /**
  * An in-memory [TransactionRepository] for the ViewModel tests (issue 3.1).
@@ -618,5 +623,132 @@ internal fun series(
                 engineVersion = "1.0",
                 computedAtUtcMillis = 1_754_000_000_000L,
                 evidence = listOf(RecurringRules.SERIES_MATCH),
+            ),
+    )
+
+/**
+ * A [ReceiptRepository] whose scans and attachments the test decides (issue 3.8; FR-OCR-*).
+ *
+ * Why:  the real one needs ML Kit, a Keystore and a camera. Faking it is what lets the review
+ *       screen's two rules — FR-OCR-004's save gate and FR-OCR-006's merge offer — be asserted on
+ *       the JVM, which is where the requirements can actually be pinned.
+ * What: an injectable scan result, a recorded save/merge/delete, and one attachment per transaction.
+ * Result: every branch of the review screen and the detail sheet's receipt row is reachable.
+ * Changelog: 2026-08-06 — Created for issue 3.8.
+ *
+ * **[saved] records the draft, not just the fact of a save.** The claim worth checking is what the
+ * ViewModel *hands over* — a screen that saved the parser's reading rather than the user's
+ * correction would be a real bug that recording only a count would hide.
+ *
+ * Input:  [failWith] — when non-null, every operation returns `Err` with it.
+ * Output: a fake repository.
+ */
+internal class FakeReceiptRepository(
+    var failWith: AppError? = null,
+) : ReceiptRepository {
+    /** What the next [scan] returns. */
+    var nextScan: ReceiptScan = ReceiptScan(emptyFields(), emptyList())
+
+    /** What [findDuplicates] returns. */
+    var duplicates: List<Transaction> = emptyList()
+
+    /** Every draft passed to [save], in order, with the bytes it was given. */
+    val saved: MutableList<Pair<TransactionDraft, ByteArray?>> = mutableListOf()
+
+    /** Every transaction id passed to [mergeInto], in order. */
+    val merged: MutableList<String> = mutableListOf()
+
+    /** Every attachment id passed to [deleteImage], in order. */
+    val deleted: MutableList<String> = mutableListOf()
+
+    private val attachments = MutableStateFlow<Map<String, ReceiptAttachment>>(emptyMap())
+
+    /** Result: the transaction now has a receipt. Input: [transactionId]; [attachment]. Output: none. */
+    fun attach(
+        transactionId: String,
+        attachment: ReceiptAttachment,
+    ) {
+        attachments.value = attachments.value + (transactionId to attachment)
+    }
+
+    override suspend fun scan(bytes: ByteArray): Result<ReceiptScan, AppError> {
+        failWith?.let { return Err(it) }
+        return Ok(nextScan)
+    }
+
+    override suspend fun findDuplicates(
+        amount: Money,
+        bookedOn: LocalDate,
+    ): Result<List<Transaction>, AppError> {
+        failWith?.let { return Err(it) }
+        return Ok(duplicates)
+    }
+
+    override suspend fun save(
+        draft: TransactionDraft,
+        imageBytes: ByteArray?,
+    ): Result<Transaction, AppError> {
+        failWith?.let { return Err(it) }
+        saved += draft to imageBytes
+        return Ok(
+            Transaction(
+                id = "txn:receipt",
+                accountId = draft.accountId,
+                amount = draft.amount,
+                occurredAtUtcMillis = 0L,
+                bookedOn = draft.bookedOn?.toString().orEmpty(),
+                categoryId = draft.categoryId,
+                merchant = draft.merchant,
+                note = draft.note,
+                source = TransactionSource.OCR,
+                type = TransactionType.EXPENSE,
+            ),
+        )
+    }
+
+    override suspend fun mergeInto(
+        transactionId: String,
+        imageBytes: ByteArray,
+    ): Result<Unit, AppError> {
+        failWith?.let { return Err(it) }
+        merged += transactionId
+        return Ok(Unit)
+    }
+
+    override fun observeAttachment(transactionId: String): Flow<ReceiptAttachment?> =
+        attachments.map { it[transactionId] }
+
+    override suspend fun readImage(attachment: ReceiptAttachment): Result<ByteArray, AppError> {
+        failWith?.let { return Err(it) }
+        return Ok(byteArrayOf(1, 2, 3))
+    }
+
+    override suspend fun deleteImage(attachmentId: String): Result<Unit, AppError> {
+        failWith?.let { return Err(it) }
+        deleted += attachmentId
+        attachments.value = attachments.value.filterValues { it.id != attachmentId }
+        return Ok(Unit)
+    }
+}
+
+/**
+ * A parse that read nothing — the default [FakeReceiptRepository.nextScan] (issue 3.8).
+ * Why:    the honest default. Most tests care about one field, and a fake that pre-filled all four
+ *         would let a ViewModel that ignored the scan entirely still look correct.
+ * Result: [ReceiptFields] with every field null. Input: none. Output: the fields.
+ * Changelog: 2026-08-06 — Created for issue 3.8.
+ */
+internal fun emptyFields(): ReceiptFields =
+    ReceiptFields(
+        total = null,
+        date = null,
+        merchant = null,
+        tax = null,
+        provenance =
+            EngineProvenance(
+                engineId = "receipt-parser",
+                engineVersion = "1.0",
+                computedAtUtcMillis = 0L,
+                confidenceBps = 0,
             ),
     )

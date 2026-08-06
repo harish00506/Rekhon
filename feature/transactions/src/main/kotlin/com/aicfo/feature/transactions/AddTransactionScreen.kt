@@ -51,12 +51,15 @@ import com.aicfo.core.designsystem.theme.CfoDimens
  * Result: a transaction is captured in two taps, and the third is spare for a category or income.
  * Changelog: 2026-08-02 — Created for issue 3.1.
  *
- * Input:  [onDone] — where to go once saved or cancelled; [modifier]; [viewModel].
+ * Input:  [onDone] — where to go once saved or cancelled; [onScanReceipt] — opens issue 3.8's
+ *         receipt scanner, a *different destination* rather than a mode of this screen, because
+ *         capture has its own three-stage flow and its own back behaviour; [modifier]; [viewModel].
  * Output: the rendered screen.
  */
 @Composable
 fun AddTransactionScreen(
     onDone: () -> Unit,
+    onScanReceipt: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: AddTransactionViewModel = hiltViewModel(),
 ) {
@@ -72,6 +75,7 @@ fun AddTransactionScreen(
         uiState = uiState,
         onEvent = viewModel::onEvent,
         onCancel = onDone,
+        onScanReceipt = onScanReceipt,
         modifier = modifier,
     )
 }
@@ -81,9 +85,12 @@ fun AddTransactionScreen(
  * Why:    stateless so the tap-count test can drive it without Hilt, a database or a navigator —
  *         FR-TXN-002's budget is asserted against this function.
  * Result: the rendered content.
- * Input:  [uiState]; [onEvent] — events up (ARC-004); [onCancel]; [modifier].
+ * Input:  [uiState]; [onEvent] — events up (ARC-004); [onCancel]; [onScanReceipt] — issue 3.8's
+ *         scanner, defaulted to a no-op so the thirty existing call sites and previews are unchanged;
+ *         [modifier].
  * Output: the composition.
  * Changelog: 2026-08-02 — Created for issue 3.1.
+ *            2026-08-06 — Issue 3.8: the "Scan a receipt" action.
  */
 @Composable
 fun AddTransactionContent(
@@ -91,6 +98,7 @@ fun AddTransactionContent(
     onEvent: (AddTransactionEvent) -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
+    onScanReceipt: () -> Unit = {},
 ) {
     Column(
         modifier =
@@ -137,6 +145,10 @@ fun AddTransactionContent(
         SplitToggle(uiState = uiState, onEvent = onEvent)
         SplitEditor(uiState = uiState, onEvent = onEvent)
         NoteFieldAndActions(uiState = uiState, onEvent = onEvent, onCancel = onCancel)
+        // Issue 3.8 (FR-OCR-001), and **last on purpose**: FR-TXN-002 budgets the typed path at
+        // three taps, and an action above the amount field would put a choice in front of the user
+        // before the thing they came here to do. Scanning is the alternative, not the default.
+        CfoSecondaryButton(text = stringResource(R.string.add_txn_scan), onClick = onScanReceipt)
     }
 }
 
@@ -408,9 +420,12 @@ private fun CategoryPicker(
  *         anything the throwable said (P-01).
  * Result: the composition. Input: [code] — an `AppError.code`; [onDismiss]. Output: none.
  * Changelog: 2026-08-02 — Created for issue 3.1.
+ *            2026-08-06 — Issue 3.8: made `internal` so the receipt review screen renders failures
+ *            identically. One banner rather than two: the two screens surface the same
+ *            `AppError.code`s and a second copy would drift in wording and in accessibility.
  */
 @Composable
-private fun AddTransactionErrorBanner(
+internal fun AddTransactionErrorBanner(
     code: String,
     onDismiss: () -> Unit,
 ) {

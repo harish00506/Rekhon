@@ -12,6 +12,7 @@ import androidx.room.Relation
 import androidx.room.Transaction
 import androidx.room.Update
 import com.aicfo.core.database.entity.AccountEntity
+import com.aicfo.core.database.entity.AttachmentEntity
 import com.aicfo.core.database.entity.AuditLogEntity
 import com.aicfo.core.database.entity.BudgetEntity
 import com.aicfo.core.database.entity.CategoryEntity
@@ -689,6 +690,46 @@ interface TransactionDao {
     ): Flow<List<RecurringCandidateRow>>
 
     /**
+     * Finds transactions that may already be this receipt (issue 3.8; FR-OCR-006).
+     *
+     * Why:    FR-OCR-006 is a MUST — *"if an SMS/manual transaction with same amount ±1% and date
+     *         ±1 day exists, MUST offer merge instead of creating a duplicate"* — and every clause of
+     *         it is in this `WHERE`:
+     *         - `source IN ('manual', 'sms')` is the requirement's own wording, not a simplification.
+     *           An existing **ocr** row is a different receipt someone scanned, not a duplicate of
+     *           this one; offering to merge two scans would quietly delete a real purchase.
+     *         - `ABS(amount_minor) BETWEEN :minMinor AND :maxMinor` — **the ±1% band is computed by
+     *           the caller, in integer paise** (MNY-001). Doing it here would mean
+     *           `amount_minor * 0.99` in SQL, which is floating-point arithmetic on money.
+     *           Compared on the magnitude, because a receipt's total is unsigned and the ledger's
+     *           spending is negative.
+     *         - `booked_on_iso_date BETWEEN :fromIso AND :toIso` — TIM-002 makes this a string
+     *           comparison that is also a date comparison, because ISO `yyyy-MM-dd` sorts
+     *           lexicographically.
+     *         - `transfer_id IS NULL` — money moved between your own accounts is not a purchase, so
+     *           it can never be the thing a receipt duplicates (FR-TXN-003).
+     * Result: the rows to offer as a merge, newest first. Empty is the common answer and means "save
+     *         a new transaction".
+     * Input:  [profileId]; [minMinor] and [maxMinor] — the magnitude band in paise, inclusive;
+     *         [fromIsoDate] and [toIsoDate] — the date window, inclusive.
+     * Output: `List<TransactionEntity>`.
+     */
+    @Query(
+        "SELECT * FROM transactions WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
+            "AND source IN ('manual', 'sms') AND transfer_id IS NULL " +
+            "AND ABS(amount_minor) BETWEEN :minMinor AND :maxMinor " +
+            "AND booked_on_iso_date BETWEEN :fromIsoDate AND :toIsoDate " +
+            "ORDER BY booked_on_iso_date DESC, id",
+    )
+    suspend fun findDuplicateCandidates(
+        profileId: String,
+        minMinor: Long,
+        maxMinor: Long,
+        fromIsoDate: String,
+        toIsoDate: String,
+    ): List<TransactionEntity>
+
+    /**
      * Sets the category on many transactions at once (issue 3.6; FR-TXN-008).
      *
      * Why:    FR-TXN-008's "multi-select recategorise", as one statement — a loop of single updates
@@ -1271,6 +1312,28 @@ interface DemoDao {
     @Query("DELETE FROM transaction_tags WHERE profile_id = :profileId")
     suspend fun deleteTransactionTags(profileId: String): Int
 
+    /**
+     * Removes the demo's attachment rows (issue 3.8; ADR-0006).
+     * Why:    a table the demo wipe cannot reach is residue, and this one is the worst kind — a
+     *         receipt row surviving a wipe would point at a blob the erase also has to remove.
+     *         **Deleting the ciphertext is the repository's job, not this query's**: a DAO cannot
+     *         touch the filesystem, so the wipe reads the file names first and erases them itself.
+     * Result: rows removed from `attachments`. Input: [profileId]. Output: the count.
+     */
+    @Query("DELETE FROM attachments WHERE profile_id = :profileId")
+    suspend fun deleteAttachments(profileId: String): Int
+
+    /**
+     * Lists the blob file names the wipe still has to erase (issue 3.8).
+     * Why:    read **before** [deleteAttachments], because after it there is nothing left to say
+     *         which files on disk belonged to this profile — and an orphaned ciphertext blob is data
+     *         a "delete everything" did not delete (P-01). Includes tombstoned rows: a row whose
+     *         blob failed to erase earlier is exactly the one this must catch.
+     * Result: the file names. Input: [profileId]. Output: `List<String>`.
+     */
+    @Query("SELECT file_name FROM attachments WHERE profile_id = :profileId")
+    suspend fun attachmentFileNames(profileId: String): List<String>
+
     /** Result: rows removed from `tags`. Input: [profileId]. Output: the count. */
     @Query("DELETE FROM tags WHERE profile_id = :profileId")
     suspend fun deleteTags(profileId: String): Int
@@ -1305,7 +1368,7 @@ interface DemoDao {
      *         Deliberately **not** filtered by `deleted_at_utc_millis`: a soft-deleted row is
      *         precisely the residue being looked for, so it must count.
      * Result: `0` once the profile has been erased.
-     * Input:  [profileId]. Output: the total row count across all ten tables.
+     * Input:  [profileId]. Output: the total row count across all eleven tables.
      */
     @Query(
         "SELECT (SELECT COUNT(*) FROM profile WHERE id = :profileId) + " +
@@ -1313,6 +1376,7 @@ interface DemoDao {
             "(SELECT COUNT(*) FROM transactions WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM transaction_splits WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM transaction_tags WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM attachments WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM tags WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM category WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM budget WHERE profile_id = :profileId) + " +
@@ -1432,5 +1496,66 @@ interface AuditLogDao {
     suspend fun countSince(
         event: String,
         sinceUtcMillis: Long,
+    ): Int
+}
+
+/**
+ * Reads and writes the files linked to a transaction (issue 3.8; FR-OCR-005).
+ *
+ * Why:  four queries, and the shape of two of them is the requirement. [softDelete] tombstones the
+ *       row while the caller erases the blob, which together are FR-OCR-005's "delete image while
+ *       keeping the transaction" — the transaction is never touched. And [findById] exists **without
+ *       a soft-delete filter**, because erasing a blob needs the file name of a row that may already
+ *       be tombstoned; every other read here filters, as §20 requires.
+ * Result: the receipt a transaction carries, and the ability to lose it on purpose.
+ * Changelog: 2026-08-06 — Created for issue 3.8.
+ */
+@Dao
+interface AttachmentDao {
+    /**
+     * Inserts an attachment, replacing any with the same id.
+     * Why:    REPLACE with a **derived** id, the mechanism `netWorthSnapshotId` and `recurringRuleId`
+     *         already use: re-scanning the same receipt onto the same transaction updates one row
+     *         rather than accumulating a second pointing at an orphaned blob.
+     * Result: the row is present. Input: [attachment]. Output: none.
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(attachment: AttachmentEntity)
+
+    /**
+     * Observes the live attachments on one transaction.
+     * Result: emits on every change; empty when the image was deleted or never existed — both real
+     *         answers rather than errors.
+     * Input:  [transactionId]. Output: `Flow<List<AttachmentEntity>>`, oldest first.
+     */
+    @Query(
+        "SELECT * FROM attachments WHERE transaction_id = :transactionId " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY created_at_utc_millis",
+    )
+    fun observeForTransaction(transactionId: String): Flow<List<AttachmentEntity>>
+
+    /**
+     * Finds one attachment by id, **tombstoned or not**.
+     * Why:    the one query here that does not filter `deleted_at_utc_millis`, deliberately. Erasing
+     *         a blob needs its file name, and a caller retrying a failed erase would otherwise be
+     *         unable to find the row it is trying to finish deleting — leaving ciphertext on disk
+     *         with nothing pointing at it, which is the opposite of what FR-OCR-005 asks for.
+     * Result: the row, or `null`. Input: [id]. Output: `AttachmentEntity?`.
+     */
+    @Query("SELECT * FROM attachments WHERE id = :id")
+    suspend fun findById(id: String): AttachmentEntity?
+
+    /**
+     * Tombstones one attachment (FR-OCR-005).
+     * Why:    the transaction is untouched — that is the requirement's whole second half. The blob
+     *         itself is erased by the caller; a row with no blob is recoverable-looking and wrong, so
+     *         the repository does both inside one operation.
+     * Result: the number of rows stamped, `0` when the id names nothing.
+     * Input:  [id]; [deletedAtUtcMillis] — from the injected `Clock` (TIM-001). Output: [Int].
+     */
+    @Query("UPDATE attachments SET deleted_at_utc_millis = :deletedAtUtcMillis WHERE id = :id")
+    suspend fun softDelete(
+        id: String,
+        deletedAtUtcMillis: Long,
     ): Int
 }

@@ -40,11 +40,22 @@ sealed interface CfoRoute {
      * whole graph and would then survive navigation it should not. A destination gets the back stack,
      * Back, and process-death restoration for free — and it costs the same one tap.
      *
-     * No arguments: everything the screen needs it reads from the active profile. Issue 3.8's
-     * "review this scanned receipt" is the case that will need one, and it can add it then.
+     * No arguments: everything the screen needs it reads from the active profile.
      */
     @Serializable
     data object AddTransaction : CfoRoute
+
+    /**
+     * Scan a receipt and confirm what it says (issue 3.8; FR-OCR-001..006).
+     *
+     * **No arguments, and that is the design rather than a simplification.** The obvious shape would
+     * have been `ReceiptReview(imageUri: String)` — capture on the previous screen, pass the URI.
+     * But a content URI's read grant belongs to the activity that received it and does not survive
+     * process death, so a route carrying one would work until the day Android killed the app behind
+     * the camera. The screen launches the picker itself, so there is no URI to carry.
+     */
+    @Serializable
+    data object ReceiptReview : CfoRoute
 
     /** The accounts list (issue 2.5; FR-ACC-001). */
     @Serializable
