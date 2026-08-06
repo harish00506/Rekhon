@@ -68,7 +68,7 @@ class AddTransactionViewModel
         private val _uiState =
             MutableStateFlow(
                 AddTransactionUiState(
-                    earliestBookableDate = clock.today(),
+                    todayInProfileZone = clock.today(),
                     nowInProfileZone = clock.timeOfDay(),
                 ),
             )
@@ -118,7 +118,7 @@ class AddTransactionViewModel
                             // Re-read on every emission (issue 3.4): a form left open across
                             // midnight would otherwise keep offering yesterday as selectable, and
                             // the repository would refuse the save the picker had just allowed.
-                            earliestBookableDate = clock.today(),
+                            todayInProfileZone = clock.today(),
                             nowInProfileZone = clock.timeOfDay(),
                         )
                     }

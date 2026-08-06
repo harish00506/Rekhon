@@ -1451,6 +1451,37 @@ interface NetWorthSnapshotDao {
         profileId: String,
         asOfIsoDate: String,
     ): NetWorthSnapshotEntity?
+
+    /**
+     * The earliest stored day whose figure a later write has invalidated (ADR-0012).
+     *
+     * Why:    a snapshot is frozen on purpose — a *trend* must not move under the user (FR-ACC-005),
+     *         and `snapshotUpToToday` therefore never rewrites a day it has already recorded. That
+     *         is right for the ordinary case and wrong for exactly one: a transaction **booked into
+     *         a day that has already been snapshotted**. Back-dating a receipt, or deleting an old
+     *         row, changes what those days were worth, and without this nothing would ever correct
+     *         them.
+     *
+     *         **The staleness is derived, not tracked.** No flag, no queue, no "dirty" column a
+     *         write path could forget to set: a stored day is wrong iff some transaction booked on or
+     *         before it was written or removed *after* that day's figure was computed. Both halves
+     *         are needed — `updated_at` catches a row created or edited, and `deleted_at` catches one
+     *         removed, because `softDelete` deliberately does not touch `updated_at`. Tombstoned rows
+     *         are therefore **not** filtered out here, unlike every other query in this file: a
+     *         deleted transaction is precisely the change being looked for.
+     * Result: the earliest affected `as_of_iso_date`, or `null` when the stored history is correct —
+     *         which is the normal answer, and the one this returns on almost every run.
+     * Input:  [profileId]. Output: `String?` — ISO `yyyy-MM-dd` (TIM-002).
+     */
+    @Query(
+        "SELECT MIN(s.as_of_iso_date) FROM net_worth_snapshot s " +
+            "JOIN transactions t ON t.profile_id = s.profile_id " +
+            "AND t.booked_on_iso_date <= s.as_of_iso_date " +
+            "WHERE s.profile_id = :profileId AND s.deleted_at_utc_millis IS NULL " +
+            "AND (t.updated_at_utc_millis > s.computed_at_utc_millis " +
+            "OR t.deleted_at_utc_millis > s.computed_at_utc_millis)",
+    )
+    suspend fun findEarliestStaleDay(profileId: String): String?
 }
 
 /**

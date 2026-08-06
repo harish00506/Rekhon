@@ -9,7 +9,6 @@ import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
@@ -179,16 +178,14 @@ private fun ScheduleDatePicker(
 ) {
     if (!uiState.isDatePickerOpen) return
 
-    val earliest = uiState.earliestBookableDate
+    // **No `selectableDates` bound, and that is the change ADR-0012 made.** Until then the picker
+    // refused every day before today, because a back-dated row left the frozen net-worth series
+    // behind it. `NetWorthRepository.repairStaleHistory` corrects exactly those days now, so the
+    // only thing the bound was still doing was stopping a user recording a purchase they actually
+    // made — and the picker opens on today, so the common case costs no extra scrolling.
     val state =
         rememberDatePickerState(
-            initialSelectedDateMillis = (uiState.bookedOn ?: earliest).utcMillis(),
-            selectableDates =
-                object : SelectableDates {
-                    override fun isSelectableDate(utcTimeMillis: Long) = utcTimeMillis >= earliest.utcMillis()
-
-                    override fun isSelectableYear(year: Int) = year >= earliest.year
-                },
+            initialSelectedDateMillis = (uiState.bookedOn ?: uiState.todayInProfileZone).utcMillis(),
         )
 
     DatePickerDialog(
@@ -229,7 +226,7 @@ internal fun AddTransactionUiState.applySchedule(event: ScheduleEvent): AddTrans
         // path before issue 3.4 meant, and it is what makes the button read "Today" again if the
         // user opens the picker and changes their mind back.
         is ScheduleEvent.DateSelected ->
-            copy(bookedOn = event.date.takeIf { it != earliestBookableDate })
+            copy(bookedOn = event.date.takeIf { it != todayInProfileZone })
 
         ScheduleEvent.TimePickerOpened -> copy(isTimePickerOpen = true)
         ScheduleEvent.TimePickerDismissed -> copy(isTimePickerOpen = false)

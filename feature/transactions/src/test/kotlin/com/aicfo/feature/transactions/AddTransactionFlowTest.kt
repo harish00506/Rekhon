@@ -519,7 +519,7 @@ class AddTransactionFlowTest {
             state =
                 loadedState(amountText = "250").copy(
                     isDatePickerOpen = true,
-                    earliestBookableDate = LocalDate.parse("2026-08-02"),
+                    todayInProfileZone = LocalDate.parse("2026-08-02"),
                 ),
         )
 
@@ -606,6 +606,6 @@ class AddTransactionFlowTest {
             selectedAccountId = "account:1",
             // Issue 3.4: the bound the ViewModel supplies from the injected clock. Fixed here so the
             // date assertions cannot drift with the wall clock (P-08).
-            earliestBookableDate = LocalDate.parse("2026-08-02"),
+            todayInProfileZone = LocalDate.parse("2026-08-02"),
         )
 }
