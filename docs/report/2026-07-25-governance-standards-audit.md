@@ -8,7 +8,7 @@
   Result: A reader knows which rules are genuinely enforced, which are honour-system, and the
         ranked, evidence-cited set of fixes that close the gap.
   Changelog:
-    2026-07-25 — Created. Audit of commit 5a39e1f (branch feature/1-1-1-gradle-skeleton).
+    2026-07-25 — Created. Audit of commit ed417b9 (branch feature/1-1-1-gradle-skeleton).
     2026-07-25 — Remediation pass: G-02/G-03/G-04 applied. G-01 attempted, reverted, and the
                  recommendation corrected after testing disproved it (see §3.1).
     2026-07-25 — G-01 closed with issue 1.2: the coverage gate is wired against the real Money
@@ -21,7 +21,7 @@
 
 # Governance & Standards Audit — AI Personal CFO
 
-**Audit date:** 2026-07-25 · **Commit audited:** `5a39e1f` · **Branch:** `feature/1-1-1-gradle-skeleton`
+**Audit date:** 2026-07-25 · **Commit audited:** `ed417b9` · **Branch:** `feature/1-1-1-gradle-skeleton`
 **Scope:** binding rules, project skills, slash commands, dev workflow, the enforcement surface
 (CI + Gradle quality gates + hooks), the `ai/` runtime data layer, and backlog/traceability hygiene.
 **Type:** assessment only — this audit changed no rule, build, CI, `ai/`, or backlog file.
@@ -356,7 +356,7 @@ explicitly says never to hand-edit.
 
 - [`docs/memory.md`](../memory.md) — the file whose stated purpose is telling any session where the
   project stands — says *"Currently working file: none — no Kotlin/Gradle code exists yet"* and
-  *"In progress: nothing"*. Commit `5a39e1f` landed 19 modules. The one document designed to
+  *"In progress: nothing"*. Commit `ed417b9` landed 19 modules. The one document designed to
   prevent state re-derivation is the one giving a wrong answer.
 - [`docs/features/README.md`](../features/README.md) carries a full **6-epic** model that conflicts
   with the canonical **13-epic** CSV. It self-acknowledges being superseded but keeps the stale
@@ -453,7 +453,7 @@ have. Close that gap and the governance layer becomes genuinely strong across th
 
 ---
 
-*Audit method: direct inspection of every cited file at commit `5a39e1f`. Claims about
+*Audit method: direct inspection of every cited file at commit `ed417b9`. Claims about
 absent tooling were verified by content search and file globbing across the full tree, not
 inferred. No file outside `docs/report/` was modified. The SRS PDF was not re-read for this audit;
 requirement-ID claims describe repository state, not SRS content.*
