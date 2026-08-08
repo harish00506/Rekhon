@@ -75,6 +75,8 @@ enum class ThemeSetting {
  *         lives behind its own narrow `AppLockStore` (issue 2.2), for the same reason consents do.
  *         [demoModeActive] — whether the app is showing the sample dataset (issue 2.4, FR-ONB-004);
  *         **independent of [isOnboarded]**, because the demo is reachable without a profile.
+ *         [smsScanCursorId] — the highest inbox `_ID` already read (issue 3.9), `0` when nothing
+ *         has been. Reset to `0` when the SMS consent is revoked, so a re-grant starts clean.
  * Output: an immutable value.
  */
 data class SettingsSnapshot(
@@ -86,6 +88,7 @@ data class SettingsSnapshot(
     val onboardingCompletedAtUtcMillis: Long? = null,
     val quickSetup: QuickSetupSeeds = QuickSetupSeeds(),
     val demoModeActive: Boolean = false,
+    val smsScanCursorId: Long = 0L,
 ) {
     /**
      * Whether first-run onboarding has been completed.

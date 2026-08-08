@@ -227,8 +227,60 @@ class MigrationSafetyTest {
      *         it by adding a string — this test makes that a deliberate, reviewed edit.
      */
     @Test
-    fun `only audit_log is exempt from the per-row invariants`() {
-        assertEquals(setOf("audit_log"), INVARIANT_EXEMPT_TABLES.keys)
+    fun `only the two argued-for tables are exempt from the per-row invariants`() {
+        assertEquals(setOf("audit_log", "sms_draft"), INVARIANT_EXEMPT_TABLES.keys)
+    }
+
+    /**
+     * Input:  the `sms_draft` table's columns.
+     * Output: asserts it carries `profile_id` and, deliberately, no `deleted_at_utc_millis`.
+     *
+     * The exemption above is coarse — it lifts *both* invariants — but `sms_draft` only needs
+     * relief from one of them. Without this test, adding it to the map would silently drop the
+     * profile-scoping guarantee too, and a query could then span the demo profile and the user's
+     * own (ADR-0006). The absent soft-delete column is asserted as well as the present one, because
+     * a well-meaning later edit that "fixes" the inconsistency by adding it would quietly turn
+     * revocation into a tombstone, which is what ADR-0013 argues it must not be.
+     */
+    @Test
+    fun `sms_draft keeps profile scoping and deliberately has no tombstone`() {
+        val columns =
+            SchemaFixtures.load(CfoDatabase.VERSION)
+                .database
+                .entitiesByTableName()
+                .getValue("sms_draft")
+                .fieldsByColumnName()
+                .keys
+
+        assertTrue("sms_draft must carry profile_id so no query can span profiles", "profile_id" in columns)
+        assertTrue(
+            "sms_draft must NOT have deleted_at_utc_millis — revoking the SMS consent deletes the " +
+                "inference rather than tombstoning it (P-01, ADR-0013)",
+            "deleted_at_utc_millis" !in columns,
+        )
+    }
+
+    /**
+     * Input:  the `sms_draft` table's columns.
+     * Output: asserts there is nowhere in the table to store a message body.
+     *
+     * Issue 3.9's acceptance criterion is that "no raw SMS [is] stored beyond what is needed", and
+     * this is that criterion made checkable. The row holds a conclusion and the inbox id it was
+     * drawn from; the text stays in the provider that already owns it. A column added later called
+     * `body`, `text`, `message` or `snippet` would turn a financial database into a copy of the
+     * user's messages, and no other test would notice.
+     */
+    @Test
+    fun `sms_draft has no column that could hold a message body`() {
+        val columns =
+            SchemaFixtures.load(CfoDatabase.VERSION)
+                .database
+                .entitiesByTableName()
+                .getValue("sms_draft")
+                .fieldsByColumnName()
+                .keys
+
+        assertEquals(emptySet<String>(), columns.intersect(setOf("body", "text", "message", "snippet", "content")))
     }
 
     /**
@@ -270,6 +322,12 @@ private val INVARIANT_EXEMPT_TABLES =
             "append-only security log (issue 2.2, §21.6): no profile exists at unlock time, and " +
             "a security log that can be soft-deleted proves nothing. Rows leave only with " +
             "erase-all (SEC-006).",
+        "sms_draft" to
+            "unconfirmed proposals parsed from the inbox (issue 3.9, ADR-0013): a pending draft is " +
+            "not user data, it is an inference drawn from messages the user can withdraw " +
+            "permission to read — and P-01's 'revocable' means the inference goes, not that a " +
+            "tombstone of it is kept. Revoking the consent hard-deletes every pending row. " +
+            "**Exempt from soft delete only** — it carries profile_id, pinned below.",
     )
 
 // --- synthetic-schema builders, used only to prove the detector bites --------------------------

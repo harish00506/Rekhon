@@ -186,4 +186,6 @@ private class FakeSettingsStore(
     override suspend fun completeOnboarding(profile: OnboardingProfile): Result<Unit, AppError> = Ok(Unit)
 
     override suspend fun setDemoModeActive(active: Boolean): Result<Unit, AppError> = Ok(Unit)
+
+    override suspend fun setSmsScanCursor(smsId: Long): Result<Unit, AppError> = Ok(Unit)
 }

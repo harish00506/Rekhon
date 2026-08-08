@@ -681,6 +681,89 @@ class MigrationRoundTripTest {
         migrated.close()
     }
 
+    /**
+     * 11 → 12 adds `sms_draft` (issue 3.9; §18, §23, P-01).
+     *
+     * Input:  a version-11 database holding a transaction with an exact paise amount.
+     * Output: asserts the transaction survives untouched, the new table exists and accepts a draft,
+     *         and the two guarantees the table was shaped around actually hold in SQL: **one alert
+     *         cannot become two drafts**, and **revoking the consent removes the pending inference
+     *         while leaving what the user already accepted**.
+     *
+     * The unique index is exercised rather than assumed. It is the only thing standing between an
+     * overlapping re-scan — a crash between reading a batch and advancing the cursor — and the same
+     * purchase being offered to the user twice, and an index that exists in `schemas/12.json` but
+     * was never inserted against is a claim rather than a guarantee.
+     *
+     * **Purely additive, so the failure this guards against is a migration that recreated an
+     * existing table on its way to adding a new one**: that would validate perfectly against
+     * `schemas/12.json` and lose the user's ledger. The amount is asserted byte for byte for the
+     * reason `migrate1To2` gives (MNY-001).
+     */
+    @Test
+    fun migrate11To12_preservesTransactionsAndEnforcesTheDraftGuarantees() {
+        helper.createDatabase(TEST_DB, 11).use { db ->
+            db.execSQL(
+                "INSERT INTO transactions (id, profile_id, account_id, amount_minor, currency_code, " +
+                    "occurred_at_utc_millis, booked_on_iso_date, source, type, " +
+                    "created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('t1','p1','a1',-125000,'INR',1767312000000,'2026-08-07','sms','expense'," +
+                    "1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 12, true, Migrations.MIGRATION_11_12)
+
+        migrated.query("SELECT amount_minor FROM transactions WHERE id = 't1'").use { cursor ->
+            assertTrue("the pre-migration transaction must still be there", cursor.moveToFirst())
+            assertEquals("MNY-001: the amount must survive byte for byte", -125000L, cursor.getLong(0))
+        }
+
+        migrated.execSQL(draftInsert(id = "d1", smsId = 71L, status = "pending"))
+        migrated.execSQL(draftInsert(id = "d2", smsId = 72L, status = "accepted"))
+
+        // One alert, one draft: an overlapping re-scan must not offer the same purchase twice.
+        migrated.execSQL("INSERT OR IGNORE INTO sms_draft " + draftValues(id = "d3", smsId = 71L, status = "pending"))
+        migrated.query("SELECT COUNT(*) FROM sms_draft WHERE profile_id = 'p1' AND sms_id = 71").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("the unique index must collapse a re-scanned alert to one draft", 1, cursor.getInt(0))
+        }
+
+        // Revoking the consent: the pending inference goes, the accepted transaction's provenance stays.
+        migrated.execSQL("DELETE FROM sms_draft WHERE profile_id = 'p1' AND status = 'pending'")
+        migrated.query("SELECT COUNT(*) FROM sms_draft WHERE profile_id = 'p1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("revocation must clear pending drafts and keep accepted ones", 1, cursor.getInt(0))
+        }
+        migrated.query("SELECT COUNT(*) FROM transactions WHERE id = 't1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("revoking the SMS consent must not touch the ledger", 1, cursor.getInt(0))
+        }
+        migrated.close()
+    }
+
+    /**
+     * Result: a full `INSERT` for one draft. Input: [id], [smsId], [status]. Output: SQL.
+     * Why:    three inserts differing in three values; spelling out sixteen columns each time would
+     *         bury what the test is actually varying.
+     */
+    private fun draftInsert(
+        id: String,
+        smsId: Long,
+        status: String,
+    ): String = "INSERT INTO sms_draft " + draftValues(id, smsId, status)
+
+    /** Result: the column list and values of [draftInsert], for reuse by an `INSERT OR IGNORE`. */
+    private fun draftValues(
+        id: String,
+        smsId: Long,
+        status: String,
+    ): String =
+        "(id, profile_id, sms_id, sender, amount_minor, direction, booked_on, confidence_bps, " +
+            "engine_version, rule_version, status, created_at_utc_millis, updated_at_utc_millis) " +
+            "VALUES ('$id','p1',$smsId,'VM-HDFCBK',125000,'debit','2026-08-07',9000," +
+            "'1.0','1.0','$status',1767312000000,1767312000000)"
+
     private companion object {
         const val TEST_DB = "migration-test.db"
     }

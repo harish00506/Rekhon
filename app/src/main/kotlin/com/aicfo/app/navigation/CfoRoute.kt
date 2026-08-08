@@ -57,6 +57,17 @@ sealed interface CfoRoute {
     @Serializable
     data object ReceiptReview : CfoRoute
 
+    /**
+     * Review what the app read from bank alerts (issue 3.9; §18, §23, P-01).
+     *
+     * **No arguments, and the screen requests the OS permission itself.** A route that carried
+     * "already granted" would be a claim made at navigation time about something Android can change
+     * a moment later — from Settings, while this screen is open. The screen observes the two
+     * permissions instead, so revoking either one empties it rather than leaving a stale list.
+     */
+    @Serializable
+    data object SmsDrafts : CfoRoute
+
     /** The accounts list (issue 2.5; FR-ACC-001). */
     @Serializable
     data object Accounts : CfoRoute

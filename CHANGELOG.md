@@ -12,6 +12,69 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > reach writing to it; this epic makes a transaction theirs to create — by hand first, then by
 > transfer, split, receipt and SMS.
 
+### [0.3.11] — Bank alerts, read on the phone and never believed  (2026-08-07)
+
+- **Implemented:** issue 3.9 — opt-in, on-device SMS transaction parsing (§18, §23; P-01). With the
+  consent on and `READ_SMS` granted, bank alerts become **drafts the user confirms**; nothing is
+  recorded without a tap (P-07). Closes Epic 3.
+- **The engine's purpose is to refuse.** An inbox is not a feed of transactions, it is a feed of
+  messages *about* money — an OTP quotes the amount it authorises, a mandate reminder quotes what
+  *will* be debited, a loan advert quotes a figure larger than anything the user has ever spent, and
+  a balance alert quotes the balance. `DefaultSmsEngine.parse` is therefore five gates and one
+  constructor: an alphabetic DLT sender, no ignore word, a direction verb, an account marker, and a
+  currency-marked figure that is not a balance.
+  - **The amount is the first non-balance figure, not the largest.** The receipt parser takes the
+    largest candidate; here that reads `Avl Bal Rs.45,320.10` as a ₹45,320 purchase on almost every
+    message the app sees. A receipt's largest number usually *is* the total; an alert's largest
+    number is usually the balance.
+  - **Keywords match as whole words.** `bal` therefore covers `Avl Bal`, `Bal:` and `A/c Bal` in one
+    rulebook row without a merchant named `GLOBAL FOODS` losing its amount, and `unpaid` does not
+    fire `paid`.
+  - Two refusals were found by writing the eval set, not by reasoning: `sent` was missing from the
+    debit verbs, so every UPI payment was invisible; and a declined-payment alert parsed as a
+    purchase until `declined`/`failed` were added.
+- **`RULE-SMS-PARSE`** (`ai/rules/rules-kb.json` v1.8.0) holds every keyword list and threshold,
+  mirrored as `SmsRules` under ADR-0005 and guarded by `RulebookDriftTest` — verified to bite against
+  five separate mutations.
+- **Two independent gates, in a fixed order** (ADR-0013). The in-app consent is checked **before**
+  the OS permission is ever requested, so Android's dialog is unreachable from a state the user has
+  not opted into. `SmsRepository` is the single chokepoint; `SmsRepositoryTest` proves it with a
+  reader that *throws* if called, because an empty result is also what a reader that was called and
+  found nothing returns.
+- **`sms_draft` at schema v12 has no `body` column.** The row holds a conclusion and the inbox id it
+  came from; the text stays in the provider that already owns it. `MigrationSafetyTest` asserts there
+  is nowhere to put one, and that the table keeps `profile_id` while deliberately having no
+  tombstone — revoking the consent hard-deletes pending drafts rather than keeping a record of what
+  was inferred from messages the app was told to stop reading.
+- **`READ_SMS` is a Play-policy risk, taken deliberately** — see
+  [ADR-0013](docs/adr/0013-read-sms-play-policy-and-the-gated-inbox.md) for the decision, the
+  mitigations and the fallback. `RECEIVE_SMS` is **not** requested; new alerts are found by a daily
+  `SmsScanWorker` scan from a stored cursor.
+- **Fixed, found while building this:** the rulebook drift tests were not connected to the build.
+  `ai/rules/rules-kb.json` was not a declared Gradle input, so editing a threshold left every
+  `RulebookDriftTest` `UP-TO-DATE` and green — the mechanism ADR-0005's deferral rests on was not
+  running. Declared as a test input in `:quicksetup`, `:recurring`, `:receipt` and `:sms`; the same
+  edit that produced `BUILD SUCCESSFUL` now produces `BUILD FAILED`.
+- **Two defects the mandatory security review caught before merge**, both a new profile-scoped
+  table that device-wide machinery did not know about. **The demo wipe did not reach `sms_draft`** —
+  and its "no residue" test passed *vacuously*, because the assertion counts rows via the same table
+  list the wipe deletes, so a table missing from one is missing from both. **Revocation was scoped to
+  the active profile**, so revoking while browsing the demo would have kept every pending draft drawn
+  from the real inbox. Both fixed, each with a regression test verified to fail without the fix.
+- **Revocation is wired, not just written.** `SmsConsentWatcher` observes the consent and purges on
+  a granted → revoked transition, so the loop closes however the consent came to be off — including
+  from the consents dashboard that does not exist yet. A watcher rather than a call at each revoke
+  site precisely because the site that forgets is the one that leaks; and it fires only on the
+  *transition*, so a user who never opted in does not get a delete on every cold start (nor one
+  before unlock, where the database provider throws by design).
+- **A draft is correctable, not just acceptable or dismissable** (P-07). The amount and the payee are
+  editable in place, pre-filled from what was read, so a flagged draft no longer forces the user to
+  dismiss it and re-type the whole transaction. **The direction is not editable**: editing changes
+  how much moved, never which way, because that came from the alert's own wording.
+- **`SmsInboxDeviceTest`** runs the real reader against Android's own SMS provider — the one seam a
+  fake provider can never check, since a fake answers whatever it is asked. It documents, from two
+  failed attempts, why a stock AVD cannot be seeded with messages.
+
 ### [0.3.10] — Back-dating, and a net-worth series that repairs itself  (2026-08-06)
 
 - **Implemented:** any transaction can now be recorded on the day it actually happened — typed,

@@ -19,6 +19,7 @@ import com.aicfo.core.database.entity.CategoryEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
 import com.aicfo.core.database.entity.ProfileEntity
 import com.aicfo.core.database.entity.RecurringRuleEntity
+import com.aicfo.core.database.entity.SmsDraftEntity
 import com.aicfo.core.database.entity.TagEntity
 import com.aicfo.core.database.entity.TransactionEntity
 import com.aicfo.core.database.entity.TransactionSplitEntity
@@ -730,6 +731,38 @@ interface TransactionDao {
     ): List<TransactionEntity>
 
     /**
+     * Finds transactions that may already be this bank alert (issue 3.9; FR-OCR-006's mirror).
+     *
+     * Why:    the same event seen from the other side. FR-OCR-006 makes a receipt check for a
+     *         matching `manual` or `sms` row; an alert must check for a matching `manual` or **`ocr`**
+     *         row, because the receipt the user photographed at the till and the alert the bank sent
+     *         thirty seconds later are one purchase.
+     *
+     *         **A separate query rather than a `sources` parameter on
+     *         [findDuplicateCandidates].** The source set is not a caller's preference, it is each
+     *         requirement's own wording, and a shared query taking a list would let a call site pass
+     *         a set nobody argued for — including one containing its own source, which would offer
+     *         to merge two alerts and quietly delete a real transaction. Every other clause is
+     *         identical and documented on [findDuplicateCandidates].
+     * Result: the rows to offer as a merge, newest first. Empty is the common answer.
+     * Input:  as [findDuplicateCandidates]. Output: `List<TransactionEntity>`.
+     */
+    @Query(
+        "SELECT * FROM transactions WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
+            "AND source IN ('manual', 'ocr') AND transfer_id IS NULL " +
+            "AND ABS(amount_minor) BETWEEN :minMinor AND :maxMinor " +
+            "AND booked_on_iso_date BETWEEN :fromIsoDate AND :toIsoDate " +
+            "ORDER BY booked_on_iso_date DESC, id",
+    )
+    suspend fun findAlertDuplicateCandidates(
+        profileId: String,
+        minMinor: Long,
+        maxMinor: Long,
+        fromIsoDate: String,
+        toIsoDate: String,
+    ): List<TransactionEntity>
+
+    /**
      * Sets the category on many transactions at once (issue 3.6; FR-TXN-008).
      *
      * Why:    FR-TXN-008's "multi-select recategorise", as one statement — a loop of single updates
@@ -1351,6 +1384,22 @@ interface DemoDao {
     suspend fun deleteAccounts(profileId: String): Int
 
     /**
+     * Result: rows removed from `sms_draft`. Input: [profileId]. Output: the count.
+     *
+     * Issue 3.9: **not written by `enter()`**, but produced while the user browses — the daily scan
+     * writes drafts against whichever profile is active, so a demo session on a phone whose owner
+     * opted in accumulates inferences drawn from their *real* inbox under the demo profile. A
+     * profile-scoped table the wipe does not reach is the residue ADR-0006 forbids, and this one
+     * would be residue about the user's spending.
+     *
+     * **All statuses, not just pending.** `SmsRepository.onConsentRevoked` keeps accepted and
+     * dismissed rows because they are decisions the user made; the demo wipe keeps nothing, because
+     * the profile they belonged to is being destroyed.
+     */
+    @Query("DELETE FROM sms_draft WHERE profile_id = :profileId")
+    suspend fun deleteSmsDrafts(profileId: String): Int
+
+    /**
      * Removes the profile row itself.
      * Why:    called **last**, after everything scoped to it — deleting the parent first would leave
      *         orphans behind if the caller failed mid-way, which is exactly the residue this exists
@@ -1368,7 +1417,7 @@ interface DemoDao {
      *         Deliberately **not** filtered by `deleted_at_utc_millis`: a soft-deleted row is
      *         precisely the residue being looked for, so it must count.
      * Result: `0` once the profile has been erased.
-     * Input:  [profileId]. Output: the total row count across all eleven tables.
+     * Input:  [profileId]. Output: the total row count across all twelve tables.
      */
     @Query(
         "SELECT (SELECT COUNT(*) FROM profile WHERE id = :profileId) + " +
@@ -1381,7 +1430,8 @@ interface DemoDao {
             "(SELECT COUNT(*) FROM category WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM budget WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM recurring_rule WHERE profile_id = :profileId) + " +
-            "(SELECT COUNT(*) FROM net_worth_snapshot WHERE profile_id = :profileId)",
+            "(SELECT COUNT(*) FROM net_worth_snapshot WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM sms_draft WHERE profile_id = :profileId)",
     )
     suspend fun countRowsFor(profileId: String): Int
 }
@@ -1589,4 +1639,125 @@ interface AttachmentDao {
         id: String,
         deletedAtUtcMillis: Long,
     ): Int
+}
+
+/**
+ * Reads and writes the drafts parsed from bank alerts (issue 3.9; §18, §23, P-01).
+ *
+ * Why:  the queries are shaped by two obligations rather than by convenience. **Revocation has to
+ *       bite** — [deletePending] is what makes the consent revocable in the sense P-01 means, which
+ *       is that the data goes, not merely that the toggle flips. And **a decision has to stick**:
+ *       [findBySmsId] is how a re-scan discovers that an alert has already been judged, so a
+ *       dismissed message is never proposed twice.
+ *
+ *       Nothing here selects a message body, because the table has no column for one — see
+ *       [com.aicfo.core.database.entity.SmsDraftEntity].
+ * Result: the review screen's list, and the guarantees around it.
+ * Changelog: 2026-08-07 — Created for issue 3.9.
+ */
+@Dao
+interface SmsDraftDao {
+    /**
+     * Inserts a draft, ignoring one whose alert is already recorded.
+     * Why:    **IGNORE, not REPLACE**, and it is the difference between a working dismissal and a
+     *         broken one. The unique index is `(profile_id, sms_id)`, so a re-scan of an already
+     *         judged alert conflicts — and REPLACE would overwrite the user's `dismissed` row with a
+     *         fresh `pending` one, re-proposing exactly what they said no to. IGNORE keeps the
+     *         decision. (Contrast `AttachmentDao.upsert`, where REPLACE is right because re-scanning
+     *         a receipt genuinely supersedes the previous read.)
+     * Result: the row is present, either newly inserted or as it already was.
+     * Input:  [draft]. Output: the new rowid, or `-1` when the insert was ignored.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfNew(draft: SmsDraftEntity): Long
+
+    /**
+     * Observes this profile's drafts awaiting a decision.
+     * Result: emits on every change; empty when nothing is pending, which is the ordinary state.
+     * Input:  [profileId]. Output: `Flow<List<SmsDraftEntity>>`, newest alert first — the order the
+     *         user thinks in, since the message that just arrived is the one they are looking for.
+     */
+    @Query(
+        "SELECT * FROM sms_draft WHERE profile_id = :profileId AND status = 'pending' " +
+            "ORDER BY sms_id DESC",
+    )
+    fun observePending(profileId: String): Flow<List<SmsDraftEntity>>
+
+    /**
+     * Finds a draft by id.
+     * Result: the row, or `null`. Input: [id]. Output: `SmsDraftEntity?`.
+     */
+    @Query("SELECT * FROM sms_draft WHERE id = :id")
+    suspend fun findById(id: String): SmsDraftEntity?
+
+    /**
+     * Finds the draft already recorded for one alert, whatever the user decided about it.
+     * Why:    **unfiltered by status on purpose.** A scan asks "have I judged this message?", not
+     *         "is this message pending?" — filtering would make a dismissed alert look unseen and
+     *         re-propose it on the next scan.
+     * Result: the row, or `null` when this alert has never been drafted.
+     * Input:  [profileId]; [smsId]. Output: `SmsDraftEntity?`.
+     */
+    @Query("SELECT * FROM sms_draft WHERE profile_id = :profileId AND sms_id = :smsId")
+    suspend fun findBySmsId(
+        profileId: String,
+        smsId: Long,
+    ): SmsDraftEntity?
+
+    /**
+     * Records what the user decided about one draft.
+     * Result: the number of rows changed, `0` when the id names nothing.
+     * Input:  [id]; [status] — `accepted` or `dismissed`; [transactionId] — the row it became, or
+     *         `null` for a dismissal; [updatedAtUtcMillis] — from the injected `Clock` (TIM-001).
+     * Output: [Int].
+     */
+    @Query(
+        "UPDATE sms_draft SET status = :status, transaction_id = :transactionId, " +
+            "updated_at_utc_millis = :updatedAtUtcMillis WHERE id = :id",
+    )
+    suspend fun setStatus(
+        id: String,
+        status: String,
+        transactionId: String?,
+        updatedAtUtcMillis: Long,
+    ): Int
+
+    /**
+     * Deletes every undecided draft for a profile — what revoking the consent does (P-01).
+     *
+     * Why:    a **hard** delete, and the only one in this schema. Everywhere else a tombstone is
+     *         right because the row is the user's financial history and a sync may need to know it
+     *         was removed. This row is not history: it is a proposal derived from a message the user
+     *         has just withdrawn permission to read. Leaving a tombstone would mean the app still
+     *         held what it inferred from their inbox after being told to stop — which is what P-01's
+     *         "revocable" exists to prevent.
+     *
+     *         **Only the pending ones.** An accepted draft has become a transaction the user
+     *         deliberately saved; deleting its provenance would leave a row in the ledger that could
+     *         no longer explain where it came from (AI-ARC-003). A dismissed one is kept for the
+     *         same reason `insertIfNew` ignores conflicts — so that if the consent is granted again,
+     *         a decision already made is not re-asked.
+     * Result: the number of rows deleted. Input: [profileId]. Output: [Int].
+     */
+    @Query("DELETE FROM sms_draft WHERE profile_id = :profileId AND status = 'pending'")
+    suspend fun deletePending(profileId: String): Int
+
+    /**
+     * Deletes every undecided draft, **for every profile** — what revoking the consent does (P-01).
+     *
+     * Why:    the **only unscoped query in this schema**, and it is unscoped on purpose. Every other
+     *         read and write here is bounded by `profile_id` so no query can span the demo and the
+     *         user's own data (ADR-0006). But the SMS consent is not per profile — there is one
+     *         `ConsentFeature.SMS_PARSING` for the device — so a revocation scoped to whichever
+     *         profile happened to be active would leave the other's inferences on disk. A user who
+     *         revoked while browsing the demo would keep every draft drawn from their real inbox,
+     *         which is precisely the outcome "revocable" is supposed to prevent.
+     *
+     *         Safe to leave unscoped because of what it deletes rather than where: only `pending`
+     *         rows, which are proposals the app made and nobody accepted. No row the user created,
+     *         confirmed or dismissed is reachable from here.
+     * Result: the number of rows deleted. Input: none. Output: [Int].
+     */
+    @Query("DELETE FROM sms_draft WHERE status = 'pending'")
+    suspend fun deleteAllPending(): Int
 }

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  :data:sms' manifest contribution (issue 3.9; SRS §18, §23, P-01).
+
+  Why:  this is the **only** `<uses-permission>` for READ_SMS in the whole app, and it is declared
+        here rather than in :app for the reason `:feature:transactions` declares its FileProvider
+        locally: the capability belongs beside the one class that uses it. A permission declared in
+        the app module for a leaf module's use is a coupling nothing points at, and — more to the
+        point for this permission — it hides the answer to "what can this app do with my messages?"
+        A reviewer opening this module finds the declaration, the interface and the query together.
+
+        **READ_SMS is restricted by Google Play policy**, which permits it for default SMS/phone
+        handlers and a short exception list that does not include parsing bank alerts. That is a
+        release risk this project has accepted with its eyes open; the decision, the mitigations and
+        the fallback are in docs/adr/0013-read-sms-play-policy-and-the-gated-inbox.md.
+
+        **There is deliberately no RECEIVE_SMS.** A broadcast receiver would wake the app on every
+        message the phone receives and would double the app's exposure under the same policy, to buy
+        latency the user does not need — new alerts are picked up by a scan from a stored cursor.
+        The strongest reading of P-01 for a feature whose input is the user's private messages.
+  Result: the inbox is readable at all, and only after the user grants both the in-app consent and
+        the OS permission. Neither one alone is enough; see SmsRepository.
+  Changelog: 2026-08-07 — Created for issue 3.9.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.READ_SMS" />
+
+    <!--
+      required="false", and lint is right to insist on it. Play infers a *required* telephony
+      feature from READ_SMS, which would quietly delist the app for every tablet and Chromebook —
+      turning one optional capture path into a device filter for the whole product. Everything else
+      in this app works without a SIM, so the honest declaration is that telephony is nice to have.
+      `SmsInboxReader.canRead()` already answers false on a device with no SMS provider, and the
+      review screen renders its "one more step" state rather than failing.
+    -->
+    <uses-feature
+        android:name="android.hardware.telephony"
+        android:required="false" />
+
+</manifest>

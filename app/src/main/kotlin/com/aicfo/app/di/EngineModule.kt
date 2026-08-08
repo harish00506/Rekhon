@@ -1,8 +1,11 @@
 package com.aicfo.app.di
 
 import android.content.Context
+import com.aicfo.core.common.DispatcherProvider
 import com.aicfo.core.crypto.ReceiptImageStore
 import com.aicfo.core.crypto.ReceiptImageStoreFactory
+import com.aicfo.data.sms.SmsInboxReader
+import com.aicfo.data.sms.SmsInboxReaderFactory
 import com.aicfo.domain.engines.networth.NetWorthEngine
 import com.aicfo.domain.engines.networth.NetWorthEngineFactory
 import com.aicfo.domain.engines.quicksetup.QuickSetupEngine
@@ -11,6 +14,8 @@ import com.aicfo.domain.engines.receipt.ReceiptEngine
 import com.aicfo.domain.engines.receipt.ReceiptEngineFactory
 import com.aicfo.domain.engines.recurring.RecurringEngine
 import com.aicfo.domain.engines.recurring.RecurringEngineFactory
+import com.aicfo.domain.engines.sms.SmsEngine
+import com.aicfo.domain.engines.sms.SmsEngineFactory
 import com.aicfo.ml.ocr.ReceiptTextRecognizer
 import com.aicfo.ml.ocr.ReceiptTextRecognizerFactory
 import dagger.Module
@@ -103,6 +108,36 @@ object EngineModule {
     @Provides
     @Singleton
     fun provideReceiptTextRecognizer(): ReceiptTextRecognizer = ReceiptTextRecognizerFactory.create()
+
+    /**
+     * The bank-alert parser (issue 3.9; §18, §23, P-03).
+     * Why:    the one place a message becomes an amount and a direction. Pure Kotlin, so it holds no
+     *         permission and touches no inbox — the reader below it is the Android half, which is
+     *         why the two are separate bindings, exactly as the receipt pair above is.
+     * Result: an [SmsEngine]. Input: none. Output: the engine.
+     * Changelog: 2026-08-07 — Created for issue 3.9.
+     */
+    @Provides
+    @Singleton
+    fun provideSmsEngine(): SmsEngine = SmsEngineFactory.create()
+
+    /**
+     * The phone's inbox (issue 3.9; §18, §23, P-01, ADR-0013).
+     * Why:    bound here beside the parser it feeds, the same pairing the receipt pipeline uses.
+     *
+     *         **Binding it does not read anything.** The reader checks the OS permission on every
+     *         call and `SmsRepository` checks the in-app consent before calling it at all, so a
+     *         graph that can construct one is not a graph that can see a message.
+     * Result: an [SmsInboxReader]. Input: [context] — for its `ContentResolver`; [dispatchers].
+     * Output: the reader.
+     * Changelog: 2026-08-07 — Created for issue 3.9.
+     */
+    @Provides
+    @Singleton
+    fun provideSmsInboxReader(
+        @ApplicationContext context: Context,
+        dispatchers: DispatcherProvider,
+    ): SmsInboxReader = SmsInboxReaderFactory.create(context, dispatchers)
 
     /**
      * The encrypted receipt store (issue 3.8; FR-OCR-005, SEC-003).

@@ -13,6 +13,7 @@ import com.aicfo.feature.dashboard.DashboardScreen
 import com.aicfo.feature.onboarding.OnboardingScreen
 import com.aicfo.feature.transactions.AddTransactionScreen
 import com.aicfo.feature.transactions.ReceiptReviewScreen
+import com.aicfo.feature.transactions.SmsDraftsScreen
 import com.aicfo.feature.transactions.TransactionsScreen
 
 /**
@@ -58,21 +59,7 @@ fun CfoNavHost(
         composable<CfoRoute.Transactions> {
             TransactionsScreen()
         }
-        composable<CfoRoute.AddTransaction> {
-            // popBackStack for the same reason the editor below does: the capture screen was pushed
-            // on top of whatever the user was looking at, and saving must return them there — the FAB
-            // is global, so "wherever they were" is genuinely any destination.
-            AddTransactionScreen(
-                onDone = { navController.popBackStack() },
-                onScanReceipt = { navController.navigate(CfoRoute.ReceiptReview) },
-            )
-        }
-        composable<CfoRoute.ReceiptReview> {
-            // popBackStack, not a pop back to the dashboard: the add screen is still underneath, so
-            // a user who scanned a receipt and changed their mind lands back on the form they had
-            // already started filling in (issue 3.8).
-            ReceiptReviewScreen(onDone = { navController.popBackStack() })
-        }
+        captureDestinations(navController)
         composable<CfoRoute.Accounts> {
             AccountsScreen(
                 onAddAccount = { navController.navigate(CfoRoute.AccountEditor()) },
@@ -85,6 +72,44 @@ fun CfoNavHost(
             // the user through every account they had edited.
             AccountEditorScreen(onDone = { navController.popBackStack() })
         }
+    }
+}
+
+/**
+ * The three ways a transaction gets captured (issues 3.1, 3.8, 3.9).
+ *
+ * Why:  extracted from [CfoNavHost] because issue 3.9's route took that function past detekt's
+ *       40-line limit — the same pressure that produced [onboardingDestination] below, and the same
+ *       kind of seam rather than an arbitrary cut. These are the typed path and its two automated
+ *       alternatives: they are reached from each other rather than from the nav bar, and all three
+ *       pop back to whatever was underneath.
+ * What: registers `AddTransaction`, `ReceiptReview` and `SmsDrafts`.
+ * Result: [CfoNavHost] reads as a list of destinations again.
+ * Changelog: 2026-08-07 — Extracted for issue 3.9.
+ *
+ * Input:  [navController] — passed rather than captured so this stays a plain extension on the
+ *         builder. Output: none (registers destinations).
+ */
+private fun NavGraphBuilder.captureDestinations(navController: NavHostController) {
+    composable<CfoRoute.AddTransaction> {
+        // popBackStack for the same reason the account editor does: the capture screen was pushed on
+        // top of whatever the user was looking at, and saving must return them there — the FAB is
+        // global, so "wherever they were" is genuinely any destination.
+        AddTransactionScreen(
+            onDone = { navController.popBackStack() },
+            onScanReceipt = { navController.navigate(CfoRoute.ReceiptReview) },
+            onReviewSms = { navController.navigate(CfoRoute.SmsDrafts) },
+        )
+    }
+    composable<CfoRoute.ReceiptReview> {
+        // popBackStack, not a pop back to the dashboard: the add screen is still underneath, so a
+        // user who scanned a receipt and changed their mind lands back on the form they had already
+        // started filling in (issue 3.8).
+        ReceiptReviewScreen(onDone = { navController.popBackStack() })
+    }
+    composable<CfoRoute.SmsDrafts> {
+        // popBackStack, like the receipt screen above and for the same reason (issue 3.9).
+        SmsDraftsScreen(onDone = { navController.popBackStack() })
     }
 }
 

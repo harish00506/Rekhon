@@ -26,6 +26,9 @@ import com.aicfo.data.repository.ReceiptAttachment
 import com.aicfo.data.repository.ReceiptRepository
 import com.aicfo.data.repository.ReceiptScan
 import com.aicfo.data.repository.RecurringRepository
+import com.aicfo.data.repository.SmsAccess
+import com.aicfo.data.repository.SmsDraft
+import com.aicfo.data.repository.SmsRepository
 import com.aicfo.data.repository.SplitDraft
 import com.aicfo.data.repository.TransactionDraft
 import com.aicfo.data.repository.TransactionFilter
@@ -752,3 +755,105 @@ internal fun emptyFields(): ReceiptFields =
                 confidenceBps = 0,
             ),
     )
+
+/**
+ * An [SmsRepository] a test can drive (issue 3.9; §18, §23, P-01).
+ *
+ * Why:  the ViewModel's job is entirely about *which* of four faces to show and *what* the user's
+ *       taps do — and both depend on the two permission flags moving independently. So this exposes
+ *       them as separate switches rather than one "ready" boolean, which is what lets a test assert
+ *       the privacy ordering: consent before permission, always.
+ *
+ *       [accepted] records the draft ids **and the transaction drafts** they produced, because the
+ *       sign is derived by the ViewModel and there is nowhere else to check it.
+ * Result: a fake covering every call `SmsDraftsViewModel` makes.
+ * Changelog: 2026-08-07 — Created for issue 3.9.
+ */
+internal class FakeSmsRepository : SmsRepository {
+    private val access = MutableStateFlow(SmsAccess())
+    private val pending = MutableStateFlow<List<SmsDraft>>(emptyList())
+
+    /** What [scan] will return; a failure models an inbox that refused the query. */
+    var scanResult: Result<Int, AppError> = Ok(0)
+
+    /** What [accept] will return for every call; a failure leaves the draft pending. */
+    var acceptFails: Boolean = false
+
+    /** Every accepted draft, with the transaction the ViewModel built from it. */
+    val accepted: MutableList<Pair<String, TransactionDraft>> = mutableListOf()
+
+    /** Every dismissed draft id. */
+    val dismissed: MutableList<String> = mutableListOf()
+
+    /** How many times [scan] was called, so a test can assert an automatic scan after a grant. */
+    var scanCount: Int = 0
+        private set
+
+    /** Sets the two permissions. Input: [consent], [permission]. Output: none. */
+    fun setAccess(
+        consent: Boolean,
+        permission: Boolean,
+    ) {
+        access.value = SmsAccess(consentGranted = consent, permissionGranted = permission)
+    }
+
+    /** Seeds the review list. Input: [drafts]. Output: none. */
+    fun setDrafts(vararg drafts: SmsDraft) {
+        pending.value = drafts.toList()
+    }
+
+    override fun observeAccess(): Flow<SmsAccess> = access
+
+    override fun observePending(): Flow<List<SmsDraft>> = pending
+
+    override suspend fun scan(): Result<Int, AppError> {
+        scanCount++
+        return scanResult
+    }
+
+    override suspend fun accept(
+        draftId: String,
+        draft: TransactionDraft,
+    ): Result<Transaction, AppError> {
+        if (acceptFails) return Err(AppError.Storage("FakeSmsRepository"))
+        accepted += draftId to draft
+        pending.value = pending.value.filterNot { it.id == draftId }
+        return Ok(
+            Transaction(
+                id = "t-$draftId",
+                accountId = draft.accountId,
+                amount = draft.amount,
+                occurredAtUtcMillis = 0L,
+                bookedOn = (draft.bookedOn ?: LocalDate.of(2026, 8, 7)).toString(),
+                categoryId = draft.categoryId,
+                merchant = draft.merchant,
+                note = draft.note,
+                source = TransactionSource.SMS,
+                type = if (draft.amount < Money.ZERO) TransactionType.EXPENSE else TransactionType.INCOME,
+            ),
+        )
+    }
+
+    override suspend fun dismiss(draftId: String): Result<Unit, AppError> {
+        dismissed += draftId
+        pending.value = pending.value.filterNot { it.id == draftId }
+        return Ok(Unit)
+    }
+
+    // Nothing in :feature:transactions calls these two: the merge offer is issue 3.9's repository
+    // concern and revocation belongs to the settings screen. Throwing rather than returning a
+    // plausible value means a test that starts to depend on one fails loudly.
+    override suspend fun findDuplicates(
+        amount: Money,
+        bookedOn: LocalDate,
+    ): Result<List<Transaction>, AppError> = smsUnsupported()
+
+    override suspend fun onConsentRevoked(): Result<Unit, AppError> = smsUnsupported()
+
+    /**
+     * Result: never returns. Input: none. Output: [Nothing].
+     * Why:    a fake that answered these would let a test prove something that belongs to
+     *         `SmsRepositoryTest`, where they are exercised against real SQL.
+     */
+    private fun smsUnsupported(): Nothing = error("SmsDraftsViewModel does not call this — see FakeSmsRepository")
+}
