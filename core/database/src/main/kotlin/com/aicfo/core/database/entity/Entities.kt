@@ -768,3 +768,96 @@ data class AttachmentEntity(
     @ColumnInfo(name = "deleted_at_utc_millis")
     val deletedAtUtcMillis: Long? = null,
 )
+
+/**
+ * What the parser concluded one bank alert says, awaiting the user's decision (issue 3.9; §18, §23).
+ *
+ * Why:    the message itself stays in the inbox that already owns it. **There is no body column
+ *         here, and that is the acceptance criterion made structural** — 3.9 requires that "no raw
+ *         SMS [is] stored beyond what is needed", and the cheapest way to guarantee that is for the
+ *         schema to have nowhere to put one. The row holds a conclusion and the [smsId] it was
+ *         drawn from; anyone wanting the original text can read it where it lives, under the
+ *         permission the user granted for exactly that.
+ *
+ *         It is a table rather than a list recomputed on each screen open for one reason: **a
+ *         dismissal has to stick**. Re-deriving the drafts from the inbox would re-propose every
+ *         alert the user has already said no to, for ever, which is the fastest way to make a
+ *         review screen worth ignoring.
+ * Result: a Room row in `sms_draft`, added at schema version 12 by issue 3.9.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-08-07 — Created for issue 3.9.
+ *
+ * **No foreign key on [transactionId], matching every other table here** — soft-delete tombstones
+ * make `ON DELETE CASCADE` fire on a hard delete that never happens. The link is enforced by
+ * `SmsRepository`, the only class allowed to write either side (ARC-005).
+ */
+@Entity(
+    tableName = "sms_draft",
+    indices = [
+        // UNIQUE, and it is the guard that stops one alert becoming two drafts when a scan overlaps
+        // — a crash between reading a batch and advancing the cursor re-reads it, and without this
+        // the user would find the same purchase offered twice. Scoped by profile because the demo
+        // lives under a second profile id (ADR-0006).
+        Index(value = ["profile_id", "sms_id"], unique = true),
+        // The review screen's only query: this profile's pending drafts.
+        Index(value = ["profile_id", "status"]),
+    ],
+)
+data class SmsDraftEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /**
+     * `Telephony.Sms._ID` of the message this was read from.
+     *
+     * Kept so the same alert is never proposed twice, and so a draft can be traced back to its
+     * source while that message still exists. **Not a copy of the message** — an id whose meaning
+     * lives entirely in a provider this app can only read with the user's permission.
+     */
+    @ColumnInfo(name = "sms_id")
+    val smsId: Long,
+    /** The DLT header the alert came from, e.g. `VM-HDFCBK`. Shown so the user can recognise it. */
+    @ColumnInfo(name = "sender")
+    val sender: String,
+    /** MNY-001: paise, as a positive magnitude. The sign comes from [direction]. */
+    @ColumnInfo(name = "amount_minor")
+    val amountMinor: Long,
+    /** `debit` or `credit`. A code from a closed set, never copy (§21.6). */
+    @ColumnInfo(name = "direction")
+    val direction: String,
+    /** TIM-002: ISO `yyyy-MM-dd`, the day the message arrived in the profile zone. */
+    @ColumnInfo(name = "booked_on")
+    val bookedOn: String,
+    /** The payee or payer as the alert printed it. Null when it named none — best-effort. */
+    @ColumnInfo(name = "counterparty")
+    val counterparty: String? = null,
+    /** The masked account or card digits the alert quoted, e.g. `4521`. Null when it quoted none. */
+    @ColumnInfo(name = "account_tail")
+    val accountTail: String? = null,
+    /** MNY-002: basis points. Below the rulebook's floor the review screen flags the draft. */
+    @ColumnInfo(name = "confidence_bps")
+    val confidenceBps: Int,
+    /**
+     * The parser version and the rulebook version that produced this reading (AI-ARC-006).
+     *
+     * Stored on the row rather than assumed from the current build, because a draft can sit
+     * unreviewed across an app update — and "why did it say ₹1,250?" has an answer only if the row
+     * remembers which code and which thresholds ran.
+     */
+    @ColumnInfo(name = "engine_version")
+    val engineVersion: String,
+    @ColumnInfo(name = "rule_version")
+    val ruleVersion: String,
+    /** `pending`, `accepted` or `dismissed`. A code from a closed set, never copy. */
+    @ColumnInfo(name = "status")
+    val status: String,
+    /** The transaction this draft became, once accepted. Null while pending or dismissed. */
+    @ColumnInfo(name = "transaction_id")
+    val transactionId: String? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+)

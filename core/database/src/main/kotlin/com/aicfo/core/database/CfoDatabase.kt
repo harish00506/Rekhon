@@ -11,6 +11,7 @@ import com.aicfo.core.database.dao.DemoDao
 import com.aicfo.core.database.dao.NetWorthSnapshotDao
 import com.aicfo.core.database.dao.ProfileDao
 import com.aicfo.core.database.dao.RecurringRuleDao
+import com.aicfo.core.database.dao.SmsDraftDao
 import com.aicfo.core.database.dao.TagDao
 import com.aicfo.core.database.dao.TransactionDao
 import com.aicfo.core.database.dao.TransactionSplitDao
@@ -22,6 +23,7 @@ import com.aicfo.core.database.entity.CategoryEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
 import com.aicfo.core.database.entity.ProfileEntity
 import com.aicfo.core.database.entity.RecurringRuleEntity
+import com.aicfo.core.database.entity.SmsDraftEntity
 import com.aicfo.core.database.entity.TagEntity
 import com.aicfo.core.database.entity.TransactionEntity
 import com.aicfo.core.database.entity.TransactionSplitEntity
@@ -60,6 +62,7 @@ import com.aicfo.core.database.entity.TransactionTagEntity
         TagEntity::class,
         TransactionTagEntity::class,
         AttachmentEntity::class,
+        SmsDraftEntity::class,
     ],
     version = CfoDatabase.VERSION,
     exportSchema = true,
@@ -99,6 +102,9 @@ abstract class CfoDatabase : RoomDatabase() {
     /** Input: none. Output: the attachment DAO (issue 3.8, FR-OCR-005). */
     abstract fun attachmentDao(): AttachmentDao
 
+    /** Input: none. Output: the SMS-draft DAO (issue 3.9, §18/§23). */
+    abstract fun smsDraftDao(): SmsDraftDao
+
     /**
      * Input:  none. Output: the demo wipe DAO (issue 2.4, FR-ONB-004).
      *
@@ -120,9 +126,9 @@ abstract class CfoDatabase : RoomDatabase() {
          * (`transactions.posted_at_utc_millis`; FR-TXN-010) · 9 — issue 3.6 (`tags`,
          * `transaction_tags`; FR-TXN-007, FR-TXN-008) · 10 — issue 3.7
          * (`recurring_rule.dismissed_at_utc_millis`; FR-TXN-006) · 11 — issue 3.8 (`attachments`;
-         * FR-OCR-005).
+         * FR-OCR-005) · 12 — issue 3.9 (`sms_draft`; §18, §23).
          */
-        const val VERSION = 11
+        const val VERSION = 12
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"

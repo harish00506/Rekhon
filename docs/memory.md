@@ -21,9 +21,9 @@
   **Schema is v8** — unchanged by 3.5, the first Epic 3 issue that needed no migration.
 - **Currently working file:** none — issue 3.5 is **shipped**: committed on
   `feature/3-5-transaction-source-tracking` and merged `--no-ff` into `dev`. Push skipped (no remote).
-- **Shipped to `dev`:** 3.1 add-transaction ≤ 3 taps (`61568c9`, merged `06375da`) · 3.2 transfers as
-  one logical record (`66189fc`, merged `20ebbfb`) · 3.3 splits across N category lines
-  (`7de4944`, merged `f3afaec`) · 3.4 future-dated transactions
+- **Shipped to `dev`:** 3.1 add-transaction ≤ 3 taps (`db3ef2e`, merged `0750574`) · 3.2 transfers as
+  one logical record (`bcc9e2d`, merged `4472516`) · 3.3 splits across N category lines
+  (`6b091c3`, merged `2ad7735`) · 3.4 future-dated transactions
   ([3.4](issues/3.4-future-dated-transactions.md) ·
   [tracker](issues/3.4-future-dated-transactions-tracker.md)) — **890 tests total, 0 skipped; the
   v7 → v8 upgrade path and a real date rollover verified on a device.**

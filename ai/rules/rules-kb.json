@@ -5,9 +5,10 @@
     "what": "Seed rows for the rules_knowledge_base table (§29.1). RuleEngine.evaluate(ruleId, FeatureSnapshot) -> RuleResult{pass|warn|fail, measuredValue, threshold, evidence, ruleId, version}.",
     "result": "Changing a number here changes the app's advice everywhere that rule is cited, reproducibly and with an audit trail.",
     "source_section": "§29",
-    "version": "1.7.0",
+    "version": "1.8.0",
     "changelog": [
-      "2026-07-17 — Created from SRS v1.7 §29.2–§29.5; defaults are the floor, refined by user overrides at runtime."
+      "2026-07-17 — Created from SRS v1.7 §29.2–§29.5; defaults are the floor, refined by user overrides at runtime.",
+      "2026-08-07 — Added RULE-SMS-PARSE for issue 3.9's opt-in, on-device bank-alert parser (§18, §23)."
     ],
     "schema": {
       "rule_id": "stable public ID cited in evidence — never rename, deprecate instead",
@@ -127,6 +128,19 @@
       "rationale": "A scanned receipt is a proposal, not a fact: the parser says what it read and how sure it is, and the user corrects it before anything is saved (P-02, P-07, FR-OCR-003/004). The duplicate band is what stops one purchase being recorded twice when the bank SMS already logged it (FR-OCR-006).",
       "source_note": "FR-OCR-003..006 and SRS 18.1's pipeline. Keywords are the ones printed on Indian retail receipts; the confidence floor is where a field is worth flagging rather than silently accepting. same_row_bps is how close two recognised blocks must sit vertically to be the same printed row, which is how a label in one column is paired with its amount in another.",
       "consumed_by": ["receipt_parser"],
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "rule_id": "RULE-SMS-PARSE",
+      "domain": "purchase",
+      "name": "Read an amount, a direction and a counterparty out of a bank alert SMS, and propose it as a draft only when the message clears every false-positive gate.",
+      "formula_id": "sms_transaction_parse",
+      "params_json": { "debit_keywords": ["debited", "spent", "withdrawn", "paid", "purchase", "sent"], "credit_keywords": ["credited", "received", "deposited", "refund"], "ignore_keywords": ["otp", "one time password", "will be debited", "will be credited", "will be deducted", "pre-approved", "loan offer", "apply now", "offer ends", "congratulations", "declined", "failed", "unsuccessful"], "account_marker_keywords": ["a/c", "acct", "account", "ending", "xx"], "balance_keywords": ["bal", "balance", "limit", "lmt", "due", "outstanding"], "reject_numeric_senders": true, "low_confidence_bps": 6000, "duplicate_amount_tolerance_pct": 1, "duplicate_date_tolerance_days": 1 },
+      "severity": "info",
+      "rationale": "A bank alert is evidence that money moved, but the inbox it arrives in is full of messages that merely mention money - OTPs, loan offers, balance summaries, reminders about a payment due next week, alerts about a payment that was declined. A missed alert costs the user one manual entry; a false positive silently invents a transaction they never made, so every gate here exists to refuse rather than to guess. What survives is a proposal the user confirms (P-07, P-02, FR-TXN-009).",
+      "source_note": "SRS 18, 23; P-01. Every keyword here is matched as a WHOLE WORD, not as a substring - which is what lets 'bal' cover 'Avl Bal', 'Bal:' and 'A/c Bal' in one row without a merchant named GLOBAL turning its own amount into a balance, and what stops 'paid' firing inside 'unpaid'. debit/credit keywords and the account markers are the wording Indian bank, card and UPI alerts actually print; 'sent' is how every UPI app words an outgoing payment. ignore_keywords carry the refusals: 'otp' because an OTP message quotes the amount it is authorising, 'will be debited' because a mandate reminder is not a debit, and 'declined'/'failed' because a rejected payment alert quotes the amount that did NOT move. balance_keywords stop 'Avl Bal Rs.45,320' or a card's 'Avl Lmt' being read as the amount spent. reject_numeric_senders because a bank sends from an alphabetic DLT header, never from a ten-digit personal number. The duplicate band matches RULE-RECEIPT-PARSE so an alert for a receipt already scanned offers a merge (FR-OCR-006).",
+      "consumed_by": ["sms_parser"],
       "enabled": true,
       "version": "1.0"
     },

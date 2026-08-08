@@ -34,6 +34,12 @@ dependencies {
     api(project(":ml:ocr"))
     api(project(":core:crypto"))
 
+    // Issue 3.9: the SMS pipeline. `api` on both, for the reason the receipt line above gives —
+    // SmsDraftFields' types and SmsInboxReader appear on SmsRepository's public surface, so the
+    // ViewModel and the DI graph must be able to name them (§18, §23, P-01).
+    api(project(":domain:engines:sms"))
+    api(project(":data:sms"))
+
     // Issue 2.6: the net-worth engine FR-ACC-005 requires; the repository hands it balances
     // and stores what it returns, computing nothing of its own (P-03).
     api(project(":domain:engines:networth"))

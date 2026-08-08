@@ -60,10 +60,12 @@ include(":domain:engines:quicksetup") // FR-ONB-002 seeds -> budget envelopes + 
 include(":domain:engines:networth")    // FR-ACC-005 assets - liabilities + the daily snapshot
 include(":domain:engines:recurring")   // FR-TXN-006 proposes recurring series from the ledger
 include(":domain:engines:receipt")     // FR-OCR-003 reads total/date/merchant/GST off recognised text
+include(":domain:engines:sms")         // §18/§23 reads amount/direction/payee off an opt-in bank alert
 include(":domain:usecase")
 
 // :data:*                  the ONLY DAO/network touchers (ARC-005)
 include(":data:repository")
+include(":data:sms")            // the phone's inbox, behind READ_SMS + an explicit consent (3.9)
 
 // :ml:*                    on-device ML behind interfaces
 include(":ml:ocr")              // ML Kit Text Recognition v2

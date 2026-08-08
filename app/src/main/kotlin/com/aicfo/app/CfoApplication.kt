@@ -4,9 +4,11 @@ import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import com.aicfo.app.di.ProfileZoneProvider
+import com.aicfo.app.sms.SmsConsentWatcher
 import com.aicfo.app.work.BalanceIntegrityWorker
 import com.aicfo.app.work.NetWorthSnapshotWorker
 import com.aicfo.app.work.ScheduledTransactionWorker
+import com.aicfo.app.work.SmsScanWorker
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 
@@ -31,6 +33,15 @@ import javax.inject.Inject
 class CfoApplication : Application(), Configuration.Provider {
     @Inject
     lateinit var profileZoneProvider: ProfileZoneProvider
+
+    /**
+     * Erases pending SMS drafts when the consent is withdrawn (issue 3.9; P-01).
+     *
+     * Started here rather than called from each revoke site, so a future screen that revokes cannot
+     * forget — see `SmsConsentWatcher` for the argument.
+     */
+    @Inject
+    lateinit var smsConsentWatcher: SmsConsentWatcher
 
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
@@ -61,8 +72,10 @@ class CfoApplication : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         profileZoneProvider.start()
+        smsConsentWatcher.start()
         NetWorthSnapshotWorker.schedule(this)
         BalanceIntegrityWorker.schedule(this)
         ScheduledTransactionWorker.schedule(this)
+        SmsScanWorker.schedule(this)
     }
 }

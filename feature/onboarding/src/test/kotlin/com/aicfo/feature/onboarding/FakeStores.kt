@@ -82,6 +82,8 @@ internal class FakeSettingsStore(
      */
     override suspend fun setDemoModeActive(active: Boolean): Result<Unit, AppError> = write { }
 
+    override suspend fun setSmsScanCursor(smsId: Long): Result<Unit, AppError> = write { }
+
     override suspend fun completeOnboarding(profile: OnboardingProfile): Result<Unit, AppError> {
         completeCallCount++
         return write { savedProfile = profile }

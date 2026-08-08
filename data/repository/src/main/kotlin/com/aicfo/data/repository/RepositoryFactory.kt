@@ -5,10 +5,13 @@ import com.aicfo.core.common.DispatcherProvider
 import com.aicfo.core.common.IdGenerator
 import com.aicfo.core.crypto.ReceiptImageStore
 import com.aicfo.core.database.CfoDatabase
+import com.aicfo.core.datastore.ConsentStore
 import com.aicfo.core.datastore.SettingsStore
+import com.aicfo.data.sms.SmsInboxReader
 import com.aicfo.domain.engines.networth.NetWorthEngine
 import com.aicfo.domain.engines.receipt.ReceiptEngine
 import com.aicfo.domain.engines.recurring.RecurringEngine
+import com.aicfo.domain.engines.sms.SmsEngine
 import com.aicfo.ml.ocr.ReceiptTextRecognizer
 import kotlinx.coroutines.flow.Flow
 
@@ -185,6 +188,46 @@ object RepositoryFactory {
             recognizer = recognizer,
             engine = engine,
             images = images,
+            clock = clock,
+            ids = ids,
+            dispatchers = dispatchers,
+            activeProfileId = activeProfileId,
+        )
+
+    /**
+     * Builds the SMS-draft store (issue 3.9; §18, §23, P-01).
+     * Result: an [SmsRepository] over the encrypted database, the inbox and the parser.
+     * Input:  [database]; [transactions] — writes the ledger row; [reader] — the inbox
+     *         (`:data:sms`); [engine] — the parser (P-03); [consents] — the gate every path here
+     *         passes through; [settings] — the scan cursor; [clock] — TIM-001, and the profile zone
+     *         the received instant is converted in (TIM-002); [ids] — mints draft ids;
+     *         [dispatchers]; [activeProfileId] — which profile is scanned into, so the demo gets its
+     *         own drafts and loses them with it (ADR-0006).
+     * Output: [SmsRepository].
+     *
+     * `@Suppress("LongParameterList")`: one argument per collaborator. See `RoomSmsRepository` —
+     * that class exists precisely to be the one place the consent, the inbox and the parser meet.
+     */
+    @Suppress("LongParameterList")
+    fun sms(
+        database: CfoDatabase,
+        transactions: TransactionRepository,
+        reader: SmsInboxReader,
+        engine: SmsEngine,
+        consents: ConsentStore,
+        settings: SettingsStore,
+        clock: Clock,
+        ids: IdGenerator,
+        dispatchers: DispatcherProvider,
+        activeProfileId: Flow<String>,
+    ): SmsRepository =
+        RoomSmsRepository(
+            database = database,
+            transactions = transactions,
+            reader = reader,
+            engine = engine,
+            consents = consents,
+            settings = settings,
             clock = clock,
             ids = ids,
             dispatchers = dispatchers,

@@ -75,6 +75,15 @@ internal class FakeSettingsStore : SettingsStore {
         return Ok(Unit)
     }
 
+    /** Every value [setSmsScanCursor] was given, in order, so a test can assert *when* it moved. */
+    val smsCursorWrites: MutableList<Long> = mutableListOf()
+
+    override suspend fun setSmsScanCursor(smsId: Long): Result<Unit, AppError> {
+        smsCursorWrites += smsId
+        state.update { current -> current.copy(smsScanCursorId = smsId) }
+        return Ok(Unit)
+    }
+
     private companion object {
         /** An arbitrary fixed instant — no test asserts it, only that onboarding is marked done. */
         const val ONBOARDED_AT_MILLIS = 1_800_000_000_000L

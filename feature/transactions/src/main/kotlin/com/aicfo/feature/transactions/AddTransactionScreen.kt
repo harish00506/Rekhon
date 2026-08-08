@@ -53,13 +53,15 @@ import com.aicfo.core.designsystem.theme.CfoDimens
  *
  * Input:  [onDone] — where to go once saved or cancelled; [onScanReceipt] — opens issue 3.8's
  *         receipt scanner, a *different destination* rather than a mode of this screen, because
- *         capture has its own three-stage flow and its own back behaviour; [modifier]; [viewModel].
+ *         capture has its own three-stage flow and its own back behaviour; [onReviewSms] — issue
+ *         3.9's bank-alert review, a separate destination for the same reason; [modifier]; [viewModel].
  * Output: the rendered screen.
  */
 @Composable
 fun AddTransactionScreen(
     onDone: () -> Unit,
     onScanReceipt: () -> Unit,
+    onReviewSms: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: AddTransactionViewModel = hiltViewModel(),
 ) {
@@ -75,10 +77,30 @@ fun AddTransactionScreen(
         uiState = uiState,
         onEvent = viewModel::onEvent,
         onCancel = onDone,
-        onScanReceipt = onScanReceipt,
+        captureRoutes = CaptureRoutes(onScanReceipt = onScanReceipt, onReviewSms = onReviewSms),
         modifier = modifier,
     )
 }
+
+/**
+ * Where the add screen's two automated alternatives go (issues 3.8, 3.9).
+ *
+ * Why:    one value rather than two more lambdas, because the second one took
+ *         [AddTransactionContent] past detekt's six-parameter ceiling (§21.6) — and the grouping is
+ *         real: both are "leave this form for a capture path that fills it in for you", both are
+ *         separate destinations, and a screen adding a third would add it here rather than widening
+ *         the signature again. Defaulted to no-ops so the existing call sites and previews are
+ *         unchanged.
+ * Result: the argument to [AddTransactionContent].
+ * Changelog: 2026-08-07 — Created for issue 3.9.
+ *
+ * Input:  [onScanReceipt] — issue 3.8's scanner; [onReviewSms] — issue 3.9's bank-alert review.
+ * Output: an immutable value.
+ */
+data class CaptureRoutes(
+    val onScanReceipt: () -> Unit = {},
+    val onReviewSms: () -> Unit = {},
+)
 
 /**
  * The add screen's body, with no dependencies of its own.
@@ -86,11 +108,12 @@ fun AddTransactionScreen(
  *         FR-TXN-002's budget is asserted against this function.
  * Result: the rendered content.
  * Input:  [uiState]; [onEvent] — events up (ARC-004); [onCancel]; [onScanReceipt] — issue 3.8's
- *         scanner, defaulted to a no-op so the thirty existing call sites and previews are unchanged;
- *         [modifier].
+ *         [captureRoutes] — where the two automated alternatives go, defaulted to no-ops so the
+ *         thirty existing call sites and previews are unchanged; [modifier].
  * Output: the composition.
  * Changelog: 2026-08-02 — Created for issue 3.1.
  *            2026-08-06 — Issue 3.8: the "Scan a receipt" action.
+ *            2026-08-07 — Issue 3.9: the "From your bank messages" action.
  */
 @Composable
 fun AddTransactionContent(
@@ -98,7 +121,7 @@ fun AddTransactionContent(
     onEvent: (AddTransactionEvent) -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
-    onScanReceipt: () -> Unit = {},
+    captureRoutes: CaptureRoutes = CaptureRoutes(),
 ) {
     Column(
         modifier =
@@ -145,11 +168,23 @@ fun AddTransactionContent(
         SplitToggle(uiState = uiState, onEvent = onEvent)
         SplitEditor(uiState = uiState, onEvent = onEvent)
         NoteFieldAndActions(uiState = uiState, onEvent = onEvent, onCancel = onCancel)
-        // Issue 3.8 (FR-OCR-001), and **last on purpose**: FR-TXN-002 budgets the typed path at
-        // three taps, and an action above the amount field would put a choice in front of the user
-        // before the thing they came here to do. Scanning is the alternative, not the default.
-        CfoSecondaryButton(text = stringResource(R.string.add_txn_scan), onClick = onScanReceipt)
+        CaptureAlternatives(captureRoutes)
     }
+}
+
+/**
+ * The two ways to have the form filled in for you (issues 3.8, 3.9).
+ * Why:    **last on purpose, and together.** FR-TXN-002 budgets the typed path at three taps, and an
+ *         action above the amount field would put a choice in front of the user before the thing
+ *         they came here to do. Both of these are the alternative, not the default. Extracted so
+ *         [AddTransactionContent] stays inside detekt's forty-line ceiling (§21.6).
+ * Result: the composition. Input: [routes]. Output: the rendered actions.
+ * Changelog: 2026-08-07 — Created for issue 3.9.
+ */
+@Composable
+private fun CaptureAlternatives(routes: CaptureRoutes) {
+    CfoSecondaryButton(text = stringResource(R.string.add_txn_scan), onClick = routes.onScanReceipt)
+    CfoSecondaryButton(text = stringResource(R.string.add_txn_review_sms), onClick = routes.onReviewSms)
 }
 
 /**

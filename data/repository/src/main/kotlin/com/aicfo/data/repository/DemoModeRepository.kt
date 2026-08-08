@@ -167,6 +167,10 @@ internal class RoomDemoModeRepository(
                     // Issue 3.6: the tag links before either row they join, then the tags. The demo
                     // dataset seeds none, but a user who tags a demo transaction while browsing
                     // creates both — and a table the wipe cannot reach is residue (ADR-0006).
+                    // Issue 3.9: same reasoning as the snapshot above — the daily SMS scan writes
+                    // drafts against whichever profile is active, so a demo session on a phone whose
+                    // owner opted in leaves inferences drawn from their real inbox behind.
+                    demo.deleteSmsDrafts(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteTransactionTags(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteTags(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteTransactions(DemoModeRepository.DEMO_PROFILE_ID)

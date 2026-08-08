@@ -206,6 +206,50 @@ class DemoModeRepositoryTest {
         }
 
     /**
+     * Input:  a demo session during which the SMS scanner drafted a transaction, then `exit()`.
+     * Output: asserts the draft goes too.
+     *
+     * A separate test for the reason the snapshot one below states, and it is the same failure
+     * repeating: `enter()` does not write `sms_draft`, the daily scan does — against whichever
+     * profile is active. So a demo session on a phone whose owner opted in accumulates inferences
+     * drawn from their **real inbox** under the demo profile, and a wipe that could not reach them
+     * would leave behind a record of the user's spending belonging to a profile that no longer
+     * exists (P-01, ADR-0006).
+     *
+     * **This was a real gap, found by the issue 3.9 security review rather than by a test.** The
+     * "no residue" assertion above uses `countRowsFor`, which enumerates the same table list
+     * `DemoDao` deletes — so a table missing from the DAO is also missing from the count, and the
+     * assertion passes vacuously. Adding a profile-scoped table means adding it to **both**.
+     * Changelog: 2026-08-07 — Added for issue 3.9 (`sms_draft`).
+     */
+    @Test
+    fun `a draft parsed during the demo is erased on the way out`() =
+        runTest {
+            assertTrue(repository.enter() is Ok)
+            database.smsDraftDao().insertIfNew(
+                com.aicfo.core.database.entity.SmsDraftEntity(
+                    id = "d1",
+                    profileId = DemoModeRepository.DEMO_PROFILE_ID,
+                    smsId = 71L,
+                    sender = "VM-HDFCBK",
+                    amountMinor = 125_000L,
+                    direction = "debit",
+                    bookedOn = "2026-08-07",
+                    confidenceBps = 9_000,
+                    engineVersion = "1.0",
+                    ruleVersion = "1.0",
+                    status = "pending",
+                    createdAtUtcMillis = 1_786_082_400_000L,
+                    updatedAtUtcMillis = 1_786_082_400_000L,
+                ),
+            )
+
+            assertTrue(repository.exit() is Ok)
+
+            assertEquals(0, database.demoDao().countRowsFor(DemoModeRepository.DEMO_PROFILE_ID))
+        }
+
+    /**
      * Input:  a demo session that produced a net-worth snapshot, then `exit()`.
      * Output: asserts the snapshot goes too.
      *

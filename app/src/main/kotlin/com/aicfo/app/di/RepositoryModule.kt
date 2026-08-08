@@ -5,6 +5,7 @@ import com.aicfo.core.common.DispatcherProvider
 import com.aicfo.core.common.IdGenerator
 import com.aicfo.core.crypto.ReceiptImageStore
 import com.aicfo.core.database.CfoDatabase
+import com.aicfo.core.datastore.ConsentStore
 import com.aicfo.core.datastore.SettingsStore
 import com.aicfo.data.repository.AccountRepository
 import com.aicfo.data.repository.DemoModeRepository
@@ -13,10 +14,13 @@ import com.aicfo.data.repository.QuickSetupRepository
 import com.aicfo.data.repository.ReceiptRepository
 import com.aicfo.data.repository.RecurringRepository
 import com.aicfo.data.repository.RepositoryFactory
+import com.aicfo.data.repository.SmsRepository
 import com.aicfo.data.repository.TransactionRepository
+import com.aicfo.data.sms.SmsInboxReader
 import com.aicfo.domain.engines.networth.NetWorthEngine
 import com.aicfo.domain.engines.receipt.ReceiptEngine
 import com.aicfo.domain.engines.recurring.RecurringEngine
+import com.aicfo.domain.engines.sms.SmsEngine
 import com.aicfo.ml.ocr.ReceiptTextRecognizer
 import dagger.Module
 import dagger.Provides
@@ -187,6 +191,44 @@ object RepositoryModule {
             recognizer = recognizer,
             engine = engine,
             images = images,
+            clock = clock,
+            ids = ids,
+            dispatchers = dispatchers,
+            activeProfileId = demoMode.activeProfileId,
+        )
+
+    /**
+     * The SMS pipeline (issue 3.9; §18, §23, P-01).
+     * Why:    takes [transactions] rather than writing the ledger row itself, for the reason the
+     *         receipt binding above gives. Follows the demo like every binding above it, so drafts
+     *         parsed under the demo profile leave with it (ADR-0006) — which also means the demo
+     *         cannot show a draft drawn from the real user's inbox.
+     * Result: an [SmsRepository]. Input: [database], [transactions], [reader], [engine], [consents],
+     *         [settings], [clock], [ids], [dispatchers], [demoMode]. Output: the repository.
+     * Changelog: 2026-08-07 — Created for issue 3.9.
+     */
+    @Provides
+    @Singleton
+    @Suppress("LongParameterList") // Hilt reads the signature; each argument is one binding.
+    fun provideSmsRepository(
+        database: CfoDatabase,
+        transactions: TransactionRepository,
+        reader: SmsInboxReader,
+        engine: SmsEngine,
+        consents: ConsentStore,
+        settings: SettingsStore,
+        clock: Clock,
+        ids: IdGenerator,
+        dispatchers: DispatcherProvider,
+        demoMode: DemoModeRepository,
+    ): SmsRepository =
+        RepositoryFactory.sms(
+            database = database,
+            transactions = transactions,
+            reader = reader,
+            engine = engine,
+            consents = consents,
+            settings = settings,
             clock = clock,
             ids = ids,
             dispatchers = dispatchers,

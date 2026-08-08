@@ -454,6 +454,77 @@ internal object Migrations {
         }
 
     /**
+     * 11 → 12: adds `sms_draft` for opt-in bank-alert parsing (issue 3.9; §18, §23, P-01).
+     *
+     * Why:    a parsed alert has to survive being closed and re-opened without becoming a
+     *         transaction, so it needs somewhere to live that is neither the ledger nor memory.
+     *         Nothing existing can carry it: a `transactions` row would mean the app had recorded
+     *         money the user has not confirmed (P-07), and re-deriving the list from the inbox on
+     *         every screen open would re-propose every alert the user has already dismissed.
+     * What:   one `CREATE TABLE IF NOT EXISTS` plus its two indices. **Purely additive** — no
+     *         existing table, column or row is read or altered.
+     * Result: an upgraded installation gains an empty `sms_draft` and keeps everything else. A user
+     *         who never grants the consent will never have a row in it.
+     * Input:  [SupportSQLiteDatabase] — the database mid-upgrade. Output: none (executes DDL).
+     *
+     * The DDL matches what Room generates for `SmsDraftEntity`; the committed `schemas/12.json` is
+     * the reference, and `MigrationRoundTripTest` fails on a device if the two drift.
+     */
+    val MIGRATION_11_12 =
+        object : Migration(VERSION_11, VERSION_12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                createSmsDraft(db)
+            }
+        }
+
+    /**
+     * Creates `sms_draft` and its indices (issue 3.9).
+     * Why:    one function per table, the convention [createBudget] set — each block stays short
+     *         enough to check line by line against the entity it mirrors.
+     *
+     *         **There is no `body` column, and that absence is the point.** Issue 3.9 requires that
+     *         no raw SMS is stored beyond what is needed, and a schema with nowhere to put one is a
+     *         stronger guarantee than a rule that says not to. A reviewer can verify the claim by
+     *         reading this DDL.
+     *
+     *         **The first index is UNIQUE on `(profile_id, sms_id)`.** It is what stops one alert
+     *         becoming two drafts when a scan overlaps — a crash between reading a batch and
+     *         advancing the cursor re-reads it — and it is what `SmsDraftDao.insertIfNew` relies on
+     *         to keep a dismissal from being overwritten by a fresh proposal.
+     * Result: the table exists. Input: [db]. Output: none (executes DDL).
+     */
+    private fun createSmsDraft(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `sms_draft` (" +
+                "`id` TEXT NOT NULL, " +
+                "`profile_id` TEXT NOT NULL, " +
+                "`sms_id` INTEGER NOT NULL, " +
+                "`sender` TEXT NOT NULL, " +
+                "`amount_minor` INTEGER NOT NULL, " +
+                "`direction` TEXT NOT NULL, " +
+                "`booked_on` TEXT NOT NULL, " +
+                "`counterparty` TEXT, " +
+                "`account_tail` TEXT, " +
+                "`confidence_bps` INTEGER NOT NULL, " +
+                "`engine_version` TEXT NOT NULL, " +
+                "`rule_version` TEXT NOT NULL, " +
+                "`status` TEXT NOT NULL, " +
+                "`transaction_id` TEXT, " +
+                "`created_at_utc_millis` INTEGER NOT NULL, " +
+                "`updated_at_utc_millis` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_sms_draft_profile_id_sms_id` " +
+                "ON `sms_draft` (`profile_id`, `sms_id`)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_sms_draft_profile_id_status` " +
+                "ON `sms_draft` (`profile_id`, `status`)",
+        )
+    }
+
+    /**
      * Creates `attachments` and its indices (issue 3.8).
      * Why:    one function per table, the convention [createBudget] set — each block stays short
      *         enough to check line by line against the entity it mirrors.
@@ -561,6 +632,7 @@ internal object Migrations {
             MIGRATION_8_9,
             MIGRATION_9_10,
             MIGRATION_10_11,
+            MIGRATION_11_12,
         )
 
     /** Named so the version pair reads as a schema version rather than an unexplained literal. */
@@ -590,6 +662,9 @@ internal object Migrations {
     /** The version issue 3.7 introduced, and the one issue 3.8 upgrades from. */
     private const val VERSION_10 = 10
 
-    /** Matches `CfoDatabase.VERSION` at the time this migration was written (issue 3.8). */
+    /** The version issue 3.8 introduced, and the one issue 3.9 upgrades from. */
     private const val VERSION_11 = 11
+
+    /** Matches `CfoDatabase.VERSION` at the time this migration was written (issue 3.9). */
+    private const val VERSION_12 = 12
 }

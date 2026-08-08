@@ -64,6 +64,7 @@ evaluate: RuleEngine.evaluate(ruleId, FeatureSnapshot)
 | RULE-PAYOFF-ORDER | Avalanche vs snowball with interest delta | Debt simulator |
 | RULE-PREPAY-VS-INVEST | Loan rate vs after-tax expected return; show breakeven | Loan simulator, AI-FOO |
 | RULE-RECEIPT-PARSE | Total = the currency amount nearest {total, grand, amount, payable}; GST from lines naming {gst, cgst, sgst}; merchant = text in the top 3 000 bps of the image; a field under 6 000 bps confidence is flagged for review; a manual/SMS row within 1% and 1 day is offered as a merge | Receipt parser |
+| RULE-SMS-PARSE | A bank alert becomes a draft only if it clears every gate: an alphabetic sender, a {debited, spent, withdrawn, paid, purchase, sent} or {credited, received, deposited, refund} word, an account marker, a currency amount that is not the balance, and no ignore word ({otp, will be debited, loan offer, declined, failed, …}). Every keyword matches as a whole word. Direction = the earliest keyword; the amount is the first ₹/Rs/INR figure with no {bal, limit, due, …} label since the previous figure; a draft under 6 000 bps confidence is flagged; a manual/OCR row within 1% and 1 day is offered as a merge | SMS parser |
 
 ## §29.5 Protection
 
