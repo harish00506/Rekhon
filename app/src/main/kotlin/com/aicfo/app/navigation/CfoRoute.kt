@@ -82,4 +82,17 @@ sealed interface CfoRoute {
      */
     @Serializable
     data class AccountEditor(val accountId: String? = null) : CfoRoute
+
+    /**
+     * The category taxonomy editor (issue 4.1; FR-SET-001).
+     *
+     * **No arguments, and it is reached from the transaction list rather than from Settings.**
+     * FR-SET-001 files this editor under Settings, but no settings screen exists — the requirement's
+     * other items are separate issues (11.3 consents, 11.4 erase-all) and the shell itself has none.
+     * Hanging the editor off the list where categories are actually used gets it in front of the
+     * user now; moving the entry point when the shell lands is a one-line change here, and the
+     * destination itself does not move.
+     */
+    @Serializable
+    data object Categories : CfoRoute
 }

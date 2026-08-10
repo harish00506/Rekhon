@@ -16,6 +16,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import com.aicfo.core.designsystem.theme.CfoTheme
 import com.aicfo.core.model.Category
+import com.aicfo.core.model.CategoryNature
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -102,7 +103,9 @@ class AddTransactionFlowTest {
         var taps = 0
         val events = mutableListOf<AddTransactionEvent>()
         setContent(
-            state = loadedState(amountText = "1200").copy(categories = listOf(Category("category:fuel", "Fuel"))),
+            state =
+                loadedState(amountText = "1200")
+                    .copy(categories = listOf(Category("category:fuel", "Fuel", CategoryNature.NEED))),
             onEvent = { events += it },
         )
 
@@ -225,7 +228,7 @@ class AddTransactionFlowTest {
             twoAccountState(amountText = "5000")
                 .copy(
                     direction = TransactionDirection.TRANSFER,
-                    categories = listOf(Category("category:fuel", "Fuel")),
+                    categories = listOf(Category("category:fuel", "Fuel", CategoryNature.NEED)),
                 )
         setContent(state = state)
 
@@ -402,7 +405,7 @@ class AddTransactionFlowTest {
         setContent(
             state =
                 splitState(lines = listOf("600", "400"))
-                    .copy(categories = listOf(Category("category:fuel", "Fuel"))),
+                    .copy(categories = listOf(Category("category:fuel", "Fuel", CategoryNature.NEED))),
         )
 
         compose.onNodeWithText(text(R.string.add_txn_category)).assertDoesNotExist()
@@ -415,7 +418,7 @@ class AddTransactionFlowTest {
         setContent(
             state =
                 splitState(lines = listOf("600", "400"))
-                    .copy(categories = listOf(Category("category:fuel", "Fuel"))),
+                    .copy(categories = listOf(Category("category:fuel", "Fuel", CategoryNature.NEED))),
             onEvent = { events += it },
         )
 

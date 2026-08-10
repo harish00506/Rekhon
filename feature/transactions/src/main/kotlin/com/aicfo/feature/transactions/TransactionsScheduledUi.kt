@@ -52,7 +52,7 @@ internal fun LazyListScope.scheduledSection(
         items(items = day.rows, key = { it.id }) { row ->
             ListRow(
                 row = row,
-                accountNames = uiState.accountNames,
+                names = RowNames(accounts = uiState.accountNames, categories = uiState.categoryNames),
                 onDelete = { onEvent(TransactionsEvent.Delete(row.id)) },
                 // No long press here: a scheduled payment is not part of the actuals a bulk edit
                 // operates on, and offering selection on rows the action bar's count would not

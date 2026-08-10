@@ -131,6 +131,25 @@ object RepositoryFactory {
     ): TransactionRepository = RoomTransactionRepository(database, clock, ids, dispatchers, activeProfileId)
 
     /**
+     * Builds the category taxonomy store (issue 4.1, FR-SET-001).
+     * Why:    takes the whole [database] because uniqueness and nesting are checked against rows the
+     *         same statement then writes, and that pairing has to sit in one `withTransaction`.
+     * Result: a [CategoryRepository] over the encrypted database.
+     * Input:  [database]; [clock] — TIM-001, for the row stamps; [ids] — the injected id source
+     *         (P-08), used for user-created categories only; a seeded one derives its id from its
+     *         `CategorySeed` key so the seed is idempotent; [dispatchers]; [activeProfileId] — which
+     *         profile owns the taxonomy, so the demo keeps its own twelve.
+     * Output: [CategoryRepository].
+     */
+    fun categories(
+        database: CfoDatabase,
+        clock: Clock,
+        ids: IdGenerator,
+        dispatchers: DispatcherProvider,
+        activeProfileId: Flow<String>,
+    ): CategoryRepository = RoomCategoryRepository(database, clock, ids, dispatchers, activeProfileId)
+
+    /**
      * Builds the recurring-series store (issue 3.7, FR-TXN-006).
      * Why:    takes the [engine] rather than constructing one, for the same reason [netWorth] does —
      *         the proposal and the code that produced it stay assembled in the DI graph (ARC-003,

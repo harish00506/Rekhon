@@ -73,6 +73,7 @@ include(":ml:llm")              // on-device LLM behind LlmEngine
 
 // :feature:*               Compose screens + ViewModels (never depend on each other)
 include(":feature:accounts")    // FR-ACC-001/007 — CRUD for all eleven account types
+include(":feature:categories")  // FR-SET-001 — the category taxonomy editor (issue 4.1)
 include(":feature:dashboard")
 include(":feature:onboarding")
 include(":feature:transactions")

@@ -9,6 +9,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.aicfo.feature.accounts.AccountEditorScreen
 import com.aicfo.feature.accounts.AccountsScreen
+import com.aicfo.feature.categories.CategoriesScreen
 import com.aicfo.feature.dashboard.DashboardScreen
 import com.aicfo.feature.onboarding.OnboardingScreen
 import com.aicfo.feature.transactions.AddTransactionScreen
@@ -57,7 +58,14 @@ fun CfoNavHost(
             )
         }
         composable<CfoRoute.Transactions> {
-            TransactionsScreen()
+            TransactionsScreen(
+                onManageCategories = { navController.navigate(CfoRoute.Categories) },
+            )
+        }
+        composable<CfoRoute.Categories> {
+            // No exit lambda: the editor is a leaf, and the system Back that popped the user here
+            // from the transaction list is the only way out it needs.
+            CategoriesScreen()
         }
         captureDestinations(navController)
         composable<CfoRoute.Accounts> {

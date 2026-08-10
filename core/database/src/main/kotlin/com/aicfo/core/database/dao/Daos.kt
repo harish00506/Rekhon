@@ -795,6 +795,31 @@ interface TransactionDao {
     ): Int
 
     /**
+     * Counts what a category is currently attached to (issue 4.1; FR-SET-001).
+     *
+     * Why:    deleting a category does not delete the money spent in it — the rows keep their
+     *         `category_id` and, because `CategoryDao.observeForProfile` excludes soft-deleted rows,
+     *         they start reading as "Uncategorised". That is the right behaviour and a surprising
+     *         one, so the editor states the consequence before the user confirms it (P-02). This is
+     *         the number it states.
+     * Result: the count of live transactions plus live split lines carrying [categoryId].
+     * Input:  [categoryId]. Output: [Int].
+     * Changelog: 2026-08-08 — Created for issue 4.1.
+     *
+     * **Split lines are counted, and counting only `transactions` would under-report badly.** A
+     * split parent carries no category at all (FR-TXN-004 puts them on the lines), so a category
+     * used exclusively inside splits would report zero and the dialog would promise nothing was
+     * affected while every one of those lines went Uncategorised.
+     */
+    @Query(
+        "SELECT (SELECT COUNT(*) FROM transactions " +
+            "WHERE category_id = :categoryId AND deleted_at_utc_millis IS NULL) + " +
+            "(SELECT COUNT(*) FROM transaction_splits " +
+            "WHERE category_id = :categoryId AND deleted_at_utc_millis IS NULL)",
+    )
+    suspend fun countForCategory(categoryId: String): Int
+
+    /**
      * Marks many transactions deleted at once (issue 3.6; FR-TXN-008, DB-002).
      *
      * Why:    the bulk half of [softDelete], with the same `deleted_at_utc_millis IS NULL` guard —
@@ -1121,6 +1146,61 @@ interface CategoryDao {
             "AND deleted_at_utc_millis IS NULL ORDER BY name",
     )
     fun observeForProfile(profileId: String): Flow<List<CategoryEntity>>
+
+    /**
+     * Counts every category row a profile has, **including soft-deleted ones** (issue 4.1).
+     *
+     * Why:    this is what decides whether `ensureSeeded` writes. Counting only live rows would make
+     *         a user who deleted all fifteen defaults get them back on the next cold start — the app
+     *         overruling a decision they made on purpose (P-07). The question being asked is "has
+     *         this profile ever been seeded?", and a soft-deleted row is proof that it has.
+     * Result: the total, zero for a profile that has never been seeded.
+     * Input:  [profileId]. Output: [Int].
+     * Changelog: 2026-08-08 — Created for issue 4.1.
+     */
+    @Query("SELECT COUNT(*) FROM category WHERE profile_id = :profileId")
+    suspend fun countForProfile(profileId: String): Int
+
+    /**
+     * Reads one category, soft-deleted or not.
+     * Why:    every write in `CategoryRepository` reads the row first — to prove it exists, and to
+     *         keep the fields it is not changing. Excluding deleted rows here would turn "edit a row
+     *         that was deleted on another screen" into "row not found", which is the right outcome
+     *         but the wrong error; the repository decides that, not the query.
+     * Result: the row, or `null`. Input: [id]. Output: `CategoryEntity?`.
+     * Changelog: 2026-08-08 — Created for issue 4.1.
+     */
+    @Query("SELECT * FROM category WHERE id = :id")
+    suspend fun findById(id: String): CategoryEntity?
+
+    /**
+     * Reads a profile's live categories once, rather than observing them.
+     * Why:    the uniqueness and nesting checks in `CategoryRepository` need the current taxonomy
+     *         inside the same transaction as the write that depends on it. Collecting the Flow for
+     *         one value would read outside that transaction, which is the window where two saves
+     *         race into two categories with the same name.
+     * Result: the live rows. Input: [profileId]. Output: `List<CategoryEntity>`.
+     * Changelog: 2026-08-08 — Created for issue 4.1.
+     */
+    @Query("SELECT * FROM category WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL")
+    suspend fun liveForProfile(profileId: String): List<CategoryEntity>
+
+    /**
+     * Counts a category's live children (issue 4.1).
+     * Why:    §8's taxonomy is one level deep, so a category with children may not be deleted out
+     *         from under them — the alternative is orphan rows pointing at a `parent_id` that no
+     *         longer resolves, which no query would report and no screen would show.
+     * Result: the count. Input: [parentId]. Output: [Int].
+     * Changelog: 2026-08-08 — Created for issue 4.1.
+     */
+    @Query(
+        "SELECT COUNT(*) FROM category WHERE parent_id = :parentId AND deleted_at_utc_millis IS NULL",
+    )
+    suspend fun countLiveChildren(parentId: String): Int
+
+    /** Updates a category in place. Input: [category]. Output: none. */
+    @Update
+    suspend fun update(category: CategoryEntity)
 }
 
 /** Reads and writes budgets (issue 2.3; FR-BUD-001, FR-ONB-002). */

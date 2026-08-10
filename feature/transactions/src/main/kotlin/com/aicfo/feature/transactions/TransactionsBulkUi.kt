@@ -263,7 +263,7 @@ internal fun SelectableRow(
     val row = item.row
     ListRow(
         row = row,
-        accountNames = uiState.accountNames,
+        names = RowNames(accounts = uiState.accountNames, categories = uiState.categoryNames),
         selection = RowSelection(isSelected = item.isSelected, showDelete = !uiState.isSelecting),
         onDelete = { onEvent(TransactionsEvent.Delete(row.id)) },
         modifier =

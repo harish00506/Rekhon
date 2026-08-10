@@ -22,6 +22,7 @@ import com.aicfo.core.database.entity.TransactionEntity
 import com.aicfo.core.database.entity.TransactionSplitEntity
 import com.aicfo.core.database.entity.TransactionTagEntity
 import com.aicfo.core.model.Category
+import com.aicfo.core.model.CategoryNature
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.Tag
 import com.aicfo.core.model.Transaction
@@ -653,7 +654,7 @@ internal class RoomTransactionRepository(
     override fun observeCategories(): Flow<List<Category>> =
         activeProfileId.flatMapLatest { profileId ->
             database.categoryDao().observeForProfile(profileId)
-                .map { rows -> rows.map { it.toCategory() } }
+                .map { rows -> rows.mapNotNull { it.toCategory() } }
                 .flowOn(dispatchers.io)
         }
 
@@ -1257,12 +1258,19 @@ internal fun TransactionWithSplits.toTransaction(): Transaction? =
 
 /**
  * Converts a category row into the domain model.
- * Why:    the add screen needs an id and a label to render a chip. `nature`, `parent_id` and
- *         `is_system` are on the entity and are deliberately dropped — issues 4.1 and 4.3 own those,
- *         and carrying them now would be a second, drifting definition of a model they will build.
- * Result: a [Category]. Cannot fail: unlike a source or an account type, there is no stored
- *         vocabulary here to fall off.
- * Input:  the receiver. Output: [Category].
+ * Why:    the add screen needs an id and a label to render a chip; issue 4.1's editor needs the
+ *         nature it groups by and the parent it indents under. One mapper serves both, so the two
+ *         screens cannot end up with different ideas of what a category is.
+ * Result: a [Category], or `null` when `nature` holds a value this build does not know — the same
+ *         forward-compatible shape [TransactionSource.fromStored] uses, and the reason this mapper
+ *         gained a failure case in 4.1 when it had none in 3.1. **A dropped category is a chip that
+ *         does not appear; a guessed one is a category silently in the wrong 50/30/20 band.**
+ * Input:  the receiver. Output: `Category?`.
  * Changelog: 2026-08-02 — Created for issue 3.1.
+ *            2026-08-08 — Issue 4.1: carries `nature`, `parent_id` and `is_system`, and became
+ *            nullable because `nature` is now a closed set.
  */
-internal fun CategoryEntity.toCategory(): Category = Category(id = id, name = name)
+internal fun CategoryEntity.toCategory(): Category? =
+    CategoryNature.fromStored(nature)?.let { parsed ->
+        Category(id = id, name = name, nature = parsed, parentId = parentId, isSystem = isSystem)
+    }

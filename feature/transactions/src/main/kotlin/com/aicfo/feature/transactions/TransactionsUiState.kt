@@ -675,6 +675,18 @@ data class TransactionsUiState(
     /** Whether the user is picking rows for a bulk action (issue 3.6; FR-TXN-008). */
     val isSelecting: Boolean get() = selection.isNotEmpty()
 
+    /**
+     * Category names by id, for a row that has nothing else to call itself (issue 4.1).
+     *
+     * Why: the list row's title falls back note → merchant → category → "Uncategorised", and until
+     *      4.1 seeded a taxonomy the third step could not exist — no real profile had a category to
+     *      attach, so "Uncategorised" was true by construction. It stopped being true the moment the
+     *      seed landed, and the row went on saying it. Derived from [categories], which is already
+     *      loaded for the bulk recategorise picker, rather than adding a second read of the same
+     *      table.
+     */
+    val categoryNames: Map<String, String> get() = categories.associate { it.id to it.name }
+
     /** Whether the scheduled section has anything to show (issue 3.4). */
     val hasUpcoming: Boolean get() = upcoming.isNotEmpty()
 

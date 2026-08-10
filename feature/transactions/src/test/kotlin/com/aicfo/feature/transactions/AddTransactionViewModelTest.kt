@@ -4,6 +4,7 @@ import app.cash.turbine.test
 import com.aicfo.core.common.AppError
 import com.aicfo.core.common.FakeClock
 import com.aicfo.core.model.Category
+import com.aicfo.core.model.CategoryNature
 import com.aicfo.core.model.Money
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -73,7 +74,7 @@ class AddTransactionViewModelTest {
     fun `no category is preselected — the middle tap is the user's to spend or skip`() =
         runTest {
             accounts.setAccounts(account())
-            transactions.setCategories(Category("category:fuel", "Fuel"))
+            transactions.setCategories(Category("category:fuel", "Fuel", CategoryNature.NEED))
 
             viewModel().uiState.test {
                 assertNull(awaitItem().selectedCategoryId)
@@ -151,7 +152,7 @@ class AddTransactionViewModelTest {
     fun `the selected account and category reach the draft`() =
         runTest {
             accounts.setAccounts(account { copy(id = "account:1") })
-            transactions.setCategories(Category("category:fuel", "Fuel"))
+            transactions.setCategories(Category("category:fuel", "Fuel", CategoryNature.NEED))
             val viewModel = viewModel()
             viewModel.onEvent(AddTransactionEvent.AmountChanged("1200"))
             viewModel.onEvent(AddTransactionEvent.CategorySelected("category:fuel"))
@@ -169,7 +170,7 @@ class AddTransactionViewModelTest {
     fun `tapping the selected category again clears it`() =
         runTest {
             accounts.setAccounts(account())
-            transactions.setCategories(Category("category:fuel", "Fuel"))
+            transactions.setCategories(Category("category:fuel", "Fuel", CategoryNature.NEED))
             val viewModel = viewModel()
             viewModel.onEvent(AddTransactionEvent.CategorySelected("category:fuel"))
 
@@ -406,7 +407,7 @@ class AddTransactionViewModelTest {
             // FR-TXN-003: a transfer is not spending. A stale category would be silently dropped by
             // the store, which is worse than clearing it where the user can see.
             accounts.setAccounts(account { copy(id = "account:1") }, account { copy(id = "account:2") })
-            transactions.setCategories(Category("category:fuel", "Fuel"))
+            transactions.setCategories(Category("category:fuel", "Fuel", CategoryNature.NEED))
             val viewModel = viewModel()
             viewModel.onEvent(AddTransactionEvent.CategorySelected("category:fuel"))
 
@@ -588,7 +589,7 @@ class AddTransactionViewModelTest {
     fun `split evenly keeps the categories already chosen`() =
         runTest {
             // The user usually decides what each line is *for* before deciding the amounts are equal.
-            transactions.setCategories(Category("category:fuel", "Fuel"))
+            transactions.setCategories(Category("category:fuel", "Fuel", CategoryNature.NEED))
             val viewModel = splitViewModel()
             viewModel.onEvent(SplitEvent.SplitLineCategorySelected(0, "category:fuel"))
 
@@ -638,8 +639,8 @@ class AddTransactionViewModelTest {
     fun `each line carries its own category`() =
         runTest {
             transactions.setCategories(
-                Category("category:groceries", "Groceries"),
-                Category("category:household", "Household"),
+                Category("category:groceries", "Groceries", CategoryNature.NEED),
+                Category("category:household", "Household", CategoryNature.NEED),
             )
             val viewModel = balancedSplitViewModel()
             viewModel.onEvent(SplitEvent.SplitLineCategorySelected(0, "category:groceries"))
@@ -657,7 +658,7 @@ class AddTransactionViewModelTest {
     fun `splitting hides the parent's category picker and clears any choice`() =
         runTest {
             // The lines carry the categories now; one on the parent as well would contradict them.
-            transactions.setCategories(Category("category:fuel", "Fuel"))
+            transactions.setCategories(Category("category:fuel", "Fuel", CategoryNature.NEED))
             accounts.setAccounts(account())
             val viewModel = viewModel()
             viewModel.onEvent(AddTransactionEvent.AmountChanged("1000"))

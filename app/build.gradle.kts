@@ -43,6 +43,7 @@ tasks.withType<Test>()
 dependencies {
     implementation(project(":core:designsystem"))
     implementation(project(":feature:accounts"))
+    implementation(project(":feature:categories"))
     implementation(project(":feature:dashboard"))
     implementation(project(":feature:onboarding"))
     implementation(project(":feature:transactions"))

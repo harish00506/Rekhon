@@ -8,6 +8,7 @@ import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.datastore.ConsentStore
 import com.aicfo.core.datastore.SettingsStore
 import com.aicfo.data.repository.AccountRepository
+import com.aicfo.data.repository.CategoryRepository
 import com.aicfo.data.repository.DemoModeRepository
 import com.aicfo.data.repository.NetWorthRepository
 import com.aicfo.data.repository.QuickSetupRepository
@@ -141,6 +142,25 @@ object RepositoryModule {
         demoMode: DemoModeRepository,
     ): TransactionRepository =
         RepositoryFactory.transactions(database, clock, ids, dispatchers, demoMode.activeProfileId)
+
+    /**
+     * The category taxonomy store (issue 4.1; FR-SET-001, AI-CLSN-001).
+     * Why:    follows the demo like every binding above it, so the sample profile keeps the twelve
+     *         categories `DemoDataset` writes and never gets the fifteen seeded defaults on top
+     *         (ADR-0006).
+     * Result: a [CategoryRepository]. Input: [database], [clock], [ids] — the injected id source
+     *         (P-08), [dispatchers], [demoMode]. Output: the repository.
+     * Changelog: 2026-08-08 — Created for issue 4.1.
+     */
+    @Provides
+    @Singleton
+    fun provideCategoryRepository(
+        database: CfoDatabase,
+        clock: Clock,
+        ids: IdGenerator,
+        dispatchers: DispatcherProvider,
+        demoMode: DemoModeRepository,
+    ): CategoryRepository = RepositoryFactory.categories(database, clock, ids, dispatchers, demoMode.activeProfileId)
 
     /**
      * The recurring-series store (issue 3.7; FR-TXN-006).

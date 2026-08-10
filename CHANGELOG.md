@@ -6,6 +6,61 @@ Single source of truth for the version number is the repo-root [`VERSION`](VERSI
 `app/build.gradle.kts` `versionName` equal to it. Epics map to the SRS roadmap (§26); every
 entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`](docs/issues/00-issue-workflow.md).
 
+## [0.4.0] — Epic 4: Categorisation & Budgets
+
+> What a payment was *for*. The `category` table has existed since issue 1.6 with nothing but the
+> demo dataset writing to it; this epic makes the taxonomy the user's, then teaches the app to fill
+> it in.
+
+### [0.4.0] — A taxonomy that exists, and is yours  (2026-08-08)
+
+- **Implemented:** issue 4.1 — the categories editor and the merchant-rule knowledge base
+  (**FR-SET-001**, **AI-CLSN-001**, §8.1, AI-ARC-006). A real profile is seeded with fifteen default
+  categories on first launch, and every one of them can be renamed, re-natured, nested one level or
+  deleted.
+- **The gap this closes was invisible and total.** `CategoryEntity`, `CategoryDao` and
+  `transactions.category_id` shipped in issue 1.6, the add-transaction screen has offered a category
+  chip row since 3.1, and bulk recategorise since 3.6 — **and the only thing in the codebase that
+  ever wrote a category row was `DemoDataset`.** `DemoModeRepositoryTest` asserted a real profile had
+  exactly zero, and it was right: the chip row was empty and every transaction read "Uncategorised".
+  Four issues built on a table nothing could fill.
+- **`FR-CAT-*`, which the backlog cited for this issue, does not exist in SRS v1.7** — verified
+  against a full-text extraction of all 58 pages. That is **five for five** on generated acceptance
+  criteria being more specific than the section they cite. Fixed at source in
+  `scripts/gen_issue_docs.py`.
+- **The seed is called from `MainViewModel.init`, and the three obvious places all miss a path:**
+  `OnboardingWriter` only touches DataStore, `QuickSetupRepository.applySeeds` returns early for a
+  user who skipped quick setup, and seeding from the editor leaves the add screen empty for anyone
+  who never opens it. One idempotent call at cold start covers all three — plus the profiles
+  onboarded before this issue existed. **A profile that deleted every default is not re-seeded**: the
+  guard counts soft-deleted rows, so the app does not overrule a decision the user made (P-07).
+- **A timestamp is not a uniqueness source.** The first draft derived a created category's id from
+  its name and the create stamp; deleting "Fuel" and recreating it inside the same millisecond
+  produced the same primary key, so `REPLACE` quietly resurrected the soft-deleted row with its old
+  nature. Found by `a name freed by a delete can be used again`, fixed by using the injected
+  `IdGenerator` (P-08). Seeded ids stay derived — that is what makes the seed idempotent.
+- **A categorised transaction was still calling itself "Uncategorised."** The list row's title fell
+  back note → merchant → "Uncategorised" and never consulted the category. Harmless for as long as no
+  real profile could have one; a false statement about the row the moment the seed landed. **Found on
+  the emulator by saving one**, not by reading the code, and now pinned by a test.
+- **`CLS-CAT-001`…`015` and `CLS-MER-001`…`013`** (`ai/knowledge/classification-kb.json` v1.1) carry
+  a stable id and a version each. The category defaults are read by `CategorySeed` and guarded by
+  `ClassificationKbDriftTest` — **verified to bite against two separate mutations**. The merchant
+  rules have **no runtime consumer until issue 4.2**, and gain their ids now anyway because an id
+  added later than the row it names is an id that may already be missing from a stored insight
+  ([ADR-0014](docs/adr/0014-classification-kb-seed-mirror-and-unconsumed-merchant-rules.md)).
+- **One nature, two spellings, one translation.** `category.nature` has stored `invest` since 1.6;
+  §8.3 and the knowledge base say `INVESTMENT`. `CategoryNature` carries both — `storedValue` is the
+  only thing that reaches a column, `kbValue` the only thing compared against `ai/`.
+- **Deleting a category does not delete the money**, and the dialog says so with a number:
+  "1 transaction uses this category and will read as Uncategorised. Nothing is deleted and no amount
+  changes." A count that cannot be read says so rather than claiming zero (P-02).
+- **No schema change** — the DB stays at v12. `category` has had `parent_id`, `nature`, `is_system`
+  and `deleted_at_utc_millis` since issue 1.6; nothing here needed a migration.
+- New module `:feature:categories` (FR-SET-001 files the editor under Settings, which has no shell
+  yet); `CategoryRepository` in `:data:repository`; `Category` widened and moved to its own file in
+  `:core:model`.
+
 ## [0.3.0] — Epic 3: Transactions & Capture
 
 > The capture path. The `transactions` table has existed since issue 1.6 with nothing the user could

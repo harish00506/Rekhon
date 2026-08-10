@@ -8,6 +8,8 @@
   `MoneyFormatter`, so Indian digit grouping (₹1,23,456.78) stays in one place (P-06).
 -->
 <resources>
+    <!-- Issue 4.1: the way into FR-SET-001's categories editor, which lives in :feature:categories. -->
+    <string name="transactions_manage_categories">Categories</string>
     <string name="transactions_title">Transactions</string>
     <string name="transactions_empty">No transactions yet. Tap + to add your first one.</string>
     <string name="transactions_uncategorised">Uncategorised</string>
