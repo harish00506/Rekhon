@@ -126,9 +126,10 @@ abstract class CfoDatabase : RoomDatabase() {
          * (`transactions.posted_at_utc_millis`; FR-TXN-010) · 9 — issue 3.6 (`tags`,
          * `transaction_tags`; FR-TXN-007, FR-TXN-008) · 10 — issue 3.7
          * (`recurring_rule.dismissed_at_utc_millis`; FR-TXN-006) · 11 — issue 3.8 (`attachments`;
-         * FR-OCR-005) · 12 — issue 3.9 (`sms_draft`; §18, §23).
+         * FR-OCR-005) · 12 — issue 3.9 (`sms_draft`; §18, §23) · 13 — issue 4.3
+         * (`transactions.nature`, the user's nature override; §8.3).
          */
-        const val VERSION = 12
+        const val VERSION = 13
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"

@@ -12,6 +12,7 @@ import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
 import com.aicfo.core.common.getOrNull
 import com.aicfo.core.common.toAppError
+import com.aicfo.core.model.CategoryNature
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.Transaction
 import com.aicfo.core.model.TransactionType
@@ -21,6 +22,7 @@ import com.aicfo.data.repository.ReceiptRepository
 import com.aicfo.data.repository.RecurringRepository
 import com.aicfo.data.repository.TransactionFilter
 import com.aicfo.data.repository.TransactionRepository
+import com.aicfo.domain.engines.nature.NatureVerdict
 import com.aicfo.domain.engines.recurring.RecurringSeries
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -220,9 +222,58 @@ class TransactionsViewModel
                     setFilter(currentFilter.copy(source = event.source))
                 is TransactionsEvent.RowTapped -> openDetail(event.transaction)
                 TransactionsEvent.DetailDismissed ->
-                    _uiState.update { it.copy(detail = null, detailReceipt = null) }
+                    _uiState.update { it.copy(detail = null, detailReceipt = null, detailNature = null) }
 
                 is TransactionsEvent.ReceiptDeleted -> deleteReceipt(event.attachmentId)
+                is TransactionsEvent.NatureOverridden -> overrideNature(event.nature)
+            }
+        }
+
+        /**
+         * Works out what this row's money became, for the open sheet (issue 4.3; §8.3, P-02).
+         *
+         * Why:    fetched **when the sheet opens**, not carried on every row of the list, for the
+         *         same reason the receipt is: §8.3.1 branches on five joins, and doing them per row
+         *         of a paged ledger would be a query storm for a label most rows never show.
+         *
+         *         Guarded on the sheet still showing the same transaction, like the receipt above —
+         *         the read is off the main thread, and a user who closed one sheet and opened
+         *         another must not be handed the previous row's nature.
+         *
+         *         **A failure clears the section rather than raising a banner.** The sheet's other
+         *         fields are still true and still useful; an error over a label the user did not ask
+         *         for would teach them to dismiss banners.
+         * Result: sets `detailNature`, or leaves it null. Input: [transactionId].
+         * Output: none (launches on `viewModelScope`).
+         * Changelog: 2026-08-10 — Created for issue 4.3.
+         */
+        private fun loadNature(transactionId: String) {
+            viewModelScope.launch {
+                val verdict = (repository.natureOf(transactionId) as? Ok<NatureVerdict>)?.value
+                _uiState.update { state ->
+                    if (state.detail?.id != transactionId) state else state.copy(detailNature = verdict)
+                }
+            }
+        }
+
+        /**
+         * Records or withdraws the user's nature correction (issue 4.3; §8.3, P-07).
+         * Why:    re-reads afterwards rather than assuming the answer, because withdrawing an
+         *         override (`null`) hands the transaction back to §8.3.1 and **this class does not
+         *         know what the rules will say** — only the repository and the engine do. Assuming
+         *         would put a second opinion about nature in the UI layer, which is the one place
+         *         P-03 says numbers must never be decided.
+         * Result: the sheet shows the new verdict. Input: [nature] — what the user chose, or `null`
+         *         to withdraw. Output: none (launches on `viewModelScope`).
+         * Changelog: 2026-08-10 — Created for issue 4.3.
+         */
+        private fun overrideNature(nature: CategoryNature?) {
+            val transactionId = _uiState.value.detail?.id ?: return
+            viewModelScope.launch {
+                when (val outcome = repository.setNature(transactionId, nature)) {
+                    is Ok -> loadNature(transactionId)
+                    is Err -> _uiState.update { it.copy(errorCode = outcome.error.code) }
+                }
             }
         }
 
@@ -242,7 +293,8 @@ class TransactionsViewModel
          * Changelog: 2026-08-06 — Created for issue 3.8.
          */
         private fun openDetail(transaction: Transaction) {
-            _uiState.update { it.copy(detail = transaction, detailReceipt = null) }
+            _uiState.update { it.copy(detail = transaction, detailReceipt = null, detailNature = null) }
+            loadNature(transaction.id)
             viewModelScope.launch {
                 val attachment = receipts.observeAttachment(transaction.id).firstOrNull()
                 val image = attachment?.let { receipts.readImage(it).getOrNull() }

@@ -1,0 +1,239 @@
+# =============================================================================
+# Golden file for nature classification (issue 4.3; SRS §8.3.1, §21.5).
+#
+# The acceptance criteria ask for "a golden-file test over a labelled fixture".
+# Every record fixes an input and states BOTH the expected nature and the
+# expected `CLS-NAT-*` citation, because a step that fires for the wrong reason
+# and happens to land on the right nature is still a broken decision order —
+# and it is the kind that stays broken until a merchant, an account or a
+# category changes and the answer quietly turns wrong.
+#
+# Why a text file and not JSON: this module is pure Kotlin with no
+# serialisation dependency by design (ARC-002), so the fixture is parsed by the
+# test that reads it — the bargain eval/sms.txt and eval/categorisation.txt
+# already struck.
+#
+# Format: records separated by a line of `===`, fields as `# key=value`:
+#     account      one of AccountType's stored values          (required)
+#     counterpart  the other side of a transfer, or omitted
+#     type         expense | income | transfer_out | transfer_in | adjustment
+#     amount       signed paise (MNY-001)                       (required)
+#     category     a CategoryNature stored value, or omitted
+#     median       the category's median magnitude in paise, or omitted
+#     history      nature:count pairs, comma separated, or omitted
+#     expect       the nature that must come out                (required)
+#     cite         the CLS-NAT-* ids, comma separated, in order (required)
+#     flagged      true | false — whether it reaches §8.3's review flow
+# Any other `#` line is a comment, including this block.
+# =============================================================================
+
+===
+# --- step 1: a loan account decides, from either side ------------------------
+# account=loan
+# counterpart=bank
+# type=transfer_in
+# amount=1800000
+# category=need
+# expect=liability
+# cite=CLS-NAT-001
+# flagged=false
+===
+# The leg the user actually looks at. Labelling only the loan-side leg would
+# leave this one reading as ordinary spending out of their bank account.
+# account=bank
+# counterpart=loan
+# type=transfer_out
+# amount=-1800000
+# expect=liability
+# cite=CLS-NAT-001
+# flagged=false
+===
+# --- step 2: investing -------------------------------------------------------
+# account=bank
+# counterpart=investment
+# type=transfer_out
+# amount=-1000000
+# expect=invest
+# cite=CLS-NAT-002
+# flagged=false
+===
+# The arriving leg of the same SIP. Also INVESTMENT — both legs describe the
+# same becoming — which is exactly why natureBreakdown counts only one of them.
+# account=investment
+# counterpart=bank
+# type=transfer_in
+# amount=1000000
+# expect=invest
+# cite=CLS-NAT-002
+# flagged=false
+===
+# --- step 3: conversions -----------------------------------------------------
+# A gold purchase somebody tagged Shopping. The account wins: §8.3 excludes a
+# conversion from true spend because the money is still the user's, and
+# counting ₹80,000 of gold as discretionary spending would wreck the month.
+# account=bank
+# counterpart=gold
+# type=transfer_out
+# amount=-8000000
+# category=want
+# expect=asset
+# cite=CLS-NAT-003
+# flagged=false
+===
+# account=bank
+# counterpart=vehicle
+# type=transfer_out
+# amount=-15000000
+# expect=asset
+# cite=CLS-NAT-003
+# flagged=false
+===
+# account=bank
+# counterpart=property
+# type=transfer_out
+# amount=-50000000
+# expect=asset
+# cite=CLS-NAT-003
+# flagged=false
+===
+# account=bank
+# counterpart=crypto
+# type=transfer_out
+# amount=-2500000
+# expect=asset
+# cite=CLS-NAT-003
+# flagged=false
+===
+# --- step 4: what the user already decided -----------------------------------
+# Overridden to WANT three times, against a category that says NEED. A
+# suggestion that keeps reversing a correction is not learning, it is arguing.
+# account=bank
+# type=expense
+# amount=-95000
+# category=need
+# history=want:3
+# expect=want
+# cite=CLS-NAT-004
+# flagged=false
+===
+# Two to one is not settled — 6 666 bps, under the floor — so it yields to the
+# category rather than imposing a majority the user never agreed to.
+# account=bank
+# type=expense
+# amount=-95000
+# category=need
+# history=want:2,need:1
+# expect=need
+# cite=CLS-NAT-005
+# flagged=false
+===
+# An account conversion outranks the learned override: a user who once called a
+# jeweller a WANT did not thereby decide that buying gold is consumption.
+# account=bank
+# counterpart=gold
+# type=transfer_out
+# amount=-4000000
+# history=want:5
+# expect=asset
+# cite=CLS-NAT-003
+# flagged=false
+===
+# --- step 5 and the fallback -------------------------------------------------
+# account=bank
+# type=expense
+# amount=-450000
+# category=need
+# expect=need
+# cite=CLS-NAT-005
+# flagged=false
+===
+# account=credit_card
+# type=expense
+# amount=-120000
+# category=want
+# expect=want
+# cite=CLS-NAT-005
+# flagged=false
+===
+# account=bank
+# type=expense
+# amount=-320000
+# category=invest
+# expect=invest
+# cite=CLS-NAT-005
+# flagged=false
+===
+# Every transaction on a real profile before issue 4.2, and every one whose
+# merchant Stage 1 declined. The default says out loud that it is a default.
+# account=cash
+# type=expense
+# amount=-25000
+# expect=want
+# cite=CLS-NAT-005
+# flagged=true
+===
+# --- step 6: the modifier ----------------------------------------------------
+# §8.3.1's own example: ₹9,400 at a grocery whose median is ₹2,000. Festival
+# stock-up (still a NEED) or a party (a WANT)? Only the user knows, so the
+# nature is kept and the question is raised.
+# account=bank
+# type=expense
+# amount=-940000
+# category=need
+# median=200000
+# expect=need
+# cite=CLS-NAT-005,CLS-NAT-006
+# flagged=true
+===
+# Exactly three times the median is not yet unusual — the boundary is open.
+# account=bank
+# type=expense
+# amount=-600000
+# category=need
+# median=200000
+# expect=need
+# cite=CLS-NAT-005
+# flagged=false
+===
+# A large WANT is not ambiguous about what it was, just large. That is the
+# Purchase Advisor's problem, not the classifier's.
+# account=bank
+# type=expense
+# amount=-940000
+# category=want
+# median=200000
+# expect=want
+# cite=CLS-NAT-005
+# flagged=false
+===
+# The modifier applies to a learned nature too, when that nature is a NEED.
+# account=bank
+# type=expense
+# amount=-940000
+# category=want
+# median=200000
+# history=need:4
+# expect=need
+# cite=CLS-NAT-004,CLS-NAT-006
+# flagged=true
+===
+# --- income and the self-transfer --------------------------------------------
+# Salary. Nothing became anything; the fallback answers and flags itself, and
+# natureBreakdown excludes income outright.
+# account=bank
+# type=income
+# amount=8500000
+# expect=want
+# cite=CLS-NAT-005
+# flagged=true
+===
+# Bank to bank. No account step claims it, so the flagged fallback answers —
+# and NatureBreakdownTest is what proves this never reaches the month's totals.
+# account=bank
+# counterpart=bank
+# type=transfer_out
+# amount=-1000000
+# expect=want
+# cite=CLS-NAT-005
+# flagged=true
+===

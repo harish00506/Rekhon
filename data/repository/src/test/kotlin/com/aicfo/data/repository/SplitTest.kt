@@ -13,6 +13,7 @@ import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.total
 import com.aicfo.domain.engines.classification.ClassificationEngineFactory
+import com.aicfo.domain.engines.nature.NatureEngineFactory
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -72,6 +73,7 @@ class SplitTest {
         repository =
             RepositoryFactory.transactions(
                 database, clock, ids, dispatchers, activeProfileId, ClassificationEngineFactory.create(),
+                NatureEngineFactory.create(),
             )
         // The real AccountRepository: the claim that a split moves the balance once, not once per
         // line, is about the figure the accounts screen renders, and a stub could not make it.

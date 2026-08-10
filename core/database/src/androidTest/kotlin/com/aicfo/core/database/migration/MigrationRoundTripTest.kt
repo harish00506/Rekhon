@@ -682,6 +682,56 @@ class MigrationRoundTripTest {
     }
 
     /**
+     * 12 → 13: `transactions.nature`, the user's nature override (issue 4.3; §8.3).
+     *
+     * Why:    additive and one column, so the structural risk is the small one — a migration that
+     *         recreated `transactions` on its way to altering it would validate against
+     *         `schemas/13.json` and lose the ledger. But the **semantic** claim is the one worth a
+     *         test, and it is the opposite of `migrate7To8`'s: there, the absent backfill *was* the
+     *         bug, because every pre-existing row read as unposted. Here `NULL` is the correct and
+     *         complete value for every existing transaction — nobody has overridden anything yet,
+     *         and the automatic nature is derived on read rather than stored.
+     *
+     *         So this asserts the column arrives **empty**, not merely present. A migration that
+     *         helpfully backfilled it with a guessed nature would pass a shape check and quietly
+     *         convert five engine-derived guesses into five user decisions, which is exactly the
+     *         distinction §8.3.1 step 4 learns from.
+     * Input:  a transaction written at version 12. Output: it survives, with a null override that
+     *         then accepts a value.
+     */
+    @Test
+    fun migrate12To13_preservesTransactionsAndLeavesTheNatureOverrideEmpty() {
+        helper.createDatabase(TEST_DB, 12).use { db ->
+            db.execSQL(
+                "INSERT INTO transactions (id, profile_id, account_id, amount_minor, currency_code, " +
+                    "occurred_at_utc_millis, booked_on_iso_date, category_id, source, type, " +
+                    "created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('t1','p1','a1',-940000,'INR',1767312000000,'2026-08-10','c1','manual','expense'," +
+                    "1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 13, true, Migrations.MIGRATION_12_13)
+
+        migrated.query("SELECT amount_minor, nature FROM transactions WHERE id = 't1'").use { cursor ->
+            assertTrue("the pre-migration transaction must still be there", cursor.moveToFirst())
+            assertEquals("MNY-001: the amount must survive byte for byte", -940000L, cursor.getLong(0))
+            assertTrue(
+                "the override column must arrive empty — a backfilled guess would read as the user's decision",
+                cursor.isNull(1),
+            )
+        }
+
+        // And it is writable: an override set after the upgrade is the one thing this column stores.
+        migrated.execSQL("UPDATE transactions SET nature = 'want' WHERE id = 't1'")
+        migrated.query("SELECT nature FROM transactions WHERE id = 't1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("want", cursor.getString(0))
+        }
+        migrated.close()
+    }
+
+    /**
      * 11 → 12 adds `sms_draft` (issue 3.9; §18, §23, P-01).
      *
      * Input:  a version-11 database holding a transaction with an exact paise amount.
@@ -700,6 +750,7 @@ class MigrationRoundTripTest {
      * `schemas/12.json` and lose the user's ledger. The amount is asserted byte for byte for the
      * reason `migrate1To2` gives (MNY-001).
      */
+
     @Test
     fun migrate11To12_preservesTransactionsAndEnforcesTheDraftGuarantees() {
         helper.createDatabase(TEST_DB, 11).use { db ->

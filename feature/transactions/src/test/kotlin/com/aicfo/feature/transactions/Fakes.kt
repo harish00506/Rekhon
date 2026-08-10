@@ -10,6 +10,7 @@ import com.aicfo.core.common.Result
 import com.aicfo.core.model.Account
 import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Category
+import com.aicfo.core.model.CategoryNature
 import com.aicfo.core.model.EngineProvenance
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.Reconciliation
@@ -35,6 +36,8 @@ import com.aicfo.data.repository.TransactionFilter
 import com.aicfo.data.repository.TransactionRepository
 import com.aicfo.data.repository.TransferDraft
 import com.aicfo.domain.engines.classification.CategorySuggestion
+import com.aicfo.domain.engines.nature.NatureBreakdown
+import com.aicfo.domain.engines.nature.NatureVerdict
 import com.aicfo.domain.engines.receipt.ReceiptFields
 import com.aicfo.domain.engines.recurring.Cadence
 import com.aicfo.domain.engines.recurring.RecurringOccurrence
@@ -262,6 +265,38 @@ internal class FakeTransactionRepository(
         failWith?.let { return Err(it) }
         return Ok(suggestions[merchant])
     }
+
+    /**
+     * What [natureOf] should answer, keyed by transaction id (issue 4.3).
+     *
+     * An unlisted id answers `Err(NotFound)` rather than a plausible nature: a test that opened a
+     * sheet for a row it never classified should say so loudly, not render a Want.
+     */
+    val natures: MutableMap<String, NatureVerdict> = mutableMapOf()
+
+    /** Every `(id, nature)` pair passed to [setNature], in order — `null` meaning "withdrawn". */
+    val natureOverrides: MutableList<Pair<String, CategoryNature?>> = mutableListOf()
+
+    override suspend fun natureOf(transactionId: String): Result<NatureVerdict, AppError> =
+        natures[transactionId]?.let { Ok(it) } ?: Err(AppError.NotFound)
+
+    override suspend fun setNature(
+        transactionId: String,
+        nature: CategoryNature?,
+    ): Result<Unit, AppError> {
+        natureOverrides += transactionId to nature
+        failWith?.let { return Err(it) }
+        // Mirrors the real store closely enough for a ViewModel test: the next read reflects the
+        // write, which is what lets a test assert the sheet **re-reads** rather than assuming the
+        // answer. A withdrawal (`null`) leaves the derived verdict alone, exactly as the real store
+        // does — what the rules then say is the repository's to decide, not this fake's.
+        natures[transactionId]?.let { existing ->
+            if (nature != null) natures[transactionId] = existing.copy(nature = nature)
+        }
+        return Ok(Unit)
+    }
+
+    override fun observeNatureBreakdown(): Flow<NatureBreakdown> = MutableStateFlow(NatureBreakdown())
 
     override suspend fun create(draft: TransactionDraft): Result<Transaction, AppError> {
         created += draft

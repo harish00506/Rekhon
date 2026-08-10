@@ -619,6 +619,38 @@ internal object Migrations {
         )
     }
 
+    /**
+     * 12 → 13: adds `transactions.nature` — the user's nature override (issue 4.3; §8.3).
+     *
+     * Why:    §8.3 makes nature "auto-assigned, user-correctable, learned", and only the middle word
+     *         needs storage. The automatic nature is derived on read by `:domain:engines:nature`
+     *         from the account, the category and the user's past corrections, so **the only thing
+     *         this column ever holds is a correction** — `NULL` means "whatever the rules currently
+     *         say", not "unknown".
+     *
+     *         That choice is what makes this migration one line. Storing the *resolved* nature
+     *         instead would need a backfill of every existing row through the engine here, and then
+     *         a recompute job for every future rulebook edit — the shape that already bit the
+     *         net-worth series in issue 3.10 and had to be repaired in `repairStaleHistory`. A
+     *         derived value with one stored exception cannot go stale.
+     * What:   one `ALTER TABLE … ADD COLUMN`, nullable, following [MIGRATION_9_10].
+     * Result: an upgraded installation gains an empty column and keeps every row. **No backfill,
+     *         deliberately** — and unlike [MIGRATION_7_8], where the absent backfill *was* the bug,
+     *         here a `NULL` is the correct and complete value for every pre-existing transaction:
+     *         nobody has overridden anything yet.
+     * Input:  [SupportSQLiteDatabase] — the database mid-upgrade. Output: none (executes DDL).
+     *
+     * The DDL matches what Room generates for `TransactionEntity.nature`; the committed
+     * `schemas/13.json` is the reference, and `MigrationRoundTripTest` fails on a device if the two
+     * drift.
+     */
+    val MIGRATION_12_13 =
+        object : Migration(VERSION_12, VERSION_13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `transactions` ADD COLUMN `nature` TEXT")
+            }
+        }
+
     /** Every migration, in order, for `CfoDatabaseFactory` to register. */
     val ALL: Array<Migration> =
         arrayOf(
@@ -633,6 +665,7 @@ internal object Migrations {
             MIGRATION_9_10,
             MIGRATION_10_11,
             MIGRATION_11_12,
+            MIGRATION_12_13,
         )
 
     /** Named so the version pair reads as a schema version rather than an unexplained literal. */
@@ -665,6 +698,9 @@ internal object Migrations {
     /** The version issue 3.8 introduced, and the one issue 3.9 upgrades from. */
     private const val VERSION_11 = 11
 
-    /** Matches `CfoDatabase.VERSION` at the time this migration was written (issue 3.9). */
+    /** The version issue 3.9 introduced, and the one issue 4.3 upgrades from. */
     private const val VERSION_12 = 12
+
+    /** Matches `CfoDatabase.VERSION` at the time this migration was written (issue 4.3). */
+    private const val VERSION_13 = 13
 }

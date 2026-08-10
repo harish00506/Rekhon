@@ -864,6 +864,182 @@ interface TransactionDao {
     ): List<MerchantCategoryCountRow>
 
     /**
+     * How this profile has re-natured one merchant before (issue 4.3; SRS §8.3.1 step 4).
+     *
+     * Why:    §8.3 makes nature "auto-assigned, user-correctable, **learned**", and `nature` holds
+     *         nothing but corrections — the automatic value is derived on read and never written. So
+     *         `nature IS NOT NULL` is not a filter on incomplete rows, it *is* the definition of the
+     *         signal: every row this returns is a decision the user made on purpose.
+     *
+     *         The merchant is compared normalised on both sides, the SQL half of
+     *         `normaliseMerchant`, exactly as [categoryCountsForMerchant] does — the two learned
+     *         tiers must agree about what "the same merchant" means or one would fire where the
+     *         other did not.
+     * Result: one row per nature the user has chosen for this merchant, ordered by count so a caller
+     *         reading only the first still gets the settled answer; empty when they never have.
+     * Input:  [profileId]; [normalisedMerchant] — trimmed and lower-cased by the caller.
+     * Output: `List<MerchantNatureCountRow>`.
+     * Changelog: 2026-08-10 — Created for issue 4.3.
+     */
+    @Query(
+        "SELECT nature AS nature, COUNT(*) AS occurrences FROM transactions " +
+            "WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
+            "AND nature IS NOT NULL " +
+            "AND merchant IS NOT NULL AND LOWER(TRIM(merchant)) = :normalisedMerchant " +
+            "GROUP BY nature ORDER BY occurrences DESC, nature",
+    )
+    suspend fun natureCountsForMerchant(
+        profileId: String,
+        normalisedMerchant: String,
+    ): List<MerchantNatureCountRow>
+
+    /**
+     * Every nature override on this profile, by merchant (issue 4.3; SRS §8.3.1 step 4).
+     *
+     * Why:    the monthly breakdown classifies a whole month, and asking
+     *         [natureCountsForMerchant] per row would be one query per transaction on the screen the
+     *         user opens first. This is the same signal fetched once: the caller builds a map and
+     *         hands each row its own slice.
+     *
+     *         **Deliberately not scoped to the month.** A correction the user made in March is still
+     *         their decision about that merchant in August; scoping it would make a merchant's nature
+     *         depend on which month happened to be on screen.
+     * Result: one row per (merchant, nature) pair the user has chosen, merchant already normalised.
+     * Input:  [profileId]. Output: `List<MerchantNatureOverrideRow>`.
+     * Changelog: 2026-08-10 — Created for issue 4.3.
+     */
+    @Query(
+        "SELECT LOWER(TRIM(merchant)) AS merchant, nature AS nature, COUNT(*) AS occurrences " +
+            "FROM transactions " +
+            "WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
+            "AND nature IS NOT NULL AND merchant IS NOT NULL AND TRIM(merchant) <> '' " +
+            "GROUP BY LOWER(TRIM(merchant)), nature",
+    )
+    suspend fun natureOverridesByMerchant(profileId: String): List<MerchantNatureOverrideRow>
+
+    /**
+     * The typical size of a transaction in one category (issue 4.3; SRS §8.3.1 step 6).
+     *
+     * Why:    §8.3.1's context modifier asks whether an amount is "> 3× category median", and SQLite
+     *         has no median function. The lower median — the middle row of an ordered list, or the
+     *         earlier of the two middles — is one `ORDER BY … LIMIT 1 OFFSET n/2`, and picking the
+     *         *lower* middle deterministically matters more than picking the average of two: it makes
+     *         the flag reproducible (P-08) rather than dependent on a rounding choice.
+     *
+     *         **The count comes back with it, in one statement.** The rules require a minimum sample
+     *         before a median means anything, and fetching the two separately would let a caller use
+     *         a median it had not checked the size of — the second grocery run a user ever recorded
+     *         compared against the first.
+     *
+     *         The **median of magnitudes**, not of signed amounts: expenses are negative, so a signed
+     *         median would order them backwards and compare the largest spend against the smallest.
+     * Result: the sample size and the median magnitude in paise (MNY-001); the median is `null` when
+     *         the category has no transactions at all.
+     * Input:  [profileId]; [categoryId]. Output: [CategoryMedianRow].
+     * Changelog: 2026-08-10 — Created for issue 4.3.
+     */
+    @Query(
+        "SELECT (SELECT COUNT(*) FROM transactions " +
+            "WHERE profile_id = :profileId AND category_id = :categoryId " +
+            "AND deleted_at_utc_millis IS NULL AND transfer_id IS NULL) AS sample_size, " +
+            "(SELECT ABS(amount_minor) FROM transactions " +
+            "WHERE profile_id = :profileId AND category_id = :categoryId " +
+            "AND deleted_at_utc_millis IS NULL AND transfer_id IS NULL " +
+            "ORDER BY ABS(amount_minor) LIMIT 1 OFFSET " +
+            "(SELECT COUNT(*) FROM transactions " +
+            "WHERE profile_id = :profileId AND category_id = :categoryId " +
+            "AND deleted_at_utc_millis IS NULL AND transfer_id IS NULL) / 2) AS median_minor",
+    )
+    suspend fun categoryMedian(
+        profileId: String,
+        categoryId: String,
+    ): CategoryMedianRow
+
+    /**
+     * Everything §8.3.1 needs about one transaction, in one row (issue 4.3).
+     *
+     * Why:    the decision order branches on the account's type, the counterpart account's type and
+     *         the category's nature, which live in three tables. Fetching them per transaction would
+     *         be three queries per row; this is the same information as one join, so a month costs
+     *         one statement.
+     *
+     *         **The counterpart is found through `transfer_id`, not through a foreign key**, because
+     *         a transfer is two `transactions` rows rather than a row with a destination (issue 3.2,
+     *         DB-004). The subquery excludes the row itself and soft-deleted siblings; for anything
+     *         that is not a transfer, `transfer_id` is null, the comparison matches nothing, and the
+     *         column comes back null — which is exactly what "not a transfer leg" means to the engine.
+     * Result: the profile's rows in the date window, oldest first.
+     * Input:  [profileId]; [fromIsoDate] and [toIsoDate] — inclusive ISO `yyyy-MM-dd` bounds derived
+     *         by the caller from the injected `Clock` (TIM-001/TIM-002).
+     * Output: `Flow<List<NatureCandidateRow>>`.
+     * Changelog: 2026-08-10 — Created for issue 4.3.
+     */
+    @Query(
+        "SELECT t.id AS id, t.type AS type, t.amount_minor AS amount_minor, " +
+            "t.nature AS override_nature, t.merchant AS merchant, t.category_id AS category_id, " +
+            "c.nature AS category_nature, a.type AS account_type, " +
+            "(SELECT a2.type FROM transactions t2 JOIN account a2 ON a2.id = t2.account_id " +
+            "WHERE t2.transfer_id = t.transfer_id AND t2.id <> t.id " +
+            "AND t2.deleted_at_utc_millis IS NULL LIMIT 1) AS counterpart_account_type " +
+            "FROM transactions t " +
+            "JOIN account a ON a.id = t.account_id " +
+            "LEFT JOIN category c ON c.id = t.category_id " +
+            "WHERE t.profile_id = :profileId AND t.deleted_at_utc_millis IS NULL " +
+            "AND t.booked_on_iso_date >= :fromIsoDate AND t.booked_on_iso_date <= :toIsoDate " +
+            "ORDER BY t.booked_on_iso_date, t.id",
+    )
+    fun observeNatureCandidates(
+        profileId: String,
+        fromIsoDate: String,
+        toIsoDate: String,
+    ): Flow<List<NatureCandidateRow>>
+
+    /**
+     * The same row shape as [observeNatureCandidates], for one transaction (issue 4.3).
+     * Why:    the detail sheet classifies exactly one transaction, and re-using the month query with
+     *         a one-day window would be a date filter standing in for an id lookup — right today and
+     *         wrong the moment a row is back-dated (ADR-0012).
+     * Result: the row, or `null` when the id names nothing live.
+     * Input:  [transactionId]. Output: `NatureCandidateRow?`.
+     * Changelog: 2026-08-10 — Created for issue 4.3.
+     */
+    @Query(
+        "SELECT t.id AS id, t.type AS type, t.amount_minor AS amount_minor, " +
+            "t.nature AS override_nature, t.merchant AS merchant, t.category_id AS category_id, " +
+            "c.nature AS category_nature, a.type AS account_type, " +
+            "(SELECT a2.type FROM transactions t2 JOIN account a2 ON a2.id = t2.account_id " +
+            "WHERE t2.transfer_id = t.transfer_id AND t2.id <> t.id " +
+            "AND t2.deleted_at_utc_millis IS NULL LIMIT 1) AS counterpart_account_type " +
+            "FROM transactions t " +
+            "JOIN account a ON a.id = t.account_id " +
+            "LEFT JOIN category c ON c.id = t.category_id " +
+            "WHERE t.id = :transactionId AND t.deleted_at_utc_millis IS NULL",
+    )
+    suspend fun natureCandidate(transactionId: String): NatureCandidateRow?
+
+    /**
+     * Records or clears the user's nature override (issue 4.3; §8.3, P-07).
+     * Why:    a targeted `UPDATE` rather than a read-modify-write of the whole entity, for the reason
+     *         [softDelete] gives: two screens changing different fields of one transaction must not
+     *         overwrite each other's work.
+     * Result: the rows changed — `1`, or `0` when the id names nothing live, which the repository
+     *         turns into `NotFound` rather than a silent success.
+     * Input:  [transactionId]; [nature] — a `CategoryNature.storedValue`, or `null` to return the
+     *         transaction to whatever §8.3.1 currently decides; [updatedAtUtcMillis] — TIM-001.
+     * Output: [Int].
+     * Changelog: 2026-08-10 — Created for issue 4.3.
+     */
+    @Query(
+        "UPDATE transactions SET nature = :nature, updated_at_utc_millis = :updatedAtUtcMillis " +
+            "WHERE id = :transactionId AND deleted_at_utc_millis IS NULL",
+    )
+    suspend fun setNature(
+        transactionId: String,
+        nature: String?,
+        updatedAtUtcMillis: Long,
+    ): Int
+
+    /**
      * Marks many transactions deleted at once (issue 3.6; FR-TXN-008, DB-002).
      *
      * Why:    the bulk half of [softDelete], with the same `deleted_at_utc_millis IS NULL` guard —
@@ -986,6 +1162,92 @@ data class RecurringCandidateRow(
 data class MerchantCategoryCountRow(
     @ColumnInfo(name = "category_id") val categoryId: String?,
     @ColumnInfo(name = "occurrences") val occurrences: Int,
+)
+
+/**
+ * How many times one merchant was re-natured to one nature (issue 4.3; SRS §8.3.1 step 4).
+ *
+ * Why:  the nature twin of [MerchantCategoryCountRow], kept the same shape on purpose — §8.3.1's
+ *       learned step and §8.1's behave identically, and one reader should learn the rule once.
+ * Result: mapped straight onto the engine's `NatureHistoryRow` by the repository.
+ * Changelog: 2026-08-10 — Created for issue 4.3.
+ *
+ * Input:  [nature] — a `CategoryNature.storedValue`, non-null by the query's `WHERE` but typed
+ *         nullable because the column is; [occurrences] — always at least one, because the row exists.
+ * Output: a Room projection.
+ */
+data class MerchantNatureCountRow(
+    @ColumnInfo(name = "nature") val nature: String?,
+    @ColumnInfo(name = "occurrences") val occurrences: Int,
+)
+
+/**
+ * The same counts, carrying the merchant they belong to (issue 4.3; SRS §8.3.1 step 4).
+ *
+ * Why:  the monthly breakdown needs every merchant's overrides at once rather than one merchant's,
+ *       so this is [MerchantNatureCountRow] plus the key the caller groups by. Two projections
+ *       rather than one shared nullable-merchant shape, because a row whose merchant *could* be
+ *       null would push a null check into the grouping code for a case the query excludes.
+ * Result: grouped into a map by the repository.
+ * Changelog: 2026-08-10 — Created for issue 4.3.
+ *
+ * Input:  [merchant] — already trimmed and lower-cased by the query; [nature]; [occurrences].
+ * Output: a Room projection.
+ */
+data class MerchantNatureOverrideRow(
+    @ColumnInfo(name = "merchant") val merchant: String?,
+    @ColumnInfo(name = "nature") val nature: String?,
+    @ColumnInfo(name = "occurrences") val occurrences: Int,
+)
+
+/**
+ * A category's sample size and median magnitude (issue 4.3; SRS §8.3.1 step 6).
+ *
+ * Why:  the two travel together because using one without the other is the mistake — a median over
+ *       two transactions is not a typical amount, it is the two amounts. Carrying [sampleSize] here
+ *       means the caller cannot reach the median without having been handed the reason to distrust it.
+ * Result: the input to §8.3.1's `> 3x category median` comparison.
+ * Changelog: 2026-08-10 — Created for issue 4.3.
+ *
+ * Input:  [sampleSize] — live, non-transfer transactions in the category; [medianMinor] — the lower
+ *         median of their **magnitudes** in paise (MNY-001), `null` when the category has none.
+ * Output: a Room projection.
+ */
+data class CategoryMedianRow(
+    @ColumnInfo(name = "sample_size") val sampleSize: Int,
+    @ColumnInfo(name = "median_minor") val medianMinor: Long?,
+)
+
+/**
+ * One transaction as §8.3.1's decision order sees it (issue 4.3).
+ *
+ * Why:  nine columns across three tables, and not one more. The decision order branches on the
+ *       account, the counterpart account, the category's nature, the type, the amount and the
+ *       user's own override — a projection this narrow means the engine *cannot* start deciding on
+ *       a note or a date, which is the same narrowing [RecurringCandidateRow] applies to the
+ *       recurring detector.
+ * Result: mapped onto the engine's `NatureInput` by the repository.
+ * Changelog: 2026-08-10 — Created for issue 4.3.
+ *
+ * Input:  [id]; [type] — a `TransactionType.storedValue`; [amountMinor] — signed paise (MNY-001);
+ *         [overrideNature] — the user's correction, `null` when they have not made one, which is
+ *         the ordinary case; [merchant] — for the learned step; [categoryId] — for the median
+ *         lookup; [categoryNature] — a `CategoryNature.storedValue`, `null` when the row has no
+ *         category or its category was deleted; [accountType] — an `AccountType.storedValue`;
+ *         [counterpartAccountType] — the other leg's account type, `null` for anything that is not
+ *         a transfer leg.
+ * Output: a Room projection.
+ */
+data class NatureCandidateRow(
+    @ColumnInfo(name = "id") val id: String,
+    @ColumnInfo(name = "type") val type: String,
+    @ColumnInfo(name = "amount_minor") val amountMinor: Long,
+    @ColumnInfo(name = "override_nature") val overrideNature: String?,
+    @ColumnInfo(name = "merchant") val merchant: String?,
+    @ColumnInfo(name = "category_id") val categoryId: String?,
+    @ColumnInfo(name = "category_nature") val categoryNature: String?,
+    @ColumnInfo(name = "account_type") val accountType: String,
+    @ColumnInfo(name = "counterpart_account_type") val counterpartAccountType: String?,
 )
 
 /**

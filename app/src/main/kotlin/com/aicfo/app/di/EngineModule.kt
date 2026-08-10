@@ -8,6 +8,8 @@ import com.aicfo.data.sms.SmsInboxReader
 import com.aicfo.data.sms.SmsInboxReaderFactory
 import com.aicfo.domain.engines.classification.ClassificationEngine
 import com.aicfo.domain.engines.classification.ClassificationEngineFactory
+import com.aicfo.domain.engines.nature.NatureEngine
+import com.aicfo.domain.engines.nature.NatureEngineFactory
 import com.aicfo.domain.engines.networth.NetWorthEngine
 import com.aicfo.domain.engines.networth.NetWorthEngineFactory
 import com.aicfo.domain.engines.quicksetup.QuickSetupEngine
@@ -139,6 +141,23 @@ object EngineModule {
     @Provides
     @Singleton
     fun provideClassificationEngine(): ClassificationEngine = ClassificationEngineFactory.create()
+
+    /**
+     * The nature classifier (issue 4.3; §8.3, AI-CLS-N, P-02).
+     * Why:    the one place a transaction becomes a Need, a Want, an investment, an asset or debt
+     *         service — the axis §8.3 says the whole advice layer is built on. Pure Kotlin, so it
+     *         holds no database and reads no clock; `TransactionRepository` makes the five joins
+     *         §8.3.1 branches on and hands the result in (ARC-005).
+     *
+     *         **A singleton because the rule set is validated once.** `NatureRules` checks eight
+     *         thresholds against each other at construction, and the dashboard classifies a whole
+     *         month on every emission.
+     * Result: a [NatureEngine]. Input: none. Output: the engine.
+     * Changelog: 2026-08-10 — Created for issue 4.3.
+     */
+    @Provides
+    @Singleton
+    fun provideNatureEngine(): NatureEngine = NatureEngineFactory.create()
 
     /**
      * The phone's inbox (issue 3.9; §18, §23, P-01, ADR-0013).

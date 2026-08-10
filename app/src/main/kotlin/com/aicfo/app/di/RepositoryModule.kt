@@ -19,6 +19,7 @@ import com.aicfo.data.repository.SmsRepository
 import com.aicfo.data.repository.TransactionRepository
 import com.aicfo.data.sms.SmsInboxReader
 import com.aicfo.domain.engines.classification.ClassificationEngine
+import com.aicfo.domain.engines.nature.NatureEngine
 import com.aicfo.domain.engines.networth.NetWorthEngine
 import com.aicfo.domain.engines.receipt.ReceiptEngine
 import com.aicfo.domain.engines.recurring.RecurringEngine
@@ -146,8 +147,17 @@ object RepositoryModule {
         dispatchers: DispatcherProvider,
         demoMode: DemoModeRepository,
         classifier: ClassificationEngine,
+        natureEngine: NatureEngine,
     ): TransactionRepository =
-        RepositoryFactory.transactions(database, clock, ids, dispatchers, demoMode.activeProfileId, classifier)
+        RepositoryFactory.transactions(
+            database,
+            clock,
+            ids,
+            dispatchers,
+            demoMode.activeProfileId,
+            classifier,
+            natureEngine,
+        )
 
     /**
      * The category taxonomy store (issue 4.1; FR-SET-001, AI-CLSN-001).

@@ -181,6 +181,8 @@ object CategorySeed {
      *            fifteen rows below changed**; this bump records that the *file* moved, which is what
      *            `ClassificationKbDriftTest` compares. A version this object claims and a version the
      *            file states are allowed to describe different edits — they are not allowed to differ.
+     *            2026-08-10 — `"1.3"` for issue 4.3 (`CLS-NAT-*` ids and `stage_nature`); again none
+     *            of the rows below changed.
      */
-    const val KB_VERSION = "1.2"
+    const val KB_VERSION = "1.3"
 }

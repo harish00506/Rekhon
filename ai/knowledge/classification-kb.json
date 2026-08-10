@@ -5,12 +5,13 @@
     "what": "Seed knowledge for AI-CLS: (a) merchant->category rules for Indian merchants, (b) category defaults incl. default_nature, (c) stream-classification thresholds (§8.2), (d) the nature auto-classification order (§8.3.1), (e) the Stage-1 matching thresholds (§8.1). Precedence at runtime: user rule > learned model (>=0.85) > this knowledge base > 'Uncategorised' prompt.",
     "result": "A fresh install classifies Swiggy as Dining/WANT and BESCOM as Utilities/NEED with clearly-labelled 'estimate - improves with data' confidence.",
     "source_section": "§8",
-    "version": "1.2",
+    "version": "1.3",
     "changelog": [
       "2026-07-17 — Created from SRS v1.7 §8.1, §8.2, §8.3; merchant list is a starter set, extended by user corrections.",
       "2026-08-08 — Issue 4.1: every merchant_rules and category_defaults row gains a stable rule_id and its own version (AI-ARC-006), and category_defaults gains `key` — the id the seeded `category` row is derived from, so renaming a category in the editor never changes which row it is. category_defaults is now read by CategorySeed (:core:model); merchant_rules still has no runtime consumer — see ADR-0014.",
       "2026-08-10 — Issue 4.2: merchant_rules gains its consumer (:domain:engines:classification) and this file gains `stage1` — the confidence a match is worth and the floor below which Stage 1 defers to the user instead of guessing. CLS-USER-HISTORY is the id the §8.1(a) correction-history tier cites; it names no merchant because the user's own past corrections are its rows. §8.1(c), the on-device TF-IDF + logistic model, is still unbuilt — see ADR-0015.",
-      "2026-08-10 — CLS-MER-011 -> v1.1: `coin` dropped from its alternatives. Read as a rule for the first time, it files any merchant with `coin` as a word — a laundromat, a coin dealer — under Investment. Zerodha's Coin is always described as `ZERODHA COIN` or `COIN BY ZERODHA`, both of which `zerodha` already matches, so nothing is lost. Found by the eval set in issue 4.2; the id is kept and the version bumped, never renamed (id_policy)."
+      "2026-08-10 — CLS-MER-011 -> v1.1: `coin` dropped from its alternatives. Read as a rule for the first time, it files any merchant with `coin` as a word — a laundromat, a coin dealer — under Investment. Zerodha's Coin is always described as `ZERODHA COIN` or `COIN BY ZERODHA`, both of which `zerodha` already matches, so nothing is lost. Found by the eval set in issue 4.2; the id is kept and the version bumped, never renamed (id_policy).",
+      "2026-08-10 — Issue 4.3: nature_classification.order gains CLS-NAT-001..006 ids and versions (AI-ARC-006), so a stored nature verdict can cite the step that decided it, and the file gains `stage_nature` — the confidence each step is worth, the floor below which a verdict is flagged, and the §8.3 true-spend split. Steps 1-3 fire on the account TYPE because the tables §8.3.1 names (loan_amortization_rows, goals, holdings) do not exist yet; see ADR-0016."
     ],
     "precedence": ["user_rule", "learned_model>=0.85", "knowledge_base", "uncategorised_prompt"],
     "id_policy": "rule_id is permanent. To retire a row set `enabled: false` — never rename or delete an id that may already be cited in a stored insight (AI-ARC-006)."
@@ -81,13 +82,29 @@
   "nature_classification": {
     "_source": "§8.3.1 auto-classification decision order (first match wins)",
     "order": [
-      { "step": 1, "rule": "txn on a loan account -> LIABILITY (principal = liability reduction; interest+fees = true cost)" },
-      { "step": 2, "rule": "transfer to an investment/goal-linked account -> INVESTMENT" },
-      { "step": 3, "rule": "creates/updates an asset record (gold, vehicle, property, holdings) -> ASSET" },
-      { "step": 4, "rule": "user rule from past corrections (merchant/category) -> learned nature" },
-      { "step": 5, "rule": "category default_nature from this knowledge base -> NEED or WANT" },
-      { "step": 6, "rule": "amount > 3x category median in a NEED category -> prompt once, remember" }
+      { "rule_id": "CLS-NAT-001", "version": "1.0", "step": 1, "rule": "txn on a loan account -> LIABILITY (principal = liability reduction; interest+fees = true cost)" },
+      { "rule_id": "CLS-NAT-002", "version": "1.0", "step": 2, "rule": "transfer to an investment/goal-linked account -> INVESTMENT" },
+      { "rule_id": "CLS-NAT-003", "version": "1.0", "step": 3, "rule": "creates/updates an asset record (gold, vehicle, property, holdings) -> ASSET" },
+      { "rule_id": "CLS-NAT-004", "version": "1.0", "step": 4, "rule": "user rule from past corrections (merchant/category) -> learned nature" },
+      { "rule_id": "CLS-NAT-005", "version": "1.0", "step": 5, "rule": "category default_nature from this knowledge base -> NEED or WANT" },
+      { "rule_id": "CLS-NAT-006", "version": "1.0", "step": 6, "rule": "amount > 3x category median in a NEED category -> prompt once, remember" }
     ],
+    "stage_nature": {
+      "_source_section": "§8.3.1, as far as the data this build has can carry it",
+      "_algorithm": "walk `order` top to bottom, first match wins; every verdict cites the CLS-NAT-* row that decided it. Step 6 is a modifier, not a step: it keeps the nature the earlier step chose and drops the confidence below min_confidence_bps so the transaction is flagged for review.",
+      "_unimplemented": "CLS-NAT-001's principal/interest split needs loan_amortization_rows; CLS-NAT-002's goal-linked accounts need a goals table; CLS-NAT-003's holdings need a holdings table. None exist yet, so steps 1-3 fire on the account TYPE instead — see ADR-0016.",
+      "unusual_amount_multiple": 3,
+      "min_history_for_median": 3,
+      "min_confidence_bps": 7000,
+      "account_override_bps": 10000,
+      "user_history_bps_full": 10000,
+      "category_default_bps": 8500,
+      "fallback_bps": 3000,
+      "unusual_amount_bps": 5000,
+      "fallback_nature": "WANT",
+      "true_spend_natures": ["NEED", "WANT"],
+      "conversion_natures": ["INVESTMENT", "ASSET"]
+    },
     "natures": {
       "NEED":       "Essential living costs. Counts in true spend; feeds emergency-fund essentials and the 50% band.",
       "WANT":       "Discretionary consumption. Counts in true spend; the 30% band; highest Purchase-Advisor scrutiny.",

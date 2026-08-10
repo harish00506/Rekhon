@@ -9,6 +9,7 @@ import com.aicfo.core.datastore.ConsentStore
 import com.aicfo.core.datastore.SettingsStore
 import com.aicfo.data.sms.SmsInboxReader
 import com.aicfo.domain.engines.classification.ClassificationEngine
+import com.aicfo.domain.engines.nature.NatureEngine
 import com.aicfo.domain.engines.networth.NetWorthEngine
 import com.aicfo.domain.engines.receipt.ReceiptEngine
 import com.aicfo.domain.engines.recurring.RecurringEngine
@@ -122,7 +123,8 @@ object RepositoryFactory {
      *         which profile the reads resolve to, so the list follows the demo without knowing it
      *         exists; [classifier] — issue 4.2's Stage-1 categoriser, taken rather than constructed
      *         for the reason [recurring] gives: the suggestion and the code that produced it stay
-     *         assembled in the DI graph (ARC-003, P-03).
+     *         assembled in the DI graph (ARC-003, P-03); [natureEngine] — issue 4.3's §8.3 decision
+     *         order, taken for the same reason.
      * Output: [TransactionRepository].
      */
     @Suppress("LongParameterList")
@@ -133,7 +135,9 @@ object RepositoryFactory {
         dispatchers: DispatcherProvider,
         activeProfileId: Flow<String>,
         classifier: ClassificationEngine,
-    ): TransactionRepository = RoomTransactionRepository(database, clock, ids, dispatchers, activeProfileId, classifier)
+        natureEngine: NatureEngine,
+    ): TransactionRepository =
+        RoomTransactionRepository(database, clock, ids, dispatchers, activeProfileId, classifier, natureEngine)
 
     /**
      * Builds the category taxonomy store (issue 4.1, FR-SET-001).

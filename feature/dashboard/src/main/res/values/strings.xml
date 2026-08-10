@@ -25,4 +25,16 @@
     <string name="dashboard_spend_split_description">Spending split between needs, wants and savings</string>
     <!-- Issue 2.3: shown when the user skipped quick setup, so there is no budget to chart. -->
     <string name="dashboard_spend_split_empty">No budget yet. Add your monthly income in Settings and we\'ll suggest one.</string>
+
+    <!--
+      Issue 4.3 — §8.3's true-spend split, beside the budget above it.
+
+      The debt note is not boilerplate: §8.3's formula is NEED + WANT + interest/fees, and this build
+      cannot split an EMI into principal and interest (no amortisation rows — ADR-0016), so the
+      figure is short by exactly that interest. P-02 says show the work, and a number the user is
+      told is incomplete is a different thing from one they are not.
+    -->
+    <string name="dashboard_actual_label">This month, actually</string>
+    <string name="dashboard_actual_values">Needs %1$s · Wants %2$s · Kept %3$s</string>
+    <string name="dashboard_actual_debt_note">Loan repayments are shown separately and aren\'t counted as spending yet.</string>
 </resources>

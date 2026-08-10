@@ -7,6 +7,7 @@ import com.aicfo.core.common.toAppError
 import com.aicfo.core.model.Money
 import com.aicfo.data.repository.NetWorthRepository
 import com.aicfo.data.repository.QuickSetupRepository
+import com.aicfo.data.repository.TransactionRepository
 import com.aicfo.domain.engines.quicksetup.BudgetEnvelope
 import com.aicfo.domain.engines.quicksetup.BudgetNature
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -52,6 +53,7 @@ class DashboardViewModel
         private val clock: Clock,
         private val quickSetupRepository: QuickSetupRepository,
         private val netWorthRepository: NetWorthRepository,
+        private val transactionRepository: TransactionRepository,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(DashboardUiState())
 
@@ -66,6 +68,7 @@ class DashboardViewModel
             load()
             observeBudget()
             observeNetWorth()
+            observeNature()
         }
 
         /**
@@ -109,6 +112,28 @@ class DashboardViewModel
             quickSetupRepository.observeLatestEnvelopes()
                 .onEach { envelopes -> _uiState.update { it.copy(spendSplit = envelopes.toSpendSplit()) } }
                 .catch { failure -> _uiState.update { it.copy(errorCode = failure.toAppError().code) } }
+                .launchIn(viewModelScope)
+        }
+
+        /**
+         * Observes what this month's money actually became (issue 4.3; SRS §8.3).
+         *
+         * Why:    a **second** stream beside [observeBudget], not a replacement for it. The budget is
+         *         the plan and this is the outcome, and putting them on one screen is the only way
+         *         the user finds out they disagree — which is the entire reason §8.3 separates
+         *         "spent" from "converted".
+         *
+         *         A failure clears the section rather than raising a banner. The dashboard's other
+         *         figures are still true, and a month's classification is the newest and least
+         *         load-bearing thing on the screen.
+         * Result: [uiState] carries the breakdown, or `null`.
+         * Input:  none. Output: none (launches a collector).
+         * Changelog: 2026-08-10 — Created for issue 4.3.
+         */
+        private fun observeNature() {
+            transactionRepository.observeNatureBreakdown()
+                .onEach { breakdown -> _uiState.update { it.copy(natureBreakdown = breakdown) } }
+                .catch { _uiState.update { it.copy(natureBreakdown = null) } }
                 .launchIn(viewModelScope)
         }
 

@@ -1,8 +1,10 @@
 package com.aicfo.feature.dashboard
 
 import app.cash.turbine.test
+import com.aicfo.core.common.AppError
 import com.aicfo.core.common.FakeClock
 import com.aicfo.core.model.Money
+import com.aicfo.domain.engines.nature.NatureBreakdown
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -34,8 +36,9 @@ class DashboardViewModelTest {
     private val clock = FakeClock()
     private val budget = FakeQuickSetupRepository()
     private val netWorth = FakeNetWorthRepository()
+    private val transactions = FakeTransactionRepository()
 
-    private fun viewModel() = DashboardViewModel(clock, budget, netWorth)
+    private fun viewModel() = DashboardViewModel(clock, budget, netWorth, transactions)
 
     /** `viewModelScope` runs on `Dispatchers.Main`, which has no factory on a plain JVM. */
     @Before
@@ -262,5 +265,59 @@ class DashboardViewModelTest {
             netWorth.emit(-12_18_000_00L)
 
             assertEquals(Money(-12_18_000_00L), viewModel.uiState.value.netWorth)
+        }
+
+    // --- §8.3's actual-spend split (issue 4.3) ------------------------------------------------------
+
+    /**
+     * Input:  a month the repository has classified.
+     * Output: the breakdown reaches the state. The dashboard is the first screen to render what
+     *         §8.3 decided, and until this it rendered only the *plan* — the budget envelopes — which
+     *         is a screen that can never disagree with the user.
+     */
+    @Test
+    fun `this month's actual split reaches the state`() =
+        runTest {
+            transactions.setBreakdown(
+                NatureBreakdown(needs = Money(4_500_00L), wants = Money(1_200_00L), invested = Money(10_000_00L)),
+            )
+
+            val state = viewModel().uiState.value
+
+            assertEquals(Money(4_500_00L), state.natureBreakdown?.needs)
+            assertEquals(Money(5_700_00L), state.natureBreakdown?.trueSpend)
+        }
+
+    /**
+     * Input:  a month with nothing in it.
+     * Output: an **empty** breakdown rather than `null`, so the screen can tell "no transactions"
+     *         from "not worked out yet" — and renders neither as a row of zeroes (P-03).
+     */
+    @Test
+    fun `an empty month is reported as empty`() =
+        runTest {
+            val state = viewModel().uiState.value
+
+            assertTrue(
+                "an empty month must be distinguishable from a real month of zeroes",
+                state.natureBreakdown!!.isEmpty,
+            )
+        }
+
+    /**
+     * Input:  a repository that fails the classification read.
+     * Output: no breakdown and **no error banner**. The dashboard's other figures are still true,
+     *         and the newest section on the screen must not be able to obscure them — the opposite
+     *         of how a failed *budget* read is handled, deliberately.
+     */
+    @Test
+    fun `a failed classification is silent and leaves the rest of the dashboard alone`() =
+        runTest {
+            transactions.failOnObserve = AppError.Storage("disk")
+
+            val state = viewModel().uiState.value
+
+            assertNull(state.natureBreakdown)
+            assertNull("a failed nature read raised a banner", state.errorCode)
         }
 }

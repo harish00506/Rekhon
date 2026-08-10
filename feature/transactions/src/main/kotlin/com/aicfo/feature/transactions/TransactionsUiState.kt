@@ -3,12 +3,14 @@ package com.aicfo.feature.transactions
 import androidx.compose.runtime.Immutable
 import com.aicfo.core.model.Account
 import com.aicfo.core.model.Category
+import com.aicfo.core.model.CategoryNature
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.MoneyFormatter
 import com.aicfo.core.model.Tag
 import com.aicfo.core.model.Transaction
 import com.aicfo.core.model.TransactionSource
 import com.aicfo.data.repository.TransactionFilter
+import com.aicfo.domain.engines.nature.NatureVerdict
 import com.aicfo.domain.engines.recurring.RecurringSeries
 import java.time.LocalDate
 import java.time.LocalTime
@@ -528,6 +530,15 @@ sealed interface TransactionsEvent {
      */
     data class ReceiptDeleted(val attachmentId: String) : TransactionsEvent
 
+    /**
+     * The user corrected what this money became, or withdrew a correction (issue 4.3; §8.3, P-07).
+     *
+     * **`null` is a real choice, not an absence.** It withdraws the override and hands the
+     * transaction back to §8.3.1's decision order — which is the only reason the app can offer
+     * "actually, use the rules" as an option at all.
+     */
+    data class NatureOverridden(val nature: CategoryNature?) : TransactionsEvent
+
     /** The user typed in the search field (issue 3.6; FR-TXN-007). */
     data class SearchChanged(val query: String) : TransactionsEvent
 }
@@ -699,6 +710,19 @@ data class TransactionsUiState(
      * where the row carries one leg's id.
      */
     val detail: Transaction? = null,
+    /**
+     * What §8.3.1 decided the open transaction's money became, or `null` (issue 4.3; §8.3).
+     *
+     * **`null` means "not worked out yet", not "no nature"** — every transaction has one (§8.3), and
+     * the verdict arrives a moment after the sheet does because deciding it needs five joins. The
+     * sheet renders the section only once it is here, so an opening sheet never flashes a nature it
+     * is about to replace.
+     *
+     * The whole verdict rather than the nature alone, because the rule that fired and the
+     * review flag are what the section is *for* (P-02): "Need, because of the category" and "Need,
+     * but this is five times your usual" are different things to tell someone.
+     */
+    val detailNature: NatureVerdict? = null,
     /**
      * The receipt attached to the open transaction, decrypted for display, or `null` (issue 3.8;
      * FR-OCR-005).

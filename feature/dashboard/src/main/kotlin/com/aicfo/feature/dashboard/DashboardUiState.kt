@@ -2,6 +2,7 @@ package com.aicfo.feature.dashboard
 
 import androidx.compose.runtime.Immutable
 import com.aicfo.core.model.Money
+import com.aicfo.domain.engines.nature.NatureBreakdown
 
 /**
  * Everything the dashboard renders, as one value (ARC-004).
@@ -42,6 +43,19 @@ data class DashboardUiState(
      */
     val netWorth: Money? = null,
     val spendSplit: SpendSplit? = null,
+    /**
+     * What this month's money actually became (issue 4.3; SRS §8.3).
+     *
+     * **Not the same number as [spendSplit], and the difference is the point.** That is the *budget*
+     * — what the user planned, from the quick-setup envelopes. This is what happened, classified by
+     * §8.3.1 from the ledger. A dashboard that showed only the plan would be a dashboard that never
+     * disagreed with the user.
+     *
+     * `null` until the first emission, and `NatureBreakdown.isEmpty` for a month with nothing in it
+     * — the screen renders an empty state for both rather than a row of zeroes, which is a figure
+     * the app made up (P-03), the same rule [spendSplit] follows.
+     */
+    val natureBreakdown: NatureBreakdown? = null,
     /**
      * An `AppError.code` when something failed, else `null`.
      * The **code**, not a message: the wording belongs in this feature's `strings.xml` (§21.6), so

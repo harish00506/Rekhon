@@ -253,6 +253,23 @@ data class TransactionEntity(
      */
     @ColumnInfo(name = "posted_at_utc_millis")
     val postedAtUtcMillis: Long? = null,
+    /**
+     * The user's nature override, or `null` (issue 4.3; §8.3, `CategoryNature.storedValue`).
+     *
+     * **`null` does not mean "unknown".** §8.3 makes nature "auto-assigned, user-correctable,
+     * learned", and only the middle word needs a column: the automatic nature is derived on read by
+     * `:domain:engines:nature` from the account, the category and the user's past corrections. So
+     * `null` means "whatever §8.3.1's decision order currently says", and a value here means "the
+     * user disagreed, and this is what they said instead".
+     *
+     * Storing the *resolved* nature would put a derived value on disk, where a rulebook edit leaves
+     * it stale and needs a recompute job — the shape that already bit the net-worth series in issue
+     * 3.10. It would also make this column's meaning ambiguous: there would be no way to tell a
+     * value the engine wrote from one the user chose, and the learned tier (§8.3.1 step 4) reads
+     * exactly that distinction.
+     */
+    @ColumnInfo(name = "nature")
+    val nature: String? = null,
     @ColumnInfo(name = "created_at_utc_millis")
     val createdAtUtcMillis: Long,
     @ColumnInfo(name = "updated_at_utc_millis")

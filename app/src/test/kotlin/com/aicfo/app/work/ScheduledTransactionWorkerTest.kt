@@ -10,6 +10,7 @@ import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
 import com.aicfo.core.crypto.SessionLock
 import com.aicfo.core.model.Category
+import com.aicfo.core.model.CategoryNature
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.Tag
 import com.aicfo.core.model.Transaction
@@ -22,6 +23,8 @@ import com.aicfo.data.repository.TransactionFilter
 import com.aicfo.data.repository.TransactionRepository
 import com.aicfo.data.repository.TransferDraft
 import com.aicfo.domain.engines.classification.CategorySuggestion
+import com.aicfo.domain.engines.nature.NatureBreakdown
+import com.aicfo.domain.engines.nature.NatureVerdict
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
@@ -162,6 +165,15 @@ private class RecordingTransactionRepository : TransactionRepository {
     override fun observeCategories(): Flow<List<Category>> = flowOf(emptyList())
 
     override suspend fun suggestCategory(merchant: String): Result<CategorySuggestion?, AppError> = unsupported()
+
+    override suspend fun natureOf(transactionId: String): Result<NatureVerdict, AppError> = unsupported()
+
+    override suspend fun setNature(
+        transactionId: String,
+        nature: CategoryNature?,
+    ): Result<Unit, AppError> = unsupported()
+
+    override fun observeNatureBreakdown(): Flow<NatureBreakdown> = unsupported()
 
     override suspend fun create(draft: TransactionDraft): Result<Transaction, AppError> = unsupported()
 

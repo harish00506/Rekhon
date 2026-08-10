@@ -356,4 +356,23 @@
     -->
     <string name="add_txn_category_suggested">Suggested: %1$s · rule %2$s</string>
     <string name="add_txn_category_suggestion_dismiss">Not this</string>
+
+    <!--
+      Issue 4.3 — nature classification (SRS §8.3, P-02, P-07).
+
+      The five names are the user's vocabulary for §8.3's five natures, not the enum's: "Kept &amp;
+      growing" rather than INVEST, because the point of the label is that someone can tell at a
+      glance which of their money is gone and which is still theirs.
+
+      The rule id is shown verbatim for the same reason the category suggestion shows one — it is a
+      citation into ai/knowledge/classification-kb.json, and a paraphrase is not checkable.
+    -->
+    <string name="transactions_detail_nature">What this became</string>
+    <string name="transactions_detail_nature_reason">Decided by rule %1$s — tap to change</string>
+    <string name="transactions_detail_nature_unsure">We\'re not sure about this one. Your answer is kept.</string>
+    <string name="nature_need">Need</string>
+    <string name="nature_want">Want</string>
+    <string name="nature_invest">Kept &amp; growing</string>
+    <string name="nature_asset">Turned into something</string>
+    <string name="nature_liability">Debt</string>
 </resources>

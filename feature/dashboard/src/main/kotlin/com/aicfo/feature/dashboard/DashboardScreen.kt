@@ -19,6 +19,8 @@ import com.aicfo.core.designsystem.component.CfoCard
 import com.aicfo.core.designsystem.component.CfoSecondaryButton
 import com.aicfo.core.designsystem.theme.CfoDimens
 import com.aicfo.core.designsystem.theme.CfoTheme
+import com.aicfo.core.model.Money
+import com.aicfo.core.model.MoneyFormatter
 
 /**
  * The dashboard (ARC-004) — the app's home screen.
@@ -93,6 +95,8 @@ fun DashboardContent(
 
         MoneySummary(uiState)
         SpendSplitSection(uiState)
+        // Issue 4.3: the plan is above, the outcome is here. Adjacent on purpose.
+        ActualSpendSection(uiState)
 
         CfoSecondaryButton(
             text = stringResource(R.string.dashboard_accounts_action),
@@ -173,4 +177,48 @@ private fun SpendSplitSection(uiState: DashboardUiState) {
             ),
         contentDescription = stringResource(R.string.dashboard_spend_split_description),
     )
+}
+
+/**
+ * What this month's money actually became (issue 4.3; SRS §8.3).
+ *
+ * Why:    the counterpart to [SpendSplitSection], and the two are deliberately adjacent. That one is
+ *         the **plan** — the envelopes quick setup persisted. This is the **outcome**, classified
+ *         from the ledger by §8.3.1. A dashboard showing only the plan is a dashboard that never
+ *         disagrees with the user.
+ *
+ *         **The caveat is on screen, not only in ENGINE.md.** §8.3's true spend is
+ *         `NEED + WANT + interest/fees`, and this build cannot split an EMI into principal and
+ *         interest — so the figure is short by exactly that interest. An understated number the user
+ *         is told about is a different thing from one they are not (P-02), and a footnote costs one
+ *         line where a silently wrong total costs their trust.
+ *
+ *         Nothing at all before the first emission or for a month with no transactions, the same
+ *         rule the split above follows: a row of zeroes is a figure the app made up (P-03).
+ * Result: the composition, or nothing. Input: [uiState]. Output: none.
+ * Changelog: 2026-08-10 — Created for issue 4.3.
+ */
+@Composable
+private fun ActualSpendSection(uiState: DashboardUiState) {
+    val breakdown = uiState.natureBreakdown
+    if (breakdown == null || breakdown.isEmpty) return
+
+    Text(text = stringResource(R.string.dashboard_actual_label))
+    Text(
+        text =
+            stringResource(
+                R.string.dashboard_actual_values,
+                MoneyFormatter.format(breakdown.needs),
+                MoneyFormatter.format(breakdown.wants),
+                MoneyFormatter.format(breakdown.invested),
+            ),
+        style = MaterialTheme.typography.bodyMedium,
+    )
+    if (breakdown.liabilities != Money.ZERO) {
+        Text(
+            text = stringResource(R.string.dashboard_actual_debt_note),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }

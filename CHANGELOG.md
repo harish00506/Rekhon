@@ -12,6 +12,51 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > demo dataset writing to it; this epic makes the taxonomy the user's, then teaches the app to fill
 > it in.
 
+### [0.4.2] — What a rupee became, and the right to disagree  (2026-08-10)
+
+- **Implemented:** issue 4.3 — nature classification (**AI-CLS-N**, §8.3, §8.3.1, AI-ARC-003/006,
+  P-02/P-03/P-07). Every transaction now answers "what did this money become?" — Need, Want, kept &
+  growing, turned into something, or debt — and the user can overrule any of it in one tap.
+- **The obvious implementation is wrong, and §8.3.1 has five steps above it saying so.** Reading
+  `category.nature` is step 5 of six. An EMI paid into a loan account is debt service because of the
+  **account**, whatever category it carries; a transfer into a gold account is a conversion, not
+  spending, even when someone tagged it Shopping; and money the user has already called a Want stays
+  one. All three failures run the same direction — they **inflate true spend**, the figure
+  Safe-to-Spend, the health score and the Purchase Advisor are all calibrated against.
+- **New `:domain:engines:nature`** implements steps 1–5 with step 6 as a confidence flag. Steps 1–3
+  fire on the account's *type*, because `loan_amortization_rows`, a goals table and a holdings table
+  — all three named by §8.3.1 — do not exist
+  ([ADR-0016](docs/adr/0016-nature-classification-by-account-type.md)).
+- **Schema v12 → v13: one nullable column, and it holds only the correction.** `transactions.nature`
+  is what the *user* said; everything else is derived on read. No backfill, no recompute job when a
+  rule changes, and no way for a stored value to disagree with the rules that produced it — the shape
+  that already bit the net-worth series in 3.10. It also keeps the signal step 4 learns from: an
+  engine-written value could not be told apart from a user's decision.
+- **The golden file caught a real bug the unit tests could not.** Steps 2–3 originally read only the
+  *counterpart* account, so the arriving leg of an SIP fell past every account step to the category —
+  half of every conversion labelled a Want. It surfaced because the golden file fixes the **cited
+  rule**, not only the nature: four of six steps can produce NEED, so half those records would pass
+  under a decision order with two steps swapped.
+- **Step 6 raises a question rather than answering it.** §8.3.1's own example is ₹9,400 at a grocery
+  whose median is ₹2,000 — festival stock-up (still a Need) or a party (a Want)? The nature is kept
+  and the confidence drops below the floor so the sheet says the app is unsure. §8.3 is explicit that
+  it never blocks a save.
+- **True spend ships understated, and the dashboard says so.** §8.3's formula is
+  `NEED + WANT + interest/fees`, and splitting an EMI needs the amortisation row this build has no
+  table for — so loan repayments are reported separately and counted as nothing. An understated figure
+  the user is *told* about is a different thing from one they are not (P-02).
+- **The dashboard now shows a plan and an outcome side by side.** "This month, actually — Needs ₹… ·
+  Wants ₹… · Kept ₹…", beneath the budget bar. A dashboard showing only the plan is one that can never
+  disagree with the user.
+- **Both new gates were watched to fail first**: swapping `CLS-NAT-004` and `CLS-NAT-005` in the
+  knowledge base turned the drift test red, and mis-citing one golden record turned
+  `every record is decided by the expected rule` red **while the nature assertion still passed**. The
+  migration's "the override column must arrive empty" assertion was proved on a device by adding a
+  deliberate backfill and watching it fail.
+- `classification-kb.json` → **v1.3**: `CLS-NAT-001`…`006` gain ids and versions (AI-ARC-006), plus a
+  `stage_nature` block holding the five confidence values, §8.3.1's `3×` multiple and the true-spend
+  split.
+
 ### [0.4.1] — The app fills the category in, and says which rule it used  (2026-08-10)
 
 - **Implemented:** issue 4.2 — Stage-1 auto-categorisation (**AI-CLS**, §8.1, AI-ARC-003/006,

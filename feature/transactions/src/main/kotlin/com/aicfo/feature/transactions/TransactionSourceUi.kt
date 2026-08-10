@@ -29,7 +29,9 @@ import androidx.compose.ui.semantics.semantics
 import com.aicfo.core.designsystem.component.CfoAmountText
 import com.aicfo.core.designsystem.component.CfoSecondaryButton
 import com.aicfo.core.designsystem.theme.CfoDimens
+import com.aicfo.core.model.CategoryNature
 import com.aicfo.core.model.Transaction
+import com.aicfo.domain.engines.nature.NatureVerdict
 
 /*
  * Provenance on screen: the source filter and the detail sheet (issue 3.5; FR-TXN-009, P-02).
@@ -125,7 +127,9 @@ internal fun TransactionDetailSheet(
             transaction = transaction,
             accountNames = uiState.accountNames,
             receipt = uiState.detailReceipt,
+            nature = uiState.detailNature,
             onDeleteReceipt = { id -> onEvent(TransactionsEvent.ReceiptDeleted(id)) },
+            onOverrideNature = { chosen -> onEvent(TransactionsEvent.NatureOverridden(chosen)) },
             onClose = { onEvent(TransactionsEvent.DetailDismissed) },
         )
     }
@@ -149,13 +153,16 @@ internal fun TransactionDetailSheet(
  * Changelog: 2026-08-03 — Created for issue 3.5.
  *            2026-08-06 — Issue 3.8: the receipt, and the action that deletes it (FR-OCR-005).
  */
+@Suppress("LongParameterList")
 @Composable
 internal fun TransactionDetailContent(
     transaction: Transaction,
     accountNames: Map<String, String>,
     onClose: () -> Unit,
     receipt: ReceiptImage? = null,
+    nature: NatureVerdict? = null,
     onDeleteReceipt: (String) -> Unit = {},
+    onOverrideNature: (CategoryNature?) -> Unit = {},
 ) {
     Column(
         modifier =
@@ -190,6 +197,10 @@ internal fun TransactionDetailContent(
             labelId = R.string.transactions_detail_source,
             value = stringResource(TransactionLabels.sourceName(transaction.source)),
         )
+
+        // Issue 4.3: §8.3's "what did this money become?", above the receipt because it is a
+        // property of the transaction rather than an attachment to it.
+        NatureSection(verdict = nature, onOverride = onOverrideNature)
 
         ReceiptSection(receipt = receipt, onDelete = onDeleteReceipt)
 

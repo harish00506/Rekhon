@@ -15,6 +15,8 @@ import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
 import com.aicfo.core.common.runCatchingToResult
 import com.aicfo.core.database.CfoDatabase
+import com.aicfo.core.database.dao.MerchantNatureOverrideRow
+import com.aicfo.core.database.dao.NatureCandidateRow
 import com.aicfo.core.database.dao.TransactionWithSplits
 import com.aicfo.core.database.entity.AccountEntity
 import com.aicfo.core.database.entity.CategoryEntity
@@ -22,8 +24,10 @@ import com.aicfo.core.database.entity.TagEntity
 import com.aicfo.core.database.entity.TransactionEntity
 import com.aicfo.core.database.entity.TransactionSplitEntity
 import com.aicfo.core.database.entity.TransactionTagEntity
+import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Category
 import com.aicfo.core.model.CategoryNature
+import com.aicfo.core.model.EngineProvenance
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.Tag
 import com.aicfo.core.model.Transaction
@@ -35,6 +39,14 @@ import com.aicfo.domain.engines.classification.ClassificationEngine
 import com.aicfo.domain.engines.classification.ClassificationInput
 import com.aicfo.domain.engines.classification.MerchantHistoryRow
 import com.aicfo.domain.engines.classification.normaliseMerchant
+import com.aicfo.domain.engines.nature.NatureBreakdown
+import com.aicfo.domain.engines.nature.NatureContribution
+import com.aicfo.domain.engines.nature.NatureEngine
+import com.aicfo.domain.engines.nature.NatureHistoryRow
+import com.aicfo.domain.engines.nature.NatureInput
+import com.aicfo.domain.engines.nature.NatureRules
+import com.aicfo.domain.engines.nature.NatureVerdict
+import com.aicfo.domain.engines.nature.natureBreakdown
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -303,6 +315,61 @@ interface TransactionRepository {
      *         classify". Output: `Result<CategorySuggestion?, AppError>`.
      */
     suspend fun suggestCategory(merchant: String): Result<CategorySuggestion?, AppError>
+
+    /**
+     * Decides what one transaction's money became (issue 4.3; SRS §8.3, AI-CLS-N, P-02).
+     *
+     * Why:    §8.3.1's decision order branches on the account's type, the counterpart account's
+     *         type, the category's nature, the user's past corrections and the category's median —
+     *         five joins, every one of which only this class may make (ARC-005). It fetches; the
+     *         engine decides (P-03).
+     *
+     *         **A stored override short-circuits the whole order**, and that is not an optimisation.
+     *         `transactions.nature` holds nothing but corrections, so a value there is the user
+     *         saying they disagree with every step below — re-running the order and then discarding
+     *         its answer would be the same result with a worse story to tell (P-02: the card says
+     *         "you set this", not "rule CLS-NAT-005").
+     * Result: `Ok(verdict)` — never null, because §8.3 gives every transaction a nature and
+     *         uncertainty is carried as confidence. `Err(NotFound)` when the id names nothing live,
+     *         `Err(Storage)` when a read fails.
+     * Input:  [transactionId]. Output: `Result<NatureVerdict, AppError>`.
+     */
+    suspend fun natureOf(transactionId: String): Result<NatureVerdict, AppError>
+
+    /**
+     * Records or clears the user's nature correction (issue 4.3; SRS §8.3, P-07).
+     *
+     * Why:    §8.3 makes nature "auto-assigned, user-**correctable**, learned", and this is both the
+     *         correcting and the learning: the row it writes is what §8.3.1 step 4 reads back for
+     *         every later transaction at the same merchant. Which is why passing `null` is a real
+     *         operation and not a no-op — it withdraws the correction and returns the transaction to
+     *         whatever the rules currently decide, and it must also stop teaching.
+     * Result: `Ok(Unit)`; `Err(NotFound)` when the id names nothing live.
+     * Input:  [transactionId]; [nature] — what the user chose, or `null` to withdraw.
+     * Output: `Result<Unit, AppError>`.
+     */
+    suspend fun setNature(
+        transactionId: String,
+        nature: CategoryNature?,
+    ): Result<Unit, AppError>
+
+    /**
+     * Observes what this month's money became (issue 4.3; SRS §8.3's true-spend split).
+     *
+     * Why:    "you spent ₹60,000 this month" is a useless sentence if ₹25,000 of it went into an SIP
+     *         and a gold purchase, and separating the three is what §8.3 exists for. This is the
+     *         separation, for the current month in the profile time zone (TIM-002).
+     *
+     *         **The month is this class's to choose, not the caller's**, for the same reason
+     *         `observeAccounts` chooses the profile: "which month is now" is a profile-zone question
+     *         whose only sanctioned answer is the injected `Clock` (TIM-001), and a screen that
+     *         passed a range would have had to read a clock to build one.
+     * Result: emits on every change. An all-zero breakdown on a month with no transactions, which
+     *         `NatureBreakdown.isEmpty` reports so the screen renders an empty state rather than a
+     *         bar of zeroes the app made up (P-03).
+     * Input:  none — the active profile. Output: `Flow<NatureBreakdown>`.
+     */
+    fun observeNatureBreakdown(): Flow<NatureBreakdown>
 
     /**
      * Records a transaction under the active profile (FR-TXN-002, FR-TXN-009).
@@ -586,7 +653,11 @@ data class TransactionDraft(
  * Output: a working repository.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-@Suppress("TooManyFunctions") // See the interface: one implementation per gateway (ARC-003/ARC-005).
+// TooManyFunctions: see the interface — one implementation per gateway (ARC-003/ARC-005).
+// LongParameterList: seven collaborators, each of which the class is the *only* legitimate holder of
+// (issue 4.3 added the nature engine). Grouping them behind a wrapper would hide which reads and
+// which decides, which is the distinction ARC-005 turns on.
+@Suppress("TooManyFunctions", "LongParameterList")
 internal class RoomTransactionRepository(
     private val database: CfoDatabase,
     private val clock: Clock,
@@ -594,6 +665,7 @@ internal class RoomTransactionRepository(
     private val dispatchers: DispatcherProvider,
     private val activeProfileId: Flow<String>,
     private val classifier: ClassificationEngine,
+    private val natureEngine: NatureEngine,
 ) : TransactionRepository {
     override fun observeFiltered(filter: TransactionFilter): Flow<PagingData<FilteredTransaction>> =
         // flatMapLatest, not map: entering or leaving the demo must *switch* which query is being
@@ -725,6 +797,207 @@ internal class RoomTransactionRepository(
             is Ok -> classifier.suggest(read.value)
         }
     }
+
+    override suspend fun natureOf(transactionId: String): Result<NatureVerdict, AppError> {
+        val read =
+            withContext(dispatchers.io) {
+                runCatchingToResult {
+                    val profileId = activeProfileId.first()
+                    val row = database.transactionDao().natureCandidate(transactionId)
+                    row?.let { candidate -> natureInput(profileId, candidate)?.let { candidate to it } }
+                }
+            }
+        return when (read) {
+            is Err -> read
+            is Ok -> {
+                // `null` covers two cases and answers both the same way: the id names nothing live,
+                // or the row's stored type is one this build does not recognise. **A row this build
+                // cannot read is, to this build, not there** — the same forward-compatible choice
+                // `CategoryEntity.toCategory` makes, and better than a guessed nature.
+                val (row, input) = read.value ?: return Err(AppError.NotFound)
+                val chosen = row.overrideNature?.let { CategoryNature.fromStored(it) }
+                // The override short-circuits, and says so: the card reads "you set this" rather
+                // than citing a rule that did not decide anything (P-02).
+                if (chosen != null) Ok(userVerdict(chosen, input)) else natureEngine.classify(input)
+            }
+        }
+    }
+
+    override suspend fun setNature(
+        transactionId: String,
+        nature: CategoryNature?,
+    ): Result<Unit, AppError> =
+        withContext(dispatchers.io) {
+            runCatchingToResult {
+                val changed =
+                    database.transactionDao().setNature(
+                        transactionId = transactionId,
+                        nature = nature?.storedValue,
+                        updatedAtUtcMillis = clock.nowUtcMillis(),
+                    )
+                if (changed == 0) Err(AppError.NotFound) else Ok(Unit)
+            }.flattenNature()
+        }
+
+    override fun observeNatureBreakdown(): Flow<NatureBreakdown> =
+        activeProfileId.flatMapLatest { profileId ->
+            // The month in the profile zone, resolved once per subscription rather than per row
+            // (TIM-001/TIM-002). A form left open across a month boundary re-resolves when the
+            // profile or the data changes, which is the same freshness every other query here has.
+            val today = clock.today()
+            val from = today.withDayOfMonth(1).toString()
+            val to = today.withDayOfMonth(today.lengthOfMonth()).toString()
+            database.transactionDao().observeNatureCandidates(profileId, from, to)
+                .map { rows -> breakdownOf(profileId, rows) }
+                .flowOn(dispatchers.io)
+        }
+
+    /**
+     * Classifies a month and folds it (issue 4.3; §8.3).
+     *
+     * Why:    **the merchant overrides are fetched once for the whole month**, not per row. Asking
+     *         `natureCountsForMerchant` per transaction would be one query per row on the screen the
+     *         user opens first; one grouped read and a map gives the learned step the same answer
+     *         for a fraction of the work.
+     *
+     *         **Step 6 is deliberately not applied here**, and it costs nothing: the modifier only
+     *         lowers a verdict's confidence and never changes its nature, and a breakdown sums
+     *         natures. Applying it would mean a median query per category per month to change no
+     *         figure at all.
+     * Result: the month's totals. Input: [profileId]; [rows] — the month's candidates.
+     * Output: [NatureBreakdown].
+     * Changelog: 2026-08-10 — Created for issue 4.3.
+     */
+    private suspend fun breakdownOf(
+        profileId: String,
+        rows: List<NatureCandidateRow>,
+    ): NatureBreakdown {
+        val overrides =
+            database.transactionDao().natureOverridesByMerchant(profileId)
+                .groupBy({ it.merchant.orEmpty() }) { it }
+        val contributions =
+            rows.mapNotNull { row ->
+                val type = TransactionType.fromStored(row.type) ?: return@mapNotNull null
+                val nature = row.resolvedNature(overrides) ?: return@mapNotNull null
+                NatureContribution(type = type, amount = Money(row.amountMinor), nature = nature)
+            }
+        return natureBreakdown(contributions)
+    }
+
+    /**
+     * The nature of one row inside the monthly fold.
+     * Why:    the same precedence [natureOf] applies — a stored override first, the decision order
+     *         otherwise — expressed once so the dashboard's totals and the detail sheet's label can
+     *         never disagree about a transaction.
+     * Result: the nature, or `null` when the row's type is one this build does not recognise, which
+     *         is dropped rather than guessed at (the rule every mapper in this module follows).
+     * Input:  the receiver; [overrides] — the profile's merchant overrides, by normalised merchant.
+     * Output: `CategoryNature?`.
+     * Changelog: 2026-08-10 — Created for issue 4.3.
+     */
+    private fun NatureCandidateRow.resolvedNature(
+        overrides: Map<String, List<MerchantNatureOverrideRow>>,
+    ): CategoryNature? {
+        val stored = overrideNature?.let { CategoryNature.fromStored(it) }
+        val input =
+            if (stored != null) {
+                null
+            } else {
+                natureInputOf(
+                    row = this,
+                    history = overrides[normaliseMerchant(merchant.orEmpty())].orEmpty().toHistory(),
+                    median = null,
+                )
+            }
+        return stored ?: input?.let { (natureEngine.classify(it) as? Ok)?.value?.nature }
+    }
+
+    /**
+     * Assembles the engine's input for one transaction, fetching what only this class may fetch.
+     * Why:    split from [natureOf] so the joins and the decision stay separable — and because the
+     *         median is the one part of the input that costs a query and is only worth it for a
+     *         single row (see [breakdownOf]).
+     * Result: the input. Input: [profileId]; [row]. Output: `NatureInput?` — `null` for a row whose
+     *         stored type or account type this build does not recognise.
+     * Changelog: 2026-08-10 — Created for issue 4.3.
+     */
+    private suspend fun natureInput(
+        profileId: String,
+        row: NatureCandidateRow,
+    ): NatureInput? {
+        val history =
+            database.transactionDao()
+                .natureCountsForMerchant(profileId, normaliseMerchant(row.merchant.orEmpty()))
+                .mapNotNull { counted ->
+                    counted.nature?.let { CategoryNature.fromStored(it) }
+                        ?.let { NatureHistoryRow(nature = it, count = counted.occurrences) }
+                }
+        val median =
+            row.categoryId?.let { categoryId ->
+                val stats = database.transactionDao().categoryMedian(profileId, categoryId)
+                // The sample-size guard is the rules', not this query's: a median over two
+                // transactions is not a typical amount, it is the two amounts.
+                stats.medianMinor
+                    ?.takeIf { stats.sampleSize >= NatureRules().minHistoryForMedian }
+                    ?.let { Money(it) }
+            }
+        return natureInputOf(row = row, history = history, median = median)
+    }
+
+    /**
+     * Builds a [NatureInput] from a row and the two things a query had to supply.
+     * Why:    the one place the stored strings become typed values, so an unrecognised account type
+     *         or transaction type is dropped in a single place rather than defaulting differently in
+     *         two — an old build reading a newer database classifies fewer rows, never wrong ones.
+     * Result: the input, or `null` when the row cannot be typed.
+     * Input:  [row]; [history]; [median]. Output: `NatureInput?`.
+     * Changelog: 2026-08-10 — Created for issue 4.3.
+     */
+    private fun natureInputOf(
+        row: NatureCandidateRow,
+        history: List<NatureHistoryRow>,
+        median: Money?,
+    ): NatureInput? {
+        val accountType = AccountType.fromStored(row.accountType) ?: return null
+        val type = TransactionType.fromStored(row.type) ?: return null
+        return NatureInput(
+            accountType = accountType,
+            type = type,
+            amount = Money(row.amountMinor),
+            nowUtcMillis = clock.nowUtcMillis(),
+            counterpartAccountType = row.counterpartAccountType?.let { AccountType.fromStored(it) },
+            merchantHistory = history,
+            categoryNature = row.categoryNature?.let { CategoryNature.fromStored(it) },
+            categoryMedian = median,
+        )
+    }
+
+    /**
+     * The verdict for a transaction the user has already decided about (§8.3, P-02, P-07).
+     * Why:    built here rather than by the engine because the engine's job is to *derive* a nature,
+     *         and there is nothing to derive — the user said so. It still carries provenance, citing
+     *         §8.3.1's learned step, so the card can name a reason and a stored verdict stays
+     *         reproducible (AI-ARC-006).
+     * Result: a full-confidence verdict. Input: [nature] — what the user chose; [input] — for the
+     *         instant and the rules. Output: [NatureVerdict].
+     * Changelog: 2026-08-10 — Created for issue 4.3.
+     */
+    private fun userVerdict(
+        nature: CategoryNature,
+        input: NatureInput,
+    ): NatureVerdict =
+        NatureVerdict(
+            nature = nature,
+            provenance =
+                EngineProvenance(
+                    engineId = "nature-override",
+                    engineVersion = "1.0",
+                    computedAtUtcMillis = input.nowUtcMillis,
+                    evidence = listOf(NatureRules.USER_HISTORY),
+                    confidenceBps = BPS_FULL,
+                ),
+            rules = input.rules,
+        )
 
     override suspend fun create(draft: TransactionDraft): Result<Transaction, AppError> {
         // Validated before `withContext`, so a rejected draft costs no thread switch and — more to

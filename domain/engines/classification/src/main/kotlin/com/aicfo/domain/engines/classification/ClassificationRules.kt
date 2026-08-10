@@ -247,8 +247,15 @@ data class ClassificationRules(
                 ),
             )
 
-        /** The knowledge-base file these rows and thresholds were copied from, as `_meta.version`. */
-        const val KB_VERSION = "1.2"
+        /**
+         * The knowledge-base file these rows and thresholds were copied from, as `_meta.version`.
+         *
+         * Changelog: 2026-08-10 — `"1.2"` at creation for issue 4.2.
+         *            2026-08-10 — `"1.3"` for issue 4.3, which added `CLS-NAT-*` ids and
+         *            `stage_nature`. **Nothing this file mirrors changed**; the bump records that
+         *            the file moved, which is what the drift test compares.
+         */
+        const val KB_VERSION = "1.3"
     }
 }
 
