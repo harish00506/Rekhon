@@ -12,6 +12,58 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > demo dataset writing to it; this epic makes the taxonomy the user's, then teaches the app to fill
 > it in.
 
+### [0.4.1] — The app fills the category in, and says which rule it used  (2026-08-10)
+
+- **Implemented:** issue 4.2 — Stage-1 auto-categorisation (**AI-CLS**, §8.1, AI-ARC-003/006,
+  P-02/P-03/P-07). Type a merchant on the add screen and the category chip pre-selects itself, with
+  a line underneath naming the rule that fired and a way to refuse it.
+- **This is the consumer ADR-0014 promised.** Issue 4.1 shipped thirteen `CLS-MER-*` merchant rules
+  that *nothing resolved*, and wrote down that it had. They resolve now — new pure-Kotlin module
+  `:domain:engines:classification`, one interface, provenance on every suggestion.
+- **§8.1 is a precedence chain, not a matcher**, and this ships two of its three tiers:
+  **(a)** what the user has filed under this exact merchant before, **(b)** the shipped knowledge
+  base, and then §8.1's "Uncategorised" prompt — which here is simply the chip row, untouched. The
+  on-device TF-IDF model, §8.1(c), is deferred with its reasons in
+  [ADR-0015](docs/adr/0015-stage-1-classification-tiers-and-the-kb-mirror.md). **The interface does
+  not pretend it exists**; no empty parameter waits for a producer.
+- **The user's own filing outranks anything shipped.** Someone who files Swiggy under Groceries
+  because they only order instamart is not out-argued by a rule that says Dining. And a merchant
+  they have filed *inconsistently* proposes nothing **and does not fall through to the knowledge
+  base** — they have formed an opinion, and a confused opinion is still theirs.
+- **Reading the rules for the first time found a wrong one.** `CLS-MER-011` matched the bare literal
+  `coin`, which files a laundromat under Investment — money the 50/30/20 view would then count as
+  saving. Fixed as a data row (§6): `coin` dropped at **v1.1**, id kept, version bumped, never
+  renamed. `zerodha` already covers every real descriptor for Zerodha's Coin.
+- **Whole-word matching is the feature, not a refinement.** `CLS-MER-010`'s literal is `lic`. As a
+  substring it files every **Licious** order under *Insurance*, where it becomes a NEED, joins the
+  emergency-fund essentials, and is the last place anyone would look for a food spend. Four fixtures
+  (`LICIOUS`, `DELICIOUS`, `PUBLICIS`, `GARLIC`) hold both boundaries.
+- **No new table and no migration** — the DB stays at **v12**. §8.1(a) says "the user's correction
+  history", and `transactions` already is that history: one `GROUP BY` over merchant and category.
+  A dedicated table would be a second copy of the ledger, able to disagree with it. Splits count for
+  nothing (a split is the user saying a merchant is several things at once) and deleted rows count
+  for nothing (a decision withdrawn is not a decision).
+- **P-02 shows the rule id verbatim** — "Suggested: Dining · rule CLS-MER-001". That is ugly and it
+  is the point: it is a citation into `ai/knowledge/classification-kb.json` that a user or reviewer
+  can look up, and "we thought it looked like food" is not. **P-07 is the "Not this" beside it**, and
+  tapping any other chip refuses it too, permanently for that screen.
+- **A threshold that could switch the feature off silently is refused at construction.** Setting
+  `min_confidence_bps` above `word_match_bps` would leave the knowledge-base tier firing only on
+  merchants typed with no descriptor — almost none of them — while every test scoring it against bare
+  names kept passing. `ClassificationRules` will not build that way.
+- **Eval gate (§21.5, §8's ≥ 92%):** seventy-five frozen merchant descriptors — fifty-five labelled
+  across all thirteen rules, twenty that must be refused. Scores **96% accuracy, 0 wrong categories,
+  20/20 refusals**. It is deliberately **not 100%**: `AMAZONPAY` and `BYJUS` are real descriptors this
+  engine misses, left in with the reason beside them, because a set curated until it scores perfectly
+  measures the curation.
+- **All four new gates were watched to fail before they were trusted** — the drift test against a
+  renamed category, the accuracy gate against five mislabelled fixtures, the zero-tolerance refusal
+  gate against a planted match. The lesson from
+  `docs/report/2026-07-25-governance-standards-audit.md`, applied.
+- `classification-kb.json` → **v1.2**, gaining a `stage1` block (the confidence a match is worth and
+  the floor below which Stage 1 defers) and `CLS-USER-HISTORY@1.0`, the id tier (a) cites.
+  `ENGINE.md` documents four known limits, including the two the eval set records as misses.
+
 ### [0.4.0] — A taxonomy that exists, and is yours  (2026-08-08)
 
 - **Implemented:** issue 4.1 — the categories editor and the merchant-rule knowledge base

@@ -59,6 +59,14 @@ put it out of step with the SRS it was transcribed from.
 asked properly — it is also the point at which two consumers copy overlapping rows, which is
 ADR-0005's own trigger #2. Until then the drift test is what makes the copy safe.
 
+> **Revisited 2026-08-10 in issue 4.2 — see [ADR-0015](0015-stage-1-classification-tiers-and-the-kb-mirror.md).**
+> The answer was *not yet*, on a narrower reading than this record anticipated: the two consumers
+> mirror **disjoint** sections of the file (`category_defaults` here, `merchant_rules` + `stage1`
+> there), so the overlapping-copies case ADR-0005 warned about has not occurred. The merchant rules
+> gained their consumer, `CLS-MER-011` gained a version because reading it for the first time
+> revealed it was wrong, and the drift test gained the check this record could not make: every
+> merchant rule must name a category `category_defaults` actually defines.
+
 ADR-0005's trigger #1 (a **user-editable** threshold, which a Kotlin constant cannot satisfy at all)
 is unaffected by this decision and still points at issue 4.4.
 

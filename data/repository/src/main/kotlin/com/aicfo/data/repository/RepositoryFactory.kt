@@ -8,6 +8,7 @@ import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.datastore.ConsentStore
 import com.aicfo.core.datastore.SettingsStore
 import com.aicfo.data.sms.SmsInboxReader
+import com.aicfo.domain.engines.classification.ClassificationEngine
 import com.aicfo.domain.engines.networth.NetWorthEngine
 import com.aicfo.domain.engines.receipt.ReceiptEngine
 import com.aicfo.domain.engines.recurring.RecurringEngine
@@ -119,16 +120,20 @@ object RepositoryFactory {
      *         [ids] — mints transaction ids from an injected source rather than `UUID.randomUUID()`,
      *         so the write stays reproducible in a test (P-08); [dispatchers]; [activeProfileId] —
      *         which profile the reads resolve to, so the list follows the demo without knowing it
-     *         exists.
+     *         exists; [classifier] — issue 4.2's Stage-1 categoriser, taken rather than constructed
+     *         for the reason [recurring] gives: the suggestion and the code that produced it stay
+     *         assembled in the DI graph (ARC-003, P-03).
      * Output: [TransactionRepository].
      */
+    @Suppress("LongParameterList")
     fun transactions(
         database: CfoDatabase,
         clock: Clock,
         ids: IdGenerator,
         dispatchers: DispatcherProvider,
         activeProfileId: Flow<String>,
-    ): TransactionRepository = RoomTransactionRepository(database, clock, ids, dispatchers, activeProfileId)
+        classifier: ClassificationEngine,
+    ): TransactionRepository = RoomTransactionRepository(database, clock, ids, dispatchers, activeProfileId, classifier)
 
     /**
      * Builds the category taxonomy store (issue 4.1, FR-SET-001).

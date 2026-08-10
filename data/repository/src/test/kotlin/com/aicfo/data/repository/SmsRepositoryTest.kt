@@ -19,6 +19,7 @@ import com.aicfo.core.model.Money
 import com.aicfo.core.model.SmsMessage
 import com.aicfo.core.model.TransactionSource
 import com.aicfo.data.sms.SmsInboxReader
+import com.aicfo.domain.engines.classification.ClassificationEngineFactory
 import com.aicfo.domain.engines.sms.SmsDirection
 import com.aicfo.domain.engines.sms.SmsEngineFactory
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -82,7 +83,10 @@ class SmsRepositoryTest {
             ).allowMainThreadQueries().build()
         val dispatchers = TestDispatchers(UnconfinedTestDispatcher())
         val ids = FakeIdGenerator()
-        transactions = RepositoryFactory.transactions(database, clock, ids, dispatchers, activeProfileId)
+        transactions =
+            RepositoryFactory.transactions(
+                database, clock, ids, dispatchers, activeProfileId, ClassificationEngineFactory.create(),
+            )
         accounts = RepositoryFactory.accounts(database, clock, ids, dispatchers, activeProfileId)
         consents.set(ConsentFeature.SMS_PARSING, granted = true)
         repository =

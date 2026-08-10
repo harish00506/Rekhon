@@ -15,6 +15,7 @@ import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.TransactionSource
 import com.aicfo.core.model.TransactionType
+import com.aicfo.domain.engines.classification.ClassificationEngineFactory
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -72,7 +73,10 @@ class TransactionRepositoryTest {
                 CfoDatabase::class.java,
             ).allowMainThreadQueries().build()
         val dispatchers = TestDispatchers(UnconfinedTestDispatcher())
-        repository = RepositoryFactory.transactions(database, clock, ids, dispatchers, activeProfileId)
+        repository =
+            RepositoryFactory.transactions(
+                database, clock, ids, dispatchers, activeProfileId, ClassificationEngineFactory.create(),
+            )
         // The real AccountRepository rather than a stub: the claim under test is that a transaction
         // moves the balance the accounts screen actually renders, and a stub could not make it.
         accounts = RepositoryFactory.accounts(database, clock, ids, dispatchers, activeProfileId)

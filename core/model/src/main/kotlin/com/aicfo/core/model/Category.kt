@@ -173,6 +173,14 @@ object CategorySeed {
             CategorySeedRow("CLS-CAT-015", "1.0", "emi", "EMI", CategoryNature.LIABILITY),
         )
 
-    /** The knowledge-base file these rows were copied from, as `_meta.version`. */
-    const val KB_VERSION = "1.1"
+    /**
+     * The knowledge-base file these rows were copied from, as `_meta.version`.
+     *
+     * Changelog: 2026-08-08 — `"1.1"` at creation for issue 4.1.
+     *            2026-08-10 — `"1.2"` for issue 4.2, which added the `stage1` block. **None of the
+     *            fifteen rows below changed**; this bump records that the *file* moved, which is what
+     *            `ClassificationKbDriftTest` compares. A version this object claims and a version the
+     *            file states are allowed to describe different edits — they are not allowed to differ.
+     */
+    const val KB_VERSION = "1.2"
 }

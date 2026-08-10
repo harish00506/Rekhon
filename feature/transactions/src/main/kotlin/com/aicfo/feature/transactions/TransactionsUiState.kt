@@ -112,6 +112,24 @@ data class AddTransactionUiState(
      * user happened to type a note.
      */
     val merchant: String = "",
+    /**
+     * What Stage-1 auto-categorisation proposes for [merchant], if anything (issue 4.2; SRS §8.1).
+     *
+     * **`null` is the ordinary state**, not an error: an unfamiliar merchant proposes nothing and
+     * §8.1 ends on the "Uncategorised" prompt, which here is simply the chip row with nothing
+     * selected. The screen renders a suggestion as a pre-selected chip plus a line naming the rule
+     * that fired (P-02) and a way to dismiss it (P-07).
+     */
+    val suggestion: CategorySuggestionUi? = null,
+    /**
+     * Whether the user has taken the category decision themselves (issue 4.2; P-07).
+     *
+     * Set by dismissing the suggestion **or by picking any category by hand**, and never cleared
+     * while the screen is open. It is what stops the next keystroke in the merchant field
+     * re-applying a proposal the user has already answered — a suggestion that keeps coming back
+     * is not a suggestion, it is an argument.
+     */
+    val isCategoryUserChosen: Boolean = false,
     val note: String = "",
     val isLoading: Boolean = true,
     val isSaving: Boolean = false,
@@ -364,9 +382,39 @@ sealed interface AddTransactionEvent {
     /** The user tapped Save. */
     data object Save : AddTransactionEvent
 
+    /** The user dismissed the category suggestion (issue 4.2; P-07). */
+    data object SuggestionDismissed : AddTransactionEvent
+
     /** The user dismissed the error banner. */
     data object DismissError : AddTransactionEvent
 }
+
+/**
+ * A Stage-1 category proposal, as the screen needs it (issue 4.2; SRS §8.1, P-02).
+ *
+ * Why:  the engine's `CategorySuggestion` carries a category **id** and an `EngineProvenance`, and
+ *       neither is something a composable can render. Resolving the id to a name and pulling the
+ *       cited rule out of the provenance happens once, in the ViewModel, so the screen stays a pure
+ *       function of its state and the chip label cannot disagree with the chip that is selected.
+ *
+ *       [ruleId] is carried rather than dropped because P-02 is not decoration here: the app is
+ *       filing the user's money somewhere they did not ask it to, and "why" has to have an answer
+ *       more specific than "the app guessed". It is shown verbatim — `CLS-MER-001` — which is ugly
+ *       and is the point: it is a citation into `ai/knowledge/classification-kb.json`, and a
+ *       prettier paraphrase would not be one.
+ * Result: everything the suggestion row renders, with nothing left to look up.
+ * Changelog: 2026-08-10 — Created for issue 4.2.
+ *
+ * Input:  [categoryId] — the category being proposed, live on this profile; [categoryName] — its
+ *         display name, resolved when the suggestion arrived; [ruleId] — the `CLS-*` row that
+ *         fired. Output: an immutable value.
+ */
+@Immutable
+data class CategorySuggestionUi(
+    val categoryId: String,
+    val categoryName: String,
+    val ruleId: String,
+)
 
 /**
  * The three things a user can do to the booked date (issue 3.4; FR-TXN-010).

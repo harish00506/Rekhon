@@ -6,6 +6,8 @@ import com.aicfo.core.crypto.ReceiptImageStore
 import com.aicfo.core.crypto.ReceiptImageStoreFactory
 import com.aicfo.data.sms.SmsInboxReader
 import com.aicfo.data.sms.SmsInboxReaderFactory
+import com.aicfo.domain.engines.classification.ClassificationEngine
+import com.aicfo.domain.engines.classification.ClassificationEngineFactory
 import com.aicfo.domain.engines.networth.NetWorthEngine
 import com.aicfo.domain.engines.networth.NetWorthEngineFactory
 import com.aicfo.domain.engines.quicksetup.QuickSetupEngine
@@ -120,6 +122,23 @@ object EngineModule {
     @Provides
     @Singleton
     fun provideSmsEngine(): SmsEngine = SmsEngineFactory.create()
+
+    /**
+     * The Stage-1 categoriser (issue 4.2; §8.1, P-02, P-03).
+     * Why:    the one place a merchant becomes a category. Pure Kotlin, so it holds no database and
+     *         reads no clock — `TransactionRepository` fetches the correction history and the live
+     *         taxonomy and hands both in, which is what keeps the decision testable apart from the
+     *         data (ARC-005).
+     *
+     *         **A singleton because the rule set is built once.** `ClassificationRules` validates
+     *         thirteen rows and splits their literals at construction, and the add screen asks for a
+     *         suggestion on every pause in typing.
+     * Result: a [ClassificationEngine]. Input: none. Output: the engine.
+     * Changelog: 2026-08-10 — Created for issue 4.2.
+     */
+    @Provides
+    @Singleton
+    fun provideClassificationEngine(): ClassificationEngine = ClassificationEngineFactory.create()
 
     /**
      * The phone's inbox (issue 3.9; §18, §23, P-01, ADR-0013).

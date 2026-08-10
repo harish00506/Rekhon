@@ -18,6 +18,7 @@ import com.aicfo.data.repository.RepositoryFactory
 import com.aicfo.data.repository.SmsRepository
 import com.aicfo.data.repository.TransactionRepository
 import com.aicfo.data.sms.SmsInboxReader
+import com.aicfo.domain.engines.classification.ClassificationEngine
 import com.aicfo.domain.engines.networth.NetWorthEngine
 import com.aicfo.domain.engines.receipt.ReceiptEngine
 import com.aicfo.domain.engines.recurring.RecurringEngine
@@ -129,19 +130,24 @@ object RepositoryModule {
      * Why:    follows the demo like every binding above it, so a transaction added while exploring
      *         the sample data lands under the demo profile and leaves with it (ADR-0006).
      * Result: a [TransactionRepository]. Input: [database], [clock], [ids] — the injected id source
-     *         (P-08), [dispatchers], [demoMode]. Output: the repository.
+     *         (P-08), [dispatchers], [demoMode], [classifier] — issue 4.2's Stage-1 categoriser,
+     *         bound beside the store that feeds it its history.
+     * Output: the repository.
      * Changelog: 2026-08-02 — Created for issue 3.1.
+     *            2026-08-10 — Issue 4.2: gained the classifier, so `suggestCategory` has an engine.
      */
     @Provides
     @Singleton
+    @Suppress("LongParameterList")
     fun provideTransactionRepository(
         database: CfoDatabase,
         clock: Clock,
         ids: IdGenerator,
         dispatchers: DispatcherProvider,
         demoMode: DemoModeRepository,
+        classifier: ClassificationEngine,
     ): TransactionRepository =
-        RepositoryFactory.transactions(database, clock, ids, dispatchers, demoMode.activeProfileId)
+        RepositoryFactory.transactions(database, clock, ids, dispatchers, demoMode.activeProfileId, classifier)
 
     /**
      * The category taxonomy store (issue 4.1; FR-SET-001, AI-CLSN-001).

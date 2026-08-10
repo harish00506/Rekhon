@@ -2,16 +2,30 @@
   "_meta": {
     "file": "classification-kb.json",
     "why": "Every downstream engine (Safe-to-Spend, emergency fund, forecasting, purchase advisor) depends on knowing which outflows are obligations and what each rupee became. AI-CLS needs seed knowledge to classify from day one, before it has learned from user corrections.",
-    "what": "Seed knowledge for AI-CLS: (a) merchant->category rules for Indian merchants, (b) category defaults incl. default_nature, (c) stream-classification thresholds (§8.2), (d) the nature auto-classification order (§8.3.1). Precedence at runtime: user rule > learned model (>=0.85) > this knowledge base > 'Uncategorised' prompt.",
+    "what": "Seed knowledge for AI-CLS: (a) merchant->category rules for Indian merchants, (b) category defaults incl. default_nature, (c) stream-classification thresholds (§8.2), (d) the nature auto-classification order (§8.3.1), (e) the Stage-1 matching thresholds (§8.1). Precedence at runtime: user rule > learned model (>=0.85) > this knowledge base > 'Uncategorised' prompt.",
     "result": "A fresh install classifies Swiggy as Dining/WANT and BESCOM as Utilities/NEED with clearly-labelled 'estimate - improves with data' confidence.",
     "source_section": "§8",
-    "version": "1.1",
+    "version": "1.2",
     "changelog": [
       "2026-07-17 — Created from SRS v1.7 §8.1, §8.2, §8.3; merchant list is a starter set, extended by user corrections.",
-      "2026-08-08 — Issue 4.1: every merchant_rules and category_defaults row gains a stable rule_id and its own version (AI-ARC-006), and category_defaults gains `key` — the id the seeded `category` row is derived from, so renaming a category in the editor never changes which row it is. category_defaults is now read by CategorySeed (:core:model); merchant_rules still has no runtime consumer — see ADR-0014."
+      "2026-08-08 — Issue 4.1: every merchant_rules and category_defaults row gains a stable rule_id and its own version (AI-ARC-006), and category_defaults gains `key` — the id the seeded `category` row is derived from, so renaming a category in the editor never changes which row it is. category_defaults is now read by CategorySeed (:core:model); merchant_rules still has no runtime consumer — see ADR-0014.",
+      "2026-08-10 — Issue 4.2: merchant_rules gains its consumer (:domain:engines:classification) and this file gains `stage1` — the confidence a match is worth and the floor below which Stage 1 defers to the user instead of guessing. CLS-USER-HISTORY is the id the §8.1(a) correction-history tier cites; it names no merchant because the user's own past corrections are its rows. §8.1(c), the on-device TF-IDF + logistic model, is still unbuilt — see ADR-0015.",
+      "2026-08-10 — CLS-MER-011 -> v1.1: `coin` dropped from its alternatives. Read as a rule for the first time, it files any merchant with `coin` as a word — a laundromat, a coin dealer — under Investment. Zerodha's Coin is always described as `ZERODHA COIN` or `COIN BY ZERODHA`, both of which `zerodha` already matches, so nothing is lost. Found by the eval set in issue 4.2; the id is kept and the version bumped, never renamed (id_policy)."
     ],
     "precedence": ["user_rule", "learned_model>=0.85", "knowledge_base", "uncategorised_prompt"],
     "id_policy": "rule_id is permanent. To retire a row set `enabled: false` — never rename or delete an id that may already be cited in a stored insight (AI-ARC-006)."
+  },
+
+  "stage1": {
+    "_source_section": "§8.1 Stage 1 — category assignment per transaction",
+    "_algorithm": "normalise the merchant, then: (a) if the user has categorised this exact merchant before, propose the category they used, worth 10000 * matching / total bps; (b) otherwise the first merchant_rules row whose token matches, worth exact_match_bps for a whole-string match and word_match_bps for a token inside a longer descriptor. Anything under min_confidence_bps, and any tie between two rules naming different categories, proposes nothing.",
+    "_why_whole_word": "CLS-MER-010 holds `lic`. Matched as a substring it files LICIOUS (a meat delivery service) under Insurance. A token match is not a refinement here, it is the difference between the rule working and the rule being wrong.",
+    "min_confidence_bps": 7000,
+    "exact_match_bps": 9500,
+    "word_match_bps": 8500,
+    "history_min_occurrences": 1,
+    "user_history_rule_id": "CLS-USER-HISTORY",
+    "user_history_version": "1.0"
   },
 
   "merchant_rules": [
@@ -25,7 +39,7 @@
     { "rule_id": "CLS-MER-008", "version": "1.0", "match": "indianoil|iocl|bharat petroleum|bpcl|hpcl|hp petrol", "type": "regex", "category": "Fuel", "default_nature": "NEED" },
     { "rule_id": "CLS-MER-009", "version": "1.0", "match": "netflix|hotstar|spotify|prime video|jio cinema", "type": "regex", "category": "Subscriptions", "default_nature": "WANT" },
     { "rule_id": "CLS-MER-010", "version": "1.0", "match": "lic|hdfc life|sbi life|max life|icici pru", "type": "regex", "category": "Insurance", "default_nature": "NEED" },
-    { "rule_id": "CLS-MER-011", "version": "1.0", "match": "groww|zerodha|coin|kuvera|et money|indmoney", "type": "regex", "category": "Investment", "default_nature": "INVESTMENT" },
+    { "rule_id": "CLS-MER-011", "version": "1.1", "match": "groww|zerodha|kuvera|et money|indmoney", "type": "regex", "category": "Investment", "default_nature": "INVESTMENT" },
     { "rule_id": "CLS-MER-012", "version": "1.0", "match": "apollo|pharmeasy|1mg|netmeds|medplus", "type": "regex", "category": "Health", "default_nature": "NEED" },
     { "rule_id": "CLS-MER-013", "version": "1.0", "match": "byju|unacademy|vedantu|school fee", "type": "regex", "category": "Education", "default_nature": "NEED" }
   ],

@@ -21,6 +21,7 @@ import com.aicfo.data.repository.TransactionDraft
 import com.aicfo.data.repository.TransactionFilter
 import com.aicfo.data.repository.TransactionRepository
 import com.aicfo.data.repository.TransferDraft
+import com.aicfo.domain.engines.classification.CategorySuggestion
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
@@ -159,6 +160,8 @@ private class RecordingTransactionRepository : TransactionRepository {
     override fun observeTags(): Flow<List<Tag>> = flowOf(emptyList())
 
     override fun observeCategories(): Flow<List<Category>> = flowOf(emptyList())
+
+    override suspend fun suggestCategory(merchant: String): Result<CategorySuggestion?, AppError> = unsupported()
 
     override suspend fun create(draft: TransactionDraft): Result<Transaction, AppError> = unsupported()
 

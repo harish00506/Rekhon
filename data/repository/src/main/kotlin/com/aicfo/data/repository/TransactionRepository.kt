@@ -11,6 +11,7 @@ import com.aicfo.core.common.Clock
 import com.aicfo.core.common.DispatcherProvider
 import com.aicfo.core.common.Err
 import com.aicfo.core.common.IdGenerator
+import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
 import com.aicfo.core.common.runCatchingToResult
 import com.aicfo.core.database.CfoDatabase
@@ -29,6 +30,11 @@ import com.aicfo.core.model.Transaction
 import com.aicfo.core.model.TransactionSource
 import com.aicfo.core.model.TransactionType
 import com.aicfo.core.model.Transfer
+import com.aicfo.domain.engines.classification.CategorySuggestion
+import com.aicfo.domain.engines.classification.ClassificationEngine
+import com.aicfo.domain.engines.classification.ClassificationInput
+import com.aicfo.domain.engines.classification.MerchantHistoryRow
+import com.aicfo.domain.engines.classification.normaliseMerchant
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -270,12 +276,33 @@ interface TransactionRepository {
      *         has to be able to offer categories. It reads them here rather than owning them: the
      *         taxonomy editor is issue 4.1 and auto-categorisation is 4.2, both of which sit *after*
      *         this issue in the dependency order (4.1 → 3.5 → 3.1).
-     * Result: **empty for a real profile today** — only demo mode seeds categories until issue 4.1 —
-     *         and twelve rows inside the demo. An empty list is not an error; the screen hides the
-     *         chip row and saves `categoryId = null`, which the column has always allowed.
+     * Result: fifteen seeded rows on a real profile since issue 4.1, twelve inside the demo. An
+     *         empty list is not an error; the screen hides the chip row and saves `categoryId =
+     *         null`, which the column has always allowed.
      * Input:  none — the active profile. Output: `Flow<List<Category>>`.
      */
     fun observeCategories(): Flow<List<Category>>
+
+    /**
+     * Proposes a category for a merchant, or declines to (issue 4.2; SRS §8.1, P-02, P-07).
+     *
+     * Why:    §8.1 Stage 1 needs two things this class is the only one allowed to fetch — what the
+     *         user has filed under this merchant before, and which categories the profile currently
+     *         has — and one thing it must not decide: the answer. So this method reads, and
+     *         [com.aicfo.domain.engines.classification.ClassificationEngine] decides (ARC-005,
+     *         P-03). The ViewModel gets a suggestion it can pre-select and explain, and never sees a
+     *         DAO row or a rule.
+     *
+     *         **It writes nothing.** A suggestion is offered, accepted by the user leaving it alone,
+     *         and overridden by them tapping a different chip (P-07). The tap that overrides it is
+     *         also what teaches the history tier, because that tap becomes a categorised transaction.
+     * Result: `Ok(suggestion)` naming a category live on this profile, `Ok(null)` when Stage 1
+     *         defers — which is the ordinary answer for an unfamiliar merchant and not a failure —
+     *         or `Err(Storage)` when the history read fails.
+     * Input:  [merchant] — the payee as typed or parsed, in any case, blank meaning "nothing to
+     *         classify". Output: `Result<CategorySuggestion?, AppError>`.
+     */
+    suspend fun suggestCategory(merchant: String): Result<CategorySuggestion?, AppError>
 
     /**
      * Records a transaction under the active profile (FR-TXN-002, FR-TXN-009).
@@ -566,6 +593,7 @@ internal class RoomTransactionRepository(
     private val ids: IdGenerator,
     private val dispatchers: DispatcherProvider,
     private val activeProfileId: Flow<String>,
+    private val classifier: ClassificationEngine,
 ) : TransactionRepository {
     override fun observeFiltered(filter: TransactionFilter): Flow<PagingData<FilteredTransaction>> =
         // flatMapLatest, not map: entering or leaving the demo must *switch* which query is being
@@ -657,6 +685,46 @@ internal class RoomTransactionRepository(
                 .map { rows -> rows.mapNotNull { it.toCategory() } }
                 .flowOn(dispatchers.io)
         }
+
+    override suspend fun suggestCategory(merchant: String): Result<CategorySuggestion?, AppError> {
+        // Normalised here, not in the query, so the empty case costs no database round trip and —
+        // more to the point — so the same function the engine matches with is the one the SQL
+        // argument is built from. Two normalisations would mean the user's own correction quietly
+        // stopped being found while the knowledge base kept matching.
+        val normalised = normaliseMerchant(merchant)
+        if (normalised.isEmpty()) return Ok(null)
+        // Read first, decide second, and keep the two in separate steps: the database call is what
+        // can fail, and the engine call is what cannot. Wrapping both in `runCatchingToResult` would
+        // turn a rule-set bug into an `Err(Storage)` blamed on the disk.
+        val read =
+            withContext(dispatchers.io) {
+                runCatchingToResult {
+                    val profileId = activeProfileId.first()
+                    val history =
+                        database.transactionDao().categoryCountsForMerchant(profileId, normalised)
+                            // The column is nullable so the projection is; the query's WHERE has
+                            // already excluded nulls, and mapNotNull states that rather than
+                            // asserting it with a `!!`.
+                            .mapNotNull { row ->
+                                row.categoryId?.let { MerchantHistoryRow(categoryId = it, count = row.occurrences) }
+                            }
+                    ClassificationInput(
+                        merchant = merchant,
+                        categories =
+                            database.categoryDao().observeForProfile(profileId).first()
+                                .mapNotNull { it.toCategory() },
+                        // TIM-001: the engine reads no clock, so the instant it stamps into
+                        // provenance is this one.
+                        nowUtcMillis = clock.nowUtcMillis(),
+                        history = history,
+                    )
+                }
+            }
+        return when (read) {
+            is Err -> read
+            is Ok -> classifier.suggest(read.value)
+        }
+    }
 
     override suspend fun create(draft: TransactionDraft): Result<Transaction, AppError> {
         // Validated before `withContext`, so a rejected draft costs no thread switch and — more to

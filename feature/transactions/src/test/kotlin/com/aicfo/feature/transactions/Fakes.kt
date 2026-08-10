@@ -34,6 +34,7 @@ import com.aicfo.data.repository.TransactionDraft
 import com.aicfo.data.repository.TransactionFilter
 import com.aicfo.data.repository.TransactionRepository
 import com.aicfo.data.repository.TransferDraft
+import com.aicfo.domain.engines.classification.CategorySuggestion
 import com.aicfo.domain.engines.receipt.ReceiptFields
 import com.aicfo.domain.engines.recurring.Cadence
 import com.aicfo.domain.engines.recurring.RecurringOccurrence
@@ -242,6 +243,25 @@ internal class FakeTransactionRepository(
             failOnObserve?.let { throw IllegalStateException(it.code) }
             list
         }
+
+    /**
+     * What [suggestCategory] should answer, keyed by the merchant asked about (issue 4.2).
+     *
+     * Why:    a map rather than a single value, because the assertions that matter are about which
+     *         merchant was asked about — a debounce that fired on a stale keystroke would return the
+     *         *right* suggestion for the *wrong* merchant and look correct in a one-value fake.
+     * Result: an unlisted merchant answers `Ok(null)`, which is Stage 1's ordinary "I don't know".
+     */
+    val suggestions: MutableMap<String, CategorySuggestion> = mutableMapOf()
+
+    /** Every merchant [suggestCategory] was asked about, in order (issue 4.2). */
+    val suggestionQueries: MutableList<String> = mutableListOf()
+
+    override suspend fun suggestCategory(merchant: String): Result<CategorySuggestion?, AppError> {
+        suggestionQueries += merchant
+        failWith?.let { return Err(it) }
+        return Ok(suggestions[merchant])
+    }
 
     override suspend fun create(draft: TransactionDraft): Result<Transaction, AppError> {
         created += draft

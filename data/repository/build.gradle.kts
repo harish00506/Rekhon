@@ -46,6 +46,9 @@ dependencies {
     // Issue 3.7: FR-TXN-006's detector. `api` — RecurringSeries is what observeSuggestions emits,
     // so the transactions ViewModel must be able to name it (the reasoning `:networth` set above).
     api(project(":domain:engines:recurring"))
+    // Issue 4.2: SRS §8.1 Stage 1. `api` — CategorySuggestion is what suggestCategory returns, so
+    // the add-transaction ViewModel must be able to name it (the reasoning `:networth` set above).
+    api(project(":domain:engines:classification"))
 
     // withTransaction — the atomicity guarantee applySeeds is built on (issue 2.3).
     implementation(libs.room.ktx)

@@ -18,6 +18,7 @@ import com.aicfo.core.model.Money
 import com.aicfo.core.model.RecognizedBlock
 import com.aicfo.core.model.RecognizedText
 import com.aicfo.core.model.TransactionSource
+import com.aicfo.domain.engines.classification.ClassificationEngineFactory
 import com.aicfo.domain.engines.receipt.ReceiptEngineFactory
 import com.aicfo.ml.ocr.ReceiptTextRecognizer
 import com.google.crypto.tink.Aead
@@ -90,7 +91,10 @@ class ReceiptRepositoryTest {
             ).allowMainThreadQueries().build()
         val dispatchers = TestDispatchers(UnconfinedTestDispatcher())
         val ids = FakeIdGenerator()
-        transactions = RepositoryFactory.transactions(database, clock, ids, dispatchers, activeProfileId)
+        transactions =
+            RepositoryFactory.transactions(
+                database, clock, ids, dispatchers, activeProfileId, ClassificationEngineFactory.create(),
+            )
         accounts = RepositoryFactory.accounts(database, clock, ids, dispatchers, activeProfileId)
         val aead: Aead =
             KeysetHandle.generateNew(KeyTemplates.get("AES256_GCM"))

@@ -343,4 +343,17 @@
     <string name="sms_done">Done</string>
     <string name="sms_error">Couldn\'t do that (%1$s). Please try again.</string>
     <string name="sms_dismiss_error">OK</string>
+
+    <!--
+      Issue 4.2 — Stage-1 auto-categorisation (SRS §8.1, P-02, P-07).
+
+      The rule id is shown VERBATIM and on purpose. P-02 says every output names the rule that
+      fired, and `CLS-MER-001` is a citation into ai/knowledge/classification-kb.json that can
+      actually be looked up — a friendlier paraphrase would not be. The app has just filed the
+      user's money somewhere they did not ask it to; "why" has to have a checkable answer.
+
+      Worded as a proposal, never as a statement of fact: the user decides (P-07).
+    -->
+    <string name="add_txn_category_suggested">Suggested: %1$s · rule %2$s</string>
+    <string name="add_txn_category_suggestion_dismiss">Not this</string>
 </resources>

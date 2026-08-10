@@ -61,6 +61,7 @@ include(":domain:engines:networth")    // FR-ACC-005 assets - liabilities + the 
 include(":domain:engines:recurring")   // FR-TXN-006 proposes recurring series from the ledger
 include(":domain:engines:receipt")     // FR-OCR-003 reads total/date/merchant/GST off recognised text
 include(":domain:engines:sms")         // §18/§23 reads amount/direction/payee off an opt-in bank alert
+include(":domain:engines:classification") // §8.1 Stage 1 — merchant → category, with confidence + evidence
 include(":domain:usecase")
 
 // :data:*                  the ONLY DAO/network touchers (ARC-005)

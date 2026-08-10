@@ -820,6 +820,50 @@ interface TransactionDao {
     suspend fun countForCategory(categoryId: String): Int
 
     /**
+     * How this profile has categorised one merchant before (issue 4.2; SRS §8.1(a)).
+     *
+     * Why:    §8.1's first precedence tier is "merchant-rule lookup from the user's **correction
+     *         history**", and this table already *is* that history — every categorised transaction
+     *         is a decision the user made or accepted. A separate `user_merchant_rule` table would
+     *         be a second copy of the same fact, able to disagree with the ledger it was derived
+     *         from, and it would need a migration to hold nothing new.
+     *
+     *         **The merchant is compared normalised on both sides.** `LOWER(TRIM(merchant))` is the
+     *         SQL half of `normaliseMerchant`; the caller applies the Kotlin half to the argument.
+     *         SQLite's `LOWER` folds ASCII only, so the two halves could differ on an accented Latin
+     *         merchant name — a case that costs a suggestion, never a wrong one, because a
+     *         mismatched key simply returns no rows.
+     * Result: one row per category the user has used for this merchant, with how many live
+     *         transactions carry it; empty when they have never categorised it. Ordered by count so
+     *         a caller reading only the first row still gets the settled answer.
+     * Input:  [profileId] — the active profile, so the demo's history never reaches a real one;
+     *         [normalisedMerchant] — trimmed and lower-cased by the caller. Output:
+     *         `List<MerchantCategoryCountRow>`.
+     * Changelog: 2026-08-10 — Created for issue 4.2.
+     *
+     * **Split lines are deliberately *not* counted here, and that is the opposite of
+     * [countForCategory]'s choice.** A split parent carries the merchant while its lines carry the
+     * categories, so one such transaction is the user saying "this merchant is several things at
+     * once" — evidence against a single suggestion, not for one. Joining the lines in would turn
+     * every split into votes for two or three categories and suppress the tier by diluting it,
+     * which is a worse answer than the honest one: a split contributes nothing.
+     *
+     * **Transfers are excluded** because they carry no merchant worth learning from — FR-TXN-003
+     * gives them no payee, and no category either.
+     */
+    @Query(
+        "SELECT category_id AS category_id, COUNT(*) AS occurrences FROM transactions " +
+            "WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
+            "AND transfer_id IS NULL AND category_id IS NOT NULL " +
+            "AND merchant IS NOT NULL AND LOWER(TRIM(merchant)) = :normalisedMerchant " +
+            "GROUP BY category_id ORDER BY occurrences DESC, category_id",
+    )
+    suspend fun categoryCountsForMerchant(
+        profileId: String,
+        normalisedMerchant: String,
+    ): List<MerchantCategoryCountRow>
+
+    /**
      * Marks many transactions deleted at once (issue 3.6; FR-TXN-008, DB-002).
      *
      * Why:    the bulk half of [softDelete], with the same `deleted_at_utc_millis IS NULL` guard —
@@ -922,6 +966,26 @@ data class RecurringCandidateRow(
     @ColumnInfo(name = "merchant") val merchant: String?,
     @ColumnInfo(name = "amount_minor") val amountMinor: Long,
     @ColumnInfo(name = "booked_on_iso_date") val bookedOnIsoDate: String,
+)
+
+/**
+ * How many times one merchant was filed under one category (issue 4.2; SRS §8.1(a)).
+ *
+ * Why:  two columns, not a whole [TransactionEntity]. The classifier's history tier decides on
+ *       nothing but "which category, how often", and a projection this narrow means it *cannot*
+ *       start deciding on an amount or a date — which is the same reason [RecurringCandidateRow] is
+ *       four columns wide.
+ * Result: mapped straight onto the engine's `MerchantHistoryRow` by the repository.
+ * Changelog: 2026-08-10 — Created for issue 4.2.
+ *
+ * Input:  [categoryId] — non-null by the query's `WHERE`, but typed nullable because the column is;
+ *         [occurrences] — live, non-transfer transactions with this merchant carrying it, always at
+ *         least one because the row exists.
+ * Output: a Room projection.
+ */
+data class MerchantCategoryCountRow(
+    @ColumnInfo(name = "category_id") val categoryId: String?,
+    @ColumnInfo(name = "occurrences") val occurrences: Int,
 )
 
 /**
