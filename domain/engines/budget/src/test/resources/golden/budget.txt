@@ -1,0 +1,266 @@
+# =============================================================================
+# Golden file for budget suggestions and status (issue 4.4; SRS §5.5, §21.5).
+#
+# FR-BUD-002's acceptance criterion is "a golden-file test on the suggestion
+# math". Every record fixes an input and states BOTH the number that must come
+# out AND the rows that must be cited for it, because a suggestion that lands on
+# the right rupee for the wrong reason is still wrong — and it stays wrong,
+# invisibly, until the month or the category changes.
+#
+# The seasonal records matter most. A multiplier applied from the wrong window
+# is undetectable in any single month: eight of the nine calendar events overlap
+# another, four of them wrap the year end, and every one of them produces a
+# plausible-looking number in the month next door.
+#
+# Why a text file and not JSON: this module is pure Kotlin with no serialisation
+# dependency by design (ARC-002), so the fixture is parsed by the test that
+# reads it — the bargain golden/nature.txt already struck.
+#
+# Format: records separated by a line of `===`, fields as `# key=value`:
+#     kind          suggest | status                             (required)
+#     case          a label, used in failure messages            (required)
+#
+#   when kind is a suggestion:
+#     category      the category name, matched against the KB    (required)
+#     months        monthly totals in paise, oldest first        (required)
+#     target_month  1..12, the month being budgeted for          (required)
+#     observed      months of history this profile has           (required)
+#     expect_amount the suggestion in paise, or `none`           (required)
+#     expect_median the unadjusted median in paise, or `none`    (required)
+#     expect_event  the cited seasonal event id, or `none`       (required)
+#     expect_conf   provenance confidence in bps, or `none`      (required)
+#     cite          rule/KB ids, comma separated, in order       (required)
+#
+#   when kind is a status:
+#     planned       the budget the user set, in paise            (required)
+#     carried       rolled over from last month, in paise        (required)
+#     spent         spent so far this month, in paise            (required)
+#     days          days in the budget month                     (required)
+#     elapsed       days gone, inclusive of today                (required)
+#     expect_budgeted / expect_remaining / expect_safe_pace      (required)
+#     expect_projected  the run-rate figure, or `none`           (required)
+#     expect_overspent / expect_ahead / expect_will_overspend    (required)
+#     cite          rule ids, comma separated                    (required)
+#
+# Any other `#` line is a comment, including this block.
+# =============================================================================
+
+===
+# --- FR-BUD-002: an ordinary month, no calendar event ------------------------
+# The baseline. Groceries in July: the monsoon prior inflates Health, Transport
+# and Vehicle, and deliberately not this one — a seasonality engine that nudged
+# every category every month would be an engine with no signal in it.
+# kind=suggest
+# case=ordinary month is the plain median
+# category=Groceries
+# months=800000,900000,850000
+# target_month=7
+# observed=24
+# expect_amount=850000
+# expect_median=850000
+# expect_event=none
+# expect_conf=10000
+# cite=RULE-BUD-SUGGEST
+===
+# --- the median is the point of the whole design -----------------------------
+# One ₹40,000 hospital month against two ordinary ones. A mean would suggest
+# ₹18,333 and quietly budget for a second emergency; the median suggests what a
+# normal month costs. This record is the reason `medianOf` is not `average`.
+# kind=suggest
+# case=a one-off ticket does not move the median
+# category=Health
+# months=500000,4000000,600000
+# target_month=2
+# observed=24
+# expect_amount=600000
+# expect_median=600000
+# expect_event=none
+# expect_conf=10000
+# cite=RULE-BUD-SUGGEST
+===
+# --- overlapping events: the MAX prior wins, they are never multiplied -------
+# October is both Diwali (1.38) and Dussehra/Navratri (1.20) for Shopping.
+# Multiplying would claim 1.66 — a number no row in the KB supports, and one
+# that would grow every time a future editor adds an event to the same month.
+# kind=suggest
+# case=Diwali beats Dussehra for October shopping
+# category=Shopping
+# months=350000,420000,380000
+# target_month=10
+# observed=24
+# expect_amount=520000
+# expect_median=380000
+# expect_event=diwali
+# expect_conf=10000
+# cite=RULE-BUD-SUGGEST,diwali
+===
+# --- shrinkage: the same festival, on a six-month-old install ----------------
+# k = 6/24, so Diwali's +38% is applied at a quarter strength: +9.5%. A young
+# install has not earned the right to assert a pattern it has never seen. Same
+# inputs as the record above except `observed`, so a shrinkage bug cannot hide
+# behind a different median.
+# kind=suggest
+# case=a young profile shrinks the prior toward no adjustment
+# category=Shopping
+# months=350000,420000,380000
+# target_month=10
+# observed=6
+# expect_amount=420000
+# expect_median=380000
+# expect_event=diwali
+# expect_conf=10000
+# cite=RULE-BUD-SUGGEST,diwali
+===
+# --- a window that wraps the year end ----------------------------------------
+# Wedding season is "Nov-Feb". A naive `month in start..end` matches nothing for
+# January, and January is exactly when a travel budget needs it. This record
+# also pins the rounding tie: ₹2,750 is equidistant, and ties round UP, because
+# on a spending cap the generous direction is the one that does not set the user
+# up to fail by a rupee.
+# kind=suggest
+# case=January travel is inside the Nov-Feb wedding window
+# category=Travel
+# months=200000,240000,220000
+# target_month=1
+# observed=24
+# expect_amount=280000
+# expect_median=220000
+# expect_event=wedding_season
+# expect_conf=10000
+# cite=RULE-BUD-SUGGEST,wedding_season
+===
+# --- an even-length window takes the midpoint, not the lower middle ----------
+# Two months only, which is the floor. Taking the lower of the two middles would
+# bias every even window downward — on a budget that reads as a cut nobody
+# asked for. Confidence drops with the window: 2 of 3 months, rounded down.
+# kind=suggest
+# case=two months median to their midpoint
+# category=Dining
+# months=300000,500000
+# target_month=7
+# observed=24
+# expect_amount=400000
+# expect_median=400000
+# expect_event=none
+# expect_conf=6666
+# cite=RULE-BUD-SUGGEST
+===
+# --- below the floor there is no opinion, and that is an answer --------------
+# One month is not a median of anything. Returning `null` rather than that
+# month's figure is the difference between advice and an echo (P-07).
+# kind=suggest
+# case=one month is not enough history to suggest anything
+# category=Fuel
+# months=500000
+# target_month=7
+# observed=1
+# expect_amount=none
+# expect_median=none
+# expect_event=none
+# expect_conf=none
+# cite=
+===
+# --- FR-BUD-003: exactly on the safe-pace line, mid-month --------------------
+# Half the month gone, half the budget spent. Not ahead of pace (the test is
+# strictly greater, so the line itself is not a warning) and the run rate lands
+# exactly on the budget.
+# kind=status
+# case=half the month, half the budget
+# planned=1000000
+# carried=0
+# spent=500000
+# days=30
+# elapsed=15
+# expect_budgeted=1000000
+# expect_remaining=500000
+# expect_safe_pace=500000
+# expect_projected=1000000
+# expect_overspent=false
+# expect_ahead=false
+# expect_will_overspend=false
+# cite=RULE-BUD-PACE
+===
+# --- the projection is withheld, not guessed ---------------------------------
+# Day 2 of 31. The run rate here would read ₹15,50,000 off a single ₹1,000
+# purchase. `none` rather than a hedged number: a figure the screen would have
+# to apologise for trains the user to ignore the figure that matters.
+# Note it is still `ahead` of pace — that comparison is sound on day 2 even
+# though the projection is not.
+# kind=status
+# case=day two withholds the projection but still reports pace
+# planned=1000000
+# carried=0
+# spent=100000
+# days=31
+# elapsed=2
+# expect_budgeted=1000000
+# expect_remaining=900000
+# expect_safe_pace=64500
+# expect_projected=none
+# expect_overspent=false
+# expect_ahead=true
+# expect_will_overspend=false
+# cite=RULE-BUD-PACE
+===
+# --- the boundary itself: day three projects ---------------------------------
+# One day later than the record above, with the floor at 3. If this record and
+# the one above ever agree, `min_elapsed_days_for_projection` has stopped doing
+# anything.
+# kind=status
+# case=day three is the first day a projection is offered
+# planned=1000000
+# carried=0
+# spent=150000
+# days=31
+# elapsed=3
+# expect_budgeted=1000000
+# expect_remaining=850000
+# expect_safe_pace=96700
+# expect_projected=1549995
+# expect_overspent=false
+# expect_ahead=true
+# expect_will_overspend=true
+# cite=RULE-BUD-PACE
+===
+# --- rollover raises the bar the month is measured against (FR-BUD-001) ------
+# ₹1,000 unspent last month rolls in, so this month is judged against ₹6,000
+# rather than ₹5,000. Already overspent, and the run rate says it will finish
+# worse. Both flags true, from different arithmetic — remaining is a fact,
+# will_overspend is a forecast.
+# kind=status
+# case=carried-over budget is included in every figure
+# planned=500000
+# carried=100000
+# spent=700000
+# days=30
+# elapsed=20
+# expect_budgeted=600000
+# expect_remaining=-100000
+# expect_safe_pace=399960
+# expect_projected=1050000
+# expect_overspent=true
+# expect_ahead=true
+# expect_will_overspend=true
+# cite=RULE-BUD-PACE
+===
+# --- the last day of a short month -------------------------------------------
+# February, fully elapsed: the safe pace is the whole budget and the run rate is
+# the actual. Landing exactly on the budget is not an overspend — the boundary
+# a naive `>=` would get wrong, in the direction that nags a user who did
+# everything right.
+# kind=status
+# case=spending the budget exactly is not an overspend
+# planned=1000000
+# carried=0
+# spent=1000000
+# days=28
+# elapsed=28
+# expect_budgeted=1000000
+# expect_remaining=0
+# expect_safe_pace=1000000
+# expect_projected=1000000
+# expect_overspent=false
+# expect_ahead=false
+# expect_will_overspend=false
+# cite=RULE-BUD-PACE
+===

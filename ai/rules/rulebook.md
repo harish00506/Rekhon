@@ -33,6 +33,8 @@ evaluate: RuleEngine.evaluate(ruleId, FeatureSnapshot)
 | Rule ID | Definition (default) | Consumed by |
 |---------|----------------------|-------------|
 | RULE-50-30-20 | Needs ≤ 50%, wants ≤ 30%, savings ≥ 20% of income; auto-flexes to fixed load (metro 60/20/20) | Budget suggester, FHS |
+| RULE-BUD-SUGGEST | Per-category budget suggested from the median of the last 3 months (≥ 2 required), adjusted by the seasonal prior for the target month and rounded to ₹100 | Budget suggester |
+| RULE-BUD-PACE | Safe pace = budget spread evenly across the month; projected end-of-month extrapolates the run rate, withheld until 3 days elapsed | Budget status, FHS |
 | RULE-PAY-FIRST | Contributions scheduled on salary-credit day, not month-end | Goal engine, notifications |
 | RULE-SAVE-RATE | Savings rate ≥ 20% good, ≥ 30% excellent, < 10% flag | FHS, monthly review |
 | RULE-COOL-OFF | Discretionary buy > 1% of annual income → Purchase Advisor + optional 24h cool-off | Purchase Advisor |

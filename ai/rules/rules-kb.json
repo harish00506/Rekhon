@@ -5,10 +5,11 @@
     "what": "Seed rows for the rules_knowledge_base table (§29.1). RuleEngine.evaluate(ruleId, FeatureSnapshot) -> RuleResult{pass|warn|fail, measuredValue, threshold, evidence, ruleId, version}.",
     "result": "Changing a number here changes the app's advice everywhere that rule is cited, reproducibly and with an audit trail.",
     "source_section": "§29",
-    "version": "1.8.0",
+    "version": "1.9.0",
     "changelog": [
       "2026-07-17 — Created from SRS v1.7 §29.2–§29.5; defaults are the floor, refined by user overrides at runtime.",
-      "2026-08-07 — Added RULE-SMS-PARSE for issue 3.9's opt-in, on-device bank-alert parser (§18, §23)."
+      "2026-08-07 — Added RULE-SMS-PARSE for issue 3.9's opt-in, on-device bank-alert parser (§18, §23).",
+      "2026-08-11 — Added RULE-BUD-SUGGEST and RULE-BUD-PACE for issue 4.4's per-category budgets (§5.5, FR-BUD-002, FR-BUD-003)."
     ],
     "schema": {
       "rule_id": "stable public ID cited in evidence — never rename, deprecate instead",
@@ -37,6 +38,32 @@
       "rationale": "Simple, memorable budget frame; flexes so high metro rents do not force a permanent fail.",
       "source_note": "Classic 50/30/20; India metro flex added.",
       "consumed_by": ["budget_suggester", "AI-FHS.spending_discipline"],
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "rule_id": "RULE-BUD-SUGGEST",
+      "domain": "saving",
+      "name": "Suggest a per-category budget from the median of the last 3 months, adjusted by the seasonal prior for the target month; offered, never applied.",
+      "formula_id": "median_seasonal_budget",
+      "params_json": { "lookback_months": 3, "min_months_required": 2, "seasonality_enabled": true, "shrinkage_denominator_months": 24, "round_to_minor": 10000 },
+      "severity": "info",
+      "rationale": "The median ignores the one-off ticket that would drag a mean upward, so a suggestion reflects a typical month rather than the worst one. Seasonality is what stops a December suggestion built from monsoon months reading as a cut. Suggested numbers are rounded to the nearest INR 100 because a budget is a decision a person has to remember, not a measurement.",
+      "source_note": "FR-BUD-002 (median + seasonality adjustment over 3 months of history). Seasonal priors and the shrinkage rule come from ai/knowledge/calendar-seasonality.json; the denominator mirrors that file's k = months_observed/24.",
+      "consumed_by": ["budget_suggester", "AI-BUD.suggest"],
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "rule_id": "RULE-BUD-PACE",
+      "domain": "saving",
+      "name": "Budget pace: safe pace is the budget spread evenly across the month; the projected end-of-month figure extrapolates the run rate to date, and is withheld until 3 days have elapsed.",
+      "formula_id": "budget_pace",
+      "params_json": { "projection_basis": "run_rate", "min_elapsed_days_for_projection": 3 },
+      "severity": "info",
+      "rationale": "Spent-vs-remaining alone cannot tell an on-track month from one that will overshoot on the 20th; pace can. The elapsed-days floor exists because a run rate taken on day 1 turns one grocery run into an implausible month and would train the user to ignore the figure.",
+      "source_note": "FR-BUD-003 (spent, remaining, daily pace vs safe pace, projected end-of-month). The 80%/100% alert thresholds are deliberately NOT here — those belong to issue 4.5 (FR-BUD-004).",
+      "consumed_by": ["AI-BUD.status", "AI-FHS.spending_discipline"],
       "enabled": true,
       "version": "1.0"
     },
