@@ -12,6 +12,56 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > demo dataset writing to it; this epic makes the taxonomy the user's, then teaches the app to fill
 > it in.
 
+### [0.4.3] — A number to aim at, and the split lines that were being ignored  (2026-08-11)
+
+- **Implemented:** issue 4.4 — budgets CRUD + suggestions (**FR-BUD-001**, **FR-BUD-002**,
+  **FR-BUD-003**, §5.5, AI-ARC-003/006, P-02/P-03/P-07). Epic 4 had given the app a taxonomy, a
+  category per transaction and a nature per rupee; none of it produced a *plan*. Now a category can
+  carry a monthly amount, and the app says where the month is heading against it.
+- **The bug this uncovered is older than the feature.** Nothing in the repo could sum spending per
+  category, and the one monthly aggregation that existed read the **parent** transaction's
+  `category_id` only. A ₹4,000 supermarket run split into ₹3,000 groceries and ₹1,000 wine has a
+  parent with no category at all, so the whole ₹4,000 fell past §8.3.1's step 5 to the fallback and
+  landed in Wants — the lines the user took the trouble to enter were invisible to every figure on
+  screen. **The 50/30/20 rings and true spend will read differently for anyone who has split a
+  transaction** ([ADR-0018](docs/adr/0018-split-aware-category-spend.md)).
+- **Every spend query is now a `UNION ALL`** of transactions with no live split lines and live split
+  lines, so a payment is counted exactly once, by its lines where it has them. The `NOT EXISTS`
+  clause is what makes double-counting impossible. ADR-0009 predicted this shape for 4.3 *and* 4.4;
+  4.3 did not do it, and no test in 4.3 could tell the difference — there was no split fixture in
+  `NatureRepositoryTest` until now.
+- **New `:domain:engines:budget`** proposes what a category should cost: the median of the last three
+  months, lifted by a seasonal prior when one applies. The prior is the **max** of the matching
+  festivals, never their product — multiplying Diwali by Dussehra is nonsense — and it is shrunk
+  toward 1 by how many months of history the profile actually has, so a two-month-old profile is not
+  told to budget for a festival it has never been through. All in integer basis points (MNY-002),
+  rounded to ₹100 so a suggestion reads as a human number rather than ₹4,283.51.
+- **The suggestion is never shown as a bare amount** (P-02). The card carries the median it came
+  from, the festival that moved it and by how much, and the rule id and version that fired — so a
+  user can disagree with the reasoning rather than only with the number. Accepting is a tap and
+  nothing else writes a budget row (P-07); the ViewModel test asserts that absence directly.
+- **A projection the engine will not make is a sentence, not a gap.** Below three elapsed days a run
+  rate says more about one coffee than about the month, so the screen says the month is too early to
+  project rather than showing a figure nobody could stand behind (P-03).
+- **Rollover carries a surplus and never a deficit.** Unspent money is added to next month; going
+  over is not carried forward. Rolling a deficit would silently shrink a budget the user set, turning
+  one bad month into two without ever saying so — and the switch's help text states both halves.
+- **No schema change.** `BudgetEntity` has shipped since v2 with `category_id`, `rollover_enabled`,
+  `source`, `rule_id` and `rule_version` unused; ADR-0004 wrote those columns for this issue. The
+  database stays at **v13**.
+- **Two rules minted, not two constants** (CLAUDE.md §6): `RULE-BUD-SUGGEST` and `RULE-BUD-PACE` in
+  `ai/rules/rules-kb.json` (**v1.9.0**), mirrored as typed Kotlin guarded by drift tests. ADR-0005
+  named 4.4 as a possible trigger to build the runtime `ai/` loader; it did not fire, because 4.4
+  makes the budget **amount** user-editable, not a rule **threshold**
+  ([ADR-0017](docs/adr/0017-budget-thresholds-stay-a-typed-mirror.md)).
+- **Every new gate was watched to fail first.** Three by editing only `ai/` files — which also proves
+  the Gradle `inputs.file` wiring that stops a drift test passing against a file it never read — and
+  the split regression by reintroducing the exact defect and watching
+  `a split payment is classified by its lines, not by its empty parent` go red on
+  `expected Money(minor=300000) but was Money(minor=0)`.
+- **Out of scope, deliberately:** 80%/100% alerts are issue 4.5 and the monthly review is 4.6. No
+  alert thresholds were minted here.
+
 ### [0.4.2] — What a rupee became, and the right to disagree  (2026-08-10)
 
 - **Implemented:** issue 4.3 — nature classification (**AI-CLS-N**, §8.3, §8.3.1, AI-ARC-003/006,
