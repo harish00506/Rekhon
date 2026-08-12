@@ -6,7 +6,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
-import com.aicfo.core.designsystem.component.CfoAmountText
 import com.aicfo.core.designsystem.component.CfoButton
 import com.aicfo.core.designsystem.component.CfoCard
 import com.aicfo.core.designsystem.component.CfoListRow
@@ -65,10 +64,9 @@ private fun SuggestionCard(
             CfoListRow(
                 title = suggestion.category.name,
                 trailing = {
-                    CfoAmountText(
+                    BudgetAmountText(
                         amount = suggestion.suggestion.amount,
                         contentDescription = stringResource(R.string.budgets_suggested_description),
-                        showSign = false,
                     )
                 },
             )

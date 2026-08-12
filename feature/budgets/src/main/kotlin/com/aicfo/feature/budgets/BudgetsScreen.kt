@@ -15,14 +15,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.aicfo.core.designsystem.component.CfoAmountText
 import com.aicfo.core.designsystem.component.CfoCard
 import com.aicfo.core.designsystem.component.CfoListRow
 import com.aicfo.core.designsystem.component.CfoSecondaryButton
+import com.aicfo.core.designsystem.theme.CfoAmountTextStyle
 import com.aicfo.core.designsystem.theme.CfoDimens
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.MoneyFormatter
@@ -150,10 +151,9 @@ private fun UnplannedSection(
                     title = row.category.name,
                     supporting = stringResource(R.string.budgets_unplanned_supporting),
                     trailing = {
-                        CfoAmountText(
+                        BudgetAmountText(
                             amount = row.status.spent,
                             contentDescription = stringResource(R.string.budgets_spent_description),
-                            showSign = false,
                         )
                     },
                 )
@@ -187,10 +187,9 @@ private fun BudgetCard(
                 title = budget.category.name,
                 supporting = budget.plannedSupporting(),
                 trailing = {
-                    CfoAmountText(
+                    BudgetAmountText(
                         amount = budget.status.spent,
                         contentDescription = stringResource(R.string.budgets_spent_description),
-                        showSign = false,
                     )
                 },
             )
@@ -321,4 +320,35 @@ private fun ErrorBanner(
             CfoSecondaryButton(text = stringResource(R.string.budgets_error_dismiss), onClick = onDismiss)
         }
     }
+}
+
+/**
+ * A spend or budget figure — a **magnitude**, drawn without a sign's colour.
+ *
+ * Why:  `CfoAmountText` colours by sign, and every figure on this screen is a positive magnitude, so
+ *       it rendered all of them in the "money in" green. Spending shown in the colour of income is
+ *       actively misleading, and it survived every unit and Compose test because colour is not what
+ *       any of them assert — it was caught by looking at the screen on a device.
+ *
+ *       The typography and the no-wrap rule still come from the design system: an amount that wraps
+ *       reads as a different number, which is the lesson `CfoAmountText` records from a screenshot
+ *       test. Only the colour is neutral here.
+ * Result: the formatted amount, announced with the caller's wording.
+ * Input:  [amount] — paise (MNY-001); [contentDescription] — localised, from the caller.
+ * Output: the composition.
+ * Changelog: 2026-08-11 — Created for issue 4.4, after the emulator run.
+ */
+@Composable
+internal fun BudgetAmountText(
+    amount: Money,
+    contentDescription: String,
+) {
+    Text(
+        text = MoneyFormatter.format(amount),
+        style = CfoAmountTextStyle,
+        color = MaterialTheme.colorScheme.onSurface,
+        maxLines = 1,
+        softWrap = false,
+        modifier = Modifier.semantics { this.contentDescription = contentDescription },
+    )
 }
