@@ -968,14 +968,33 @@ interface TransactionDao {
      *         DB-004). The subquery excludes the row itself and soft-deleted siblings; for anything
      *         that is not a transfer, `transfer_id` is null, the comparison matches nothing, and the
      *         column comes back null — which is exactly what "not a transfer leg" means to the engine.
-     * Result: the profile's rows in the date window, oldest first.
+     *
+     *         **A split transaction is emitted as its lines, not as itself** (issue 4.4, ADR-0018).
+     *         The `UNION ALL` is what makes that true: the first leg takes transactions with no live
+     *         split lines, the second takes the lines. Each line carries its **own** amount and
+     *         category while inheriting the parent's type, merchant, nature override and account
+     *         types, because those are facts about the payment rather than about the line.
+     *
+     *         The first draft read `t.category_id` for every row, which for a split transaction is
+     *         almost always null — so ₹4,000 divided between groceries and a gift arrived at §8.3.1
+     *         with no category at all and fell to the low-confidence fallback. The natures were not
+     *         merely imprecise; a fixture that was two-thirds NEED was being counted as entirely
+     *         WANT, which inflates the true-spend figure Safe-to-Spend and the health score are
+     *         calibrated against.
+     * Result: the profile's rows in the date window, oldest first. **One row per unsplit transaction
+     *         and one per live split line**, so `id` is the row's own identity — a split line's `id`,
+     *         not its parent's. `transaction_id` is the parent either way.
      * Input:  [profileId]; [fromIsoDate] and [toIsoDate] — inclusive ISO `yyyy-MM-dd` bounds derived
      *         by the caller from the injected `Clock` (TIM-001/TIM-002).
      * Output: `Flow<List<NatureCandidateRow>>`.
      * Changelog: 2026-08-10 — Created for issue 4.3.
+     *            2026-08-11 — Issue 4.4: split-line aware; gained `transaction_id` and
+     *            `booked_on_iso_date` (the latter so the `UNION ALL` has an output column to order
+     *            by).
      */
     @Query(
-        "SELECT t.id AS id, t.type AS type, t.amount_minor AS amount_minor, " +
+        "SELECT t.id AS id, t.id AS transaction_id, t.booked_on_iso_date AS booked_on_iso_date, " +
+            "t.type AS type, t.amount_minor AS amount_minor, " +
             "t.nature AS override_nature, t.merchant AS merchant, t.category_id AS category_id, " +
             "c.nature AS category_nature, a.type AS account_type, " +
             "(SELECT a2.type FROM transactions t2 JOIN account a2 ON a2.id = t2.account_id " +
@@ -986,7 +1005,24 @@ interface TransactionDao {
             "LEFT JOIN category c ON c.id = t.category_id " +
             "WHERE t.profile_id = :profileId AND t.deleted_at_utc_millis IS NULL " +
             "AND t.booked_on_iso_date >= :fromIsoDate AND t.booked_on_iso_date <= :toIsoDate " +
-            "ORDER BY t.booked_on_iso_date, t.id",
+            "AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id " +
+            "AND s.deleted_at_utc_millis IS NULL) " +
+            "UNION ALL " +
+            "SELECT s.id AS id, t.id AS transaction_id, t.booked_on_iso_date AS booked_on_iso_date, " +
+            "t.type AS type, s.amount_minor AS amount_minor, " +
+            "t.nature AS override_nature, t.merchant AS merchant, s.category_id AS category_id, " +
+            "c.nature AS category_nature, a.type AS account_type, " +
+            "(SELECT a2.type FROM transactions t2 JOIN account a2 ON a2.id = t2.account_id " +
+            "WHERE t2.transfer_id = t.transfer_id AND t2.id <> t.id " +
+            "AND t2.deleted_at_utc_millis IS NULL LIMIT 1) AS counterpart_account_type " +
+            "FROM transaction_splits s " +
+            "JOIN transactions t ON t.id = s.transaction_id " +
+            "JOIN account a ON a.id = t.account_id " +
+            "LEFT JOIN category c ON c.id = s.category_id " +
+            "WHERE t.profile_id = :profileId AND t.deleted_at_utc_millis IS NULL " +
+            "AND s.deleted_at_utc_millis IS NULL " +
+            "AND t.booked_on_iso_date >= :fromIsoDate AND t.booked_on_iso_date <= :toIsoDate " +
+            "ORDER BY booked_on_iso_date, id",
     )
     fun observeNatureCandidates(
         profileId: String,
@@ -995,16 +1031,130 @@ interface TransactionDao {
     ): Flow<List<NatureCandidateRow>>
 
     /**
+     * What each category actually cost in a date window (issue 4.4; FR-BUD-003).
+     *
+     * Why:    this is the first query in the app that totals spending **per category**, and it has
+     *         three things to get right that no existing aggregation does.
+     *
+     *         **It sums split lines, not their parent** (ADR-0009, ADR-0018). A ₹4,000 payment
+     *         divided between groceries and a gift belongs to two budgets, and the parent row's
+     *         `category_id` is null in that case — so reading the parent would credit ₹0 to both and
+     *         quietly make every split invisible to the feature whose whole job is to notice
+     *         spending. The `UNION ALL` takes transactions with **no live split lines** from the
+     *         first leg and the lines themselves from the second, so a payment is counted exactly
+     *         once whichever shape it has.
+     *
+     *         **Transfers are excluded in SQL** (`transfer_id IS NULL`), the same way `dayTotals`
+     *         and `categoryMedian` do it. Moving ₹50,000 from savings to current is not spending,
+     *         and a budget that counted it would be unusable in the month someone rebalances.
+     *
+     *         **Only `expense` rows count.** A refund arrives as `income` and would otherwise
+     *         subtract from a budget through `ABS`, which is the wrong sign and the wrong idea —
+     *         `ABS` is here to make an outflow positive, not to fold two directions together.
+     *
+     *         Future-dated rows (FR-TXN-010) are excluded by the **caller's window**, not here: the
+     *         repository passes today as `toIsoDate` for a live month, and a whole month for a
+     *         closed one. Putting a `date('now')` in this statement would be a wall-clock read in
+     *         SQL, which is TIM-001's whole complaint.
+     * Result: one row per category that had spending, plus one with a null `category_id` for
+     *         uncategorised spending. **Categories with no spending are absent** — the repository
+     *         fills them in as zero, because a `GROUP BY` cannot invent rows that do not exist.
+     * Input:  [profileId]; [fromIsoDate] and [toIsoDate] — inclusive ISO `yyyy-MM-dd` bounds derived
+     *         by the caller from the injected `Clock` (TIM-001/TIM-002).
+     * Output: `Flow<List<CategorySpendRow>>`.
+     * Changelog: 2026-08-11 — Created for issue 4.4.
+     */
+    @Query(
+        "SELECT category_id AS category_id, SUM(amount_minor) AS spent_minor FROM (" +
+            "SELECT t.category_id AS category_id, ABS(t.amount_minor) AS amount_minor " +
+            "FROM transactions t " +
+            "WHERE t.profile_id = :profileId AND t.deleted_at_utc_millis IS NULL " +
+            "AND t.transfer_id IS NULL AND t.type = 'expense' " +
+            "AND t.booked_on_iso_date >= :fromIsoDate AND t.booked_on_iso_date <= :toIsoDate " +
+            "AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id " +
+            "AND s.deleted_at_utc_millis IS NULL) " +
+            "UNION ALL " +
+            "SELECT s.category_id AS category_id, ABS(s.amount_minor) AS amount_minor " +
+            "FROM transaction_splits s " +
+            "JOIN transactions t ON t.id = s.transaction_id " +
+            "WHERE t.profile_id = :profileId AND t.deleted_at_utc_millis IS NULL " +
+            "AND s.deleted_at_utc_millis IS NULL " +
+            "AND t.transfer_id IS NULL AND t.type = 'expense' " +
+            "AND t.booked_on_iso_date >= :fromIsoDate AND t.booked_on_iso_date <= :toIsoDate" +
+            ") GROUP BY category_id",
+    )
+    fun observeCategorySpend(
+        profileId: String,
+        fromIsoDate: String,
+        toIsoDate: String,
+    ): Flow<List<CategorySpendRow>>
+
+    /**
+     * The same totals as [observeCategorySpend], broken down by calendar month (issue 4.4).
+     *
+     * Why:    FR-BUD-002's suggestion is a **median over months**, so it needs the months kept
+     *         apart. Running [observeCategorySpend] three times would be three statements and three
+     *         windows for the caller to get right; grouping by the ISO date's `yyyy-MM` prefix costs
+     *         one statement and cannot disagree with itself about where a month starts.
+     *
+     *         `substr(booked_on_iso_date, 1, 7)` works precisely because TIM-002 stores date-only
+     *         fields as ISO strings — a midnight timestamp would need a timezone to slice, and would
+     *         put a December 31st payment in January for anyone east of UTC.
+     * Result: one row per (category, month) that had spending, ordered oldest first so the caller
+     *         can take a window off the end without sorting.
+     * Input:  [profileId]; [fromIsoDate] and [toIsoDate] — inclusive bounds spanning the months
+     *         wanted, derived by the caller from the injected `Clock`.
+     * Output: `Flow<List<MonthlyCategorySpendRow>>`.
+     * Changelog: 2026-08-11 — Created for issue 4.4.
+     */
+    @Query(
+        "SELECT category_id AS category_id, month_key AS month_key, " +
+            "SUM(amount_minor) AS spent_minor FROM (" +
+            "SELECT t.category_id AS category_id, ABS(t.amount_minor) AS amount_minor, " +
+            "substr(t.booked_on_iso_date, 1, 7) AS month_key " +
+            "FROM transactions t " +
+            "WHERE t.profile_id = :profileId AND t.deleted_at_utc_millis IS NULL " +
+            "AND t.transfer_id IS NULL AND t.type = 'expense' " +
+            "AND t.booked_on_iso_date >= :fromIsoDate AND t.booked_on_iso_date <= :toIsoDate " +
+            "AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id " +
+            "AND s.deleted_at_utc_millis IS NULL) " +
+            "UNION ALL " +
+            "SELECT s.category_id AS category_id, ABS(s.amount_minor) AS amount_minor, " +
+            "substr(t.booked_on_iso_date, 1, 7) AS month_key " +
+            "FROM transaction_splits s " +
+            "JOIN transactions t ON t.id = s.transaction_id " +
+            "WHERE t.profile_id = :profileId AND t.deleted_at_utc_millis IS NULL " +
+            "AND s.deleted_at_utc_millis IS NULL " +
+            "AND t.transfer_id IS NULL AND t.type = 'expense' " +
+            "AND t.booked_on_iso_date >= :fromIsoDate AND t.booked_on_iso_date <= :toIsoDate" +
+            ") GROUP BY category_id, month_key ORDER BY month_key",
+    )
+    fun observeMonthlyCategorySpend(
+        profileId: String,
+        fromIsoDate: String,
+        toIsoDate: String,
+    ): Flow<List<MonthlyCategorySpendRow>>
+
+    /**
      * The same row shape as [observeNatureCandidates], for one transaction (issue 4.3).
      * Why:    the detail sheet classifies exactly one transaction, and re-using the month query with
      *         a one-day window would be a date filter standing in for an id lookup — right today and
      *         wrong the moment a row is back-dated (ADR-0012).
-     * Result: the row, or `null` when the id names nothing live.
+     *
+     *         **This one is deliberately NOT split-aware**, unlike [observeNatureCandidates] since
+     *         issue 4.4. The detail sheet labels the *transaction* the user tapped, and it shows one
+     *         label; a split payment resolving to two natures would have to show two, which is a
+     *         screen nobody has designed (ADR-0018). A breakdown sums lines because a total must; a
+     *         label names the thing it is attached to.
+     * Result: the row, or `null` when the id names nothing live. `id` and `transaction_id` hold the
+     *         same value here, because the row *is* the transaction.
      * Input:  [transactionId]. Output: `NatureCandidateRow?`.
      * Changelog: 2026-08-10 — Created for issue 4.3.
+     *            2026-08-11 — Issue 4.4: projects the two columns [NatureCandidateRow] gained.
      */
     @Query(
-        "SELECT t.id AS id, t.type AS type, t.amount_minor AS amount_minor, " +
+        "SELECT t.id AS id, t.id AS transaction_id, t.booked_on_iso_date AS booked_on_iso_date, " +
+            "t.type AS type, t.amount_minor AS amount_minor, " +
             "t.nature AS override_nature, t.merchant AS merchant, t.category_id AS category_id, " +
             "c.nature AS category_nature, a.type AS account_type, " +
             "(SELECT a2.type FROM transactions t2 JOIN account a2 ON a2.id = t2.account_id " +
@@ -1219,27 +1369,77 @@ data class CategoryMedianRow(
 )
 
 /**
- * One transaction as §8.3.1's decision order sees it (issue 4.3).
+ * One category's spending in a window (issue 4.4; FR-BUD-003).
  *
- * Why:  nine columns across three tables, and not one more. The decision order branches on the
+ * Why:  a projection rather than a `Map<String, Long>` so the null category — genuinely
+ *       uncategorised spending — is a value the caller has to handle rather than a key it may
+ *       forget. Budgets are per category, and the money that belongs to none of them is exactly the
+ *       money a budget screen must not silently drop.
+ * Result: the total, positive, already summed across split lines.
+ * Changelog: 2026-08-11 — Created for issue 4.4.
+ *
+ * Input:  [categoryId] — the category, or `null` for uncategorised; [spentMinor] — paise (MNY-001),
+ *         always positive because the query takes `ABS` of an outflow.
+ * Output: a Room projection.
+ */
+data class CategorySpendRow(
+    @ColumnInfo(name = "category_id") val categoryId: String?,
+    @ColumnInfo(name = "spent_minor") val spentMinor: Long,
+)
+
+/**
+ * One category's spending in one calendar month (issue 4.4; FR-BUD-002).
+ *
+ * Why:  the suggestion is a median **over months**, so the months have to arrive separated and
+ *       labelled — a flat total cannot be turned back into the series it came from.
+ * Result: a point in the history the median is taken over.
+ * Changelog: 2026-08-11 — Created for issue 4.4.
+ *
+ * Input:  [categoryId] — the category, or `null` for uncategorised; [monthKey] — ISO `yyyy-MM`,
+ *         sliced from `booked_on_iso_date` (TIM-002); [spentMinor] — paise, positive.
+ * Output: a Room projection.
+ */
+data class MonthlyCategorySpendRow(
+    @ColumnInfo(name = "category_id") val categoryId: String?,
+    @ColumnInfo(name = "month_key") val monthKey: String,
+    @ColumnInfo(name = "spent_minor") val spentMinor: Long,
+)
+
+/**
+ * One classifiable amount as §8.3.1's decision order sees it (issue 4.3).
+ *
+ * Why:  eleven columns across three tables, and not one more. The decision order branches on the
  *       account, the counterpart account, the category's nature, the type, the amount and the
  *       user's own override — a projection this narrow means the engine *cannot* start deciding on
- *       a note or a date, which is the same narrowing [RecurringCandidateRow] applies to the
- *       recurring detector.
+ *       a note, which is the same narrowing [RecurringCandidateRow] applies to the recurring
+ *       detector.
+ *
+ *       **A row is not always a transaction.** Since 4.4 the query emits one row per *live split
+ *       line* where a transaction has them, and one row per transaction where it does not, so a
+ *       payment split across two categories is classified as the two things it bought rather than
+ *       falling to the uncategorised fallback. [id] is therefore the row's own identity — a split
+ *       line's id, not its parent's — and [transactionId] is what the caller groups by when it needs
+ *       the payment back whole.
  * Result: mapped onto the engine's `NatureInput` by the repository.
  * Changelog: 2026-08-10 — Created for issue 4.3.
+ *            2026-08-11 — Issue 4.4: split-line aware; gained [transactionId] and [bookedOnIsoDate].
  *
- * Input:  [id]; [type] — a `TransactionType.storedValue`; [amountMinor] — signed paise (MNY-001);
- *         [overrideNature] — the user's correction, `null` when they have not made one, which is
- *         the ordinary case; [merchant] — for the learned step; [categoryId] — for the median
- *         lookup; [categoryNature] — a `CategoryNature.storedValue`, `null` when the row has no
- *         category or its category was deleted; [accountType] — an `AccountType.storedValue`;
+ * Input:  [id] — the split line's id, or the transaction's when it has no lines; [transactionId] —
+ *         the parent either way; [bookedOnIsoDate] — ISO `yyyy-MM-dd` (TIM-002), the `UNION ALL`'s
+ *         sort key; [type] — a `TransactionType.storedValue`; [amountMinor] — signed paise
+ *         (MNY-001), the **line's** amount for a split line; [overrideNature] — the user's
+ *         correction, `null` when they have not made one, which is the ordinary case; [merchant] —
+ *         for the learned step, inherited from the parent; [categoryId] — the line's own category
+ *         for a split line; [categoryNature] — a `CategoryNature.storedValue`, `null` when the row
+ *         has no category or its category was deleted; [accountType] — an `AccountType.storedValue`;
  *         [counterpartAccountType] — the other leg's account type, `null` for anything that is not
  *         a transfer leg.
  * Output: a Room projection.
  */
 data class NatureCandidateRow(
     @ColumnInfo(name = "id") val id: String,
+    @ColumnInfo(name = "transaction_id") val transactionId: String,
+    @ColumnInfo(name = "booked_on_iso_date") val bookedOnIsoDate: String,
     @ColumnInfo(name = "type") val type: String,
     @ColumnInfo(name = "amount_minor") val amountMinor: Long,
     @ColumnInfo(name = "override_nature") val overrideNature: String?,
@@ -1586,6 +1786,74 @@ interface BudgetDao {
         id: String,
         deletedAtUtcMillis: Long,
     ): Int
+
+    /**
+     * Writes one budget (issue 4.4; FR-BUD-001).
+     * Why: [upsertAll] exists because quick setup writes three envelopes at once; the budget
+     *         editor writes exactly one, and passing a singleton list to say so reads as an
+     *         accident. `REPLACE` is safe here only because the id is **derived** from the profile,
+     *         category and period (`categoryBudgetId`), so saving the same budget twice updates one
+     *         row rather than minting a second (P-08).
+     * Result: the row is created or replaced. Input: [budget]. Output: none.
+     * Changelog: 2026-08-11 — Created for issue 4.4.
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(budget: BudgetEntity)
+
+    /**
+     * Reads one budget by id, **including tombstones** (issue 4.4).
+     * Why:    the same reasoning `CategoryDao.findById` gives — filtering the soft-deleted here would
+     *         turn "you are editing a budget someone deleted on another screen" into "row not
+     *         found", which is the right outcome but the wrong error. The repository decides that.
+     * Result: the row, or `null`. Input: [id]. Output: `BudgetEntity?`.
+     * Changelog: 2026-08-11 — Created for issue 4.4.
+     */
+    @Query("SELECT * FROM budget WHERE id = :id")
+    suspend fun findById(id: String): BudgetEntity?
+
+    /**
+     * Reads a profile's live per-category budgets for a period, once (issue 4.4; FR-BUD-001).
+     * Why:    rollover needs **last** month's budgets and last month's spend to work out what was
+     *         left over, and it needs them inside the same read as this month's — collecting a Flow
+     *         for one value would be a subscription standing in for a lookup.
+     *
+     *         `category_id IS NOT NULL` is the filter that separates these from quick setup's
+     *         nature-level envelopes, which share the table and are read by
+     *         `observeLatestEnvelopes` instead. One table, two shapes, and neither read sees the
+     *         other's rows (ADR-0004).
+     * Result: the live per-category rows for that period. Input: [profileId];
+     *         [periodStartIsoDate] — the first of the month, ISO (TIM-002).
+     * Output: `List<BudgetEntity>`.
+     * Changelog: 2026-08-11 — Created for issue 4.4.
+     */
+    @Query(
+        "SELECT * FROM budget WHERE profile_id = :profileId " +
+            "AND period_start_iso_date = :periodStartIsoDate " +
+            "AND category_id IS NOT NULL AND deleted_at_utc_millis IS NULL",
+    )
+    suspend fun categoryBudgetsForPeriod(
+        profileId: String,
+        periodStartIsoDate: String,
+    ): List<BudgetEntity>
+
+    /**
+     * Observes a profile's live per-category budgets for a period (issue 4.4; FR-BUD-001).
+     * Why:    the budget screen has to move when a transaction is added on another screen, which is
+     *         what makes this a Flow rather than the suspend read above.
+     * Result: the live per-category rows, re-emitted on every write.
+     * Input:  [profileId]; [periodStartIsoDate]. Output: `Flow<List<BudgetEntity>>`.
+     * Changelog: 2026-08-11 — Created for issue 4.4.
+     */
+    @Query(
+        "SELECT * FROM budget WHERE profile_id = :profileId " +
+            "AND period_start_iso_date = :periodStartIsoDate " +
+            "AND category_id IS NOT NULL AND deleted_at_utc_millis IS NULL " +
+            "ORDER BY category_id",
+    )
+    fun observeCategoryBudgets(
+        profileId: String,
+        periodStartIsoDate: String,
+    ): Flow<List<BudgetEntity>>
 }
 
 /** Reads and writes recurring rules (issue 2.3; FR-ONB-002, FR-TXN-006). */

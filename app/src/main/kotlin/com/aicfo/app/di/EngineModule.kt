@@ -1,11 +1,7 @@
 package com.aicfo.app.di
 
-import android.content.Context
-import com.aicfo.core.common.DispatcherProvider
-import com.aicfo.core.crypto.ReceiptImageStore
-import com.aicfo.core.crypto.ReceiptImageStoreFactory
-import com.aicfo.data.sms.SmsInboxReader
-import com.aicfo.data.sms.SmsInboxReaderFactory
+import com.aicfo.domain.engines.budget.BudgetEngine
+import com.aicfo.domain.engines.budget.BudgetEngineFactory
 import com.aicfo.domain.engines.classification.ClassificationEngine
 import com.aicfo.domain.engines.classification.ClassificationEngineFactory
 import com.aicfo.domain.engines.nature.NatureEngine
@@ -20,12 +16,9 @@ import com.aicfo.domain.engines.recurring.RecurringEngine
 import com.aicfo.domain.engines.recurring.RecurringEngineFactory
 import com.aicfo.domain.engines.sms.SmsEngine
 import com.aicfo.domain.engines.sms.SmsEngineFactory
-import com.aicfo.ml.ocr.ReceiptTextRecognizer
-import com.aicfo.ml.ocr.ReceiptTextRecognizerFactory
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
-import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
@@ -42,6 +35,10 @@ import javax.inject.Singleton
  *       `internal` to their modules (ARC-003).
  * Result: features and repositories inject an interface and never name an implementation.
  * Changelog: 2026-08-01 — Created for issue 2.6, with the app's second engine.
+ *            2026-08-11 — Issue 4.4: the budget engine took the object back to the ceiling, so the
+ *            three device-backed collaborators that were never engines — the text recogniser, the
+ *            inbox reader, the receipt store — moved to [PlatformModule]. The "no Android imports"
+ *            claim above is now true of every binding here rather than most of them.
  *
  * **Singletons, safely.** Every engine here is stateless and deterministic — fixed input, fixed
  * output (P-08) — so one instance shared across the app has nothing to reset between screens and
@@ -97,23 +94,6 @@ object EngineModule {
     fun provideReceiptEngine(): ReceiptEngine = ReceiptEngineFactory.create()
 
     /**
-     * The on-device text recogniser (issue 3.8; FR-OCR-002, P-01, P-04).
-     * Why:    bound here beside the parser it feeds, though it is not an engine in the `:domain:*`
-     *         sense — it is the only other class in the receipt pipeline whose implementation is
-     *         `internal` behind a factory, and keeping the pair together is what makes the split
-     *         legible: this one needs a device, the one above it does not.
-     *
-     *         **A singleton because the model is loaded once.** Building a client per scan would
-     *         reload it on every photograph, which is a visible pause on the screen the user is
-     *         already waiting on.
-     * Result: a [ReceiptTextRecognizer]. Input: none. Output: the recogniser.
-     * Changelog: 2026-08-06 — Created for issue 3.8.
-     */
-    @Provides
-    @Singleton
-    fun provideReceiptTextRecognizer(): ReceiptTextRecognizer = ReceiptTextRecognizerFactory.create()
-
-    /**
      * The bank-alert parser (issue 3.9; §18, §23, P-03).
      * Why:    the one place a message becomes an amount and a direction. Pure Kotlin, so it holds no
      *         permission and touches no inbox — the reader below it is the Android half, which is
@@ -160,34 +140,19 @@ object EngineModule {
     fun provideNatureEngine(): NatureEngine = NatureEngineFactory.create()
 
     /**
-     * The phone's inbox (issue 3.9; §18, §23, P-01, ADR-0013).
-     * Why:    bound here beside the parser it feeds, the same pairing the receipt pipeline uses.
+     * What a category should cost, and whether the month is on track (issue 4.4; §5.5, FR-BUD-002/003).
+     * Why:    provided through its factory like every engine here, because the implementation is
+     *         `internal` to its module and `:app` cannot name it (ARC-003). Pure Kotlin, so it holds
+     *         no database and reads no clock — `BudgetRepository` resolves the month in the profile
+     *         zone and hands the engine two day counts (ARC-005, TIM-001).
      *
-     *         **Binding it does not read anything.** The reader checks the OS permission on every
-     *         call and `SmsRepository` checks the in-app consent before calling it at all, so a
-     *         graph that can construct one is not a graph that can see a message.
-     * Result: an [SmsInboxReader]. Input: [context] — for its `ContentResolver`; [dispatchers].
-     * Output: the reader.
-     * Changelog: 2026-08-07 — Created for issue 3.9.
+     *         **A singleton because the rule set is validated once.** `BudgetRules` checks its
+     *         thresholds against each other at construction, and the budget screen recomputes every
+     *         category's status on every emission.
+     * Result: a [BudgetEngine]. Input: none. Output: the engine.
+     * Changelog: 2026-08-11 — Created for issue 4.4.
      */
     @Provides
     @Singleton
-    fun provideSmsInboxReader(
-        @ApplicationContext context: Context,
-        dispatchers: DispatcherProvider,
-    ): SmsInboxReader = SmsInboxReaderFactory.create(context, dispatchers)
-
-    /**
-     * The encrypted receipt store (issue 3.8; FR-OCR-005, SEC-003).
-     * Why:    assembled by its factory over a **keyset of its own**, so a compromise or a rotation of
-     *         the attachment key is not one of the database key. The same seam
-     *         `KeystoreMacFactory.createVerifier` uses for the PIN.
-     * Result: a [ReceiptImageStore]. Input: [context]. Output: the store.
-     * Changelog: 2026-08-06 — Created for issue 3.8.
-     */
-    @Provides
-    @Singleton
-    fun provideReceiptImageStore(
-        @ApplicationContext context: Context,
-    ): ReceiptImageStore = ReceiptImageStoreFactory.create(context)
+    fun provideBudgetEngine(): BudgetEngine = BudgetEngineFactory.create()
 }

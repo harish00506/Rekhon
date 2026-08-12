@@ -347,6 +347,76 @@ class NatureRepositoryTest {
             )
         }
 
+    /**
+     * The behaviour issue 4.4 changed, pinned here so it cannot drift back (ADR-0018).
+     *
+     * Input:  one ₹4,000 payment split ₹3,000 groceries (NEED) / ₹1,000 dining (WANT).
+     * Output: ₹3,000 needs and ₹1,000 wants — the breakdown classifies the **lines**.
+     *
+     *         **Before 4.4 this month read as ₹4,000 of wants.** `observeNatureCandidates` projected
+     *         the parent's `category_id`, which a split transaction does not have, so the payment
+     *         fell past §8.3.1 step 5 to the fallback — and the fallback is WANT. Two-thirds of this
+     *         fixture was NEED and all of it was counted as WANT, which is the direction that
+     *         inflates true spend and understates the essentials the emergency-fund target is sized
+     *         from.
+     *
+     *         The total is asserted as well as the split, because the `UNION ALL` that fixed this
+     *         has a second failure mode — counting the parent *and* its lines, for ₹8,000 out of a
+     *         ₹4,000 payment.
+     */
+    @Test
+    fun `a split payment is classified by its lines, not by its empty parent`() =
+        runTest {
+            val bank = newAccount(AccountType.BANK)
+            repository.createSplit(
+                SplitDraft(
+                    accountId = bank.id,
+                    amount = Money(-4_000_00L),
+                    lines =
+                        listOf(
+                            SplitLineDraft(amount = Money(-3_000_00L), categoryId = idOf("Groceries")),
+                            SplitLineDraft(amount = Money(-1_000_00L), categoryId = idOf("Dining")),
+                        ),
+                ),
+            ).expectOk()
+
+            val breakdown = repository.observeNatureBreakdown().first()
+
+            assertEquals(Money(3_000_00L), breakdown.needs)
+            assertEquals(Money(1_000_00L), breakdown.wants)
+            assertEquals("the payment is counted once, by its lines", Money(4_000_00L), breakdown.trueSpend)
+        }
+
+    /**
+     * Input:  the same split payment, read through the **detail sheet's** query.
+     * Output: one verdict for the whole transaction, not two. `natureCandidate` is deliberately not
+     *         split-aware (ADR-0018): a breakdown sums lines because a total must, but a label names
+     *         the thing it is attached to, and a card showing two natures is a screen nobody has
+     *         designed. Asserted so a later change that "makes the two queries consistent" has to
+     *         confront the decision rather than discover it.
+     */
+    @Test
+    fun `the detail sheet still labels a split payment as one transaction`() =
+        runTest {
+            val bank = newAccount(AccountType.BANK)
+            val id =
+                repository.createSplit(
+                    SplitDraft(
+                        accountId = bank.id,
+                        amount = Money(-4_000_00L),
+                        lines =
+                            listOf(
+                                SplitLineDraft(amount = Money(-3_000_00L), categoryId = idOf("Groceries")),
+                                SplitLineDraft(amount = Money(-1_000_00L), categoryId = idOf("Dining")),
+                            ),
+                    ),
+                ).expectOk().id
+
+            // Resolves at all, and to a single verdict — the parent carries no category, so this is
+            // the flagged fallback, which is the honest answer for a payment with two natures.
+            assertTrue(repository.natureOf(id).expectOk().isFlagged)
+        }
+
     /** Input: a profile with no transactions. Output: an empty breakdown, not a zeroed one. */
     @Test
     fun `a month with no transactions is empty`() =

@@ -8,6 +8,7 @@ import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.datastore.ConsentStore
 import com.aicfo.core.datastore.SettingsStore
 import com.aicfo.data.repository.AccountRepository
+import com.aicfo.data.repository.BudgetRepository
 import com.aicfo.data.repository.CategoryRepository
 import com.aicfo.data.repository.DemoModeRepository
 import com.aicfo.data.repository.NetWorthRepository
@@ -18,6 +19,7 @@ import com.aicfo.data.repository.RepositoryFactory
 import com.aicfo.data.repository.SmsRepository
 import com.aicfo.data.repository.TransactionRepository
 import com.aicfo.data.sms.SmsInboxReader
+import com.aicfo.domain.engines.budget.BudgetEngine
 import com.aicfo.domain.engines.classification.ClassificationEngine
 import com.aicfo.domain.engines.nature.NatureEngine
 import com.aicfo.domain.engines.networth.NetWorthEngine
@@ -177,6 +179,29 @@ object RepositoryModule {
         dispatchers: DispatcherProvider,
         demoMode: DemoModeRepository,
     ): CategoryRepository = RepositoryFactory.categories(database, clock, ids, dispatchers, demoMode.activeProfileId)
+
+    /**
+     * The per-category budget store (issue 4.4; FR-BUD-001/002/003).
+     * Why:    takes the engine rather than building one, for the same reason the net-worth and
+     *         recurring bindings do (ARC-003, P-03). Follows the demo like every binding above it,
+     *         so the sample profile's budgets and suggestions leave with it (ADR-0006).
+     *
+     *         **No `IdGenerator`**, unlike the category binding above: a budget's id is derived from
+     *         the profile, category and period, so re-saving updates one row instead of minting a
+     *         second (P-08).
+     * Result: a [BudgetRepository]. Input: [database], [engine], [clock], [dispatchers], [demoMode].
+     *         Output: the repository.
+     * Changelog: 2026-08-11 — Created for issue 4.4.
+     */
+    @Provides
+    @Singleton
+    fun provideBudgetRepository(
+        database: CfoDatabase,
+        engine: BudgetEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        demoMode: DemoModeRepository,
+    ): BudgetRepository = RepositoryFactory.budgets(database, engine, clock, dispatchers, demoMode.activeProfileId)
 
     /**
      * The recurring-series store (issue 3.7; FR-TXN-006).

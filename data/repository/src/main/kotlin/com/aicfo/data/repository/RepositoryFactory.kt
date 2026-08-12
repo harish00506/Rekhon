@@ -8,6 +8,7 @@ import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.datastore.ConsentStore
 import com.aicfo.core.datastore.SettingsStore
 import com.aicfo.data.sms.SmsInboxReader
+import com.aicfo.domain.engines.budget.BudgetEngine
 import com.aicfo.domain.engines.classification.ClassificationEngine
 import com.aicfo.domain.engines.nature.NatureEngine
 import com.aicfo.domain.engines.networth.NetWorthEngine
@@ -30,7 +31,14 @@ import kotlinx.coroutines.flow.Flow
  *
  * As `:data:repository` fills out (2.5 accounts, 3.x transactions), each new repository adds a
  * function here rather than becoming public.
+ *
+ * **Past detekt's `TooManyFunctions` ceiling, deliberately.** Issue 4.4's budget repository is the
+ * twelfth, and the count here is simply the number of repositories the app has — splitting the
+ * object would put half the repositories behind one name and half behind another with no rule for
+ * which goes where. [CfoDatabase] carries the same suppression for the same reason: one accessor
+ * per table, one factory function per repository.
  */
+@Suppress("TooManyFunctions") // One factory function per repository (ARC-003) — see the note above.
 object RepositoryFactory {
     /**
      * Builds the security event log (§21.6).
@@ -157,6 +165,28 @@ object RepositoryFactory {
         dispatchers: DispatcherProvider,
         activeProfileId: Flow<String>,
     ): CategoryRepository = RoomCategoryRepository(database, clock, ids, dispatchers, activeProfileId)
+
+    /**
+     * Builds the per-category budget store (issue 4.4, FR-BUD-001/002/003).
+     * Why:    takes the [engine] rather than constructing one, for the reason [netWorth] and
+     *         [recurring] give — the number and the code that produced it stay assembled in the DI
+     *         graph (ARC-003, P-03). Takes the whole [database] because a budget's status spans the
+     *         budget, the month's transactions with their split lines, and the taxonomy.
+     * Result: a [BudgetRepository] over the encrypted database.
+     * Input:  [database]; [engine] — suggests amounts and computes pace; [clock] — TIM-001, and the
+     *         budget month in the profile zone (TIM-002); [dispatchers]; [activeProfileId] — whose
+     *         budgets, so the demo keeps its own. **No `IdGenerator`**: a budget's id is derived
+     *         from the profile, category and period, so saving twice updates one row rather than
+     *         minting two (see `categoryBudgetId`).
+     * Output: [BudgetRepository].
+     */
+    fun budgets(
+        database: CfoDatabase,
+        engine: BudgetEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        activeProfileId: Flow<String>,
+    ): BudgetRepository = RoomBudgetRepository(database, engine, clock, dispatchers, activeProfileId)
 
     /**
      * Builds the recurring-series store (issue 3.7, FR-TXN-006).

@@ -52,6 +52,9 @@ dependencies {
     // Issue 4.3: SRS §8.3. `api` — NatureVerdict and NatureBreakdown are what natureOf and
     // observeNatureBreakdown return, so the detail sheet and the dashboard must be able to name them.
     api(project(":domain:engines:nature"))
+    // Issue 4.4: SRS §5.5. `api` — BudgetStatus and BudgetSuggestion are what CategoryBudget and
+    // CategoryBudgetSuggestion expose, so the budgets ViewModel must be able to name them.
+    api(project(":domain:engines:budget"))
 
     // withTransaction — the atomicity guarantee applySeeds is built on (issue 2.3).
     implementation(libs.room.ktx)
