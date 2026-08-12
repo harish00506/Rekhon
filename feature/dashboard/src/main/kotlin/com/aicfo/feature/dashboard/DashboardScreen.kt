@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -37,14 +38,13 @@ import com.aicfo.core.model.MoneyFormatter
  *
  * The figures are placeholders until issues 5.1/5.2; the structure is not.
  *
- * Input:  [onNavigateToTransactions], [onNavigateToAccounts] — where each action goes; [modifier];
- *         [viewModel] — supplied by Hilt, overridable in tests.
+ * Input:  [actions] — where each navigation action goes; [modifier]; [viewModel] — supplied by
+ *         Hilt, overridable in tests.
  * Output: the rendered screen.
  */
 @Composable
 fun DashboardScreen(
-    onNavigateToTransactions: () -> Unit,
-    onNavigateToAccounts: () -> Unit,
+    actions: DashboardActions,
     modifier: Modifier = Modifier,
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
@@ -54,8 +54,7 @@ fun DashboardScreen(
     DashboardContent(
         uiState = uiState,
         onEvent = viewModel::onEvent,
-        onNavigateToTransactions = onNavigateToTransactions,
-        onNavigateToAccounts = onNavigateToAccounts,
+        actions = actions,
         modifier = modifier,
     )
 }
@@ -65,17 +64,17 @@ fun DashboardScreen(
  * Why:    stateless, so a preview or a screenshot test can render any state — including loading and
  *         error — without constructing a ViewModel.
  * Result: the rendered content.
- * Input:  [uiState]; [onEvent] — events up (ARC-004); [onNavigateToTransactions];
- *         [onNavigateToAccounts]; [modifier].
+ * Input:  [uiState]; [onEvent] — events up (ARC-004); [actions] — where each button goes;
+ *         [modifier].
  * Output: the composition.
  * Changelog: 2026-07-25 — Created for issue 1.10.
+ *            2026-08-11 — Issue 4.4: the three navigation lambdas became [DashboardActions].
  */
 @Composable
 fun DashboardContent(
     uiState: DashboardUiState,
     onEvent: (DashboardEvent) -> Unit,
-    onNavigateToTransactions: () -> Unit,
-    onNavigateToAccounts: () -> Unit,
+    actions: DashboardActions,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -98,13 +97,20 @@ fun DashboardContent(
         // Issue 4.3: the plan is above, the outcome is here. Adjacent on purpose.
         ActualSpendSection(uiState)
 
+        // Directly under the split bar rather than with the other actions: the bar is the plan at
+        // the nature level and the budgets screen is the plan at the category level, so the way to
+        // change what the bar shows sits next to the bar (issue 4.4).
+        CfoSecondaryButton(
+            text = stringResource(R.string.dashboard_budgets_action),
+            onClick = actions.onNavigateToBudgets,
+        )
         CfoSecondaryButton(
             text = stringResource(R.string.dashboard_accounts_action),
-            onClick = onNavigateToAccounts,
+            onClick = actions.onNavigateToAccounts,
         )
         CfoSecondaryButton(
             text = stringResource(R.string.dashboard_transactions_action),
-            onClick = onNavigateToTransactions,
+            onClick = actions.onNavigateToTransactions,
         )
         CfoSecondaryButton(
             text = stringResource(R.string.dashboard_refresh_action),
@@ -222,3 +228,29 @@ private fun ActualSpendSection(uiState: DashboardUiState) {
         )
     }
 }
+
+/**
+ * Where the dashboard's buttons go (ARC-001).
+ *
+ * Why:  three navigation lambdas as three parameters took [DashboardContent] to detekt's
+ *       `LongParameterList` ceiling, and the ceiling was pointing at something real — a call site
+ *       passing three same-shaped `() -> Unit` arguments positionally is one transposition away from
+ *       sending a user to the wrong screen, and the compiler cannot help. Named fields on a value
+ *       make the mistake unrepresentable.
+ *
+ *       **Still lambdas, not a `NavController`.** ARC-001 keeps routing in `:app`'s nav graph; this
+ *       type only groups the callbacks, so the module still does not know another feature exists.
+ * What: one callback per destination reachable from the dashboard.
+ * Result: adding a fourth destination is a field here rather than a fourth parameter there.
+ * Changelog: 2026-08-11 — Created for issue 4.4, when budgets became the third destination.
+ *
+ * Input:  [onNavigateToTransactions]; [onNavigateToAccounts]; [onNavigateToBudgets] — issue 4.4's
+ *         per-category plan, behind the nature-level bar this screen already draws.
+ * Output: an immutable value.
+ */
+@Immutable
+data class DashboardActions(
+    val onNavigateToTransactions: () -> Unit,
+    val onNavigateToAccounts: () -> Unit,
+    val onNavigateToBudgets: () -> Unit,
+)

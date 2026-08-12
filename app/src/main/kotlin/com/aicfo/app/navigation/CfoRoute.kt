@@ -95,4 +95,20 @@ sealed interface CfoRoute {
      */
     @Serializable
     data object Categories : CfoRoute
+
+    /**
+     * The per-category budget screen (issue 4.4; FR-BUD-001/002/003).
+     *
+     * **No arguments, and no month in the route.** The obvious shape would have been
+     * `Budgets(month: String)` — but a month in a route is a claim made at navigation time about
+     * *now*, and the app is expected to survive midnight with the screen open. The screen resolves
+     * the current month from the injected `Clock` on every emission instead, so a month boundary
+     * moves the figures rather than leaving a stale route arguing with them.
+     *
+     * Reached from the dashboard, beside the 50/30/20 bar: the bar is the plan at the nature level
+     * and this is the plan at the category level, so a user who wants to change what the bar shows
+     * is one tap from the place to do it.
+     */
+    @Serializable
+    data object Budgets : CfoRoute
 }

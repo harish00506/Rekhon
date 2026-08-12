@@ -9,7 +9,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.aicfo.feature.accounts.AccountEditorScreen
 import com.aicfo.feature.accounts.AccountsScreen
+import com.aicfo.feature.budgets.BudgetsScreen
 import com.aicfo.feature.categories.CategoriesScreen
+import com.aicfo.feature.dashboard.DashboardActions
 import com.aicfo.feature.dashboard.DashboardScreen
 import com.aicfo.feature.onboarding.OnboardingScreen
 import com.aicfo.feature.transactions.AddTransactionScreen
@@ -34,6 +36,7 @@ import com.aicfo.feature.transactions.TransactionsScreen
  *            2026-07-28 — Issue 2.5: accounts, and the first destination that takes an argument.
  *            2026-08-02 — Issue 3.1: the add-transaction destination the global FAB opens.
  *            2026-08-06 — Issue 3.8: the receipt review destination, reached from the add screen.
+ *            2026-08-11 — Issue 4.4: the budgets destination, reached from the dashboard.
  *
  * Input:  [startDestination] — decided by `MainViewModel` from the stored onboarding flag;
  *         [modifier]; [navController] — hoisted so a test or a preview can supply its own.
@@ -53,8 +56,12 @@ fun CfoNavHost(
         onboardingDestination(navController)
         composable<CfoRoute.Dashboard> {
             DashboardScreen(
-                onNavigateToTransactions = { navController.navigate(CfoRoute.Transactions) },
-                onNavigateToAccounts = { navController.navigate(CfoRoute.Accounts) },
+                actions =
+                    DashboardActions(
+                        onNavigateToTransactions = { navController.navigate(CfoRoute.Transactions) },
+                        onNavigateToAccounts = { navController.navigate(CfoRoute.Accounts) },
+                        onNavigateToBudgets = { navController.navigate(CfoRoute.Budgets) },
+                    ),
             )
         }
         composable<CfoRoute.Transactions> {
@@ -62,11 +69,7 @@ fun CfoNavHost(
                 onManageCategories = { navController.navigate(CfoRoute.Categories) },
             )
         }
-        composable<CfoRoute.Categories> {
-            // No exit lambda: the editor is a leaf, and the system Back that popped the user here
-            // from the transaction list is the only way out it needs.
-            CategoriesScreen()
-        }
+        planningDestinations()
         captureDestinations(navController)
         composable<CfoRoute.Accounts> {
             AccountsScreen(
@@ -81,6 +84,29 @@ fun CfoNavHost(
             AccountEditorScreen(onDone = { navController.popBackStack() })
         }
     }
+}
+
+/**
+ * The two screens where the user edits the plan rather than the ledger (issues 4.1, 4.4).
+ *
+ * Why:  extracted from [CfoNavHost] because issue 4.4's route took that function past detekt's
+ *       40-line limit — the same pressure that produced [captureDestinations] and
+ *       [onboardingDestination], and the same kind of seam rather than an arbitrary cut. These two
+ *       belong together: the taxonomy decides what a payment *is*, budgets decide what each of those
+ *       categories *should cost*, and the second is meaningless without the first.
+ * What: registers `Categories` and `Budgets`.
+ * Result: [CfoNavHost] reads as a list of destinations again.
+ * Changelog: 2026-08-11 — Extracted for issue 4.4.
+ *
+ * **Neither takes a [NavHostController]**, unlike the groups above, and that is what makes them a
+ * pair rather than a bag: both are leaves. Each was pushed on top of the screen that sent the user
+ * here, and the system Back is the only way out either needs.
+ *
+ * Input:  none. Output: none (registers destinations).
+ */
+private fun NavGraphBuilder.planningDestinations() {
+    composable<CfoRoute.Categories> { CategoriesScreen() }
+    composable<CfoRoute.Budgets> { BudgetsScreen() }
 }
 
 /**

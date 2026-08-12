@@ -13,6 +13,8 @@
     <string name="dashboard_safe_to_spend_label">Safe to spend</string>
     <string name="dashboard_net_worth_label">Net worth</string>
     <string name="dashboard_spend_split_label">This month</string>
+    <!-- Issue 4.4: the way from the nature-level bar above to the category-level plan behind it. -->
+    <string name="dashboard_budgets_action">Your budgets</string>
     <string name="dashboard_accounts_action">Your accounts</string>
     <string name="dashboard_transactions_action">View transactions</string>
     <string name="dashboard_refresh_action">Refresh</string>
