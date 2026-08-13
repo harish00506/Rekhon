@@ -12,11 +12,13 @@ import com.aicfo.core.model.RuleCitation
  *       and a JSON parser into a module that has no serialisation dependency by design (ARC-002).
  *       `RulebookDriftTest` closes the gap that matters — edit a threshold in the rulebook and the
  *       build goes red until this file agrees.
- * What: one property per `params_json` key of `RULE-BUD-SUGGEST` and `RULE-BUD-PACE`, plus the
- *       citations both rules are cited by.
+ * What: one property per `params_json` key of `RULE-BUD-SUGGEST`, `RULE-BUD-PACE` and
+ *       `RULE-BUD-ALERT`, plus the citations all three rules are cited by.
  * Result: every budget this app proposes is attributable to a row a reviewer can open, and every
  *       threshold that shaped it is one they can change (P-02, AI-ARC-006).
- * Changelog: 2026-08-11 — Created for issue 4.4 from rules-kb.json v1.9.0.
+ * Changelog:
+ *   2026-08-11 — Created for issue 4.4 from rules-kb.json v1.9.0.
+ *   2026-08-13 — Added FR-BUD-004's alert bands from rules-kb.json v1.10.0 (issue 4.5).
  *
  * **Injected rather than read, so a test can move a threshold** and assert the engine moves with it
  * — which is also the seam the real loader will use when it lands, with no change to the engine.
@@ -28,7 +30,7 @@ import com.aicfo.core.model.RuleCitation
  *         KB's own `k = months_observed / 24`; [roundToMinor] — the paise a suggestion is rounded
  *         to (MNY-001, so no `Double` reaches the engine); [minElapsedDaysForProjection] —
  *         `RULE-BUD-PACE.min_elapsed_days_for_projection`, below which no end-of-month figure is
- *         offered.
+ *         offered; [warnPct] and [exceededPct] — `RULE-BUD-ALERT`'s two bands, whole percents.
  * Output: an immutable value.
  */
 data class BudgetRules(
@@ -44,6 +46,10 @@ data class BudgetRules(
     val roundToMinor: Long = 10_000L,
     /** `RULE-BUD-PACE.min_elapsed_days_for_projection` — a run rate needs a run. */
     val minElapsedDaysForProjection: Int = 3,
+    /** `RULE-BUD-ALERT.warn_pct` — FR-BUD-004's first band, in whole percent of the budget. */
+    val warnPct: Int = 80,
+    /** `RULE-BUD-ALERT.exceeded_pct` — FR-BUD-004's second band; the plan has been spent. */
+    val exceededPct: Int = 100,
 ) {
     init {
         require(lookbackMonths >= 1) { "lookbackMonths must be at least 1, was $lookbackMonths" }
@@ -64,6 +70,14 @@ data class BudgetRules(
             "minElapsedDaysForProjection must be at least 1, was $minElapsedDaysForProjection: a run " +
                 "rate taken across zero days is both meaningless and undefined"
         }
+        require(warnPct >= 1) { "warnPct must be at least 1, was $warnPct" }
+        // Equal is allowed — a profile that only wants the overspend message sets both to 100 and
+        // gets one alert, not two. Inverted is not: the warn band would be unreachable, so the
+        // earlier warning would silently never fire while every test asserting a *band* still passed.
+        require(warnPct <= exceededPct) {
+            "warnPct ($warnPct) cannot exceed exceededPct ($exceededPct): the earlier band would " +
+                "never be reachable, so the user would only ever hear about an overspend after it happened"
+        }
     }
 
     companion object {
@@ -73,10 +87,16 @@ data class BudgetRules(
         /** FR-BUD-003 — safe pace and the projected end-of-month figure. */
         val PACE = RuleCitation("RULE-BUD-PACE", "1.0")
 
+        /** FR-BUD-004 — the 80%/100% alert bands. A separate row on purpose; see ADR-0019. */
+        val ALERT = RuleCitation("RULE-BUD-ALERT", "1.0")
+
         /** The rulebook file these thresholds were copied from, as `_meta.version`. */
-        const val RULEBOOK_VERSION = "1.9.0"
+        const val RULEBOOK_VERSION = "1.10.0"
     }
 }
 
 /** 10 000 bps = 100% (MNY-002). */
 internal const val BPS_FULL = 10_000
+
+/** 100 bps = 1%, so a whole-percent rule threshold becomes a bps comparison (MNY-002). */
+internal const val BPS_PER_PERCENT = 100

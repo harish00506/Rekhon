@@ -20,16 +20,24 @@ import com.aicfo.core.model.RuleCitation
  *       choice is honest and stated: a genuine, sustained step change takes two months to move a
  *       three-month median, so a user who moves house sees a stale rent suggestion once.
  * What: `suggest` takes a median over the lookback window and applies the shrunk seasonal prior;
- *       `status` computes the four FR-BUD-003 figures against a rollover-inclusive budget.
+ *       `status` computes the four FR-BUD-003 figures against a rollover-inclusive budget; `alert`
+ *       reports which of FR-BUD-004's two bands the spending has reached.
  * Result: numbers, each carrying the rulebook row that shaped it (AI-ARC-003). Nothing here writes,
- *       and nothing here decides — a suggestion is offered, never applied (P-07).
- * Changelog: 2026-08-11 — Created for issue 4.4.
+ *       and nothing here decides — a suggestion is offered, never applied (P-07), and an alert is a
+ *       band, not a notification: whether one is *posted* is the repository's and the worker's
+ *       question, because only they know what the user has already been told.
+ * Changelog:
+ *   2026-08-11 — Created for issue 4.4.
+ *   2026-08-13 — Added `alert` for issue 4.5 (FR-BUD-004); moved the pace helpers to [BudgetPace]
+ *                and the band decision to [BudgetAlertBands] so each requirement reads as its own
+ *                unit. Pure move — no arithmetic changed, and the 4.4 golden file proves it.
  *
  * `internal` per ARC-003 — constructed only by [BudgetEngineFactory].
  *
- * **There is not a `Double` in this file** (MNY-001/MNY-002): the median of an even-length window
- * is an exact `Money.allocate` split, the seasonal index is integer basis points, and both pace
- * figures go through `Money.percentOf`, which rounds HALF_EVEN.
+ * **There is not a `Double` anywhere in this engine** (MNY-001/MNY-002): the median of an
+ * even-length window is an exact `Money.split`, the seasonal index is integer basis points, both
+ * pace figures go through `Money.percentOf`, which rounds HALF_EVEN, and the alert ratio is integer
+ * paise scaled to basis points.
  *
  * **Nothing here reads a clock** (TIM-001); the instant in provenance is the caller's, and the
  * month's shape arrives as two integers the repository resolved in the profile time zone.
@@ -62,11 +70,16 @@ internal class DefaultBudgetEngine : BudgetEngine {
                 carriedOver = input.carriedOver,
                 spent = input.spent,
                 remaining = budgeted - input.spent,
-                safePaceToDate = budgeted.percentOf(elapsedShareBps(input)),
-                projectedEndOfMonth = projection(input),
-                provenance = statusProvenance(input),
+                safePaceToDate = budgeted.percentOf(BudgetPace.elapsedShareBps(input)),
+                projectedEndOfMonth = BudgetPace.projection(input),
+                provenance = BudgetPace.provenance(input),
             )
         }
+
+    // Delegated whole: the band decision is the one output of this engine that ends in interrupting
+    // a person, and it reads better in one place than as a third arm of this class (BudgetAlertBands).
+    override fun alert(input: BudgetAlertInput): Result<BudgetAlert?, AppError> =
+        runCatchingToResult { BudgetAlertBands.evaluate(input) }
 
     // --- FR-BUD-002: the suggestion -----------------------------------------------------------
 
@@ -186,55 +199,11 @@ internal class DefaultBudgetEngine : BudgetEngine {
         )
     }
 
-    // --- FR-BUD-003: the status ---------------------------------------------------------------
-
-    /**
-     * The share of the month that has elapsed, in basis points.
-     * Why:    "safe pace" is the budget spread evenly, so the elapsed share is the multiplier. In
-     *         bps rather than a fraction because `Money.percentOf` is the only sanctioned way to
-     *         take a share of an amount (MNY-002).
-     * Result: 0..10 000; exactly 10 000 on the last day of the month.
-     * Input:  [input]. Output: [Int].
-     */
-    private fun elapsedShareBps(input: BudgetStatusInput): Int = (input.daysElapsed * BPS_FULL) / input.daysInPeriod
-
-    /**
-     * The end-of-month figure the current run rate points at.
-     * Why:    spent-versus-remaining cannot distinguish a month that is merely early from one that
-     *         will overshoot, which is the question a user has mid-month. Withheld below
-     *         `min_elapsed_days_for_projection` because a run rate taken on day 1 turns one grocery
-     *         run into an implausible month — **`null` rather than a hedge**, so the screen shows
-     *         nothing instead of showing a number it would have to apologise for.
-     * What:   `spent x daysInPeriod / daysElapsed`, via `percentOf` so the rounding is HALF_EVEN and
-     *         the arithmetic stays in paise.
-     * Result: the projection, or `null` while it is still withheld.
-     * Input:  [input]. Output: [Money]?.
-     */
-    private fun projection(input: BudgetStatusInput): Money? {
-        if (input.daysElapsed < input.rules.minElapsedDaysForProjection) return null
-        val runRateBps = (input.daysInPeriod * BPS_FULL) / input.daysElapsed
-        return input.spent.percentOf(runRateBps)
-    }
-
-    /**
-     * Provenance for a status (AI-ARC-003).
-     * Why:    `inputWindow` is null here on purpose — a status reads one month, the one it was
-     *         handed, so there is no window to state that the caller did not already choose.
-     * Result: engine id/version, the caller's instant and the cited row.
-     * Input:  [input]. Output: [EngineProvenance].
-     */
-    private fun statusProvenance(input: BudgetStatusInput): EngineProvenance =
-        EngineProvenance(
-            engineId = ENGINE_ID,
-            engineVersion = ENGINE_VERSION,
-            computedAtUtcMillis = input.nowUtcMillis,
-            evidence = listOf(BudgetRules.PACE),
-        )
-
     private companion object {
         const val ENGINE_ID = "budget-planner"
 
-        /** Bump whenever the suggestion or pace arithmetic changes (AI-ARC-006). */
+        /** Bump whenever the suggestion arithmetic changes; pace and bands carry their own
+         * (AI-ARC-006). */
         const val ENGINE_VERSION = "1.0"
     }
 }

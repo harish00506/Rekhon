@@ -18,7 +18,9 @@ import org.junit.Test
  *       and the derived flags.
  * Result: the arithmetic is frozen; changing it requires changing the fixture, in a diff a reviewer
  *       reads.
- * Changelog: 2026-08-11 — Created for issue 4.4.
+ * Changelog:
+ *   2026-08-11 — Created for issue 4.4.
+ *   2026-08-13 — Added `kind=alert` records for issue 4.5's bands (FR-BUD-004).
  *
  * **The citations are asserted as an ordered list, not a set.** A suggestion that lands on the right
  * rupee by citing the wrong festival is a broken engine that happens to agree today.
@@ -44,8 +46,8 @@ class BudgetGoldenTest {
 
         val cited = records.flatMap { it.cite }.toSet()
         assertEquals(
-            "the fixture must exercise both rules this engine cites",
-            setOf("RULE-BUD-SUGGEST", "RULE-BUD-PACE"),
+            "the fixture must exercise all three rules this engine cites",
+            setOf("RULE-BUD-SUGGEST", "RULE-BUD-PACE", "RULE-BUD-ALERT"),
             cited.filter { it.startsWith("RULE-") }.toSet(),
         )
 
@@ -61,6 +63,24 @@ class BudgetGoldenTest {
         val statuses = records.filter { it.kind == "status" }
         assertTrue("no withheld-projection record", statuses.any { it.expectProjected == null })
         assertTrue("no overspent record", statuses.any { it.expectOverspent })
+
+        // FR-BUD-004. Both bands *and* the silence below them: a fixture that only held the two
+        // firing cases would pass against an engine that alerted on every rupee spent.
+        val alerts = records.filter { it.kind == "alert" }
+        assertEquals(
+            "the fixture must cover both bands and the silent case",
+            setOf(null, BudgetAlertBand.WARN, BudgetAlertBand.EXCEEDED),
+            alerts.map { it.expectBand }.toSet(),
+        )
+        assertTrue(
+            "no record sits exactly on the warn band — the boundary is where this feature's bugs live",
+            alerts.any { it.expectUsedBps == BudgetRules().warnPct * 100 },
+        )
+        assertTrue(
+            "no record sits exactly on the exceeded band",
+            alerts.any { it.expectUsedBps == BudgetRules().exceededPct * 100 },
+        )
+        assertTrue("no zero-budget record", alerts.any { it.fields["budgeted"] == "0" })
     }
 
     /** Input: every `kind=suggest` record. Output: asserts the suggested amount and the median. */
@@ -143,16 +163,37 @@ class BudgetGoldenTest {
         assertEquals("$wrong", 0, wrong.size)
     }
 
+    /** Input: every `kind=alert` record. Output: asserts the band and both figures behind it. */
+    @Test
+    fun `every alert lands in the expected band`() {
+        val wrong =
+            records.filter { it.kind == "alert" }.mapNotNull { record ->
+                val actual = (engine.alert(record.toAlertInput()) as Ok).value
+                when {
+                    actual?.band != record.expectBand ->
+                        "${record.case}: band expected ${record.expectBand}, was ${actual?.band}"
+                    actual?.usedBps != record.expectUsedBps ->
+                        "${record.case}: usedBps expected ${record.expectUsedBps}, was ${actual?.usedBps}"
+                    actual?.overspentBy?.minor != record.expectOverspentBy ->
+                        "${record.case}: overspentBy expected ${record.expectOverspentBy}, " +
+                            "was ${actual?.overspentBy?.minor}"
+                    else -> null
+                }
+            }
+        assertEquals("$wrong", 0, wrong.size)
+    }
+
     /** Input: every record. Output: asserts the cited rows, **in order** (P-02, AI-ARC-006). */
     @Test
     fun `every record cites the expected rows in order`() {
         val wrong =
             records.mapNotNull { record ->
                 val actual =
-                    if (record.kind == "suggest") {
-                        (engine.suggest(record.toSuggestionInput()) as Ok).value?.provenance?.evidence.orEmpty()
-                    } else {
-                        (engine.status(record.toStatusInput()) as Ok).value.provenance.evidence
+                    when (record.kind) {
+                        "suggest" ->
+                            (engine.suggest(record.toSuggestionInput()) as Ok).value?.provenance?.evidence.orEmpty()
+                        "alert" -> (engine.alert(record.toAlertInput()) as Ok).value?.provenance?.evidence.orEmpty()
+                        else -> (engine.status(record.toStatusInput()) as Ok).value.provenance.evidence
                     }.map { it.ruleId }
                 if (actual != record.cite) "${record.case}: cited $actual, expected ${record.cite}" else null
             }
@@ -183,6 +224,10 @@ class BudgetGoldenTest {
         val expectOverspent: Boolean = fields["expect_overspent"].toBoolean()
         val expectAhead: Boolean = fields["expect_ahead"].toBoolean()
         val expectWillOverspend: Boolean = fields["expect_will_overspend"].toBoolean()
+        val expectBand: BudgetAlertBand? =
+            fields["expect_band"]?.takeUnless { it == NONE }?.let { BudgetAlertBand.valueOf(it) }
+        val expectUsedBps: Int? = fields.longOrNull("expect_used_bps")?.toInt()
+        val expectOverspentBy: Long? = fields.longOrNull("expect_overspent_by")
 
         fun toSuggestionInput(): BudgetSuggestionInput =
             BudgetSuggestionInput(
@@ -207,6 +252,15 @@ class BudgetGoldenTest {
                 spent = Money(required("spent").toLong()),
                 daysInPeriod = required("days").toInt(),
                 daysElapsed = required("elapsed").toInt(),
+                nowUtcMillis = NOW,
+            )
+
+        fun toAlertInput(): BudgetAlertInput =
+            BudgetAlertInput(
+                categoryId = "category:${case.hashCode()}",
+                categoryName = case,
+                budgeted = Money(required("budgeted").toLong()),
+                spent = Money(required("spent").toLong()),
                 nowUtcMillis = NOW,
             )
 
@@ -248,7 +302,7 @@ class BudgetGoldenTest {
         const val NONE = "none"
 
         /** Below this the fixture has stopped covering the paths the meta-test names. */
-        const val MIN_RECORDS = 12
+        const val MIN_RECORDS = 20
 
         val RECORD_SEPARATOR = Regex("^===\\s*$", RegexOption.MULTILINE)
         val HEADER = Regex("""#\s*([a-z_]+)=(.*)""")

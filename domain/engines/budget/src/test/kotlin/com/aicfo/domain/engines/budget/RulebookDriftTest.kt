@@ -15,10 +15,12 @@ import java.io.File
  *       deferral is only acceptable while the duplicate cannot drift, and "someone will remember to
  *       update both" is not a mechanism. This test is the mechanism: edit a threshold in the
  *       rulebook and the build goes red until the engine agrees.
- * What: parses the two `RULE-BUD-*` rows out of the rulebook JSON and asserts every threshold and
+ * What: parses the three `RULE-BUD-*` rows out of the rulebook JSON and asserts every threshold and
  *       version the engine copied still matches.
  * Result: the §6 deferral costs correctness nothing until the loader lands.
- * Changelog: 2026-08-11 — Created for issue 4.4.
+ * Changelog:
+ *   2026-08-11 — Created for issue 4.4.
+ *   2026-08-13 — Added RULE-BUD-ALERT for issue 4.5 (FR-BUD-004).
  *
  * **Parsed with regex, not a JSON library, on purpose.** `:domain:*` is pure Kotlin with no
  * serialisation dependency (ARC-002), and adding one to a *test* to check five integers would be
@@ -38,6 +40,7 @@ class RulebookDriftTest {
         assertTrue("rulebook looks empty or truncated", rulebook.length > 1_000)
         assertTrue("RULE-BUD-SUGGEST missing from the rulebook", "RULE-BUD-SUGGEST" in rulebook)
         assertTrue("RULE-BUD-PACE missing from the rulebook", "RULE-BUD-PACE" in rulebook)
+        assertTrue("RULE-BUD-ALERT missing from the rulebook", "RULE-BUD-ALERT" in rulebook)
     }
 
     /** Input: the file's `_meta.version`. Output: asserts the engine copied from this revision. */
@@ -78,6 +81,21 @@ class RulebookDriftTest {
         assertEquals(BudgetRules.PACE.ruleVersion, row.version())
     }
 
+    /** Input: RULE-BUD-ALERT's params. Output: asserts both FR-BUD-004 bands match. */
+    @Test
+    fun `the alert thresholds match RULE-BUD-ALERT`() {
+        val rules = BudgetRules()
+        val row = ruleBlock("RULE-BUD-ALERT")
+
+        assertEquals(rules.warnPct, row.intParam("warn_pct"))
+        assertEquals(rules.exceededPct, row.intParam("exceeded_pct"))
+        assertTrue(
+            "the engine promises one alert per band per month; the rule must still ask for that",
+            "\"notify_once_per_band_per_month\": true" in row,
+        )
+        assertEquals(BudgetRules.ALERT.ruleVersion, row.version())
+    }
+
     /**
      * Input:  the rule ids the engine cites.
      * Output: asserts each exists and is enabled. A citation pointing at a rule that has been
@@ -85,7 +103,7 @@ class RulebookDriftTest {
      */
     @Test
     fun `every rule the engine cites exists and is enabled`() {
-        listOf(BudgetRules.SUGGESTION, BudgetRules.PACE).forEach { citation ->
+        listOf(BudgetRules.SUGGESTION, BudgetRules.PACE, BudgetRules.ALERT).forEach { citation ->
             val row = ruleBlock(citation.ruleId)
             assertTrue(
                 "${citation.ruleId} is disabled in the rulebook but still cited by the engine",
@@ -96,17 +114,28 @@ class RulebookDriftTest {
 
     /**
      * Input:  RULE-BUD-PACE's row.
-     * Output: asserts issue 4.5's alert thresholds have **not** quietly appeared here. FR-BUD-004's
-     *         80%/100% bands belong to 4.5, and a threshold that arrives without the screen that
-     *         explains it is a number the app would apply and never show (P-02).
+     * Output: asserts the alert bands are **not** on it.
+     *
+     * Why:    this test was written for 4.4 to hold FR-BUD-004's bands back until the screen that
+     *         explains them existed. 4.5 built that screen — and kept the separation, permanently,
+     *         for a different and larger reason (ADR-0019). `RULE-BUD-PACE` is a **shipped row at
+     *         version 1.0**. Adding a parameter to it would bump that version, and a version bump is
+     *         ADR-0017's trigger 3: the moment any row can exist at two versions, a typed mirror
+     *         cannot represent it and the runtime rules loader has to be built first. So the bands
+     *         live on their own row, and this test now guards that boundary rather than a schedule.
+     *
+     *         It is also the right seam on the merits: pace answers "am I on track?", alerting
+     *         answers "should this person be interrupted?" — different questions, edited by
+     *         different people for different reasons.
      */
     @Test
-    fun `the 80 and 100 percent alert bands still belong to issue 4-5`() {
+    fun `the alert bands live on RULE-BUD-ALERT, not RULE-BUD-PACE`() {
         val row = ruleBlock("RULE-BUD-PACE")
         listOf("warn_pct", "alert_pct", "exceeded_pct").forEach { key ->
             assertTrue(
-                "'$key' appeared on RULE-BUD-PACE — FR-BUD-004's bands are issue 4.5's to mint, " +
-                    "with the alerts that make them visible",
+                "'$key' appeared on RULE-BUD-PACE. FR-BUD-004's bands belong to RULE-BUD-ALERT: " +
+                    "adding a param here bumps a shipped row's version, which is ADR-0017 trigger 3 " +
+                    "and forces the runtime rules loader before this module can compile again",
                 "\"$key\"" !in row,
             )
         }

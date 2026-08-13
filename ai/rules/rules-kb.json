@@ -5,11 +5,12 @@
     "what": "Seed rows for the rules_knowledge_base table (§29.1). RuleEngine.evaluate(ruleId, FeatureSnapshot) -> RuleResult{pass|warn|fail, measuredValue, threshold, evidence, ruleId, version}.",
     "result": "Changing a number here changes the app's advice everywhere that rule is cited, reproducibly and with an audit trail.",
     "source_section": "§29",
-    "version": "1.9.0",
+    "version": "1.10.0",
     "changelog": [
       "2026-07-17 — Created from SRS v1.7 §29.2–§29.5; defaults are the floor, refined by user overrides at runtime.",
       "2026-08-07 — Added RULE-SMS-PARSE for issue 3.9's opt-in, on-device bank-alert parser (§18, §23).",
-      "2026-08-11 — Added RULE-BUD-SUGGEST and RULE-BUD-PACE for issue 4.4's per-category budgets (§5.5, FR-BUD-002, FR-BUD-003)."
+      "2026-08-11 — Added RULE-BUD-SUGGEST and RULE-BUD-PACE for issue 4.4's per-category budgets (§5.5, FR-BUD-002, FR-BUD-003).",
+      "2026-08-13 — Added RULE-BUD-ALERT for issue 4.5's 80%/100% budget alerts (§5.5, FR-BUD-004). Minted as a NEW row at v1.0 rather than added to RULE-BUD-PACE's params: bumping a shipped row's version is ADR-0017's trigger 3, which would force the runtime rules loader before this issue could compile."
     ],
     "schema": {
       "rule_id": "stable public ID cited in evidence — never rename, deprecate instead",
@@ -62,8 +63,21 @@
       "params_json": { "projection_basis": "run_rate", "min_elapsed_days_for_projection": 3 },
       "severity": "info",
       "rationale": "Spent-vs-remaining alone cannot tell an on-track month from one that will overshoot on the 20th; pace can. The elapsed-days floor exists because a run rate taken on day 1 turns one grocery run into an implausible month and would train the user to ignore the figure.",
-      "source_note": "FR-BUD-003 (spent, remaining, daily pace vs safe pace, projected end-of-month). The 80%/100% alert thresholds are deliberately NOT here — those belong to issue 4.5 (FR-BUD-004).",
+      "source_note": "FR-BUD-003 (spent, remaining, daily pace vs safe pace, projected end-of-month). The 80%/100% alert thresholds are deliberately NOT here — they live on RULE-BUD-ALERT, permanently: pace answers 'am I on track?', alerting answers 'should the user be interrupted?', and the two are edited by different people for different reasons. See ADR-0019.",
       "consumed_by": ["AI-BUD.status", "AI-FHS.spending_discipline"],
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "rule_id": "RULE-BUD-ALERT",
+      "domain": "saving",
+      "name": "Budget threshold bands: warn once when spending reaches 80% of a category budget, and once again when it reaches 100%; at most one notification per band per budget per month.",
+      "formula_id": "budget_threshold_bands",
+      "params_json": { "warn_pct": 80, "exceeded_pct": 100, "notify_once_per_band_per_month": true },
+      "severity": "warn",
+      "rationale": "80% is early enough that the rest of the month can still be changed and late enough that the warning is not noise; 100% is the fact that the plan has been spent. One notification per band per month is the difference between an alert and a nag — a user who is told every time they buy coffee after the 80% mark learns to dismiss the channel, which costs them the 100% message that mattered.",
+      "source_note": "FR-BUD-004 (alerts at 80% and 100% of a category budget). Split from RULE-BUD-PACE deliberately; see ADR-0019. The once-per-band guarantee is enforced structurally by a UNIQUE(profile_id, budget_id, month_start, band) index on `budget_alert`, not by this flag alone.",
+      "consumed_by": ["budget_planner", "AI-BUD.alert", "AI-NTF"],
       "enabled": true,
       "version": "1.0"
     },

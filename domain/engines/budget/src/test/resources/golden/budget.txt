@@ -17,7 +17,7 @@
 # reads it — the bargain golden/nature.txt already struck.
 #
 # Format: records separated by a line of `===`, fields as `# key=value`:
-#     kind          suggest | status                             (required)
+#     kind          suggest | status | alert                     (required)
 #     case          a label, used in failure messages            (required)
 #
 #   when kind is a suggestion:
@@ -40,6 +40,14 @@
 #     expect_budgeted / expect_remaining / expect_safe_pace      (required)
 #     expect_projected  the run-rate figure, or `none`           (required)
 #     expect_overspent / expect_ahead / expect_will_overspend    (required)
+#     cite          rule ids, comma separated                    (required)
+#
+#   when kind is an alert (issue 4.5, FR-BUD-004):
+#     budgeted      planned + carried over, in paise             (required)
+#     spent         spent so far this month, in paise            (required)
+#     expect_band   WARN | EXCEEDED | none                       (required)
+#     expect_used_bps    share of the budget used, or `none`     (required)
+#     expect_overspent_by  paise past the budget, or `none`      (required)
 #     cite          rule ids, comma separated                    (required)
 #
 # Any other `#` line is a comment, including this block.
@@ -263,4 +271,108 @@
 # expect_ahead=false
 # expect_will_overspend=false
 # cite=RULE-BUD-PACE
+===
+# --- FR-BUD-004: one rupee short of the warn band ----------------------------
+# ₹7,900 of a ₹10,000 budget. Silence here is the whole point of the band: an
+# alert that fires at 79% is an alert the user turns off before it ever reaches
+# the 100% message that mattered.
+# kind=alert
+# case=just below the warn band says nothing
+# budgeted=1000000
+# spent=790000
+# expect_band=none
+# expect_used_bps=none
+# expect_overspent_by=none
+# cite=
+===
+# --- the warn boundary itself ------------------------------------------------
+# Exactly 80%. The comparison is `>=`, so the boundary is inside the band — a
+# user who has spent precisely four fifths of their budget is told, because the
+# rule says 80%, not "past 80%".
+# kind=alert
+# case=exactly the warn band warns
+# budgeted=1000000
+# spent=800000
+# expect_band=WARN
+# expect_used_bps=8000
+# expect_overspent_by=none
+# cite=RULE-BUD-ALERT
+===
+# --- truncation never interrupts early ---------------------------------------
+# ₹2,399.99 of a ₹3,000 budget is 79.99966%. Real division would round it to
+# 80% and fire; integer bps truncate to 7999 and stay quiet. This record is why
+# `usedBps` scales before it divides and holds no `Double` (MNY-001/MNY-002) —
+# with a Double this passes today and fires a rupee early on some other budget.
+# kind=alert
+# case=a fraction below the band truncates down, not up
+# budgeted=300000
+# spent=239999
+# expect_band=none
+# expect_used_bps=none
+# expect_overspent_by=none
+# cite=
+===
+# --- deep inside the warn band, still one band -------------------------------
+# 99.99%. Not exceeded: the budget has not been spent, and calling it spent
+# would be the app telling the user something untrue by a rupee.
+# kind=alert
+# case=one rupee short of the budget is still only a warning
+# budgeted=1000000
+# spent=999900
+# expect_band=WARN
+# expect_used_bps=9999
+# expect_overspent_by=none
+# cite=RULE-BUD-ALERT
+===
+# --- the exceeded boundary: spending it exactly ------------------------------
+# 100% on the nose. EXCEEDED, and `overspent_by` is zero rather than absent —
+# the band is reached, and the amount past it is genuinely ₹0. The message this
+# feeds says "you have used your budget", not "you have overspent by ₹0", which
+# is why the band and the amount are separate fields.
+# kind=alert
+# case=spending the budget exactly reaches the exceeded band
+# budgeted=1000000
+# spent=1000000
+# expect_band=EXCEEDED
+# expect_used_bps=10000
+# expect_overspent_by=0
+# cite=RULE-BUD-ALERT
+===
+# --- past the budget ---------------------------------------------------------
+# 101%. ₹100 over ₹10,000. The only record where `overspent_by` is a figure the
+# notification will actually quote, so it is also the one the guardrail check
+# in :app is written against.
+# kind=alert
+# case=past the budget reports how far past
+# budgeted=1000000
+# spent=1010000
+# expect_band=EXCEEDED
+# expect_used_bps=10100
+# expect_overspent_by=10000
+# cite=RULE-BUD-ALERT
+===
+# --- an unset budget has no bands --------------------------------------------
+# Zero budget with real spending against it. `none`, not EXCEEDED: a category
+# the user never budgeted is not a category they have overspent, and this is
+# also the guard that keeps the ratio from dividing by zero.
+# kind=alert
+# case=a zero budget is not an infinite overspend
+# budgeted=0
+# spent=500000
+# expect_band=none
+# expect_used_bps=none
+# expect_overspent_by=none
+# cite=
+===
+# --- nothing spent yet --------------------------------------------------------
+# The floor of the range. Included because 0/N is the other end of the division
+# and a sign error would show up here first.
+# kind=alert
+# case=nothing spent crosses nothing
+# budgeted=1000000
+# spent=0
+# expect_band=none
+# expect_used_bps=none
+# expect_overspent_by=none
+# cite=
 ===

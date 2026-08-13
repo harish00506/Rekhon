@@ -16,10 +16,12 @@ import org.junit.Test
  *       them. The `add-rulebook-rule` skill asks specifically for a threshold to be tested **at, just
  *       below and just above** its boundary, and to take the boundary **from the rules object rather
  *       than a literal** — so that moving the rule moves the test with it instead of breaking it.
- * What: boundary tests for both `RULE-BUD-*` thresholds, the money-math edges of the median and the
+ * What: boundary tests for every `RULE-BUD-*` threshold, the money-math edges of the median and the
  *       rounding, and the provenance every result must carry.
- * Result: the two thresholds provably do something, and the arithmetic holds at its extremes.
- * Changelog: 2026-08-11 — Created for issue 4.4.
+ * Result: the thresholds provably do something, and the arithmetic holds at its extremes.
+ * Changelog:
+ *   2026-08-11 — Created for issue 4.4.
+ *   2026-08-13 — Added RULE-BUD-ALERT's band boundaries for issue 4.5 (FR-BUD-004).
  */
 class BudgetEngineTest {
     private val engine = BudgetEngineFactory.create()
@@ -253,6 +255,118 @@ class BudgetEngineTest {
         assertTrue(status(planned = 0, spent = 100).isOverspent)
     }
 
+    // --- RULE-BUD-ALERT: warn_pct and exceeded_pct (FR-BUD-004) -------------------------------
+
+    /**
+     * Input:  spending one paise below the warn band, at the band, and one paise below the exceeded
+     *         band — every threshold read from [rules], never written as a literal.
+     * Output: asserts silence, then WARN, then still WARN.
+     *
+     * Why one test and not three: the three assertions are only meaningful *together*. A test that
+     * fires at the band proves nothing on its own — an engine that alerted at every rupee would pass
+     * it. The pair below-and-at is what proves the threshold does something.
+     */
+    @Test
+    fun `the warn band starts exactly at warn_pct and not a paise earlier`() {
+        val budgeted = 1_000_000L
+        val atBand = budgeted * rules.warnPct / 100
+
+        assertNull("below the band is silence", alert(budgeted, atBand - 1)?.band)
+        assertEquals(BudgetAlertBand.WARN, alert(budgeted, atBand)!!.band)
+        assertEquals(
+            "still short of the budget, so still only a warning",
+            BudgetAlertBand.WARN,
+            alert(budgeted, budgeted * rules.exceededPct / 100 - 1)!!.band,
+        )
+    }
+
+    /**
+     * Input:  spending exactly the budget, and one paise past it.
+     * Output: asserts both are EXCEEDED, and that the reported overspend is the real difference —
+     *         zero at the boundary, not absent. The band and the amount are separate facts, and
+     *         collapsing them would make "you have overspent by ₹0" a sentence the app could say.
+     */
+    @Test
+    fun `the exceeded band starts exactly at exceeded_pct and reports the true overspend`() {
+        val budgeted = 1_000_000L
+        val atBand = budgeted * rules.exceededPct / 100
+
+        val exactly = alert(budgeted, atBand)!!
+        assertEquals(BudgetAlertBand.EXCEEDED, exactly.band)
+        assertEquals(Money.ZERO, exactly.overspentBy)
+
+        val past = alert(budgeted, atBand + 25_000)!!
+        assertEquals(BudgetAlertBand.EXCEEDED, past.band)
+        assertEquals(Money(25_000), past.overspentBy)
+    }
+
+    /**
+     * Input:  a rules object with both bands moved.
+     * Output: asserts the engine follows the rule rather than the number it was written with. This
+     *         is the test that would fail if anyone reintroduced `80` as a literal in the engine
+     *         (CLAUDE.md §6), and it is also the seam the runtime loader will use unchanged.
+     */
+    @Test
+    fun `moving the bands in the rules moves the engine`() {
+        val moved = BudgetRules(warnPct = 50, exceededPct = 90)
+
+        assertNull(alert(1_000_000, 490_000, moved)?.band)
+        assertEquals(BudgetAlertBand.WARN, alert(1_000_000, 500_000, moved)!!.band)
+
+        // A band below 100% is reached while the budget still has money in it, so the amount past
+        // the budget is nothing — not a negative "overspend" the notification would render.
+        val exceeded = alert(1_000_000, 900_000, moved)!!
+        assertEquals(BudgetAlertBand.EXCEEDED, exceeded.band)
+        assertEquals(Money.ZERO, exceeded.overspentBy)
+
+        // And the default bands must now be wrong for the same inputs, or the rules were ignored.
+        assertNull(alert(1_000_000, 500_000)?.band)
+    }
+
+    /**
+     * Input:  an unset budget, and nothing spent.
+     * Output: asserts `null` for both. The zero budget is the division-by-zero guard; a category the
+     *         user never budgeted is not one they have overspent.
+     */
+    @Test
+    fun `a zero budget and a zero spend both cross nothing`() {
+        assertNull(alert(0, 500_000))
+        assertNull(alert(1_000_000, 0))
+    }
+
+    /**
+     * Input:  a one-paise budget with ₹10 crore spent against it.
+     * Output: asserts the band is still EXCEEDED. The ratio genuinely overflows an `Int` of basis
+     *         points here; saturating rather than wrapping is the difference between a loud overspend
+     *         and a negative bps value that would report no alert at all — silently, in the one case
+     *         where the user most needs to hear from the app.
+     */
+    @Test
+    fun `an absurd ratio saturates rather than wrapping into silence`() {
+        val absurd = alert(budgeted = 1, spent = 1_000_000_000_00)!!
+
+        assertEquals(BudgetAlertBand.EXCEEDED, absurd.band)
+        assertEquals(Int.MAX_VALUE, absurd.usedBps)
+    }
+
+    /** Input: an alert. Output: asserts it cites the alert rule alone — pace had no part in it. */
+    @Test
+    fun `an alert cites RULE-BUD-ALERT and nothing else`() {
+        val provenance = alert(1_000_000, 900_000)!!.provenance
+
+        assertEquals("budget-planner", provenance.engineId)
+        assertEquals(NOW, provenance.computedAtUtcMillis)
+        assertEquals(listOf("RULE-BUD-ALERT"), provenance.evidence.map { it.ruleId })
+        assertEquals("1.0", provenance.evidence.single().ruleVersion)
+    }
+
+    /** Input: 90% of a budget. Output: asserts the display percent the screen reads (MNY-002). */
+    @Test
+    fun `usedPercent is the whole percent behind the basis points`() {
+        assertEquals(90, alert(1_000_000, 900_000)!!.usedPercent)
+        assertEquals(99, alert(1_000_000, 999_900)!!.usedPercent)
+    }
+
     // --- provenance (AI-ARC-003, AI-ARC-006) ---------------------------------------------------
 
     /** Input: a suggestion. Output: asserts the engine identifies itself and states its window. */
@@ -330,6 +444,27 @@ class BudgetEngineTest {
         assertThrows(IllegalArgumentException::class.java) { BudgetRules(lookbackMonths = 0) }
         assertThrows(IllegalArgumentException::class.java) { BudgetRules(minMonthsRequired = 0) }
         assertThrows(IllegalArgumentException::class.java) { BudgetRules(shrinkageDenominatorMonths = 0) }
+        // Inverted bands: the warn band would be unreachable, so the earlier warning would never
+        // fire while every test asserting a *band* kept passing.
+        assertThrows(IllegalArgumentException::class.java) { BudgetRules(warnPct = 101, exceededPct = 100) }
+        assertThrows(IllegalArgumentException::class.java) { BudgetRules(warnPct = 0) }
+        assertThrows(IllegalArgumentException::class.java) {
+            BudgetAlertInput("c", "C", budgeted = Money(-1), spent = Money.ZERO, nowUtcMillis = NOW)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            BudgetAlertInput("c", "C", budgeted = Money(1), spent = Money(-1), nowUtcMillis = NOW)
+        }
+        // A warn carrying an overspend figure would render "you have overspent by ₹0".
+        assertThrows(IllegalArgumentException::class.java) {
+            BudgetAlert(
+                band = BudgetAlertBand.WARN,
+                usedBps = 8_000,
+                budgeted = Money(1_000_000),
+                spent = Money(800_000),
+                overspentBy = Money.ZERO,
+                provenance = alert(1_000_000, 800_000)!!.provenance,
+            )
+        }
     }
 
     // --- helpers ---------------------------------------------------------------------------------
@@ -390,6 +525,24 @@ class BudgetEngineTest {
                     spent = Money(spent),
                     daysInPeriod = daysInPeriod,
                     daysElapsed = daysElapsed,
+                    nowUtcMillis = NOW,
+                    rules = rules,
+                ),
+            ) as Ok
+        ).value
+
+    private fun alert(
+        budgeted: Long,
+        spent: Long,
+        rules: BudgetRules = BudgetRules(),
+    ): BudgetAlert? =
+        (
+            engine.alert(
+                BudgetAlertInput(
+                    categoryId = "category:test",
+                    categoryName = "Groceries",
+                    budgeted = Money(budgeted),
+                    spent = Money(spent),
                     nowUtcMillis = NOW,
                     rules = rules,
                 ),

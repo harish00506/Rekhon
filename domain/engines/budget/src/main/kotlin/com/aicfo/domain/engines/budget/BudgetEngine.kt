@@ -8,14 +8,17 @@ import com.aicfo.core.model.Money
 /**
  * Proposes a per-category budget from history, and reports how a live budget is tracking (§5.5).
  *
- * Why:  FR-BUD-002 and FR-BUD-003 are the two questions a budget screen has to answer — "what
- *       should this cost?" and "am I on track?" — and both are arithmetic. P-03 puts them here, in
- *       a deterministic engine, so the numbers exist before any words are put around them.
- * What: one interface, two operations, each returning a value that carries the rule that produced
+ * Why:  FR-BUD-002, FR-BUD-003 and FR-BUD-004 are the three questions a budget screen has to answer
+ *       — "what should this cost?", "am I on track?" and "should I be told?" — and all three are
+ *       arithmetic. P-03 puts them here, in a deterministic engine, so the numbers exist before any
+ *       words are put around them.
+ * What: one interface, three operations, each returning a value that carries the rule that produced
  *       it (AI-ARC-003).
  * Result: every figure on the budget screen is reproducible from its inputs and attributable to a
  *       rulebook row a reviewer can open (P-02, P-08).
- * Changelog: 2026-08-11 — Created for issue 4.4 (FR-BUD-002, FR-BUD-003).
+ * Changelog:
+ *   2026-08-11 — Created for issue 4.4 (FR-BUD-002, FR-BUD-003).
+ *   2026-08-13 — Added `alert` for issue 4.5 (FR-BUD-004).
  *
  * **This engine performs no calendar arithmetic.** It is handed `daysInPeriod` and `daysElapsed`
  * already resolved by the repository, which owns the injected `Clock` and the profile time zone
@@ -41,6 +44,22 @@ interface BudgetEngine {
      * Output: `Result<BudgetStatus, AppError>`.
      */
     fun status(input: BudgetStatusInput): Result<BudgetStatus, AppError>
+
+    /**
+     * Decides which alert band, if any, one budget has crossed (FR-BUD-004).
+     *
+     * Why:    the decision of *whether to interrupt someone* has to be as reproducible as the
+     *         figures in the message, or the app will one day notify a user about a number it can no
+     *         longer explain. It is also deliberately separate from [status]: pace answers "am I on
+     *         track", this answers "is this worth a notification", and the two thresholds are edited
+     *         by different people for different reasons (ADR-0019).
+     * Result: a [BudgetAlert], or `Ok(null)` when nothing has been crossed — the established
+     *         convention here, and the answer for an unset (zero) budget, which also removes the
+     *         only division by zero on this path.
+     * Input:  [input] — the budget, what has been spent against it, and the bands to apply.
+     * Output: `Result<BudgetAlert?, AppError>`.
+     */
+    fun alert(input: BudgetAlertInput): Result<BudgetAlert?, AppError>
 }
 
 /**
@@ -220,6 +239,101 @@ data class BudgetStatus(
      * [BudgetRules.minElapsedDaysForProjection] exists to prevent.
      */
     val isProjectedToOverspend: Boolean get() = projectedEndOfMonth?.let { it > budgeted } ?: false
+}
+
+/**
+ * Everything [BudgetEngine.alert] needs to decide whether one budget has crossed a band.
+ *
+ * Why:  the alert decision needs strictly less than [BudgetStatusInput] does — no days, no rollover
+ *       arithmetic of its own — and asking for more than it reads would let a future caller believe
+ *       the month's shape changed the answer. It does not: a band is crossed at a ratio, on any day.
+ * What: the budget as it stands (rollover already included), what has been spent, and the bands.
+ * Result: a self-contained input; the same value always yields the same band (P-08).
+ * Changelog: 2026-08-13 — Created for issue 4.5.
+ *
+ * Input:  [categoryId] — carried through so a caller can match alerts back; [categoryName] — carried
+ *         through for the message the notifier composes, never matched against anything here;
+ *         [budgeted] — planned **plus** carried over, the figure the bands are taken of;
+ *         [spent] — the positive total spent this month; [nowUtcMillis] — **passed in, never read
+ *         for calendar logic** (TIM-001), stamped onto the provenance; [rules] — injected so a test
+ *         can move a band.
+ * Output: an immutable value.
+ */
+data class BudgetAlertInput(
+    val categoryId: String,
+    val categoryName: String,
+    val budgeted: Money,
+    val spent: Money,
+    val nowUtcMillis: Long,
+    val rules: BudgetRules = BudgetRules(),
+) {
+    init {
+        require(categoryId.isNotBlank()) { "categoryId must not be blank" }
+        require(budgeted >= Money.ZERO) { "a budget cannot be negative" }
+        require(spent >= Money.ZERO) { "spend is a magnitude and cannot be negative" }
+    }
+}
+
+/**
+ * Which of FR-BUD-004's two bands a budget has reached.
+ *
+ * Why:  the band is what makes "tell the user once" enforceable — it is the fourth column of the
+ *       `budget_alert` unique index, so crossing 80% and later 100% produces two rows and two
+ *       messages, while crossing 80% again produces neither.
+ * What: a closed set, ordered by severity.
+ * Result: a value a database and a screen can both hold without either inventing a third state.
+ * Changelog: 2026-08-13 — Created for issue 4.5.
+ */
+enum class BudgetAlertBand {
+    /** `RULE-BUD-ALERT.warn_pct` reached — still inside the budget, but not by much. */
+    WARN,
+
+    /** `RULE-BUD-ALERT.exceeded_pct` reached — the plan has been spent. */
+    EXCEEDED,
+}
+
+/**
+ * One budget's crossed band, with the figures a message may quote.
+ *
+ * Why:  P-03 and AI-ARC-004 together mean the notifier may not compute anything — so every number
+ *       that can appear in the text has to leave the engine already computed, and the guardrail
+ *       verifies the text against exactly this set. A field missing here becomes a number the
+ *       notification is forbidden to say.
+ * What: the band, how far through the budget the spending is, and the amounts behind it.
+ * Result: a notification whose every figure is traceable to an engine result (P-02, AI-ARC-004).
+ * Changelog: 2026-08-13 — Created for issue 4.5.
+ *
+ * Input:  [band]; [usedBps] — spent as a share of budgeted in basis points (MNY-002), 10 000 = 100%;
+ *         [budgeted]; [spent]; [overspentBy] — how far past the budget the spending is, for
+ *         [BudgetAlertBand.EXCEEDED] only, and `null` for a warn where there is nothing overspent to
+ *         name. It is [Money.ZERO] at exactly the budget, and also whenever `exceeded_pct` has been
+ *         set below 100, where the band is reached while the budget still has money in it;
+ *         [provenance].
+ * Output: an immutable value.
+ */
+data class BudgetAlert(
+    val band: BudgetAlertBand,
+    val usedBps: Int,
+    val budgeted: Money,
+    val spent: Money,
+    val overspentBy: Money?,
+    val provenance: EngineProvenance,
+) {
+    init {
+        require(provenance.evidence.isNotEmpty()) { "an alert with no cited rule violates P-02" }
+        require(usedBps >= 0) { "usedBps is a share of a non-negative budget and cannot be negative" }
+        // Not cosmetic: the notifier picks its string by band and its amount from this field, so a
+        // warn carrying an overspend figure would render "you have overspent by ₹0".
+        require((overspentBy != null) == (band == BudgetAlertBand.EXCEEDED)) {
+            "overspentBy must be present for EXCEEDED and absent for WARN, was $overspentBy for $band"
+        }
+        require(overspentBy == null || overspentBy >= Money.ZERO) {
+            "overspentBy is a magnitude and cannot be negative, was $overspentBy"
+        }
+    }
+
+    /** Result: whole percent of the budget used, for the string the screen shows (MNY-002 → display). */
+    val usedPercent: Int get() = usedBps / BPS_PER_PERCENT
 }
 
 /** Result: a [BudgetEngine]. Why: the implementation is `internal`, so this is the only seam (ARC-003). */
