@@ -5,6 +5,7 @@ import androidx.room.RoomDatabase
 import com.aicfo.core.database.dao.AccountDao
 import com.aicfo.core.database.dao.AttachmentDao
 import com.aicfo.core.database.dao.AuditLogDao
+import com.aicfo.core.database.dao.BudgetAlertDao
 import com.aicfo.core.database.dao.BudgetDao
 import com.aicfo.core.database.dao.CategoryDao
 import com.aicfo.core.database.dao.DemoDao
@@ -18,6 +19,7 @@ import com.aicfo.core.database.dao.TransactionSplitDao
 import com.aicfo.core.database.entity.AccountEntity
 import com.aicfo.core.database.entity.AttachmentEntity
 import com.aicfo.core.database.entity.AuditLogEntity
+import com.aicfo.core.database.entity.BudgetAlertEntity
 import com.aicfo.core.database.entity.BudgetEntity
 import com.aicfo.core.database.entity.CategoryEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
@@ -57,6 +59,7 @@ import com.aicfo.core.database.entity.TransactionTagEntity
         CategoryEntity::class,
         AuditLogEntity::class,
         BudgetEntity::class,
+        BudgetAlertEntity::class,
         RecurringRuleEntity::class,
         NetWorthSnapshotEntity::class,
         TagEntity::class,
@@ -89,6 +92,9 @@ abstract class CfoDatabase : RoomDatabase() {
 
     /** Input: none. Output: the budget DAO (issue 2.3, FR-BUD-001). */
     abstract fun budgetDao(): BudgetDao
+
+    /** Input: none. Output: the budget-alert DAO (issue 4.5, FR-BUD-004). */
+    abstract fun budgetAlertDao(): BudgetAlertDao
 
     /** Input: none. Output: the recurring-rule DAO (issue 2.3, FR-TXN-006). */
     abstract fun recurringRuleDao(): RecurringRuleDao
@@ -127,9 +133,10 @@ abstract class CfoDatabase : RoomDatabase() {
          * `transaction_tags`; FR-TXN-007, FR-TXN-008) · 10 — issue 3.7
          * (`recurring_rule.dismissed_at_utc_millis`; FR-TXN-006) · 11 — issue 3.8 (`attachments`;
          * FR-OCR-005) · 12 — issue 3.9 (`sms_draft`; §18, §23) · 13 — issue 4.3
-         * (`transactions.nature`, the user's nature override; §8.3).
+         * (`transactions.nature`, the user's nature override; §8.3) · 14 — issue 4.5
+         * (`budget_alert`, the record of what the user has already been told; FR-BUD-004).
          */
-        const val VERSION = 13
+        const val VERSION = 14
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"

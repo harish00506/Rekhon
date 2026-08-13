@@ -11,7 +11,10 @@ import com.aicfo.core.model.Money
 import com.aicfo.core.model.RuleCitation
 import com.aicfo.data.repository.BudgetRepository
 import com.aicfo.data.repository.CategoryBudget
+import com.aicfo.data.repository.CategoryBudgetAlert
 import com.aicfo.data.repository.CategoryBudgetSuggestion
+import com.aicfo.domain.engines.budget.BudgetAlert
+import com.aicfo.domain.engines.budget.BudgetAlertBand
 import com.aicfo.domain.engines.budget.BudgetStatus
 import com.aicfo.domain.engines.budget.BudgetSuggestion
 import kotlinx.coroutines.flow.Flow
@@ -43,9 +46,11 @@ import java.io.IOException
 internal class FakeBudgetRepository(
     initialBudgets: List<CategoryBudget> = emptyList(),
     initialSuggestions: List<CategoryBudgetSuggestion> = emptyList(),
+    initialAlerts: List<CategoryBudgetAlert> = emptyList(),
 ) : BudgetRepository {
     private val budgets = MutableStateFlow(initialBudgets)
     private val suggestions = MutableStateFlow(initialSuggestions)
+    private val alerts = MutableStateFlow(initialAlerts)
 
     /** What the next write returns, or `null` for success. Cleared after it is used once. */
     var nextError: AppError? = null
@@ -62,6 +67,14 @@ internal class FakeBudgetRepository(
     override fun observeBudgets(): Flow<List<CategoryBudget>> = budgets
 
     override fun observeSuggestions(): Flow<List<CategoryBudgetSuggestion>> = suggestions
+
+    override fun observeAlerts(): Flow<List<CategoryBudgetAlert>> = alerts
+
+    // The notification path is the worker's, not this screen's: these exist so the fake satisfies the
+    // interface, and every band the screen renders comes from `observeAlerts` above (issue 4.5).
+    override suspend fun pendingAlerts(): Result<List<CategoryBudgetAlert>, AppError> = Ok(alerts.value)
+
+    override suspend fun markNotified(alert: CategoryBudgetAlert): Result<Boolean, AppError> = Ok(true)
 
     override suspend fun setBudget(
         categoryId: String,
@@ -95,6 +108,11 @@ internal class FakeBudgetRepository(
         suggestions.value = value
     }
 
+    /** Replaces what the alert stream is emitting, as spending elsewhere in the app would. */
+    fun emitAlerts(value: List<CategoryBudgetAlert>) {
+        alerts.value = value
+    }
+
     /** Result: the staged error, consumed so the *next* call succeeds. Output: [AppError]?. */
     private fun takeError(): AppError? = nextError?.also { nextError = null }
 }
@@ -116,6 +134,14 @@ internal class FailingBudgetRepository : BudgetRepository {
     override fun observeBudgets(): Flow<List<CategoryBudget>> = flow { throw IOException("no database") }
 
     override fun observeSuggestions(): Flow<List<CategoryBudgetSuggestion>> = MutableStateFlow(emptyList())
+
+    override fun observeAlerts(): Flow<List<CategoryBudgetAlert>> = flow { throw IOException("no database") }
+
+    override suspend fun pendingAlerts(): Result<List<CategoryBudgetAlert>, AppError> =
+        Err(AppError.Storage("no database"))
+
+    override suspend fun markNotified(alert: CategoryBudgetAlert): Result<Boolean, AppError> =
+        Err(AppError.Storage("no database"))
 
     override suspend fun setBudget(
         categoryId: String,
@@ -146,6 +172,12 @@ internal class SuggestionlessBudgetRepository(
 
     override fun observeSuggestions(): Flow<List<CategoryBudgetSuggestion>> =
         flow { throw IOException("cannot read history") }
+
+    override fun observeAlerts(): Flow<List<CategoryBudgetAlert>> = MutableStateFlow(emptyList())
+
+    override suspend fun pendingAlerts(): Result<List<CategoryBudgetAlert>, AppError> = Ok(emptyList())
+
+    override suspend fun markNotified(alert: CategoryBudgetAlert): Result<Boolean, AppError> = Ok(true)
 
     override suspend fun setBudget(
         categoryId: String,
@@ -195,6 +227,38 @@ internal fun budgetRow(
             ),
         rolloverEnabled = rollover,
         source = BudgetRepository.SOURCE_MANUAL,
+    )
+
+/**
+ * Builds a [CategoryBudgetAlert] for a test (issue 4.5; FR-BUD-004).
+ *
+ * Why:  same bargain as [budgetRow] — the test states the band it wants rendered rather than making
+ *       the engine produce it, so a screen test fails for screen reasons. The provenance is real
+ *       because [BudgetAlert] refuses to be built without a cited rule (P-02).
+ * Result: an alert. Input: [name] — the category; [band]; [usedBps]; [budgeted]; [spent].
+ *         Output: [CategoryBudgetAlert].
+ * Changelog: 2026-08-13 — Created for issue 4.5.
+ */
+internal fun alertRow(
+    name: String = "Groceries",
+    band: BudgetAlertBand = BudgetAlertBand.WARN,
+    usedBps: Int = 8_000,
+    budgeted: Money = Money(1_000_000L),
+    spent: Money = Money(800_000L),
+): CategoryBudgetAlert =
+    CategoryBudgetAlert(
+        budgetId = "budget:$name",
+        category = Category(id = "category:$name", name = name, nature = CategoryNature.NEED),
+        alert =
+            BudgetAlert(
+                band = band,
+                usedBps = usedBps,
+                budgeted = budgeted,
+                spent = spent,
+                overspentBy =
+                    if (band == BudgetAlertBand.EXCEEDED) (spent - budgeted).coerceAtLeast(Money.ZERO) else null,
+                provenance = testProvenance(RuleCitation("RULE-BUD-ALERT", "1.0")),
+            ),
     )
 
 /**

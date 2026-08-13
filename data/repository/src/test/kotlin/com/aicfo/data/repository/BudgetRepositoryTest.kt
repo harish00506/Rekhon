@@ -11,6 +11,7 @@ import com.aicfo.core.common.TestDispatchers
 import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Money
+import com.aicfo.domain.engines.budget.BudgetAlertBand
 import com.aicfo.domain.engines.budget.BudgetEngineFactory
 import com.aicfo.domain.engines.classification.ClassificationEngineFactory
 import com.aicfo.domain.engines.nature.NatureEngineFactory
@@ -269,6 +270,151 @@ class BudgetRepositoryTest {
             activeProfileId.value = DEMO_PROFILE
 
             assertEquals(Money.ZERO, totalSpend())
+        }
+
+    // --- FR-BUD-004: alerts, and being told exactly once ----------------------------------------
+
+    /**
+     * Input:  a ₹10,000 budget with ₹8,000 spent, then ₹10,100.
+     * Output: asserts the banner reports WARN, then EXCEEDED — and that it keeps reporting, because
+     *         a crossed band stays true whether or not a notification went out (P-02).
+     */
+    @Test
+    fun `a crossed band shows on the banner and follows the spending up`() =
+        runTest(dispatcher) {
+            budgets.setBudget(idOf("Groceries"), Money(10_000_00L), rolloverEnabled = false).expectOk()
+            expense(Money(-8_000_00L), categoryId = idOf("Groceries"))
+
+            assertEquals(BudgetAlertBand.WARN, alertFor("Groceries")!!.alert.band)
+
+            expense(Money(-2_100_00L), categoryId = idOf("Groceries"))
+
+            val exceeded = alertFor("Groceries")!!.alert
+            assertEquals(BudgetAlertBand.EXCEEDED, exceeded.band)
+            assertEquals(Money(100_00L), exceeded.overspentBy)
+        }
+
+    /** Input: a budget well inside its plan. Output: asserts nothing is alerted (no false positives). */
+    @Test
+    fun `a budget below the warn band raises nothing`() =
+        runTest(dispatcher) {
+            budgets.setBudget(idOf("Groceries"), Money(10_000_00L), rolloverEnabled = false).expectOk()
+            expense(Money(-7_900_00L), categoryId = idOf("Groceries"))
+
+            assertNull(alertFor("Groceries"))
+        }
+
+    /**
+     * Input:  an unbudgeted category with spending in it.
+     * Output: asserts silence. Every category appears in `observeBudgets` including the unbudgeted
+     *         ones, so without the guard this would alert about a plan the user never made — on
+     *         every category they have, at once.
+     */
+    @Test
+    fun `an unbudgeted category is never alerted about`() =
+        runTest(dispatcher) {
+            expense(Money(-9_000_00L), categoryId = idOf("Groceries"))
+
+            assertNull(alertFor("Groceries"))
+            assertTrue(budgets.observeAlerts().first().isEmpty())
+        }
+
+    /**
+     * Input:  a crossed band, claimed once and then claimed again.
+     * Output: asserts the first claim succeeds and the second is refused — the once-per-band promise,
+     *         tested at the seam the worker actually calls rather than at the index.
+     */
+    @Test
+    fun `the same band can only be claimed once`() =
+        runTest(dispatcher) {
+            budgets.setBudget(idOf("Groceries"), Money(10_000_00L), rolloverEnabled = false).expectOk()
+            expense(Money(-8_000_00L), categoryId = idOf("Groceries"))
+            val alert = alertFor("Groceries")!!
+
+            assertTrue("the first claim must go through", budgets.markNotified(alert).expectOk())
+            assertTrue("the second must not", !budgets.markNotified(alert).expectOk())
+            assertTrue("and nothing is pending afterwards", budgets.pendingAlerts().expectOk().isEmpty())
+        }
+
+    /**
+     * Input:  a warn that has already been sent, then spending past 100%.
+     * Output: asserts the second band is pending and claimable. This is the case a single "alerted"
+     *         boolean on the budget row would have swallowed — and it is the more important of the
+     *         two messages.
+     */
+    @Test
+    fun `crossing the second band notifies again`() =
+        runTest(dispatcher) {
+            budgets.setBudget(idOf("Groceries"), Money(10_000_00L), rolloverEnabled = false).expectOk()
+            expense(Money(-8_000_00L), categoryId = idOf("Groceries"))
+            budgets.markNotified(alertFor("Groceries")!!).expectOk()
+
+            expense(Money(-2_100_00L), categoryId = idOf("Groceries"))
+
+            val pending = budgets.pendingAlerts().expectOk()
+            assertEquals(1, pending.size)
+            assertEquals(BudgetAlertBand.EXCEEDED, pending.single().alert.band)
+            assertTrue(budgets.markNotified(pending.single()).expectOk())
+        }
+
+    /**
+     * Input:  a band notified in August, then the clock moved into September.
+     * Output: asserts it is pending again. The month is part of the key on purpose — "once per
+     *         month" would otherwise be "once, ever", and a user would hear about their grocery
+     *         budget in August and never again.
+     */
+    @Test
+    fun `a new month makes the same band pending again`() =
+        runTest(dispatcher) {
+            budgets.setBudget(idOf("Groceries"), Money(10_000_00L), rolloverEnabled = false).expectOk()
+            expense(Money(-8_000_00L), categoryId = idOf("Groceries"))
+            budgets.markNotified(alertFor("Groceries")!!).expectOk()
+
+            clock.advanceBy(Duration.ofDays(SEPTEMBER_DAYS_AHEAD))
+            budgets.setBudget(idOf("Groceries"), Money(10_000_00L), rolloverEnabled = false).expectOk()
+            expense(Money(-8_000_00L), categoryId = idOf("Groceries"), isoDate = "2026-09-10")
+
+            val pending = budgets.pendingAlerts().expectOk()
+            assertEquals("September's warn is a different alert from August's", 1, pending.size)
+            assertEquals(BudgetAlertBand.WARN, pending.single().alert.band)
+        }
+
+    /**
+     * Input:  a band claimed on the real profile, then a switch to the demo.
+     * Output: asserts the demo sees nothing — neither the alert nor the claim (ADR-0006, P-01).
+     */
+    @Test
+    fun `one profile's alerts never reach another`() =
+        runTest(dispatcher) {
+            budgets.setBudget(idOf("Groceries"), Money(10_000_00L), rolloverEnabled = false).expectOk()
+            expense(Money(-8_000_00L), categoryId = idOf("Groceries"))
+            budgets.markNotified(alertFor("Groceries")!!).expectOk()
+
+            activeProfileId.value = DEMO_PROFILE
+
+            assertTrue(budgets.observeAlerts().first().isEmpty())
+            assertTrue(budgets.pendingAlerts().expectOk().isEmpty())
+        }
+
+    /**
+     * Input:  a claimed alert.
+     * Output: asserts the stored row cites the rule and version behind the band (AI-ARC-006, P-02).
+     *         A record that a person was interrupted, without what interrupted them, is not an audit
+     *         trail — it is a timestamp.
+     */
+    @Test
+    fun `a claimed alert records the rule that fired`() =
+        runTest(dispatcher) {
+            budgets.setBudget(idOf("Groceries"), Money(10_000_00L), rolloverEnabled = false).expectOk()
+            expense(Money(-8_000_00L), categoryId = idOf("Groceries"))
+            budgets.markNotified(alertFor("Groceries")!!).expectOk()
+
+            val row = database.budgetAlertDao().forMonth(REAL_PROFILE, CURRENT_PERIOD).single()
+
+            assertEquals("RULE-BUD-ALERT", row.ruleId)
+            assertEquals("1.0", row.ruleVersion)
+            assertEquals(CURRENT_PERIOD, row.monthStartIsoDate)
+            assertEquals(clock.nowUtcMillis(), row.notifiedAtUtcMillis)
         }
 
     // --- budgets, status and provenance ---------------------------------------------------------
@@ -550,6 +696,9 @@ class BudgetRepositoryTest {
     private suspend fun budgetFor(name: String): CategoryBudget =
         budgets.observeBudgets().first().first { it.category.name == name }
 
+    private suspend fun alertFor(name: String): CategoryBudgetAlert? =
+        budgets.observeAlerts().first().firstOrNull { it.category.name == name }
+
     private suspend fun suggestionFor(name: String): CategoryBudgetSuggestion =
         budgets.observeSuggestions().first().first { it.category.name == name }
 
@@ -605,6 +754,9 @@ class BudgetRepositoryTest {
         const val REAL_PROFILE = "local"
         const val DEMO_PROFILE = "demo"
         const val CURRENT_PERIOD = "2026-08-01"
+
+        /** From 15 Aug to 10 Sep — far enough to change the month, which is what the key turns on. */
+        const val SEPTEMBER_DAYS_AHEAD = 26L
     }
 }
 

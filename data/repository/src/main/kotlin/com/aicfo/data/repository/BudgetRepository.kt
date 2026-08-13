@@ -9,9 +9,12 @@ import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
 import com.aicfo.core.common.runCatchingToResult
 import com.aicfo.core.database.CfoDatabase
+import com.aicfo.core.database.entity.BudgetAlertEntity
 import com.aicfo.core.database.entity.BudgetEntity
 import com.aicfo.core.model.Category
 import com.aicfo.core.model.Money
+import com.aicfo.domain.engines.budget.BudgetAlert
+import com.aicfo.domain.engines.budget.BudgetAlertInput
 import com.aicfo.domain.engines.budget.BudgetEngine
 import com.aicfo.domain.engines.budget.BudgetStatus
 import com.aicfo.domain.engines.budget.BudgetStatusInput
@@ -69,6 +72,26 @@ data class CategoryBudget(
 data class CategoryBudgetSuggestion(
     val category: Category,
     val suggestion: BudgetSuggestion,
+)
+
+/**
+ * One category budget that has crossed an alert band this month (FR-BUD-004).
+ *
+ * Why:  the notifier and the banner both need the same three things — which budget, whose category,
+ *       and every figure they are allowed to say. Bundling them means the guardrail can be handed
+ *       exactly the values behind the message (AI-ARC-004) rather than the notifier reaching back
+ *       into a repository for them.
+ * What: the budget row's id, the category, and the engine's [BudgetAlert].
+ * Result: a value the notification and the screen render without computing anything (P-03).
+ * Changelog: 2026-08-13 — Created for issue 4.5.
+ *
+ * Input:  [budgetId] — the `budget` row, part of the once-per-band key; [category]; [alert].
+ * Output: an immutable value.
+ */
+data class CategoryBudgetAlert(
+    val budgetId: String,
+    val category: Category,
+    val alert: BudgetAlert,
 )
 
 /**
@@ -138,6 +161,42 @@ interface BudgetRepository {
      */
     suspend fun deleteBudget(id: String): Result<Unit, AppError>
 
+    /**
+     * Every budget currently sitting in an alert band, for the in-app banner (FR-BUD-004).
+     * Why:    **not deduplicated**, unlike the notification. A band that has been crossed stays true
+     *         for the rest of the month, and a banner that disappeared because the notification had
+     *         already been sent would hide the very state it exists to show (P-02). It is also what
+     *         a user who denied notification permission sees instead of nothing.
+     * Result: one row per budget in a band, re-emitted whenever a transaction or a budget changes.
+     * Input:  none. Output: `Flow<List<CategoryBudgetAlert>>`.
+     */
+    fun observeAlerts(): Flow<List<CategoryBudgetAlert>>
+
+    /**
+     * The bands crossed that the user has **not** yet been told about (FR-BUD-004).
+     * Why:    the worker's input. Separate from [observeAlerts] because the two answer different
+     *         questions — "what is true?" and "what is new?" — and only the second may interrupt
+     *         someone.
+     * Result: `Ok` with the unnotified alerts, empty when everything current has been sent.
+     * Input:  none. Output: `Result<List<CategoryBudgetAlert>, AppError>`.
+     */
+    suspend fun pendingAlerts(): Result<List<CategoryBudgetAlert>, AppError>
+
+    /**
+     * Claims one alert for sending, recording that the user is being told (FR-BUD-004).
+     * Why:    **claim before you send, not after.** The insert is what makes a duplicate impossible,
+     *         so it has to happen before the notification rather than as a receipt afterwards — with
+     *         the order reversed, a crash between the two would re-notify on the next run. The cost
+     *         of this order is the opposite failure: a claim that is written and then fails to post
+     *         is silently dropped. That is the right way round to be wrong — a missed warning is a
+     *         disappointment, a repeating one teaches the user to mute the channel and costs them
+     *         every later warning too.
+     * Result: `Ok(true)` when this call claimed it and the caller should notify; `Ok(false)` when
+     *         someone already had, and the caller must not.
+     * Input:  [alert]. Output: `Result<Boolean, AppError>`.
+     */
+    suspend fun markNotified(alert: CategoryBudgetAlert): Result<Boolean, AppError>
+
     companion object {
         /** `manual` — the user typed this number themselves. */
         const val SOURCE_MANUAL = "manual"
@@ -162,6 +221,11 @@ interface BudgetRepository {
  * Changelog: 2026-08-11 — Created for issue 4.4.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
+// Eight of these are [BudgetRepository]'s own operations and the rest assemble engine inputs from
+// rows, which is this class's entire job (ARC-005). The count is the interface's, not a design
+// choice — the same argument `CfoDatabase` and `DemoDao` make. Splitting the private helpers into a
+// collaborator would scatter one responsibility to satisfy a counter.
+@Suppress("TooManyFunctions")
 internal class RoomBudgetRepository(
     private val database: CfoDatabase,
     private val engine: BudgetEngine,
@@ -242,6 +306,51 @@ internal class RoomBudgetRepository(
             citation = suggestion.suggestion.provenance.evidence.firstOrNull(),
         )
     }
+
+    override fun observeAlerts(): Flow<List<CategoryBudgetAlert>> =
+        // Derived from the budgets rather than read from `budget_alert`: the band is a fact about the
+        // spending, and the table records only what has been *said* about it. Reading the table here
+        // would make the banner appear when the notification fired rather than when the budget was
+        // crossed — including never, on a device where notifications are denied.
+        observeBudgets().map { rows -> rows.mapNotNull(::alertFor) }
+
+    override suspend fun pendingAlerts(): Result<List<CategoryBudgetAlert>, AppError> =
+        withContext(dispatchers.io) {
+            runCatchingToResult {
+                val profileId = activeProfileId.first()
+                val monthStart = MonthWindow.current(clock.today()).startIsoDate
+                val alreadySent =
+                    database.budgetAlertDao().forMonth(profileId, monthStart)
+                        .map { it.budgetId to it.band }
+                        .toSet()
+                observeAlerts().first().filterNot { (it.budgetId to it.alert.band.name) in alreadySent }
+            }
+        }
+
+    override suspend fun markNotified(alert: CategoryBudgetAlert): Result<Boolean, AppError> =
+        withContext(dispatchers.io) {
+            runCatchingToResult {
+                val profileId = activeProfileId.first()
+                val monthStart = MonthWindow.current(clock.today()).startIsoDate
+                val citation = alert.alert.provenance.evidence.first()
+                val inserted =
+                    database.budgetAlertDao().insertIfNew(
+                        BudgetAlertEntity(
+                            id = budgetAlertId(alert.budgetId, alert.alert.band.name),
+                            profileId = profileId,
+                            budgetId = alert.budgetId,
+                            categoryId = alert.category.id,
+                            monthStartIsoDate = monthStart,
+                            band = alert.alert.band.name,
+                            ruleId = citation.ruleId,
+                            ruleVersion = citation.ruleVersion,
+                            notifiedAtUtcMillis = clock.nowUtcMillis(),
+                        ),
+                    )
+                // IGNORE returns -1 when the unique index refused the row: someone already told them.
+                inserted != INSERT_IGNORED
+            }
+        }
 
     override suspend fun deleteBudget(id: String): Result<Unit, AppError> =
         withContext(dispatchers.io) {
@@ -347,6 +456,31 @@ internal class RoomBudgetRepository(
     }
 
     /**
+     * Asks the engine which band, if any, one assembled row has crossed (FR-BUD-004).
+     * Why:    reuses the status the row already carries rather than re-reading spend, so the banner
+     *         and the figures beside it can never disagree about what was spent — they are the same
+     *         two numbers. Unbudgeted rows are skipped before the engine sees them; the engine would
+     *         also return null for a zero budget, and relying on that would mean the *screen's*
+     *         meaning of "no budget" and the engine's happened to coincide.
+     * Result: the alert, or `null` when this row is below the warn band or has no budget.
+     * Input:  [row]. Output: [CategoryBudgetAlert]?.
+     */
+    private fun alertFor(row: CategoryBudget): CategoryBudgetAlert? {
+        val budgetId = row.id ?: return null
+        val alert =
+            engine.alert(
+                BudgetAlertInput(
+                    categoryId = row.category.id,
+                    categoryName = row.category.name,
+                    budgeted = row.status.budgeted,
+                    spent = row.status.spent,
+                    nowUtcMillis = clock.nowUtcMillis(),
+                ),
+            )
+        return ((alert as Ok).value)?.let { CategoryBudgetAlert(budgetId, row.category, it) }
+    }
+
+    /**
      * What each category has left over from last month, when its budget rolls over (FR-BUD-001).
      * Why:    rollover is defined as "unused amount", so it is last month's budget minus last
      *         month's spend — which means reading a second month. **Only positive leftovers carry**:
@@ -440,6 +574,9 @@ internal class RoomBudgetRepository(
          * matching edit here, and the cost of over-fetching is one extra month per category.
          */
         const val HISTORY_MONTHS = 4
+
+        /** What `@Insert(OnConflictStrategy.IGNORE)` returns when the unique index refused the row. */
+        const val INSERT_IGNORED = -1L
     }
 }
 
@@ -459,6 +596,22 @@ internal fun categoryBudgetId(
     categoryId: String,
     periodStartIsoDate: String,
 ): String = "$profileId:budget:cat:$categoryId:$periodStartIsoDate"
+
+/**
+ * The id of one alert: one budget, one band.
+ *
+ * Why:  derived rather than generated, for the reason [categoryBudgetId] gives — and here it earns
+ *       its keep twice. The budget id already carries the profile, the category and the month, so
+ *       appending the band produces exactly the tuple the unique index protects. A generated id
+ *       would leave two different keys claiming to guarantee the same thing, and a bug in either
+ *       would show up as a second notification rather than as a failed insert.
+ * Result: a stable id. Input: [budgetId]; [band] — `BudgetAlertBand.name`. Output: [String].
+ * Changelog: 2026-08-13 — Created for issue 4.5.
+ */
+internal fun budgetAlertId(
+    budgetId: String,
+    band: String,
+): String = "$budgetId:alert:$band"
 
 /**
  * Collapses a `Result<Result<T, E>, E>` produced by `runCatchingToResult` around a block that

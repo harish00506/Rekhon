@@ -651,6 +651,58 @@ internal object Migrations {
             }
         }
 
+    /**
+     * 13 → 14: adds `budget_alert` — the record of what the user has already been told (issue 4.5;
+     * FR-BUD-004).
+     *
+     * Why:    FR-BUD-004 asks for alerts at 80% and 100%, and the unstated half of that requirement
+     *         is *not* alerting again on every purchase afterwards. This table is that memory.
+     *
+     *         **The unique index is the requirement, not an optimisation.** With
+     *         `UNIQUE(profile_id, budget_id, month_start_iso_date, band)` a second WARN for the same
+     *         month cannot be inserted, so "told once" holds even if two workers run concurrently or
+     *         one retries after a partial failure. A boolean on `budget` would have needed a
+     *         read-then-write with a window between them, and would have had nowhere to put the
+     *         *second* band — 80% then 100% must produce two messages, and does, because the band is
+     *         part of the key.
+     * What:   one `CREATE TABLE` plus the unique index and the month lookup index. No backfill, and
+     *         none is possible or wanted: nobody has been notified about a month that has already
+     *         passed, so an empty table is the complete and correct history (DB-003 — nothing is
+     *         dropped or rewritten).
+     * Result: an upgraded installation keeps every row and gains an empty table.
+     * Input:  [SupportSQLiteDatabase] — the database mid-upgrade. Output: none (executes DDL).
+     *
+     * The DDL matches what Room generates for `BudgetAlertEntity`; the committed `schemas/14.json`
+     * is the reference, and `MigrationRoundTripTest` fails on a device if the two drift.
+     */
+    val MIGRATION_13_14 =
+        object : Migration(VERSION_13, VERSION_14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `budget_alert` (" +
+                        "`id` TEXT NOT NULL, " +
+                        "`profile_id` TEXT NOT NULL, " +
+                        "`budget_id` TEXT NOT NULL, " +
+                        "`category_id` TEXT, " +
+                        "`month_start_iso_date` TEXT NOT NULL, " +
+                        "`band` TEXT NOT NULL, " +
+                        "`rule_id` TEXT NOT NULL, " +
+                        "`rule_version` TEXT NOT NULL, " +
+                        "`notified_at_utc_millis` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`id`))",
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS " +
+                        "`index_budget_alert_profile_id_budget_id_month_start_iso_date_band` " +
+                        "ON `budget_alert` (`profile_id`, `budget_id`, `month_start_iso_date`, `band`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_budget_alert_profile_id_month_start_iso_date` " +
+                        "ON `budget_alert` (`profile_id`, `month_start_iso_date`)",
+                )
+            }
+        }
+
     /** Every migration, in order, for `CfoDatabaseFactory` to register. */
     val ALL: Array<Migration> =
         arrayOf(
@@ -666,6 +718,7 @@ internal object Migrations {
             MIGRATION_10_11,
             MIGRATION_11_12,
             MIGRATION_12_13,
+            MIGRATION_13_14,
         )
 
     /** Named so the version pair reads as a schema version rather than an unexplained literal. */
@@ -701,6 +754,9 @@ internal object Migrations {
     /** The version issue 3.9 introduced, and the one issue 4.3 upgrades from. */
     private const val VERSION_12 = 12
 
-    /** Matches `CfoDatabase.VERSION` at the time this migration was written (issue 4.3). */
+    /** The version issue 4.3 introduced, and the one issue 4.5 upgrades from. */
     private const val VERSION_13 = 13
+
+    /** Matches `CfoDatabase.VERSION` at the time this migration was written (issue 4.5). */
+    private const val VERSION_14 = 14
 }

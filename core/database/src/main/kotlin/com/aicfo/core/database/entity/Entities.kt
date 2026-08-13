@@ -540,6 +540,70 @@ data class BudgetEntity(
 )
 
 /**
+ * A record that the user has already been told about one budget crossing one band (issue 4.5;
+ * FR-BUD-004).
+ *
+ * Why:    "alert at 80% and 100%" is only half a requirement — the other half is *not* alerting
+ *         again on the next transaction, and the one after that. A user notified every time they
+ *         spend a rupee past 80% learns to dismiss the channel, which costs them the 100% message
+ *         that mattered. Something therefore has to remember what has been said.
+ *
+ *         **The unique index is that memory, not a flag on `budget`.** `UNIQUE(profile_id,
+ *         budget_id, month_start, band)` makes re-notification structurally impossible rather than
+ *         conditionally avoided: the insert of a second WARN for the same month fails, whatever the
+ *         calling code believes. A boolean column would have needed a read-then-write that two
+ *         concurrent workers could interleave, and would have had no room for the *second* band —
+ *         crossing 80% and later 100% must produce two messages, and does, because the band is part
+ *         of the key.
+ *
+ *         It doubles as the §29 audit row: it records which rule fired, at which version, and when
+ *         the user was told (AI-ARC-006, P-02).
+ * What:   one row per (budget, month, band) the app has notified.
+ * Result: a Room row in `budget_alert`, added at schema version 14 by issue 4.5.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-08-13 — Created for issue 4.5 (FR-BUD-004).
+ *
+ * **No amounts are stored.** The figures the notification quoted are derivable from the budget and
+ * the transactions at any time, and a copy here would be a second version of the truth that could
+ * disagree with the screen. What cannot be re-derived — that a person was interrupted — is what the
+ * row holds.
+ */
+@Entity(
+    tableName = "budget_alert",
+    indices = [
+        Index("profile_id", "budget_id", "month_start_iso_date", "band", unique = true),
+        Index("profile_id", "month_start_iso_date"),
+    ],
+)
+data class BudgetAlertEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** The `budget` row this alert is about. */
+    @ColumnInfo(name = "budget_id")
+    val budgetId: String,
+    /** Denormalised from the budget so the banner can group without a join. Null for an envelope. */
+    @ColumnInfo(name = "category_id")
+    val categoryId: String? = null,
+    /** TIM-002: the first day of the budget month, ISO `yyyy-MM-dd`. Part of the unique key. */
+    @ColumnInfo(name = "month_start_iso_date")
+    val monthStartIsoDate: String,
+    /** `WARN` | `EXCEEDED` — `BudgetAlertBand.name`. Part of the unique key, so both can fire. */
+    @ColumnInfo(name = "band")
+    val band: String,
+    /** The rulebook row that set this band, and its version (AI-ARC-006, P-02). */
+    @ColumnInfo(name = "rule_id")
+    val ruleId: String,
+    @ColumnInfo(name = "rule_version")
+    val ruleVersion: String,
+    /** TIM-001: when the user was actually told, UTC epoch millis. */
+    @ColumnInfo(name = "notified_at_utc_millis")
+    val notifiedAtUtcMillis: Long,
+)
+
+/**
  * A money movement the user expects to repeat (issue 2.3; FR-ONB-002, FR-TXN-006).
  *
  * Why:    quick setup captures a salary and a rent that recur every month, and FR-TXN-006 describes

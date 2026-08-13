@@ -1,10 +1,12 @@
 package com.aicfo.core.database.migration
 
+import android.database.sqlite.SQLiteConstraintException
 import androidx.room.testing.MigrationTestHelper
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.aicfo.core.database.CfoDatabase
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -730,6 +732,72 @@ class MigrationRoundTripTest {
         }
         migrated.close()
     }
+
+    /**
+     * 13 → 14: `budget_alert`, the record of what the user has already been told (issue 4.5;
+     * FR-BUD-004).
+     *
+     * Why:    the structural claim is the usual one — an existing budget must survive an additive
+     *         migration. The **semantic** claim is the one this feature lives or dies on, and it is
+     *         a claim about the *index*, not the table: FR-BUD-004 promises one alert per band per
+     *         month, and that promise is only as good as the constraint behind it.
+     *
+     *         So this test does not assert the index exists. It tries to insert the duplicate and
+     *         requires the database to refuse — because "the index is declared" and "the second WARN
+     *         cannot be written" are different statements, and only the second one is the
+     *         requirement. It then inserts the *other* band for the same budget and month and
+     *         requires that to succeed, since crossing 80% and later 100% must produce two messages;
+     *         an over-wide unique key would pass the first half of this test and silently swallow the
+     *         message that mattered most.
+     * Input:  a budget written at version 13. Output: it survives; the duplicate band is rejected and
+     *         the second band is accepted.
+     */
+    @Test
+    fun migrate13To14_preservesBudgetsAndMakesASecondAlertForOneBandImpossible() {
+        helper.createDatabase(TEST_DB, 13).use { db ->
+            db.execSQL(
+                "INSERT INTO budget (id, profile_id, category_id, period_start_iso_date, amount_minor, " +
+                    "rollover_enabled, source, created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('b1','p1','c1','2026-08-01',1000000,0,'manual',1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 14, true, Migrations.MIGRATION_13_14)
+
+        migrated.query("SELECT amount_minor FROM budget WHERE id = 'b1'").use { cursor ->
+            assertTrue("the pre-migration budget must still be there", cursor.moveToFirst())
+            assertEquals("MNY-001: the amount must survive byte for byte", 1000000L, cursor.getLong(0))
+        }
+
+        migrated.execSQL(insertAlert(id = "a1", band = "WARN"))
+
+        // The requirement, tested as a refusal rather than as a declaration.
+        assertThrows(SQLiteConstraintException::class.java) {
+            migrated.execSQL(insertAlert(id = "a2", band = "WARN"))
+        }
+
+        // ...but the promotion to the second band must still get through.
+        migrated.execSQL(insertAlert(id = "a3", band = "EXCEEDED"))
+        migrated.query("SELECT COUNT(*) FROM budget_alert WHERE budget_id = 'b1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("80% then 100% is two alerts, not one", 2, cursor.getInt(0))
+        }
+        migrated.close()
+    }
+
+    /**
+     * Builds one `budget_alert` insert.
+     * Why:    the three inserts above differ in exactly two values, and spelling the column list out
+     *         three times would hide that.
+     * Result: the SQL. Input: [id]; [band]. Output: [String].
+     */
+    private fun insertAlert(
+        id: String,
+        band: String,
+    ): String =
+        "INSERT INTO budget_alert (id, profile_id, budget_id, category_id, month_start_iso_date, " +
+            "band, rule_id, rule_version, notified_at_utc_millis) " +
+            "VALUES ('$id','p1','b1','c1','2026-08-01','$band','RULE-BUD-ALERT','1.0',1767312000000)"
 
     /**
      * 11 → 12 adds `sms_draft` (issue 3.9; §18, §23, P-01).

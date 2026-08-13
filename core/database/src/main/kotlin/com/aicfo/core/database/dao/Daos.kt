@@ -14,6 +14,7 @@ import androidx.room.Update
 import com.aicfo.core.database.entity.AccountEntity
 import com.aicfo.core.database.entity.AttachmentEntity
 import com.aicfo.core.database.entity.AuditLogEntity
+import com.aicfo.core.database.entity.BudgetAlertEntity
 import com.aicfo.core.database.entity.BudgetEntity
 import com.aicfo.core.database.entity.CategoryEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
@@ -1856,6 +1857,69 @@ interface BudgetDao {
     ): Flow<List<BudgetEntity>>
 }
 
+/**
+ * Records and reads what the user has already been told about their budgets (issue 4.5; FR-BUD-004).
+ *
+ * Why:  this DAO exists to answer one question — "has this person already heard about this?" — and
+ *       to make the answer binding. Every write goes through [insertIfNew], whose `IGNORE` leans on
+ *       the table's unique index rather than on the caller checking first, so a duplicate
+ *       notification is impossible even if two workers run at once.
+ * What: one guarded insert, one live read for the screen, one point read for the worker.
+ * Result: at most one notification per budget, per month, per band (`RULE-BUD-ALERT`).
+ * Changelog: 2026-08-13 — Created for issue 4.5.
+ */
+@Dao
+interface BudgetAlertDao {
+    /**
+     * Records that the user was notified, unless they already had been.
+     *
+     * Why:    `IGNORE`, and this is the whole design. The alternative — read the existing bands,
+     *         decide, then insert — has a window between the read and the write, and a worker that
+     *         retried after a partial failure would sit in exactly that window. Here the database
+     *         refuses the duplicate, so "told once" is a property of the schema rather than a
+     *         property of the code being careful. `REPLACE` would be the opposite of what is wanted:
+     *         it would happily overwrite the first alert and let the caller believe it was new.
+     * Result: `-1` when the row already existed (nothing was written, and nothing should be sent);
+     *         the new rowid otherwise.
+     * Input:  [alert]. Output: [Long] rowid, or `-1`.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfNew(alert: BudgetAlertEntity): Long
+
+    /**
+     * Observes every alert recorded for a profile's month.
+     * Why:    the in-app banner is not deduplicated the way the notification is — a band that has
+     *         been crossed stays true until the month ends, and a banner that vanished because the
+     *         notification had already been sent would hide the state it exists to show (P-02).
+     * Result: the month's rows, re-emitted on every write.
+     * Input:  [profileId]; [monthStartIsoDate] — TIM-002. Output: `Flow<List<BudgetAlertEntity>>`.
+     */
+    @Query(
+        "SELECT * FROM budget_alert WHERE profile_id = :profileId " +
+            "AND month_start_iso_date = :monthStartIsoDate ORDER BY budget_id, band",
+    )
+    fun observeForMonth(
+        profileId: String,
+        monthStartIsoDate: String,
+    ): Flow<List<BudgetAlertEntity>>
+
+    /**
+     * Reads the month's alerts once.
+     * Why:    the worker needs to know what has already been sent before it decides what to send,
+     *         and collecting a Flow for one value would be a subscription standing in for a lookup —
+     *         the same argument `BudgetDao.categoryBudgetsForPeriod` makes.
+     * Result: the month's rows. Input: [profileId]; [monthStartIsoDate]. Output: the list.
+     */
+    @Query(
+        "SELECT * FROM budget_alert WHERE profile_id = :profileId " +
+            "AND month_start_iso_date = :monthStartIsoDate",
+    )
+    suspend fun forMonth(
+        profileId: String,
+        monthStartIsoDate: String,
+    ): List<BudgetAlertEntity>
+}
+
 /** Reads and writes recurring rules (issue 2.3; FR-ONB-002, FR-TXN-006). */
 @Dao
 interface RecurringRuleDao {
@@ -1986,6 +2050,16 @@ interface DemoDao {
     suspend fun deleteBudgets(profileId: String): Int
 
     /**
+     * Result: rows removed from `budget_alert`. Input: [profileId]. Output: the count.
+     *
+     * Added by issue 4.5, which introduced the table. Called **before** [deleteBudgets]: an alert is
+     * a child of a budget, and clearing the parents first would orphan it if the caller failed in
+     * between — the ordering argument [deleteTransactionSplits] makes.
+     */
+    @Query("DELETE FROM budget_alert WHERE profile_id = :profileId")
+    suspend fun deleteBudgetAlerts(profileId: String): Int
+
+    /**
      * Result: rows removed from `net_worth_snapshot`. Input: [profileId]. Output: the count.
      *
      * Added by issue 2.6, which introduced the table. A profile-scoped table that the wipe does not
@@ -2091,7 +2165,7 @@ interface DemoDao {
      *         Deliberately **not** filtered by `deleted_at_utc_millis`: a soft-deleted row is
      *         precisely the residue being looked for, so it must count.
      * Result: `0` once the profile has been erased.
-     * Input:  [profileId]. Output: the total row count across all twelve tables.
+     * Input:  [profileId]. Output: the total row count across all thirteen tables.
      */
     @Query(
         "SELECT (SELECT COUNT(*) FROM profile WHERE id = :profileId) + " +
@@ -2103,6 +2177,7 @@ interface DemoDao {
             "(SELECT COUNT(*) FROM tags WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM category WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM budget WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM budget_alert WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM recurring_rule WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM net_worth_snapshot WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM sms_draft WHERE profile_id = :profileId)",
