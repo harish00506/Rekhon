@@ -11,6 +11,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import com.aicfo.core.designsystem.theme.CfoTheme
 import com.aicfo.core.model.Money
+import com.aicfo.domain.engines.budget.BudgetAlertBand
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -42,11 +43,23 @@ class BudgetsFlowTest {
     @get:Rule
     val compose = createAndroidComposeRule<ComponentActivity>()
 
-    /** Result: a string from this module's resources. Input: [id]; [args]. Output: the text. */
+    /**
+     * Result: a string from this module's resources, resolved the way the screen resolves it.
+     *
+     * The empty-args branch is not a nicety. `getString(id, *args)` runs `String.format` even with
+     * nothing to substitute, which turns a literal `%` into an invalid conversion and throws —
+     * while `stringResource` in the composable never formats an argument-less string. Without the
+     * branch this helper and the screen disagree about what a string containing a percent sign is,
+     * and the test fails for a reason that has nothing to do with the screen.
+     *
+     * Input:  [id]; [args]. Output: the text.
+     * Changelog: 2026-08-13 — Issue 4.5: split the no-argument case out; the band labels are the
+     *            first strings here that contain a percent sign and take no arguments.
+     */
     private fun text(
         id: Int,
         vararg args: Any,
-    ): String = compose.activity.getString(id, *args)
+    ): String = if (args.isEmpty()) compose.activity.getString(id) else compose.activity.getString(id, *args)
 
     // --- FR-BUD-003's figures ---------------------------------------------------------------------
 
@@ -265,6 +278,97 @@ class BudgetsFlowTest {
         // A database that would not open must not read as a user who has planned nothing.
         compose.onNodeWithText(text(R.string.budgets_empty_title)).assertDoesNotExist()
     }
+
+    // --- FR-BUD-004: the band on the screen --------------------------------------------------------
+
+    @Test
+    fun `a warned category says so in words, not only in colour`() {
+        // The band is announced as text on purpose. A chip that only changed colour would be
+        // invisible to a colour-blind user, in a greyscale screenshot, and to this test.
+        setContent(
+            BudgetsUiState(
+                isLoading = false,
+                budgets = listOf(budgetRow(name = "Groceries", budgeted = Money(1_000_000L), spent = Money(800_000L))),
+                alerts = listOf(alertRow(name = "Groceries", band = BudgetAlertBand.WARN)),
+            ),
+        )
+
+        compose.onNodeWithText(text(R.string.budgets_band_warn)).performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun `an overspent category reads as over budget`() {
+        setContent(
+            BudgetsUiState(
+                isLoading = false,
+                budgets =
+                    listOf(budgetRow(name = "Dining", budgeted = Money(1_000_000L), spent = Money(1_010_000L))),
+                alerts = listOf(alertRow(name = "Dining", band = BudgetAlertBand.EXCEEDED)),
+            ),
+        )
+
+        compose.onNodeWithText(text(R.string.budgets_band_exceeded)).performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun `the banner counts each band separately`() {
+        // One overspend and two warnings must read as exactly that. A single count would tell the
+        // user three categories are over budget, which is untrue of two of them.
+        setContent(
+            BudgetsUiState(
+                isLoading = false,
+                budgets = listOf(budgetRow(name = "Groceries")),
+                alerts =
+                    listOf(
+                        alertRow(name = "Dining", band = BudgetAlertBand.EXCEEDED),
+                        alertRow(name = "Groceries", band = BudgetAlertBand.WARN),
+                        alertRow(name = "Fuel", band = BudgetAlertBand.WARN),
+                    ),
+            ),
+        )
+
+        compose.onNodeWithText(plural(R.plurals.budgets_alert_banner_exceeded, 1)).assertIsDisplayed()
+        compose.onNodeWithText(plural(R.plurals.budgets_alert_banner_warned, 2)).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a budget inside its plan shows no band at all`() {
+        // The absence is the assertion. A chip that rendered for every row would make the two that
+        // matter unfindable, which is the same failure as not showing them.
+        setContent(
+            BudgetsUiState(
+                isLoading = false,
+                budgets = listOf(budgetRow(name = "Groceries", budgeted = Money(1_000_000L), spent = Money(400_000L))),
+            ),
+        )
+
+        compose.onNodeWithText(text(R.string.budgets_band_warn)).assertDoesNotExist()
+        compose.onNodeWithText(text(R.string.budgets_band_exceeded)).assertDoesNotExist()
+    }
+
+    @Test
+    fun `the band renders even though no notification could have been sent`() {
+        // The denied-permission case, as the screen experiences it: this state is exactly what a
+        // device with notifications switched off produces, and it must be complete on its own.
+        setContent(
+            BudgetsUiState(
+                isLoading = false,
+                budgets =
+                    listOf(budgetRow(name = "Dining", budgeted = Money(1_000_000L), spent = Money(1_010_000L))),
+                alerts = listOf(alertRow(name = "Dining", band = BudgetAlertBand.EXCEEDED)),
+                requestNotificationPermission = false,
+            ),
+        )
+
+        compose.onNodeWithText(plural(R.plurals.budgets_alert_banner_exceeded, 1)).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.budgets_band_exceeded)).performScrollTo().assertIsDisplayed()
+    }
+
+    /** Result: a plural string from this module's resources. Input: [id]; [count]. Output: the text. */
+    private fun plural(
+        id: Int,
+        count: Int,
+    ): String = compose.activity.resources.getQuantityString(id, count, count)
 
     /**
      * Renders the screen's body in the app's theme.

@@ -4,7 +4,9 @@ import androidx.compose.runtime.Immutable
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.MoneyFormatter
 import com.aicfo.data.repository.CategoryBudget
+import com.aicfo.data.repository.CategoryBudgetAlert
 import com.aicfo.data.repository.CategoryBudgetSuggestion
+import com.aicfo.domain.engines.budget.BudgetAlertBand
 
 /**
  * Everything the budgets screen renders, as one value (issue 4.4; ARC-004, FR-BUD-001/002/003).
@@ -14,7 +16,9 @@ import com.aicfo.data.repository.CategoryBudgetSuggestion
  * What: the loading flag, every category with its budget and live status, the suggestions on offer,
  *       the open editor, and any error to surface.
  * Result: the screen is a pure function of this value.
- * Changelog: 2026-08-11 — Created for issue 4.4.
+ * Changelog:
+ *   2026-08-11 — Created for issue 4.4.
+ *   2026-08-13 — Added the alert bands and the notification prompt for issue 4.5 (FR-BUD-004).
  *
  * **Not one number here is computed on this side** (P-03). [CategoryBudget.status] arrives from
  * `BudgetEngine` through the repository with its provenance attached; the properties below only
@@ -22,9 +26,10 @@ import com.aicfo.data.repository.CategoryBudgetSuggestion
  * screen starts inventing figures.
  *
  * Input:  [isLoading]; [budgets] — every live category, budgeted or not; [suggestions] — proposals
- *         for categories with history and no budget; [editing] — the open amount sheet, `null` when
- *         closed; [errorCode] — an `AppError.code`, never a message, so the wording stays in
- *         `strings.xml` (§21.6).
+ *         for categories with history and no budget; [alerts] — the bands crossed this month
+ *         (FR-BUD-004); [editing] — the open amount sheet, `null` when closed; [errorCode] — an
+ *         `AppError.code`, never a message, so the wording stays in `strings.xml` (§21.6);
+ *         [requestNotificationPermission] — a one-shot flag asking the screen to prompt.
  * Output: an immutable snapshot for the composable.
  */
 @Immutable
@@ -32,9 +37,36 @@ data class BudgetsUiState(
     val isLoading: Boolean = true,
     val budgets: List<CategoryBudget> = emptyList(),
     val suggestions: List<CategoryBudgetSuggestion> = emptyList(),
+    val alerts: List<CategoryBudgetAlert> = emptyList(),
     val editing: BudgetEditorState? = null,
     val errorCode: String? = null,
+    val requestNotificationPermission: Boolean = false,
 ) {
+    /**
+     * The band each category is in, if any (FR-BUD-004).
+     *
+     * Why: a lookup rather than a field on the row, because the alert and the budget arrive from two
+     *      different reads and pairing them in the state would mean the screen could render a row
+     *      whose band belonged to a stale list. A missing key is the honest answer for a category
+     *      that has crossed nothing.
+     */
+    val bandByCategoryId: Map<String, BudgetAlertBand>
+        get() = alerts.associate { it.category.id to it.alert.band }
+
+    /**
+     * Every category that has gone past its budget, worst kind first.
+     *
+     * Why: the banner summarises rather than repeats — a user with four warnings does not want four
+     *      banners. Overspends lead because they are the ones that cannot be fixed by spending less
+     *      for the rest of the month, only mitigated.
+     */
+    val overspentAlerts: List<CategoryBudgetAlert>
+        get() = alerts.filter { it.alert.band == BudgetAlertBand.EXCEEDED }
+
+    /** Result: the categories at the warn band but still inside their budget. */
+    val warnedAlerts: List<CategoryBudgetAlert>
+        get() = alerts.filter { it.alert.band == BudgetAlertBand.WARN }
+
     /**
      * The categories the user has actually planned, worst first.
      *
@@ -163,4 +195,14 @@ sealed interface BudgetsEvent {
 
     /** The user dismissed the error banner. */
     data object DismissError : BudgetsEvent
+
+    /**
+     * The system permission prompt has been answered, whichever way (issue 4.5).
+     *
+     * **The answer is deliberately not carried.** The screen does not branch on it: a denial is a
+     * supported state, the in-app band renders either way, and the notifier re-checks the permission
+     * at send time anyway. Recording the answer here would be storing a fact with no reader — and
+     * one that goes stale the moment the user changes it in system settings.
+     */
+    data object NotificationPermissionSettled : BudgetsEvent
 }

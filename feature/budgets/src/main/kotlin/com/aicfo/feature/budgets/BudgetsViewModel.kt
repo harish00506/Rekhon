@@ -29,7 +29,9 @@ import javax.inject.Inject
  *       reads that would be stale before the user finished reading them.
  * What: exposes [uiState] and handles [BudgetsEvent]s.
  * Result: a screen whose every state is reachable and assertable in a unit test.
- * Changelog: 2026-08-11 — Created for issue 4.4.
+ * Changelog:
+ *   2026-08-11 — Created for issue 4.4.
+ *   2026-08-13 — Added the alert collector and the contextual permission prompt for issue 4.5.
  *
  * **This class computes no money** (P-03). Spent, remaining, safe pace and the projection all arrive
  * from `BudgetEngine` through the repository, each carrying the rule that produced it; the only
@@ -60,6 +62,7 @@ class BudgetsViewModel
         init {
             observeBudgets()
             observeSuggestions()
+            observeAlerts()
         }
 
         /**
@@ -97,6 +100,23 @@ class BudgetsViewModel
         }
 
         /**
+         * Keeps the crossed bands in step with the store (FR-BUD-004).
+         * Result: [uiState] carries every band crossed this month. **A failure is swallowed to an
+         *         empty list**, like the suggestions and for a related reason: these derive from the
+         *         same read the budget list uses, so a failure that matters has already reached the
+         *         banner through [observeBudgets]. Reporting it twice would put two errors on screen
+         *         for one broken read.
+         * Input:  none. Output: none (launches a collector).
+         * Changelog: 2026-08-13 — Created for issue 4.5.
+         */
+        private fun observeAlerts() {
+            repository.observeAlerts()
+                .onEach { alerts -> _uiState.update { it.copy(alerts = alerts) } }
+                .catch { _uiState.update { it.copy(alerts = emptyList()) } }
+                .launchIn(viewModelScope)
+        }
+
+        /**
          * Handles something the user did.
          * Why:    one entry point, so the sealed interface's exhaustiveness guarantees no
          *         interaction is silently unhandled.
@@ -108,23 +128,21 @@ class BudgetsViewModel
                 is BudgetsEvent.EditClicked -> openEditor(event.categoryId)
                 is BudgetsEvent.AmountChanged ->
                     _uiState.update { state -> state.copy(editing = state.editing?.copy(amountText = event.value)) }
-                is BudgetsEvent.RolloverChanged -> setRollover(event.value)
+                // Inline, like AmountChanged above and for the same reason: both are one field of
+                // the open sheet moving, and a named method for one of them made the pair read as
+                // though they differed.
+                is BudgetsEvent.RolloverChanged ->
+                    _uiState.update { state ->
+                        state.copy(editing = state.editing?.copy(rolloverEnabled = event.value))
+                    }
                 BudgetsEvent.Save -> save()
                 BudgetsEvent.CancelEdit -> _uiState.update { it.copy(editing = null) }
                 is BudgetsEvent.DeleteClicked -> delete(event.id)
                 is BudgetsEvent.AcceptSuggestion -> accept(event.categoryId)
                 BudgetsEvent.DismissError -> _uiState.update { it.copy(errorCode = null) }
+                BudgetsEvent.NotificationPermissionSettled ->
+                    _uiState.update { it.copy(requestNotificationPermission = false) }
             }
-        }
-
-        /**
-         * Flips the carry-over switch in the open sheet (FR-BUD-001).
-         * Result: updates `editing`, or does nothing when no sheet is open.
-         * Input:  [enabled]. Output: none.
-         * Changelog: 2026-08-11 — Created for issue 4.4.
-         */
-        private fun setRollover(enabled: Boolean) {
-            _uiState.update { state -> state.copy(editing = state.editing?.copy(rolloverEnabled = enabled)) }
         }
 
         /**
@@ -218,7 +236,11 @@ class BudgetsViewModel
          */
         private fun applyWriteOutcome(outcome: Result<String, AppError>) {
             when (outcome) {
-                is Ok -> _uiState.update { it.copy(editing = null) }
+                // The permission is asked for here and nowhere else, and only after a budget exists.
+                // Asking at launch would be asking a user who has no budgets to allow notifications
+                // about budgets — a prompt with no visible reason is a prompt people deny, and
+                // Android only offers it twice (issue 4.5, FR-BUD-004).
+                is Ok -> _uiState.update { it.copy(editing = null, requestNotificationPermission = true) }
                 is Err ->
                     _uiState.update { state ->
                         state.copy(

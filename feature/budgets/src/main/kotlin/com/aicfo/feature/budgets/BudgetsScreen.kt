@@ -28,6 +28,7 @@ import com.aicfo.core.designsystem.theme.CfoDimens
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.MoneyFormatter
 import com.aicfo.data.repository.CategoryBudget
+import com.aicfo.domain.engines.budget.BudgetAlertBand
 
 /**
  * The budgets screen (issue 4.4; FR-BUD-001/002/003, ARC-004).
@@ -51,6 +52,10 @@ fun BudgetsScreen(
 ) {
     // collectAsStateWithLifecycle, not collectAsState: a backgrounded screen must stop collecting.
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    NotificationPermissionRequest(
+        requested = uiState.requestNotificationPermission,
+        onSettled = { viewModel.onEvent(BudgetsEvent.NotificationPermissionSettled) },
+    )
     BudgetsContent(uiState = uiState, onEvent = viewModel::onEvent, modifier = modifier)
 }
 
@@ -89,6 +94,10 @@ fun BudgetsContent(
             ErrorBanner(code = code, onDismiss = { onEvent(BudgetsEvent.DismissError) })
         }
 
+        // Above the plan, because it is the answer to the question the user opened this screen with
+        // (issue 4.5, FR-BUD-004). It renders whether or not a notification was ever posted.
+        BudgetAlertBanner(uiState = uiState)
+
         // Above the list rather than over it, for the reason `ReconcilePanel` states: the row the
         // sheet refers to stays visible and stays live underneath.
         uiState.editing?.let { editing -> BudgetEditorSheet(state = editing, onEvent = onEvent) }
@@ -122,7 +131,13 @@ private fun PlannedSection(
         text = stringResource(R.string.budgets_section_planned),
         style = MaterialTheme.typography.titleMedium,
     )
-    uiState.planned.forEach { budget -> BudgetCard(budget = budget, onEvent = onEvent) }
+    uiState.planned.forEach { budget ->
+        BudgetCard(
+            budget = budget,
+            band = uiState.bandByCategoryId[budget.category.id],
+            onEvent = onEvent,
+        )
+    }
 }
 
 /**
@@ -172,13 +187,17 @@ private fun UnplannedSection(
  *         means nothing on its own — the user's question is whether they are ahead of it. The
  *         projection is shown only when the engine supplied one; below its elapsed-days floor the
  *         card says the month is too young to project rather than inventing a figure (P-03).
- * Result: a card. Input: [budget]; [onEvent]. Output: the composition.
- * Changelog: 2026-08-11 — Created for issue 4.4.
+ * Result: a card. Input: [budget]; [band] — FR-BUD-004's crossed band, `null` when none; [onEvent].
+ *         Output: the composition.
+ * Changelog:
+ *   2026-08-11 — Created for issue 4.4.
+ *   2026-08-13 — Added the band chip for issue 4.5.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun BudgetCard(
     budget: CategoryBudget,
+    band: BudgetAlertBand?,
     onEvent: (BudgetsEvent) -> Unit,
 ) {
     CfoCard {
@@ -193,6 +212,7 @@ private fun BudgetCard(
                     )
                 },
             )
+            BudgetBandChip(band = band)
             BudgetFigures(budget = budget)
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(CfoDimens.spaceSm),

@@ -79,6 +79,31 @@
     <string name="budget_editor_save">Save</string>
     <string name="budget_editor_cancel">Cancel</string>
 
+    <!--
+      FR-BUD-004's bands (issue 4.5). The chip states the band, the banner summarises how many
+      categories are in one — the banner never repeats a figure, because the card below it already
+      carries the amounts and two copies of a number are two chances to disagree.
+
+      ICU plurals for the counts: "1 categories" is the kind of thing that makes an app feel
+      machine-made on exactly the screen where the user is already unhappy.
+
+      Note the percent signs: the two plurals take a %1$d and so are run through String.format,
+      where a literal percent must be escaped as %%. The four plain strings take no arguments, are
+      never formatted, and must therefore use a single % — an escaped one renders verbatim.
+    -->
+    <string name="budgets_band_warn">80% used</string>
+    <string name="budgets_band_exceeded">Over budget</string>
+    <string name="budgets_band_warn_description">This category has used 80% of its budget</string>
+    <string name="budgets_band_exceeded_description">This category is over its budget</string>
+    <plurals name="budgets_alert_banner_exceeded">
+        <item quantity="one">%1$d category is over budget this month</item>
+        <item quantity="other">%1$d categories are over budget this month</item>
+    </plurals>
+    <plurals name="budgets_alert_banner_warned">
+        <item quantity="one">%1$d category has used 80%% or more of its budget</item>
+        <item quantity="other">%1$d categories have used 80%% or more of their budget</item>
+    </plurals>
+
     <string name="budgets_error_dismiss">Dismiss</string>
     <string name="budgets_error_bad_amount">Enter an amount of zero or more.</string>
     <string name="budgets_error_no_category">That category is no longer there.</string>

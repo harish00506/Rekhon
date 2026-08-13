@@ -3,6 +3,7 @@ package com.aicfo.feature.budgets
 import app.cash.turbine.test
 import com.aicfo.core.common.AppError
 import com.aicfo.core.model.Money
+import com.aicfo.domain.engines.budget.BudgetAlertBand
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -332,6 +333,129 @@ class BudgetsViewModelTest {
             viewModel.onEvent(BudgetsEvent.DismissError)
 
             assertNull(viewModel.uiState.value.errorCode)
+        }
+
+    // --- FR-BUD-004: the bands, and the permission prompt -----------------------------------------
+
+    @Test
+    fun `a crossed band reaches the state as a band, not a colour`() =
+        runTest {
+            val repository =
+                FakeBudgetRepository(
+                    listOf(budgetRow(name = "Groceries")),
+                    initialAlerts = listOf(alertRow(name = "Groceries", band = BudgetAlertBand.WARN)),
+                )
+
+            val state = BudgetsViewModel(repository).uiState.value
+
+            assertEquals(BudgetAlertBand.WARN, state.bandByCategoryId["category:Groceries"])
+            assertEquals(1, state.warnedAlerts.size)
+            assertTrue(state.overspentAlerts.isEmpty())
+        }
+
+    @Test
+    fun `the banner separates the two bands`() =
+        runTest {
+            // The counts drive two different sentences and two different colour roles. Collapsing
+            // them would tell a user with one overspend and three warnings that four categories are
+            // over budget, which is not true of three of them.
+            val repository =
+                FakeBudgetRepository(
+                    initialAlerts =
+                        listOf(
+                            alertRow(name = "Dining", band = BudgetAlertBand.EXCEEDED),
+                            alertRow(name = "Groceries", band = BudgetAlertBand.WARN),
+                            alertRow(name = "Fuel", band = BudgetAlertBand.WARN),
+                        ),
+                )
+
+            val state = BudgetsViewModel(repository).uiState.value
+
+            assertEquals(1, state.overspentAlerts.size)
+            assertEquals(2, state.warnedAlerts.size)
+        }
+
+    @Test
+    fun `spending crossing a band while the screen is open moves it`() =
+        runTest {
+            val repository = FakeBudgetRepository(listOf(budgetRow(name = "Groceries")))
+            val viewModel = BudgetsViewModel(repository)
+
+            viewModel.uiState.test {
+                assertTrue(awaitItem().alerts.isEmpty())
+
+                repository.emitAlerts(listOf(alertRow(name = "Groceries", band = BudgetAlertBand.EXCEEDED)))
+
+                assertEquals(BudgetAlertBand.EXCEEDED, awaitItem().bandByCategoryId["category:Groceries"])
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `setting a budget asks for permission to notify about it`() =
+        runTest {
+            // The timing is the design: Android offers this prompt twice in an app's life, and a
+            // request made before the user has a budget is a request with no visible reason.
+            val repository = FakeBudgetRepository(listOf(budgetRow(id = null, name = "Groceries")))
+            val viewModel = BudgetsViewModel(repository)
+            viewModel.onEvent(BudgetsEvent.EditClicked("category:Groceries"))
+            viewModel.onEvent(BudgetsEvent.AmountChanged("5000"))
+
+            viewModel.onEvent(BudgetsEvent.Save)
+
+            assertTrue(viewModel.uiState.value.requestNotificationPermission)
+        }
+
+    @Test
+    fun `accepting a suggestion asks too`() =
+        runTest {
+            val repository = FakeBudgetRepository(initialSuggestions = listOf(suggestionRow(name = "Shopping")))
+            val viewModel = BudgetsViewModel(repository)
+
+            viewModel.onEvent(BudgetsEvent.AcceptSuggestion("category:Shopping"))
+
+            assertTrue(viewModel.uiState.value.requestNotificationPermission)
+        }
+
+    @Test
+    fun `a refused save does not ask for permission`() =
+        runTest {
+            // Nothing was planned, so there is nothing to be warned about — and spending one of the
+            // two prompts Android allows on a write that failed would waste it.
+            val repository = FakeBudgetRepository(listOf(budgetRow(id = null, name = "Groceries")))
+            repository.nextError = AppError.Storage("disk")
+            val viewModel = BudgetsViewModel(repository)
+            viewModel.onEvent(BudgetsEvent.EditClicked("category:Groceries"))
+            viewModel.onEvent(BudgetsEvent.AmountChanged("5000"))
+
+            viewModel.onEvent(BudgetsEvent.Save)
+
+            assertFalse(viewModel.uiState.value.requestNotificationPermission)
+        }
+
+    @Test
+    fun `answering the prompt clears the request, whichever way it went`() =
+        runTest {
+            // The flag is one-shot. Left set, the effect behind it would re-fire on every subsequent
+            // state change for the rest of the session.
+            val repository = FakeBudgetRepository(initialSuggestions = listOf(suggestionRow(name = "Shopping")))
+            val viewModel = BudgetsViewModel(repository)
+            viewModel.onEvent(BudgetsEvent.AcceptSuggestion("category:Shopping"))
+
+            viewModel.onEvent(BudgetsEvent.NotificationPermissionSettled)
+
+            assertFalse(viewModel.uiState.value.requestNotificationPermission)
+        }
+
+    @Test
+    fun `an alert stream that fails leaves the budgets readable`() =
+        runTest {
+            // The alerts derive from the same read the budget list uses, so a failure that matters
+            // has already reached the banner. Two errors on screen for one broken read is worse than
+            // one, and the band is the less important of the two things to lose.
+            val viewModel = BudgetsViewModel(FailingBudgetRepository())
+
+            assertTrue(viewModel.uiState.value.alerts.isEmpty())
         }
 
     // --- live updates -----------------------------------------------------------------------------

@@ -40,6 +40,11 @@ dependencies {
     // — it never constructs the engine, which :app injects into the repository.
     implementation(project(":domain:engines:budget"))
 
+    // For the POST_NOTIFICATIONS prompt (issue 4.5). Asked from this screen rather than at launch,
+    // because a permission request with no visible reason is one people deny — and Android only
+    // offers it twice.
+    implementation(libs.androidx.activity.compose)
+
     // Compose UI tests run on the JVM here (the :feature:categories pattern): the flow is checked on
     // every `test` run, not only when an emulator happens to be up.
     testImplementation(libs.robolectric)
