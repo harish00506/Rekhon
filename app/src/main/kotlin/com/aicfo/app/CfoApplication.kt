@@ -4,8 +4,10 @@ import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import com.aicfo.app.di.ProfileZoneProvider
+import com.aicfo.app.notification.CfoNotifications
 import com.aicfo.app.sms.SmsConsentWatcher
 import com.aicfo.app.work.BalanceIntegrityWorker
+import com.aicfo.app.work.BudgetAlertWorker
 import com.aicfo.app.work.NetWorthSnapshotWorker
 import com.aicfo.app.work.ScheduledTransactionWorker
 import com.aicfo.app.work.SmsScanWorker
@@ -68,14 +70,21 @@ class CfoApplication : Application(), Configuration.Provider {
      *            2026-08-03 — Issue 3.4 added the scheduled-transaction posting job (FR-TXN-010).
      *            Unlike the other two it is not load-bearing: balances derive from the booked date,
      *            so if this job never ran the figures would still be right.
+     *            2026-08-13 — Issue 4.5 added the budget-alert job (FR-BUD-004), and the notification
+     *            channel it posts into. Also not load-bearing: the band shows in-app regardless, so a
+     *            job that never ran would cost the interruption, not the information.
      */
     override fun onCreate() {
         super.onCreate()
         profileZoneProvider.start()
         smsConsentWatcher.start()
+        // Before any notification is sent, so the channel is in system settings for a user who wants
+        // to turn it down in advance. Re-creating an existing channel is a no-op (issue 4.5).
+        CfoNotifications.createChannels(this)
         NetWorthSnapshotWorker.schedule(this)
         BalanceIntegrityWorker.schedule(this)
         ScheduledTransactionWorker.schedule(this)
         SmsScanWorker.schedule(this)
+        BudgetAlertWorker.schedule(this)
     }
 }

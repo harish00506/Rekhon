@@ -39,6 +39,19 @@
     <string name="lock_error_biometric">Couldn\'t verify you. Try your PIN.</string>
     <string name="lock_error_dismiss">Dismiss</string>
 
+    <!--
+      Budget alerts (issue 4.5, FR-BUD-004). Every figure in these is a placeholder filled from an
+      engine result and then checked by `NumericGuardrail` before the notification is posted
+      (AI-ARC-004) — so no number may be written into the copy itself, here or in a translation.
+    -->
+    <string name="notification_channel_budget_alerts">Budget alerts</string>
+    <string name="notification_channel_budget_alerts_description">Tells you once when a category
+        reaches 80%% of its budget, and once when it reaches 100%%.</string>
+    <string name="budget_alert_warn_title">%1$s is at %2$d%% of budget</string>
+    <string name="budget_alert_warn_body">You have spent %1$s of %2$s this month.</string>
+    <string name="budget_alert_exceeded_title">%1$s is over budget</string>
+    <string name="budget_alert_exceeded_body">You have spent %1$s of %2$s this month — %3$s over.</string>
+
     <!-- ICU plurals: "1 attempt" must not read as "1 attempts" (§21.6). -->
     <plurals name="lock_attempts_remaining">
         <item quantity="one">%1$d attempt left before a timeout</item>
