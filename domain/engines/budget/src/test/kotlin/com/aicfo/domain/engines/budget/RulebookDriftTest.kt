@@ -15,12 +15,13 @@ import java.io.File
  *       deferral is only acceptable while the duplicate cannot drift, and "someone will remember to
  *       update both" is not a mechanism. This test is the mechanism: edit a threshold in the
  *       rulebook and the build goes red until the engine agrees.
- * What: parses the three `RULE-BUD-*` rows out of the rulebook JSON and asserts every threshold and
+ * What: parses the four `RULE-BUD-*` rows out of the rulebook JSON and asserts every threshold and
  *       version the engine copied still matches.
  * Result: the §6 deferral costs correctness nothing until the loader lands.
  * Changelog:
  *   2026-08-11 — Created for issue 4.4.
  *   2026-08-13 — Added RULE-BUD-ALERT for issue 4.5 (FR-BUD-004).
+ *   2026-08-14 — Added RULE-BUD-REVIEW for issue 4.6 (§5.5), and a second separation tripwire.
  *
  * **Parsed with regex, not a JSON library, on purpose.** `:domain:*` is pure Kotlin with no
  * serialisation dependency (ARC-002), and adding one to a *test* to check five integers would be
@@ -41,6 +42,7 @@ class RulebookDriftTest {
         assertTrue("RULE-BUD-SUGGEST missing from the rulebook", "RULE-BUD-SUGGEST" in rulebook)
         assertTrue("RULE-BUD-PACE missing from the rulebook", "RULE-BUD-PACE" in rulebook)
         assertTrue("RULE-BUD-ALERT missing from the rulebook", "RULE-BUD-ALERT" in rulebook)
+        assertTrue("RULE-BUD-REVIEW missing from the rulebook", "RULE-BUD-REVIEW" in rulebook)
     }
 
     /** Input: the file's `_meta.version`. Output: asserts the engine copied from this revision. */
@@ -96,6 +98,25 @@ class RulebookDriftTest {
         assertEquals(BudgetRules.ALERT.ruleVersion, row.version())
     }
 
+    /** Input: RULE-BUD-REVIEW's params. Output: asserts the materiality threshold matches. */
+    @Test
+    fun `the review threshold matches RULE-BUD-REVIEW`() {
+        val rules = BudgetRules()
+        val row = ruleBlock("RULE-BUD-REVIEW")
+
+        assertEquals(rules.minVariancePct, row.intParam("min_variance_pct"))
+        assertTrue(
+            "the review prices its proposals with RULE-BUD-SUGGEST's median; another basis would " +
+                "need a different formula and a different citation on every proposal",
+            "\"proposal_basis\": \"median\"" in row,
+        )
+        assertTrue(
+            "the review promises one notification per month; the rule must still ask for that",
+            "\"review_once_per_month\": true" in row,
+        )
+        assertEquals(BudgetRules.REVIEW.ruleVersion, row.version())
+    }
+
     /**
      * Input:  the rule ids the engine cites.
      * Output: asserts each exists and is enabled. A citation pointing at a rule that has been
@@ -103,7 +124,7 @@ class RulebookDriftTest {
      */
     @Test
     fun `every rule the engine cites exists and is enabled`() {
-        listOf(BudgetRules.SUGGESTION, BudgetRules.PACE, BudgetRules.ALERT).forEach { citation ->
+        listOf(BudgetRules.SUGGESTION, BudgetRules.PACE, BudgetRules.ALERT, BudgetRules.REVIEW).forEach { citation ->
             val row = ruleBlock(citation.ruleId)
             assertTrue(
                 "${citation.ruleId} is disabled in the rulebook but still cited by the engine",
@@ -136,6 +157,36 @@ class RulebookDriftTest {
                 "'$key' appeared on RULE-BUD-PACE. FR-BUD-004's bands belong to RULE-BUD-ALERT: " +
                     "adding a param here bumps a shipped row's version, which is ADR-0017 trigger 3 " +
                     "and forces the runtime rules loader before this module can compile again",
+                "\"$key\"" !in row,
+            )
+        }
+    }
+
+    /**
+     * Input:  RULE-BUD-SUGGEST's row.
+     * Output: asserts the review's materiality threshold is **not** on it.
+     *
+     * Why:    the same boundary the test above guards, one issue later and one row over — and the
+     *         temptation here is stronger, because the review genuinely *uses* `RULE-BUD-SUGGEST`'s
+     *         median to price its proposals, so putting the variance threshold beside it looks tidy.
+     *         It is the same trap: `RULE-BUD-SUGGEST` is a shipped row at version 1.0, cited in
+     *         provenance stored on every budget the app suggested, and a params change bumps that
+     *         version (ADR-0017 trigger 3).
+     *
+     *         On the merits the split is right too. `RULE-BUD-SUGGEST` answers "what should this
+     *         cost?" — a question about money. `RULE-BUD-REVIEW` answers "is this gap worth
+     *         mentioning?" — a question about attention, whose parameter a user might well want to
+     *         raise while leaving the median exactly where it is.
+     */
+    @Test
+    fun `the review threshold lives on RULE-BUD-REVIEW, not RULE-BUD-SUGGEST`() {
+        val row = ruleBlock("RULE-BUD-SUGGEST")
+        listOf("min_variance_pct", "variance_pct", "review_once_per_month").forEach { key ->
+            assertTrue(
+                "'$key' appeared on RULE-BUD-SUGGEST. §5.5's materiality threshold belongs to " +
+                    "RULE-BUD-REVIEW: adding a param here bumps a shipped row's version, which is " +
+                    "ADR-0017 trigger 3 and forces the runtime rules loader before this module can " +
+                    "compile again",
                 "\"$key\"" !in row,
             )
         }

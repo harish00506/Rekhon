@@ -2,6 +2,7 @@ package com.aicfo.domain.engines.budget
 
 import com.aicfo.core.common.AppError
 import com.aicfo.core.common.Result
+import com.aicfo.core.common.getOrNull
 import com.aicfo.core.common.runCatchingToResult
 import com.aicfo.core.model.EngineProvenance
 import com.aicfo.core.model.Money
@@ -31,6 +32,8 @@ import com.aicfo.core.model.RuleCitation
  *   2026-08-13 — Added `alert` for issue 4.5 (FR-BUD-004); moved the pace helpers to [BudgetPace]
  *                and the band decision to [BudgetAlertBands] so each requirement reads as its own
  *                unit. Pure move — no arithmetic changed, and the 4.4 golden file proves it.
+ *   2026-08-14 — Added `review` for issue 4.6 (§5.5), delegated to [BudgetMonthReview]. It reuses
+ *                `suggest` to price its proposals rather than owning a second median.
  *
  * `internal` per ARC-003 — constructed only by [BudgetEngineFactory].
  *
@@ -80,6 +83,44 @@ internal class DefaultBudgetEngine : BudgetEngine {
     // a person, and it reads better in one place than as a third arm of this class (BudgetAlertBands).
     override fun alert(input: BudgetAlertInput): Result<BudgetAlert?, AppError> =
         runCatchingToResult { BudgetAlertBands.evaluate(input) }
+
+    // The review decides *whether* to propose; `suggest` decides *what* to propose. Passing the one
+    // into the other is what makes a reviewed number provably identical to the one the suggestion
+    // card would show for the same category — rather than a second median that agrees today.
+    override fun review(input: BudgetReviewInput): Result<BudgetReview?, AppError> =
+        runCatchingToResult {
+            BudgetMonthReview.evaluate(input) { category -> proposalFor(category, input) }
+        }
+
+    /**
+     * Prices the replacement budget for one reviewed category (§5.6, issue 4.6).
+     *
+     * Why:    it calls [suggest] rather than reimplementing the median, so there is exactly one
+     *         definition of "what should this cost" in the app. The `targetMonth` deliberately comes
+     *         from the review input and not from the reviewed month: a proposal applies to the month
+     *         the user is standing in, so its seasonal prior must be that month's, not the finished
+     *         one's. Proposing a December budget adjusted for November's calendar would be a subtle,
+     *         plausible, entirely wrong number.
+     * Result: the proposal, or `null` when the category has too little history to have one — which
+     *         [suggest] already answers with `Ok(null)`, and which is a legitimate reviewed row.
+     * Input:  [category] — the reviewed row; [input] — the review, for the target month and rules.
+     * Output: [BudgetSuggestion]?.
+     */
+    private fun proposalFor(
+        category: ReviewedCategoryInput,
+        input: BudgetReviewInput,
+    ): BudgetSuggestion? =
+        suggest(
+            BudgetSuggestionInput(
+                categoryId = category.categoryId,
+                categoryName = category.categoryName,
+                monthlySpends = category.monthlySpends,
+                targetMonth = input.targetMonth,
+                monthsObserved = input.monthsObserved,
+                nowUtcMillis = input.nowUtcMillis,
+                rules = input.rules,
+            ),
+        ).getOrNull()
 
     // --- FR-BUD-002: the suggestion -----------------------------------------------------------
 

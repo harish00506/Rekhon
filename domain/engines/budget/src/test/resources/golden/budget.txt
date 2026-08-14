@@ -42,6 +42,22 @@
 #     expect_overspent / expect_ahead / expect_will_overspend    (required)
 #     cite          rule ids, comma separated                    (required)
 #
+#   when kind is a review (issue 4.6, §5.5):
+#     month         the REVIEWED month start, ISO yyyy-MM-dd     (required)
+#     target_month  1..12, the month a proposal would apply to,   (required)
+#                   which is the month AFTER the one reviewed
+#     observed      months of history this profile has            (required)
+#     cats          the budgeted categories, `|` separated; each  (required)
+#                   is name/budgeted/actual/months, where months
+#                   is `;` separated paise oldest first, or `none`
+#     expect_total_budgeted / expect_total_actual  in paise       (required)
+#     expect_dirs   OVER | UNDER | ON_PLAN per category, in order (required)
+#     expect_variance_bps  magnitudes per category, in order      (required)
+#     expect_proposals  proposed paise or `none`, in order        (required)
+#     cite          the rows the REVIEW cites; a proposal carries  (required)
+#                   its own RULE-BUD-SUGGEST citation, asserted
+#                   by the test rather than restated per record
+#
 #   when kind is an alert (issue 4.5, FR-BUD-004):
 #     budgeted      planned + carried over, in paise             (required)
 #     spent         spent so far this month, in paise            (required)
@@ -375,4 +391,80 @@
 # expect_used_bps=none
 # expect_overspent_by=none
 # cite=
+===
+# --- a mixed month: one over, one under, one on plan ---------------------------
+# The main §5.5 record, and the reason the review is month-shaped: the two
+# totals are the headline, and they are only checkable against the whole set of
+# categories at once. All three names are absent from every seasonality window,
+# so the proposals here are pure medians — a seasonal record follows.
+#   Groceries  8,000 planned, 11,240 actual -> +324,000 paise = 4050 bps  OVER
+#   Rent       4,000 planned,  2,100 actual -> -190,000 paise = 4750 bps  UNDER
+#   Fuel       3,000 planned,  3,050 actual ->   +5,000 paise =  166 bps  on plan
+# kind=review
+# case=a month with one of each verdict
+# month=2026-07-01
+# target_month=8
+# observed=24
+# cats=Groceries/800000/1124000/1000000;1100000;1124000|Rent/400000/210000/200000;210000;220000|Fuel/300000/305000/300000;305000;310000
+# expect_total_budgeted=1500000
+# expect_total_actual=1639000
+# expect_dirs=OVER,UNDER,ON_PLAN
+# expect_variance_bps=4050,4750,166
+# expect_proposals=1100000,210000,none
+# cite=RULE-BUD-REVIEW
+===
+# --- the boundary, from both sides --------------------------------------------
+# `min_variance_pct` is 15, and the comparison is `>=`, so 1500 bps is INSIDE
+# the band. These two rows differ by 1,000 paise and must land on opposite
+# verdicts; an off-by-one here silences a real finding or invents one.
+#   Books  10,000 planned, 11,500 actual -> exactly 1500 bps  OVER
+#   Pens   10,000 planned, 11,490 actual ->         1490 bps  on plan
+# kind=review
+# case=exactly at the threshold is material, a rupee under is not
+# month=2026-07-01
+# target_month=8
+# observed=24
+# cats=Books/1000000/1150000/1140000;1150000;1160000|Pens/1000000/1149000/1140000;1149000;1160000
+# expect_total_budgeted=2000000
+# expect_total_actual=2299000
+# expect_dirs=OVER,ON_PLAN
+# expect_variance_bps=1500,1490
+# expect_proposals=1150000,none
+# cite=RULE-BUD-REVIEW
+===
+# --- a material gap the app cannot price --------------------------------------
+# One month of history, and `min_months_required` is 2. The variance is still
+# reported: "you went 60% over on Repairs" is worth saying even when the app has
+# no replacement number to offer. A row that vanished because it could not be
+# priced would hide the finding behind the proposal.
+# kind=review
+# case=variance is reported even when there is no proposal
+# month=2026-07-01
+# target_month=8
+# observed=1
+# cats=Repairs/500000/800000/600000
+# expect_total_budgeted=500000
+# expect_total_actual=800000
+# expect_dirs=OVER
+# expect_variance_bps=6000
+# expect_proposals=none
+# cite=RULE-BUD-REVIEW
+===
+# --- a budget of zero ----------------------------------------------------------
+# A category budgeted at exactly nothing, with real spending against it. 0 bps
+# and on plan, not an infinite overspend: with no plan there is no share of a
+# plan to be off by. This is also the guard that keeps the ratio from dividing
+# by zero, and it is the review's counterpart to the alert fixture's zero case.
+# kind=review
+# case=a zero budget has no variance to report
+# month=2026-07-01
+# target_month=8
+# observed=24
+# cats=Sundries/0/500000/400000;500000;600000
+# expect_total_budgeted=0
+# expect_total_actual=500000
+# expect_dirs=ON_PLAN
+# expect_variance_bps=0
+# expect_proposals=none
+# cite=RULE-BUD-REVIEW
 ===

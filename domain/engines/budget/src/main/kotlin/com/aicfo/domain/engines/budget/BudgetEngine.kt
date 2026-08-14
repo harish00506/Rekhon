@@ -8,17 +8,19 @@ import com.aicfo.core.model.Money
 /**
  * Proposes a per-category budget from history, and reports how a live budget is tracking (§5.5).
  *
- * Why:  FR-BUD-002, FR-BUD-003 and FR-BUD-004 are the three questions a budget screen has to answer
- *       — "what should this cost?", "am I on track?" and "should I be told?" — and all three are
- *       arithmetic. P-03 puts them here, in a deterministic engine, so the numbers exist before any
- *       words are put around them.
- * What: one interface, three operations, each returning a value that carries the rule that produced
+ * Why:  FR-BUD-002, FR-BUD-003, FR-BUD-004 and §5.5 are the four questions a budget feature has to
+ *       answer — "what should this cost?", "am I on track?", "should I be told?" and "was last
+ *       month's plan right?" — and all four are arithmetic. P-03 puts them here, in a deterministic
+ *       engine, so the numbers exist before any words are put around them.
+ * What: one interface, four operations, each returning a value that carries the rule that produced
  *       it (AI-ARC-003).
  * Result: every figure on the budget screen is reproducible from its inputs and attributable to a
  *       rulebook row a reviewer can open (P-02, P-08).
  * Changelog:
  *   2026-08-11 — Created for issue 4.4 (FR-BUD-002, FR-BUD-003).
  *   2026-08-13 — Added `alert` for issue 4.5 (FR-BUD-004).
+ *   2026-08-14 — Added `review` for issue 4.6 (§5.5). The first month-shaped operation here; the
+ *                other three are per-category, and ADR-0020 records why this one is not.
  *
  * **This engine performs no calendar arithmetic.** It is handed `daysInPeriod` and `daysElapsed`
  * already resolved by the repository, which owns the injected `Clock` and the profile time zone
@@ -60,6 +62,26 @@ interface BudgetEngine {
      * Output: `Result<BudgetAlert?, AppError>`.
      */
     fun alert(input: BudgetAlertInput): Result<BudgetAlert?, AppError>
+
+    /**
+     * Reviews a **closed** month: what was planned, what happened, and what to change (§5.5).
+     *
+     * Why:    the other three operations all answer a question about *now*, and a budget that is
+     *         never revisited becomes a number the user set once and quietly stopped believing. This
+     *         one looks back at a month that has finished and asks whether the plan was right.
+     *
+     *         **It is month-shaped, not category-shaped, unlike its three siblings — deliberately.**
+     *         The review's headline is a month total, and P-03 forbids a ViewModel summing `Money` to
+     *         produce one; returning per-category would push that sum into the repository or the UI.
+     *         It also makes §5.5's "golden-file test on a fixed month" a single record rather than a
+     *         convention about how several of them are read together (ADR-0020).
+     * Result: a [BudgetReview], or `Ok(null)` when no category had a budget that month — the
+     *         established convention on this interface, and the honest answer for a user who has not
+     *         budgeted yet rather than a review of nothing.
+     * Input:  [input] — the closed month, and one row per budgeted category.
+     * Output: `Result<BudgetReview?, AppError>`.
+     */
+    fun review(input: BudgetReviewInput): Result<BudgetReview?, AppError>
 }
 
 /**
@@ -334,6 +356,190 @@ data class BudgetAlert(
 
     /** Result: whole percent of the budget used, for the string the screen shows (MNY-002 → display). */
     val usedPercent: Int get() = usedBps / BPS_PER_PERCENT
+}
+
+/**
+ * One budgeted category's month, as the review is handed it.
+ *
+ * Why:  a review row needs three things the engine cannot derive from each other — what was planned,
+ *       what actually happened, and enough history to price a replacement. Bundling them per
+ *       category is what lets [BudgetReviewInput] stay a list of independent rows, so a category
+ *       with no history still gets its variance reported rather than being dropped.
+ * What: the plan, the actual, and the same history window [BudgetEngine.suggest] reads.
+ * Result: an input row; the same value always yields the same reviewed row (P-08).
+ * Changelog: 2026-08-14 — Created for issue 4.6.
+ *
+ * Input:  [categoryId] — carried through so a caller can match rows back; [categoryName] — matched
+ *         against the seasonality KB when a proposal is priced, exactly as [BudgetSuggestionInput]
+ *         does; [budgeted] — what the user planned for the reviewed month, **rollover included**, so
+ *         the variance is against the figure they were actually measured on; [actual] — the positive
+ *         total spent in that month; [monthlySpends] — closed-month history for the proposal, most
+ *         recent last, and legitimately shorter than the rule's window for a new category.
+ * Output: an immutable value.
+ */
+data class ReviewedCategoryInput(
+    val categoryId: String,
+    val categoryName: String,
+    val budgeted: Money,
+    val actual: Money,
+    val monthlySpends: List<MonthlySpend> = emptyList(),
+) {
+    init {
+        require(categoryId.isNotBlank()) { "categoryId must not be blank" }
+        require(budgeted >= Money.ZERO) { "a budget cannot be negative" }
+        require(actual >= Money.ZERO) { "spend is a magnitude and cannot be negative" }
+    }
+}
+
+/**
+ * Everything [BudgetEngine.review] needs to review one closed month.
+ *
+ * Why:  the month arrives already closed and already selected — the engine does no calendar
+ *       arithmetic and never decides *which* month is under review (TIM-001). It is handed the ISO
+ *       month start purely to stamp onto the result, so a stored review can say what it was about.
+ * What: the month, its budgeted categories, and the two figures the proposal path needs.
+ * Result: a self-contained input; the same value always yields the same review (P-08).
+ * Changelog: 2026-08-14 — Created for issue 4.6.
+ *
+ * Input:  [monthStartIsoDate] — TIM-002 `yyyy-MM-dd`, the first of the **reviewed** month;
+ *         [categories] — one row per category that had a budget, possibly empty;
+ *         [targetMonth] — 1..12, the month a proposal would apply to, which is the month the user is
+ *         standing in and **not** the one being reviewed; [monthsObserved] — history this profile
+ *         has, which shrinks the seasonal prior; [nowUtcMillis] — **passed in, never read for
+ *         calendar logic** (TIM-001); [rules] — injected so a test can move the threshold.
+ * Output: an immutable value.
+ */
+data class BudgetReviewInput(
+    val monthStartIsoDate: String,
+    val categories: List<ReviewedCategoryInput>,
+    val targetMonth: Int,
+    val monthsObserved: Int,
+    val nowUtcMillis: Long,
+    val rules: BudgetRules = BudgetRules(),
+) {
+    init {
+        require(monthStartIsoDate.length == ISO_DATE_LENGTH) {
+            "monthStartIsoDate must be an ISO yyyy-MM-dd date (TIM-002), was '$monthStartIsoDate'"
+        }
+        require(targetMonth in 1..MONTHS_IN_YEAR) { "targetMonth must be 1..12, was $targetMonth" }
+        require(monthsObserved >= 0) { "monthsObserved cannot be negative, was $monthsObserved" }
+        require(categories.distinctBy { it.categoryId }.size == categories.size) {
+            "a category appears twice in one review, which would double-count it in the month totals"
+        }
+    }
+}
+
+/**
+ * Which way a category's month went, once the materiality threshold has been applied.
+ *
+ * Why:  the interesting distinction is not over-versus-under but **worth mentioning or not**. A
+ *       category that came in 2% over is not a finding, and a screen that reports it as one teaches
+ *       the user that the screen has nothing to say. [ON_PLAN] is that judgement made once, in the
+ *       engine, rather than re-derived by every caller from a bps figure and a threshold.
+ * What: a closed set of three.
+ * Result: a value the screen can switch on without re-applying a rule.
+ * Changelog: 2026-08-14 — Created for issue 4.6.
+ */
+enum class VarianceDirection {
+    /** Spent materially more than planned — at or past `RULE-BUD-REVIEW.min_variance_pct`. */
+    OVER,
+
+    /** Spent materially less than planned. Not a failure: the plan may simply be too big. */
+    UNDER,
+
+    /** Inside the threshold. The plan held, and the review says nothing about this category. */
+    ON_PLAN,
+}
+
+/**
+ * One category's closed month: plan, actual, and what to do about the gap.
+ *
+ * Why:  P-02 — the row has to show its inputs, not just its conclusion, so the user can disagree
+ *       with the proposal on informed terms (P-07). Both raw figures travel with the verdict for
+ *       that reason, rather than the screen re-reading them from somewhere else and risking a row
+ *       that explains itself with numbers other than the ones it was computed from.
+ * What: the two figures, the signed gap, its magnitude in basis points, the verdict, and the
+ *       proposed replacement when there is one.
+ * Result: a row the screen renders without computing anything (P-03).
+ * Changelog: 2026-08-14 — Created for issue 4.6.
+ *
+ * Input:  [categoryId]; [categoryName]; [budgeted]; [actual]; [variance] — **signed**,
+ *         `actual - budgeted`, so positive is an overspend and negative is an underspend, which is
+ *         the same convention [BudgetStatus.remaining] uses inverted; [varianceBps] — the
+ *         **magnitude** of that gap as a share of the budget (MNY-002), always non-negative, so the
+ *         direction is read from [direction] and never from the sign of two different fields;
+ *         [direction]; [proposal] — `null` for [VarianceDirection.ON_PLAN], and also `null` when
+ *         there is too little history to price one, which is a legitimate row: the variance is still
+ *         worth showing even when the app has no replacement to offer.
+ * Output: an immutable value.
+ */
+data class ReviewedCategory(
+    val categoryId: String,
+    val categoryName: String,
+    val budgeted: Money,
+    val actual: Money,
+    val variance: Money,
+    val varianceBps: Int,
+    val direction: VarianceDirection,
+    val proposal: BudgetSuggestion?,
+) {
+    init {
+        require(varianceBps >= 0) { "varianceBps is a magnitude and cannot be negative, was $varianceBps" }
+        // A proposal on an on-plan row would be the app arguing with a plan it just agreed with.
+        require(!(direction == VarianceDirection.ON_PLAN && proposal != null)) {
+            "an on-plan category must carry no proposal: nothing was found to be worth changing"
+        }
+    }
+
+    /** Result: whole percent of the budget the gap represents, for the string the screen shows. */
+    val variancePercent: Int get() = varianceBps / BPS_PER_PERCENT
+
+    /** Result: true when this row has something to say — a material gap, whether over or under. */
+    val isMaterial: Boolean get() = direction != VarianceDirection.ON_PLAN
+}
+
+/**
+ * A closed month, reviewed (§5.5).
+ *
+ * Why:  the month total is the headline a user reads first — "you planned ₹42,000 and spent
+ *       ₹48,300" is the sentence that makes them open the rest. It lives here, computed by the
+ *       engine, because P-03 does not exempt a sum: a total added up by a ViewModel is still a
+ *       number the app displayed without an engine producing it.
+ * What: the reviewed month, its two totals, every budgeted category, and provenance.
+ * Result: a month a screen can render and a row a table can store, both from one value.
+ * Changelog: 2026-08-14 — Created for issue 4.6.
+ *
+ * **Two rules stand behind a proposed adjustment, at two levels.** This object's provenance cites
+ * `RULE-BUD-REVIEW`, which decided *whether* to speak. Each [ReviewedCategory.proposal] carries its
+ * own provenance citing `RULE-BUD-SUGGEST` and any seasonal event, which decided *what to say*. They
+ * are not merged into one list because they are genuinely different claims, and a reader who opens
+ * the proposal should see the rule that priced it rather than the rule that permitted it.
+ *
+ * Input:  [monthStartIsoDate] — the reviewed month, ISO (TIM-002); [totalBudgeted] and [totalActual]
+ *         — sums across [categories]; [categories] — **every** budgeted category, including on-plan
+ *         ones, because "three of your eight categories drifted" is only meaningful if the eight are
+ *         there; [provenance].
+ * Output: an immutable value.
+ */
+data class BudgetReview(
+    val monthStartIsoDate: String,
+    val totalBudgeted: Money,
+    val totalActual: Money,
+    val categories: List<ReviewedCategory>,
+    val provenance: EngineProvenance,
+) {
+    init {
+        require(provenance.evidence.isNotEmpty()) { "a review with no cited rule violates P-02" }
+        // Ok(null) is how "nothing to review" is expressed; an empty review would render as a screen
+        // claiming a month was reviewed and found to contain nothing.
+        require(categories.isNotEmpty()) { "an empty review must be Ok(null), not a review of nothing" }
+    }
+
+    /** Result: the rows worth reading — the ones that drifted materially, in the engine's order. */
+    val materialCategories: List<ReviewedCategory> get() = categories.filter { it.isMaterial }
+
+    /** Result: the signed month gap, `totalActual - totalBudgeted`. Positive is an overspend. */
+    val totalVariance: Money get() = totalActual - totalBudgeted
 }
 
 /** Result: a [BudgetEngine]. Why: the implementation is `internal`, so this is the only seam (ARC-003). */

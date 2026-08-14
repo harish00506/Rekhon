@@ -12,13 +12,14 @@ import com.aicfo.core.model.RuleCitation
  *       and a JSON parser into a module that has no serialisation dependency by design (ARC-002).
  *       `RulebookDriftTest` closes the gap that matters — edit a threshold in the rulebook and the
  *       build goes red until this file agrees.
- * What: one property per `params_json` key of `RULE-BUD-SUGGEST`, `RULE-BUD-PACE` and
- *       `RULE-BUD-ALERT`, plus the citations all three rules are cited by.
+ * What: one property per `params_json` key of `RULE-BUD-SUGGEST`, `RULE-BUD-PACE`,
+ *       `RULE-BUD-ALERT` and `RULE-BUD-REVIEW`, plus the citations all four rules are cited by.
  * Result: every budget this app proposes is attributable to a row a reviewer can open, and every
  *       threshold that shaped it is one they can change (P-02, AI-ARC-006).
  * Changelog:
  *   2026-08-11 — Created for issue 4.4 from rules-kb.json v1.9.0.
  *   2026-08-13 — Added FR-BUD-004's alert bands from rules-kb.json v1.10.0 (issue 4.5).
+ *   2026-08-14 — Added §5.5's review variance threshold from rules-kb.json v1.11.0 (issue 4.6).
  *
  * **Injected rather than read, so a test can move a threshold** and assert the engine moves with it
  * — which is also the seam the real loader will use when it lands, with no change to the engine.
@@ -30,7 +31,9 @@ import com.aicfo.core.model.RuleCitation
  *         KB's own `k = months_observed / 24`; [roundToMinor] — the paise a suggestion is rounded
  *         to (MNY-001, so no `Double` reaches the engine); [minElapsedDaysForProjection] —
  *         `RULE-BUD-PACE.min_elapsed_days_for_projection`, below which no end-of-month figure is
- *         offered; [warnPct] and [exceededPct] — `RULE-BUD-ALERT`'s two bands, whole percents.
+ *         offered; [warnPct] and [exceededPct] — `RULE-BUD-ALERT`'s two bands, whole percents;
+ *         [minVariancePct] — `RULE-BUD-REVIEW.min_variance_pct`, the gap between plan and actual
+ *         below which the month-end review says nothing about a category.
  * Output: an immutable value.
  */
 data class BudgetRules(
@@ -50,6 +53,8 @@ data class BudgetRules(
     val warnPct: Int = 80,
     /** `RULE-BUD-ALERT.exceeded_pct` — FR-BUD-004's second band; the plan has been spent. */
     val exceededPct: Int = 100,
+    /** `RULE-BUD-REVIEW.min_variance_pct` — below this, a month's gap is timing, not a habit. */
+    val minVariancePct: Int = 15,
 ) {
     init {
         require(lookbackMonths >= 1) { "lookbackMonths must be at least 1, was $lookbackMonths" }
@@ -78,6 +83,13 @@ data class BudgetRules(
             "warnPct ($warnPct) cannot exceed exceededPct ($exceededPct): the earlier band would " +
                 "never be reachable, so the user would only ever hear about an overspend after it happened"
         }
+        // Zero would propose an adjustment for every category every month, including ones that came
+        // in a rupee off plan — which is the failure this threshold exists to prevent, and the one
+        // that teaches a user to stop reading the review at all.
+        require(minVariancePct >= 1) {
+            "minVariancePct must be at least 1, was $minVariancePct: at zero every category is " +
+                "'material' every month, and a review that always has something to say has nothing to say"
+        }
     }
 
     companion object {
@@ -90,8 +102,15 @@ data class BudgetRules(
         /** FR-BUD-004 — the 80%/100% alert bands. A separate row on purpose; see ADR-0019. */
         val ALERT = RuleCitation("RULE-BUD-ALERT", "1.0")
 
+        /**
+         * §5.5 — the month-end review's materiality threshold. A separate row again (ADR-0020),
+         * and the only citation here that never travels alone: a review's proposal is
+         * [SUGGESTION]'s median, so a proposed adjustment cites both rows.
+         */
+        val REVIEW = RuleCitation("RULE-BUD-REVIEW", "1.0")
+
         /** The rulebook file these thresholds were copied from, as `_meta.version`. */
-        const val RULEBOOK_VERSION = "1.10.0"
+        const val RULEBOOK_VERSION = "1.11.0"
     }
 }
 

@@ -36,6 +36,7 @@ evaluate: RuleEngine.evaluate(ruleId, FeatureSnapshot)
 | RULE-BUD-SUGGEST | Per-category budget suggested from the median of the last 3 months (≥ 2 required), adjusted by the seasonal prior for the target month and rounded to ₹100 | Budget suggester |
 | RULE-BUD-PACE | Safe pace = budget spread evenly across the month; projected end-of-month extrapolates the run rate, withheld until 3 days elapsed | Budget status, FHS |
 | RULE-BUD-ALERT | Warn at 80% of a category budget and again at 100%; at most one notification per band, per budget, per month | Budget planner, notifications |
+| RULE-BUD-REVIEW | Month-end review of budget vs actual per category; an adjustment is proposed only where the variance is ≥ 15%, and the amount proposed is RULE-BUD-SUGGEST's median | Budget planner |
 | RULE-PAY-FIRST | Contributions scheduled on salary-credit day, not month-end | Goal engine, notifications |
 | RULE-SAVE-RATE | Savings rate ≥ 20% good, ≥ 30% excellent, < 10% flag | FHS, monthly review |
 | RULE-COOL-OFF | Discretionary buy > 1% of annual income → Purchase Advisor + optional 24h cool-off | Purchase Advisor |

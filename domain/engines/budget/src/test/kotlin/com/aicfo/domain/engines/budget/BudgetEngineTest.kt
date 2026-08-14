@@ -467,7 +467,207 @@ class BudgetEngineTest {
         }
     }
 
+    // --- §5.5: the monthly review (issue 4.6) ------------------------------------------------------
+
+    /**
+     * Input:  three categories straddling the materiality threshold, computed **from the rule**.
+     * Output: asserts the verdict flips exactly at `min_variance_pct` and not a paise earlier. The
+     *         threshold is read from [BudgetRules] rather than written as 15, so this test still
+     *         means something after the rulebook moves — and it is the test that fails if anyone
+     *         reintroduces the number as a literal in the engine (CLAUDE.md §6).
+     */
+    @Test
+    fun `a category is material exactly at the threshold, not a paise earlier`() {
+        val rules = BudgetRules()
+        val budgeted = 1_000_000L
+        // Spending that lands exactly on the threshold, and one paise short of it.
+        val atThreshold = budgeted + (budgeted * rules.minVariancePct / 100)
+        val justUnder = atThreshold - 1
+
+        assertEquals(VarianceDirection.OVER, reviewOne(budgeted, atThreshold).direction)
+        assertEquals(VarianceDirection.ON_PLAN, reviewOne(budgeted, justUnder).direction)
+        // Symmetrical on the other side: an underspend is just as material as an overspend.
+        assertEquals(VarianceDirection.UNDER, reviewOne(budgeted, budgeted - (atThreshold - budgeted)).direction)
+    }
+
+    /**
+     * Input:  a rules object with the threshold moved.
+     * Output: asserts the engine follows the rule. The same seam the runtime loader will use, and
+     *         the same argument `moving the bands in the rules moves the engine` makes for 4.5.
+     */
+    @Test
+    fun `moving the variance threshold in the rules moves the engine`() {
+        val strict = BudgetRules(minVariancePct = 5)
+
+        // 8% over: silent under the default 15%, a finding under the moved rule.
+        assertEquals(VarianceDirection.ON_PLAN, reviewOne(1_000_000, 1_080_000).direction)
+        assertEquals(VarianceDirection.OVER, reviewOne(1_000_000, 1_080_000, strict).direction)
+    }
+
+    /**
+     * Input:  an on-plan category, and a material one with too little history to price.
+     * Output: asserts neither carries a proposal, **for different reasons**. The on-plan row has
+     *         nothing to propose; the second has something to say and no number to say it with, and
+     *         must still report its variance rather than disappearing — a row that vanished because
+     *         it could not be priced would hide the finding behind the proposal.
+     */
+    @Test
+    fun `a proposal is absent when there is nothing to propose and when it cannot be priced`() {
+        val onPlan = reviewOne(1_000_000, 1_020_000)
+        assertEquals(VarianceDirection.ON_PLAN, onPlan.direction)
+        assertNull(onPlan.proposal)
+
+        val unpriceable = reviewOne(1_000_000, 1_500_000, months = listOf(1_500_000))
+        assertEquals(VarianceDirection.OVER, unpriceable.direction)
+        assertEquals(5_000, unpriceable.varianceBps)
+        assertNull("one month is not a median", unpriceable.proposal)
+    }
+
+    /**
+     * Input:  a review of two categories.
+     * Output: asserts the month totals are the engine's, and that both rules are cited — the review
+     *         for the decision to speak, the suggestion for the number spoken. A proposal attributed
+     *         only to the review would point the user's "why this figure?" at a rule that never
+     *         computed one.
+     */
+    @Test
+    fun `a review totals the month itself and cites both rules across its two levels`() {
+        val review =
+            review(
+                listOf(
+                    reviewedCategory("Groceries", 800_000, 1_124_000),
+                    reviewedCategory("Rent", 400_000, 410_000),
+                ),
+            )!!
+
+        assertEquals(Money(1_200_000), review.totalBudgeted)
+        assertEquals(Money(1_534_000), review.totalActual)
+        assertEquals(Money(334_000), review.totalVariance)
+        assertEquals(listOf("RULE-BUD-REVIEW"), review.provenance.evidence.map { it.ruleId })
+        // Every budgeted category is returned; only one of them is a finding.
+        assertEquals(2, review.categories.size)
+        assertEquals(1, review.materialCategories.size)
+        assertEquals(
+            listOf("RULE-BUD-SUGGEST"),
+            review.materialCategories.single().proposal!!.provenance.evidence.map { it.ruleId },
+        )
+    }
+
+    /**
+     * Input:  a review with no budgeted categories.
+     * Output: asserts `Ok(null)`. The state of a user who has not budgeted yet is not a review of
+     *         nothing — a screen rendering an empty review would claim a month was examined and
+     *         found to contain no categories, which is a different and untrue statement.
+     */
+    @Test
+    fun `a month with no budgets is no review at all`() {
+        assertNull(review(emptyList()))
+    }
+
+    /**
+     * Input:  a proposal priced for a month with a seasonal event.
+     * Output: asserts the prior applied is the **target** month's, not the reviewed month's. This is
+     *         the subtle one: reviewing November and proposing for December must use December's
+     *         calendar, and getting it backwards produces an entirely plausible wrong number.
+     */
+    @Test
+    fun `a proposal uses the calendar of the month it applies to`() {
+        // "Gifts" inflates under wedding_season, which runs Nov-Feb.
+        val december = giftsProposalFor(targetMonth = 12)
+        val july = giftsProposalFor(targetMonth = 7)
+
+        assertEquals("wedding_season", december.seasonalEventId)
+        assertNull("July is an ordinary month for Gifts", july.seasonalEventId)
+        assertTrue(
+            "the seasonal proposal must exceed the plain median, or the prior did nothing",
+            december.amount > july.amount,
+        )
+    }
+
+    /**
+     * Input:  review values a caller could plausibly supply and that must not be accepted.
+     * Output: asserts each is rejected at construction, for the same reason the alert equivalents
+     *         are: a value that is wrong here is wrong on a screen the user makes decisions from.
+     */
+    @Test
+    fun `review values that would misreport a month are rejected`() {
+        assertThrows(IllegalArgumentException::class.java) { BudgetRules(minVariancePct = 0) }
+        // The same category twice would double-count it in the month totals.
+        assertThrows(IllegalArgumentException::class.java) {
+            review(listOf(reviewedCategory("Groceries", 1, 1), reviewedCategory("Groceries", 2, 2)))
+        }
+        // A proposal on an on-plan row is the app arguing with a plan it just agreed with.
+        assertThrows(IllegalArgumentException::class.java) {
+            ReviewedCategory(
+                categoryId = "c",
+                categoryName = "C",
+                budgeted = Money(1_000_000),
+                actual = Money(1_000_000),
+                variance = Money.ZERO,
+                varianceBps = 0,
+                direction = VarianceDirection.ON_PLAN,
+                proposal = reviewOne(1_000_000, 1_500_000).proposal,
+            )
+        }
+    }
+
     // --- helpers ---------------------------------------------------------------------------------
+
+    /** Result: one reviewed category. Input: [category]; [budgeted]; [actual]; [months] — history. */
+    private fun reviewedCategory(
+        category: String,
+        budgeted: Long,
+        actual: Long,
+        months: List<Long> = listOf(1_000_000, 1_100_000, 1_124_000),
+    ): ReviewedCategoryInput =
+        ReviewedCategoryInput(
+            categoryId = "category:$category",
+            categoryName = category,
+            budgeted = Money(budgeted),
+            actual = Money(actual),
+            monthlySpends = monthsOf(months),
+        )
+
+    /** Result: the review, or `null`. Input: [categories]; [targetMonth]; [rules]. */
+    private fun review(
+        categories: List<ReviewedCategoryInput>,
+        targetMonth: Int = 8,
+        rules: BudgetRules = BudgetRules(),
+    ): BudgetReview? =
+        (
+            engine.review(
+                BudgetReviewInput(
+                    monthStartIsoDate = "2026-07-01",
+                    categories = categories,
+                    targetMonth = targetMonth,
+                    monthsObserved = 24,
+                    nowUtcMillis = NOW,
+                    rules = rules,
+                ),
+            ) as Ok
+        ).value
+
+    /** Result: the single reviewed row, for the one-category cases. */
+    private fun reviewOne(
+        budgeted: Long,
+        actual: Long,
+        rules: BudgetRules = BudgetRules(),
+        months: List<Long> = listOf(1_000_000, 1_100_000, 1_124_000),
+    ): ReviewedCategory =
+        review(listOf(reviewedCategory("Groceries", budgeted, actual, months)), rules = rules)!!
+            .categories
+            .single()
+
+    /**
+     * Result: the proposal for a materially overspent "Gifts" budget in [targetMonth]. A separate
+     * helper because the seasonal case is the only one that varies the category *and* the month, and
+     * threading both through [reviewOne] would make its signature about this one test.
+     */
+    private fun giftsProposalFor(targetMonth: Int): BudgetSuggestion =
+        review(
+            listOf(reviewedCategory("Gifts", 500_000, 1_000_000, listOf(1_000_000, 1_000_000, 1_000_000))),
+            targetMonth = targetMonth,
+        )!!.categories.single().proposal!!
 
     private fun monthsOf(amounts: List<Long>): List<MonthlySpend> =
         amounts.mapIndexed { index, minor -> MonthlySpend("2026-0${index + 1}-01", Money(minor)) }
