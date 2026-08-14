@@ -104,11 +104,18 @@ internal class AndroidBudgetAlertNotifier
 
             // Checked on the composed text, both halves, against exactly the values the engine
             // returned. A figure that is not in this list may not appear on the user's phone.
+            //
+            // The category name is declared as text, not as a figure: it is the user's own words,
+            // and "Zone 3 parking" is an ordinary thing to call a budget. Without this the digit in
+            // the name would read as an unverifiable count and this notification would be suppressed
+            // — correct message, silently dropped, indistinguishable at this call site from a denied
+            // permission (issue 4.6).
             val verified =
                 NumericGuardrail.verify(
                     candidateText = "$title $body",
                     allowedAmounts = listOfNotNull(alert.alert.budgeted, alert.alert.spent, alert.alert.overspentBy),
                     allowedPercents = listOf(alert.alert.usedPercent),
+                    allowedText = listOf(alert.category.name),
                 )
             if (verified !is GuardrailResult.Pass) return false
 

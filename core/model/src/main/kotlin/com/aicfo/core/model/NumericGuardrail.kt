@@ -34,25 +34,39 @@ sealed interface GuardrailResult {
  *       through to the working.
  *
  *       **This is a minimal, deliberate subset of `ai/chat/guardrail.md`, and that is recorded, not
- *       hidden.** The full L3 gate — extraction of dates, counts and scores, the lakh/crore and FX
- *       display transforms, and the REGENERATE-then-REFUSE ladder — is **issue 9.7's** to build.
+ *       hidden.** The full L3 gate — extraction of dates and scores, the lakh/crore and FX display
+ *       transforms, and the REGENERATE-then-REFUSE ladder — is **issue 9.7's** to build.
  *       Two of those are not merely unbuilt here but inapplicable: there is no LLM anywhere on this
  *       path (the text is templated from engine output), so there is nothing to regenerate, and no
  *       fallback to compose. What is left is the part that matters — deterministic matching, never
  *       the model judging itself (GRD-001).
- * What: extracts every ₹-amount and percentage from the text and resolves each against the values
- *       the engine actually produced, rendered through the one sanctioned formatter.
+ * What: extracts every ₹-amount, percentage and plain count from the text and resolves each against
+ *       the values the engine actually produced, rendered through the one sanctioned formatter.
  * Result: [GuardrailResult.Pass], or the spans that failed. **Fail-closed**: a caller that cannot
  *       verify its text does not send it.
- * Changelog: 2026-08-13 — Created for issue 4.5 (FR-BUD-004).
+ * Changelog:
+ *   2026-08-13 — Created for issue 4.5 (FR-BUD-004).
+ *   2026-08-14 — Counts extracted, for issue 4.6's review notification ("3 categories to look at").
+ *                This closes the limitation ADR-0019 wrote down rather than routing around it: that
+ *                ADR stated in its own words that "a caller that templates a bare count would not be
+ *                checked", and 4.6 is the first caller that wants to.
+ *   2026-08-14 — Added `allowedText` in the same change, because count extraction on its own broke
+ *                a case nobody had thought about: a user's own category name may contain a digit
+ *                ("Zone 3 parking"), and without a way to say "this substring is a name I supplied,
+ *                not a claim", the gate would have refused the app's own correct notification —
+ *                quietly, since a refusal looks exactly like a denied permission at the call site.
  *
  * Pure Kotlin in `:core:model` beside [MoneyFormatter], which it reuses on purpose: the allowlist of
  * renderings is *defined* as "whatever the one formatter the app displays amounts with produces", so
  * the two cannot drift into disagreeing about what ₹1,23,456.78 looks like (ARC-002, GRD-002).
  *
- * **Known limitation, stated rather than papered over:** only currency and percentage claims are
- * extracted, because those are the only figures this path emits. A bare count ("3 categories") is
- * not checked. Issue 9.7 widens the extractor; until then, callers must not template bare numbers.
+ * **Known limitations, stated rather than papered over.** A count is recognised as a run of one to
+ * three digits, so a **four-digit or longer** bare number is not checked at all — years are the
+ * reason, and `COUNT_CLAIM` argues it. Dates and scores are still unextracted. And `allowedText` is
+ * a hole by construction: whatever a caller passes there is struck out before counts are read, so it
+ * must only ever be the **verbatim value the caller itself interpolated** — a name read from the
+ * database — and never a fragment chosen to make a failing check pass. Issue 9.7 widens the
+ * extractor; until then, callers must not template large bare numbers.
  */
 object NumericGuardrail {
     /**
@@ -65,6 +79,19 @@ object NumericGuardrail {
 
     /** A percentage claim. Decimals included so "79.5%" is judged rather than silently allowed. */
     private val PERCENT_CLAIM = Regex("""\d+(?:\.\d+)?\s?%""")
+
+    /**
+     * A count claim — a standalone run of **one to three digits**, found only in text from which the
+     * amount and percentage spans have already been removed.
+     *
+     * `ponytail:` three digits is the ceiling, and it is a heuristic rather than a proof. Four-digit
+     * tokens are overwhelmingly years in this app's copy ("July 2026") and treating them as counts
+     * would make every message carrying a date unverifiable. The cost is stated plainly: a caller
+     * that templates a fabricated four-digit count is **not** checked. The upgrade path, when a
+     * message needs one, is a count the caller declares explicitly rather than a wider regex —
+     * widening this one starts an arms race with the copy.
+     */
+    private val COUNT_CLAIM = Regex("""\b\d{1,3}\b""")
 
     /**
      * Decides whether a candidate string may be shown to the user.
@@ -80,17 +107,35 @@ object NumericGuardrail {
      *         fabricate.
      * Input:  [candidateText] — the composed, user-facing string; [allowedAmounts] — every [Money]
      *         the engine produced for this message; [allowedPercents] — every whole percentage it
-     *         produced. Both default to empty, which makes the strict thing the easy thing: a caller
-     *         that forgets to pass its values gets a refusal, not a pass.
+     *         produced; [allowedCounts] — every plain integer it produced ("3 categories");
+     *         [allowedText] — verbatim strings the caller interpolated that are **names, not
+     *         claims**, struck out before counts are read. All four default to empty, which makes
+     *         the strict thing the easy thing: a caller that forgets to pass its values gets a
+     *         refusal, not a pass.
      * Output: [GuardrailResult].
      */
     fun verify(
         candidateText: String,
         allowedAmounts: List<Money> = emptyList(),
         allowedPercents: List<Int> = emptyList(),
+        allowedCounts: List<Int> = emptyList(),
+        allowedText: List<String> = emptyList(),
     ): GuardrailResult {
         val permittedAmounts = allowedAmounts.map { MoneyFormatter.format(it) }.toSet()
         val permittedPercents = allowedPercents.map { "$it%" }.toSet()
+        val permittedCounts = allowedCounts.map { "$it" }.toSet()
+
+        // Counts are read from text the amounts, percentages and caller-supplied names have been
+        // struck out of. Without the first two, the "1" of "₹1,240" and the "40" of "40%" would be
+        // offered up as counts, and a caller would have to allow them to get its own message through
+        // — turning the count check into a rubber stamp for the digits it exists to police. Without
+        // the third, a user's own "Zone 3 parking" would make every notification about that category
+        // unverifiable, and the guardrail would silently suppress the app's own correct message.
+        val remainder =
+            allowedText.filter { it.isNotBlank() }
+                .fold(candidateText) { text, name -> text.replace(name, BLANK) }
+                .let { AMOUNT_CLAIM.replace(it) { BLANK } }
+                .let { PERCENT_CLAIM.replace(it) { BLANK } }
 
         val unverifiable =
             buildList {
@@ -99,6 +144,9 @@ object NumericGuardrail {
                     .forEach { add(it.value) }
                 PERCENT_CLAIM.findAll(candidateText)
                     .filterNot { it.value.normalised() in permittedPercents }
+                    .forEach { add(it.value) }
+                COUNT_CLAIM.findAll(remainder)
+                    .filterNot { it.value in permittedCounts }
                     .forEach { add(it.value) }
             }
 
@@ -115,4 +163,11 @@ object NumericGuardrail {
      * Result: the claim with spaces removed. Input: the receiver. Output: [String].
      */
     private fun String.normalised(): String = filterNot { it.isWhitespace() }
+
+    /**
+     * What an amount or percentage span is replaced by before counts are read.
+     * A space, not an empty string: removing "₹1,240" from "spent ₹1,240 of" outright would join
+     * "spent" to "of" and could weld two digit runs into one that neither claim contained.
+     */
+    private const val BLANK = " "
 }
