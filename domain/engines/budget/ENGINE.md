@@ -28,6 +28,7 @@ turns it into a budget (P-07).
 interface BudgetEngine {
     fun suggest(input: BudgetSuggestionInput): Result<BudgetSuggestion?, AppError>
     fun status(input: BudgetStatusInput): Result<BudgetStatus, AppError>
+    fun alert(input: BudgetAlertInput): Result<BudgetAlert?, AppError>
 }
 ```
 
@@ -43,6 +44,15 @@ interface BudgetEngine {
 - **Status output** — `BudgetStatus`: `budgeted` (planned + carried), `remaining` (**signed** — an
   overspend is a negative, not a clamped zero), `safePaceToDate`, `projectedEndOfMonth` (nullable),
   and the three derived flags `isOverspent` / `isAheadOfPace` / `isProjectedToOverspend`.
+
+- **Alert input** — `BudgetAlertInput`: `categoryId`, `categoryName` (carried through for the
+  message, never matched against anything), `budgeted` (rollover already included), `spent`,
+  `nowUtcMillis`, `rules`. Deliberately narrower than `BudgetStatusInput`: a band is crossed at a
+  ratio, on any day, so asking for the month's shape would suggest it changed the answer.
+- **Alert output** — `BudgetAlert?`: the `band` (`WARN` | `EXCEEDED`), `usedBps`, `budgeted`,
+  `spent`, `overspentBy` (present for `EXCEEDED` only), and `provenance`. **`null` is a valid
+  answer** — below the warn band, and for an unset (zero) budget, which is also the division-by-zero
+  guard.
 
 **This engine performs no calendar arithmetic.** `daysInPeriod` and `daysElapsed` arrive already
 resolved by the repository, which owns the injected `Clock` and the profile time zone (TIM-001).
@@ -79,6 +89,27 @@ Taking the maximum keeps the applied figure bounded by something a reviewer can 
 | `safePaceToDate` | `budgeted × (daysElapsed × 10 000 / daysInPeriod)` bps |
 | `projectedEndOfMonth` | `spent × (daysInPeriod × 10 000 / daysElapsed)` bps, or `null` below the floor |
 
+### FR-BUD-004 — the alert bands
+
+| Step | What happens | Result |
+|------|--------------|--------|
+| 1 | If `budgeted` is zero, stop | `null` — an unbudgeted category is not an overspent one |
+| 2 | `usedBps = spent × 10 000 / budgeted`, integer, **truncating**, saturated at `Int.MAX_VALUE` | the share used |
+| 3 | If `usedBps ≥ exceeded_pct × 100` → `EXCEEDED`; else if `≥ warn_pct × 100` → `WARN`; else stop | the band |
+| 4 | For `EXCEEDED`, `overspentBy = max(spent − budgeted, 0)` | how far past the plan |
+
+**Truncation is the honest direction.** 79.99% of a budget is not 80% of it, so a user is never
+interrupted a rupee early. **The exceeded band is tested first** because the bands overlap by
+definition — everything past 100% is also past 80%, and testing warn first would report every
+overspend as a warning.
+
+**`overspentBy` is floored at zero, and not defensively.** `exceeded_pct` is a rule row, so a profile
+may set it below 100 — at which point the band is reached while the budget still has money in it, and
+the honest amount past the budget is nothing.
+
+**The band is a decision, not a notification.** Whether one is *sent* is the repository's and the
+worker's question, because only they know what the user has already been told.
+
 ## Assumptions & guardrails
 
 - **No `Double` or `Float` appears anywhere in this module** (MNY-001). The median of an even window
@@ -105,17 +136,24 @@ Taking the maximum keeps the applied figure bounded by something a reviewer can 
   adjustment rather than a wrong one.
 - **`Gifts`, `Gold` and `Vehicle` appear in the knowledge base and not in `CategorySeed`.** Those
   priors are inert until a user creates a category with a matching name.
-- **The 80% / 100% overspend alerts are deliberately absent.** FR-BUD-004 is issue 4.5, and
-  `RulebookDriftTest` actively asserts those params have *not* appeared on `RULE-BUD-PACE` — a
-  threshold that arrives without the screen that explains it is a number the app would apply and
-  never show (P-02).
+- **The alert bands live on their own rule row, permanently.** `RULE-BUD-ALERT`, not
+  `RULE-BUD-PACE`, and `RulebookDriftTest` asserts they never appear on the latter. Two reasons, both
+  binding: adding a param to a shipped row bumps its version, which is ADR-0017's trigger 3 and
+  forces the runtime rules loader; and pace answers "am I on track?" while alerting answers "should
+  this person be interrupted?" — different questions, edited for different reasons. See
+  [ADR-0019](../../../docs/adr/0019-budget-alert-bands-mint-a-new-rule-row.md).
+- **`notify_once_per_band_per_month` is documented here and enforced elsewhere.** The engine returns
+  a band every time it is asked; the once-per-month promise is a `UNIQUE(profile_id, budget_id,
+  month_start_iso_date, band)` index on `budget_alert`. The flag records the intent, the index is the
+  mechanism.
 
 ## Rules / knowledge consumed
 
 | ID / file | What it provides |
 |-----------|------------------|
-| `RULE-BUD-SUGGEST` (`ai/rules/rules-kb.json` v1.9.0) | `lookback_months`, `min_months_required`, `seasonality_enabled`, `shrinkage_denominator_months`, `round_to_minor` |
-| `RULE-BUD-PACE` (`ai/rules/rules-kb.json` v1.9.0) | `projection_basis`, `min_elapsed_days_for_projection` |
+| `RULE-BUD-SUGGEST` (`ai/rules/rules-kb.json` v1.10.0) | `lookback_months`, `min_months_required`, `seasonality_enabled`, `shrinkage_denominator_months`, `round_to_minor` |
+| `RULE-BUD-PACE` (`ai/rules/rules-kb.json` v1.10.0) | `projection_basis`, `min_elapsed_days_for_projection` |
+| `RULE-BUD-ALERT` (`ai/rules/rules-kb.json` v1.10.0) | `warn_pct`, `exceeded_pct`, `notify_once_per_band_per_month` |
 | `ai/knowledge/calendar-seasonality.json` v1.0 | the nine calendar events, their windows, the categories they inflate, their priors, and the shrinkage rule |
 
 Both are **typed mirrors** (`BudgetRules`, `SeasonalityPriors`), not loaded at runtime — the
@@ -133,7 +171,10 @@ instant and the cited rows:
 - a seasonal one cites `RULE-BUD-SUGGEST` **then** the calendar event's own id (`diwali`,
   `wedding_season`, …), in that order, so the screen renders the rule that fired and then what it
   claimed;
-- a status cites `RULE-BUD-PACE`.
+- a status cites `RULE-BUD-PACE`;
+- an alert cites `RULE-BUD-ALERT` **alone** — the bands come from that row and nothing on that path
+  reads pace, so citing both would point the user's "why am I seeing this?" at a rule that had no
+  part in the decision.
 
 A suggestion is the only result in this app that states its `inputWindow` — `"2026-05-01..2026-07-31"`
 — because "median of three months" is only checkable if the three months are named.
@@ -142,10 +183,10 @@ A suggestion is the only result in this app that states its `inputWindow` — `"
 
 | Test | What it holds |
 |------|---------------|
-| `BudgetGoldenTest` | 12 frozen records over `golden/budget.txt`; asserts amounts, medians, all four status figures, the derived flags and the **ordered** citations. A meta-test asserts the fixture still covers the seasonal, unadjusted, no-suggestion, wrapping-window and withheld-projection paths |
+| `BudgetGoldenTest` | 20 frozen records over `golden/budget.txt`; asserts amounts, medians, all four status figures, the derived flags and the **ordered** citations. A meta-test asserts the fixture still covers the seasonal, unadjusted, no-suggestion, wrapping-window and withheld-projection paths |
 | `BudgetEngineTest` | both thresholds at / just below / just above their boundary, read from `BudgetRules` rather than literals; median and rounding edges; rollover; provenance |
 | `SeasonalityPriorsTest` | both window shapes including the four that wrap the year end, max-not-product, and the three points of the shrinkage curve |
-| `RulebookDriftTest` | every `RULE-BUD-*` threshold and version against the real rulebook |
+| `RulebookDriftTest` | every `RULE-BUD-*` threshold and version against the real rulebook, plus the permanent assertion that the alert bands are **not** on `RULE-BUD-PACE` |
 | `SeasonalityKbDriftTest` | every event's id, window (**re-parsed from the KB's own `"Oct-Nov"` strings**, not copied), inflated categories and multiplier |
 
 Coverage: module ≥ 85% (`koverVerify` gate), money math 100%.
@@ -160,3 +201,4 @@ the Gradle `inputs.file` wiring — the specific vacuous-gate failure this repo 
 | Version | Date | Change |
 |---------|------|--------|
 | 1.0 | 2026-08-11 | Created for issue 4.4 (FR-BUD-001/002/003) |
+| 1.0 | 2026-08-13 | Added `alert` for issue 4.5 (FR-BUD-004). **Version unchanged, deliberately**: no existing figure moved, so every result computed under 1.0 is still reproducible under 1.0 (AI-ARC-006). `BudgetPace` and `BudgetAlertBands` were split out of `DefaultBudgetEngine` in the same commit — a pure move, guarded by the golden file |

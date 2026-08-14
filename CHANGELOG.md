@@ -12,6 +12,54 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > demo dataset writing to it; this epic makes the taxonomy the user's, then teaches the app to fill
 > it in.
 
+### [0.4.4] — Told once, and only what the maths can back  (2026-08-13)
+
+- **Implemented:** issue 4.5 — budget alerts at 80% and 100% (**FR-BUD-004**, §5.5, AI-ARC-004,
+  AI-ARC-006, P-02/P-03/P-04). 4.4 gave the user a number to aim at and a screen that says how the
+  month is going; this tells them when it stops going well, without waiting for them to look.
+- **The thresholds are a new rule row, not two new params on an existing one.** `RULE-BUD-ALERT` at
+  `version: 1.0` in `ai/rules/rules-kb.json` (**v1.10.0**). Adding them to `RULE-BUD-PACE` would have
+  bumped a shipped row's version, which is [ADR-0017](docs/adr/0017-budget-thresholds-stay-a-typed-mirror.md)'s
+  trigger 3 and would have forced the runtime `ai/` loader — `:core:rules`, an asset pipeline, a
+  `rules_knowledge_base` table and seven mirrors retrofitted — before this issue could compile. The
+  split is also right on the merits: pace answers "am I on track?", alerting answers "should this
+  person be interrupted?" ([ADR-0019](docs/adr/0019-budget-alert-bands-mint-a-new-rule-row.md)).
+  4.4's tripwire test is **retargeted, not deleted** — it now guards a permanent boundary.
+- **"Tell them once" is enforced by the schema, not by careful code.** New `budget_alert` table at
+  **v14** with `UNIQUE(profile_id, budget_id, month_start_iso_date, band)`, so a second warning for
+  the same month cannot be inserted whatever the calling code believes — including when two workers
+  run at once or one retries after a partial failure. The band is part of the key, so crossing 80%
+  and later 100% produces two messages; a boolean on `budget` would have swallowed the second, which
+  is the more important one.
+- **The notification text is verified before it is posted** (AI-ARC-004). New `NumericGuardrail`
+  extracts every rupee amount and percentage from the composed message and requires each to match a
+  value the engine actually returned, rendered through `MoneyFormatter`. Fail-closed: the default
+  allowed set is empty, so a caller that forgets to declare its values gets silence. A correct sum
+  the engine never computed is refused too — being arithmetically true is not the standard (GRD-003).
+  This is a **documented subset** of `ai/chat/guardrail.md`; the full L3 gate is issue 9.7, and its
+  REGENERATE/REFUSE ladder is inapplicable here because there is no LLM on this path.
+- **The band shows in-app whether or not a notification was ever sent** (P-02). A notification is
+  sent once and can be missed, denied or swiped away; a crossed band stays true for the rest of the
+  month. The permission is asked for **after** a budget is saved, never at launch — Android offers
+  that prompt twice in an app's life, and one made before the user has a budget is one they deny
+  permanently. A denial is a designed-for state, not a degraded one.
+- **Two real defects, both found by tests rather than by review.** A rule row may set `exceeded_pct`
+  below 100, at which point the band is reached while the budget still has money in it and
+  `spent − budgeted` went negative — the overspend figure is now floored at zero, so the notifier can
+  never render a negative "overspend". And the band labels used `%%` in strings that take no format
+  arguments, which `stringResource` does not process: the screen would have shown a literal `80%%`.
+- **`MigrationSafetyTest` refused the new table for having no tombstone column**, which was a real
+  design question rather than a formality. Argued as an exemption instead of adding the column: a row
+  records that a person was interrupted, which is not undoable, and the unique index counts
+  soft-deleted rows — so a "deleted" alert would still not fire again and the column could only
+  mislead. Stated consequence: deleting and recreating a budget inside one month does not re-notify.
+- **Every new gate was watched to fail first**, both by editing only `ai/rules/rules-kb.json` and no
+  Kotlin — which is also what proves the Gradle `inputs.file` wiring still stops a drift test passing
+  against a file it never read.
+- **Out of scope, deliberately:** the runtime `ai/` loader (deferred again, recorded in ADR-0019),
+  the full L3 guardrail (9.7), notification policy and quiet hours (9.6), and the monthly review
+  (4.6).
+
 ### [0.4.3] — A number to aim at, and the split lines that were being ignored  (2026-08-11)
 
 - **Implemented:** issue 4.4 — budgets CRUD + suggestions (**FR-BUD-001**, **FR-BUD-002**,
