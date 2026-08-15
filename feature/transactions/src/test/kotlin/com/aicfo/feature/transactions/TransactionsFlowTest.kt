@@ -12,6 +12,8 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.paging.PagingData
 import androidx.paging.compose.collectAsLazyPagingItems
 import com.aicfo.core.designsystem.theme.CfoTheme
+import com.aicfo.core.model.Category
+import com.aicfo.core.model.CategoryNature
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.Tag
 import com.aicfo.core.model.TransactionSource
@@ -75,12 +77,49 @@ class TransactionsFlowTest {
     }
 
     @Test
-    fun `a row with neither note nor merchant still says something`() {
+    fun `a row with neither note nor merchant nor category still says something`() {
         // Every field but the amount is optional (FR-TXN-001), and a row a user cannot identify is
         // a row they cannot decide to delete.
         setContent(items = day(transaction()))
 
         compose.onNodeWithText(text(R.string.transactions_uncategorised)).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a categorised row is named after its category, not called Uncategorised`() {
+        // Issue 4.1. **This was a live bug for as long as it was impossible to hit**: the fallback
+        // ran note → merchant → "Uncategorised" and never consulted the category, which was
+        // harmless while no real profile could have one. The seed made it reachable, and a
+        // transaction saved against Fuel rendered as "Uncategorised" — the label asserting the
+        // opposite of what the row stored. Found on the emulator, so it is pinned here.
+        setContent(
+            state =
+                TransactionsUiState(
+                    isLoading = false,
+                    categories = listOf(Category("category:fuel", "Fuel", CategoryNature.NEED)),
+                ),
+            items = day(transaction { copy(categoryId = "category:fuel") }),
+        )
+
+        compose.onNodeWithText("Fuel").assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.transactions_uncategorised)).assertDoesNotExist()
+    }
+
+    @Test
+    fun `a note still wins over the category`() {
+        // The category is the *third* step, not a replacement for the first two: what the user typed
+        // about this transaction identifies it better than the bucket it was filed in.
+        setContent(
+            state =
+                TransactionsUiState(
+                    isLoading = false,
+                    categories = listOf(Category("category:fuel", "Fuel", CategoryNature.NEED)),
+                ),
+            items = day(transaction { copy(categoryId = "category:fuel", note = "Petrol, Bengaluru") }),
+        )
+
+        compose.onNodeWithText("Petrol, Bengaluru").assertIsDisplayed()
+        compose.onNodeWithText("Fuel").assertDoesNotExist()
     }
 
     @Test

@@ -619,6 +619,126 @@ internal object Migrations {
         )
     }
 
+    /**
+     * 12 → 13: adds `transactions.nature` — the user's nature override (issue 4.3; §8.3).
+     *
+     * Why:    §8.3 makes nature "auto-assigned, user-correctable, learned", and only the middle word
+     *         needs storage. The automatic nature is derived on read by `:domain:engines:nature`
+     *         from the account, the category and the user's past corrections, so **the only thing
+     *         this column ever holds is a correction** — `NULL` means "whatever the rules currently
+     *         say", not "unknown".
+     *
+     *         That choice is what makes this migration one line. Storing the *resolved* nature
+     *         instead would need a backfill of every existing row through the engine here, and then
+     *         a recompute job for every future rulebook edit — the shape that already bit the
+     *         net-worth series in issue 3.10 and had to be repaired in `repairStaleHistory`. A
+     *         derived value with one stored exception cannot go stale.
+     * What:   one `ALTER TABLE … ADD COLUMN`, nullable, following [MIGRATION_9_10].
+     * Result: an upgraded installation gains an empty column and keeps every row. **No backfill,
+     *         deliberately** — and unlike [MIGRATION_7_8], where the absent backfill *was* the bug,
+     *         here a `NULL` is the correct and complete value for every pre-existing transaction:
+     *         nobody has overridden anything yet.
+     * Input:  [SupportSQLiteDatabase] — the database mid-upgrade. Output: none (executes DDL).
+     *
+     * The DDL matches what Room generates for `TransactionEntity.nature`; the committed
+     * `schemas/13.json` is the reference, and `MigrationRoundTripTest` fails on a device if the two
+     * drift.
+     */
+    val MIGRATION_12_13 =
+        object : Migration(VERSION_12, VERSION_13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `transactions` ADD COLUMN `nature` TEXT")
+            }
+        }
+
+    /**
+     * 13 → 14: adds `budget_alert` — the record of what the user has already been told (issue 4.5;
+     * FR-BUD-004).
+     *
+     * Why:    FR-BUD-004 asks for alerts at 80% and 100%, and the unstated half of that requirement
+     *         is *not* alerting again on every purchase afterwards. This table is that memory.
+     *
+     *         **The unique index is the requirement, not an optimisation.** With
+     *         `UNIQUE(profile_id, budget_id, month_start_iso_date, band)` a second WARN for the same
+     *         month cannot be inserted, so "told once" holds even if two workers run concurrently or
+     *         one retries after a partial failure. A boolean on `budget` would have needed a
+     *         read-then-write with a window between them, and would have had nowhere to put the
+     *         *second* band — 80% then 100% must produce two messages, and does, because the band is
+     *         part of the key.
+     * What:   one `CREATE TABLE` plus the unique index and the month lookup index. No backfill, and
+     *         none is possible or wanted: nobody has been notified about a month that has already
+     *         passed, so an empty table is the complete and correct history (DB-003 — nothing is
+     *         dropped or rewritten).
+     * Result: an upgraded installation keeps every row and gains an empty table.
+     * Input:  [SupportSQLiteDatabase] — the database mid-upgrade. Output: none (executes DDL).
+     *
+     * The DDL matches what Room generates for `BudgetAlertEntity`; the committed `schemas/14.json`
+     * is the reference, and `MigrationRoundTripTest` fails on a device if the two drift.
+     */
+    val MIGRATION_13_14 =
+        object : Migration(VERSION_13, VERSION_14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `budget_alert` (" +
+                        "`id` TEXT NOT NULL, " +
+                        "`profile_id` TEXT NOT NULL, " +
+                        "`budget_id` TEXT NOT NULL, " +
+                        "`category_id` TEXT, " +
+                        "`month_start_iso_date` TEXT NOT NULL, " +
+                        "`band` TEXT NOT NULL, " +
+                        "`rule_id` TEXT NOT NULL, " +
+                        "`rule_version` TEXT NOT NULL, " +
+                        "`notified_at_utc_millis` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`id`))",
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS " +
+                        "`index_budget_alert_profile_id_budget_id_month_start_iso_date_band` " +
+                        "ON `budget_alert` (`profile_id`, `budget_id`, `month_start_iso_date`, `band`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_budget_alert_profile_id_month_start_iso_date` " +
+                        "ON `budget_alert` (`profile_id`, `month_start_iso_date`)",
+                )
+            }
+        }
+
+    /**
+     * 14 → 15: adds `budget_review` — the record that a closed month's review has been shown
+     * (issue 4.6; §5.5).
+     *
+     * Why:    `RULE-BUD-REVIEW.review_once_per_month` is documentation, not enforcement, exactly as
+     *         `RULE-BUD-ALERT.notify_once_per_band_per_month` was — the unique index is what makes
+     *         it true. **Keyed by (profile, month) alone**, not per category: this is a
+     *         review-and-move-on card, not a persistent per-finding status, so one dismissal closes
+     *         the whole month (ADR-0020).
+     * What:   one `CREATE TABLE` plus the unique index. No backfill, and none is possible or
+     *         wanted: nobody has reviewed a month that predates this column existing, so an empty
+     *         table is the complete and correct history (DB-003 — nothing is deleted or destroyed).
+     */
+    val MIGRATION_14_15 =
+        object : Migration(VERSION_14, VERSION_15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `budget_review` (" +
+                        "`id` TEXT NOT NULL, " +
+                        "`profile_id` TEXT NOT NULL, " +
+                        "`month_start_iso_date` TEXT NOT NULL, " +
+                        "`rule_id` TEXT NOT NULL, " +
+                        "`rule_version` TEXT NOT NULL, " +
+                        "`total_budgeted_minor` INTEGER NOT NULL, " +
+                        "`total_actual_minor` INTEGER NOT NULL, " +
+                        "`reviewed_at_utc_millis` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`id`))",
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS " +
+                        "`index_budget_review_profile_id_month_start_iso_date` " +
+                        "ON `budget_review` (`profile_id`, `month_start_iso_date`)",
+                )
+            }
+        }
+
     /** Every migration, in order, for `CfoDatabaseFactory` to register. */
     val ALL: Array<Migration> =
         arrayOf(
@@ -633,6 +753,9 @@ internal object Migrations {
             MIGRATION_9_10,
             MIGRATION_10_11,
             MIGRATION_11_12,
+            MIGRATION_12_13,
+            MIGRATION_13_14,
+            MIGRATION_14_15,
         )
 
     /** Named so the version pair reads as a schema version rather than an unexplained literal. */
@@ -665,6 +788,15 @@ internal object Migrations {
     /** The version issue 3.8 introduced, and the one issue 3.9 upgrades from. */
     private const val VERSION_11 = 11
 
-    /** Matches `CfoDatabase.VERSION` at the time this migration was written (issue 3.9). */
+    /** The version issue 3.9 introduced, and the one issue 4.3 upgrades from. */
     private const val VERSION_12 = 12
+
+    /** The version issue 4.3 introduced, and the one issue 4.5 upgrades from. */
+    private const val VERSION_13 = 13
+
+    /** The version issue 4.5 introduced, and the one issue 4.6 upgrades from. */
+    private const val VERSION_14 = 14
+
+    /** Matches `CfoDatabase.VERSION` at the time this migration was written (issue 4.6). */
+    private const val VERSION_15 = 15
 }

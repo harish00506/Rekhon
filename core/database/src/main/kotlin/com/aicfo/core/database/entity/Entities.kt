@@ -253,6 +253,23 @@ data class TransactionEntity(
      */
     @ColumnInfo(name = "posted_at_utc_millis")
     val postedAtUtcMillis: Long? = null,
+    /**
+     * The user's nature override, or `null` (issue 4.3; §8.3, `CategoryNature.storedValue`).
+     *
+     * **`null` does not mean "unknown".** §8.3 makes nature "auto-assigned, user-correctable,
+     * learned", and only the middle word needs a column: the automatic nature is derived on read by
+     * `:domain:engines:nature` from the account, the category and the user's past corrections. So
+     * `null` means "whatever §8.3.1's decision order currently says", and a value here means "the
+     * user disagreed, and this is what they said instead".
+     *
+     * Storing the *resolved* nature would put a derived value on disk, where a rulebook edit leaves
+     * it stale and needs a recompute job — the shape that already bit the net-worth series in issue
+     * 3.10. It would also make this column's meaning ambiguous: there would be no way to tell a
+     * value the engine wrote from one the user chose, and the learned tier (§8.3.1 step 4) reads
+     * exactly that distinction.
+     */
+    @ColumnInfo(name = "nature")
+    val nature: String? = null,
     @ColumnInfo(name = "created_at_utc_millis")
     val createdAtUtcMillis: Long,
     @ColumnInfo(name = "updated_at_utc_millis")
@@ -520,6 +537,120 @@ data class BudgetEntity(
     val updatedAtUtcMillis: Long,
     @ColumnInfo(name = "deleted_at_utc_millis")
     val deletedAtUtcMillis: Long? = null,
+)
+
+/**
+ * A record that the user has already been told about one budget crossing one band (issue 4.5;
+ * FR-BUD-004).
+ *
+ * Why:    "alert at 80% and 100%" is only half a requirement — the other half is *not* alerting
+ *         again on the next transaction, and the one after that. A user notified every time they
+ *         spend a rupee past 80% learns to dismiss the channel, which costs them the 100% message
+ *         that mattered. Something therefore has to remember what has been said.
+ *
+ *         **The unique index is that memory, not a flag on `budget`.** `UNIQUE(profile_id,
+ *         budget_id, month_start, band)` makes re-notification structurally impossible rather than
+ *         conditionally avoided: the insert of a second WARN for the same month fails, whatever the
+ *         calling code believes. A boolean column would have needed a read-then-write that two
+ *         concurrent workers could interleave, and would have had no room for the *second* band —
+ *         crossing 80% and later 100% must produce two messages, and does, because the band is part
+ *         of the key.
+ *
+ *         It doubles as the §29 audit row: it records which rule fired, at which version, and when
+ *         the user was told (AI-ARC-006, P-02).
+ * What:   one row per (budget, month, band) the app has notified.
+ * Result: a Room row in `budget_alert`, added at schema version 14 by issue 4.5.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-08-13 — Created for issue 4.5 (FR-BUD-004).
+ *
+ * **No amounts are stored.** The figures the notification quoted are derivable from the budget and
+ * the transactions at any time, and a copy here would be a second version of the truth that could
+ * disagree with the screen. What cannot be re-derived — that a person was interrupted — is what the
+ * row holds.
+ */
+@Entity(
+    tableName = "budget_alert",
+    indices = [
+        Index("profile_id", "budget_id", "month_start_iso_date", "band", unique = true),
+        Index("profile_id", "month_start_iso_date"),
+    ],
+)
+data class BudgetAlertEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** The `budget` row this alert is about. */
+    @ColumnInfo(name = "budget_id")
+    val budgetId: String,
+    /** Denormalised from the budget so the banner can group without a join. Null for an envelope. */
+    @ColumnInfo(name = "category_id")
+    val categoryId: String? = null,
+    /** TIM-002: the first day of the budget month, ISO `yyyy-MM-dd`. Part of the unique key. */
+    @ColumnInfo(name = "month_start_iso_date")
+    val monthStartIsoDate: String,
+    /** `WARN` | `EXCEEDED` — `BudgetAlertBand.name`. Part of the unique key, so both can fire. */
+    @ColumnInfo(name = "band")
+    val band: String,
+    /** The rulebook row that set this band, and its version (AI-ARC-006, P-02). */
+    @ColumnInfo(name = "rule_id")
+    val ruleId: String,
+    @ColumnInfo(name = "rule_version")
+    val ruleVersion: String,
+    /** TIM-001: when the user was actually told, UTC epoch millis. */
+    @ColumnInfo(name = "notified_at_utc_millis")
+    val notifiedAtUtcMillis: Long,
+)
+
+/**
+ * The record that a closed month's budget review has been shown to the user (issue 4.6; §5.5).
+ *
+ * Why:    `RULE-BUD-REVIEW.review_once_per_month` is documentation, not enforcement — the same
+ *         split `BudgetAlertEntity` draws. Without a persisted claim, reopening the budgets screen
+ *         after dismissing last month's review would compute the identical `BudgetReview` again
+ *         and show the card straight back, since the engine is pure and the closed month's data
+ *         does not change. **Keyed by (profile, month) alone, not per category** — this is a
+ *         review-and-move-on card, not a persistent per-finding status like the alert bands, so
+ *         one dismissal closes the whole month (ADR-0020).
+ * What:   one row per (profile, reviewed month) once the user has dismissed or acted on it.
+ * Result: a Room row in `budget_review`, added at schema version 15 by issue 4.6.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-08-15 — Created for issue 4.6 (FR-BUD-*, §5.5).
+ *
+ * **No per-category detail is stored**, for the reason `BudgetAlertEntity` gives for amounts: the
+ * totals are derivable from the budget and the transactions at any time, and a copy here could
+ * disagree with the screen. The totals are still stamped, purely as an audit trail (AI-ARC-006,
+ * P-02) of what the reviewed month looked like at the moment it was dismissed.
+ */
+@Entity(
+    tableName = "budget_review",
+    indices = [
+        Index("profile_id", "month_start_iso_date", unique = true),
+    ],
+)
+data class BudgetReviewEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** TIM-002: the first day of the **reviewed** (closed) month, ISO `yyyy-MM-dd`. */
+    @ColumnInfo(name = "month_start_iso_date")
+    val monthStartIsoDate: String,
+    /** The rulebook row that produced this review, and its version (AI-ARC-006, P-02). */
+    @ColumnInfo(name = "rule_id")
+    val ruleId: String,
+    @ColumnInfo(name = "rule_version")
+    val ruleVersion: String,
+    /** Audit-only snapshot of the reviewed month's totals (MNY-001), not re-read by the app. */
+    @ColumnInfo(name = "total_budgeted_minor")
+    val totalBudgetedMinor: Long,
+    @ColumnInfo(name = "total_actual_minor")
+    val totalActualMinor: Long,
+    /** TIM-001: when the user dismissed or acted on the review, UTC epoch millis. */
+    @ColumnInfo(name = "reviewed_at_utc_millis")
+    val reviewedAtUtcMillis: Long,
 )
 
 /**

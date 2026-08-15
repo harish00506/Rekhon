@@ -11,6 +11,8 @@ import com.aicfo.core.common.TestDispatchers
 import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Money
+import com.aicfo.domain.engines.classification.ClassificationEngineFactory
+import com.aicfo.domain.engines.nature.NatureEngineFactory
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -87,7 +89,11 @@ class FutureDatedTransactionTest {
                 CfoDatabase::class.java,
             ).allowMainThreadQueries().build()
         val dispatchers = TestDispatchers(UnconfinedTestDispatcher())
-        repository = RepositoryFactory.transactions(database, clock, ids, dispatchers, activeProfileId)
+        repository =
+            RepositoryFactory.transactions(
+                database, clock, ids, dispatchers, activeProfileId, ClassificationEngineFactory.create(),
+                NatureEngineFactory.create(),
+            )
         // The real AccountRepository, not a stub: the claim under test is about the balance the
         // accounts screen renders, and a stub could not make it.
         accounts = RepositoryFactory.accounts(database, clock, ids, dispatchers, activeProfileId)

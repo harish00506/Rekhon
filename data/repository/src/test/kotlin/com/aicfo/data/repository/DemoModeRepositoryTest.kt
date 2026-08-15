@@ -291,6 +291,81 @@ class DemoModeRepositoryTest {
         }
 
     /**
+     * Input:  a demo session during which a budget crossed an alert band, then `exit()`.
+     * Output: asserts the alert goes too.
+     *
+     * **This was a real gap, the same shape as the one `a draft parsed during the demo` documents.**
+     * `DemoDao.deleteBudgetAlerts` existed since issue 4.5 but `DemoModeRepository.exit()` never
+     * called it, so `budget_alert` rows from a demo session survived every wipe since 4.5 shipped —
+     * invisible to `countRowsFor`'s "no residue" assertion for the same reason: a call missing from
+     * `exit()` alongside a table present in the count still passes, because the demo dataset never
+     * wrote to `budget_alert` in the first place. Found and fixed while wiring the analogous
+     * `budget_review` table for issue 4.6, below.
+     * Changelog: 2026-08-15 — Added for issue 4.6, covering the issue 4.5 gap it found.
+     */
+    @Test
+    fun `an alert recorded during the demo is erased on the way out`() =
+        runTest {
+            assertTrue(repository.enter() is Ok)
+            database.budgetAlertDao().insertIfNew(
+                com.aicfo.core.database.entity.BudgetAlertEntity(
+                    id = "demo:alert:groceries:warn",
+                    profileId = DemoModeRepository.DEMO_PROFILE_ID,
+                    budgetId = "demo:budget:cat:groceries:2026-08-01",
+                    categoryId = "groceries",
+                    monthStartIsoDate = "2026-08-01",
+                    band = "WARN",
+                    ruleId = "RULE-BUD-ALERT",
+                    ruleVersion = "1.0",
+                    notifiedAtUtcMillis = clock.nowUtcMillis(),
+                ),
+            )
+
+            assertTrue(repository.exit() is Ok)
+
+            assertEquals(0, database.demoDao().countRowsFor(DemoModeRepository.DEMO_PROFILE_ID))
+            assertTrue(
+                database.budgetAlertDao().forMonth(DemoModeRepository.DEMO_PROFILE_ID, "2026-08-01").isEmpty(),
+            )
+        }
+
+    /**
+     * Input:  a demo session during which a closed month's budget review was dismissed, then `exit()`.
+     * Output: asserts the claim goes too.
+     *
+     * Same reasoning as the alert case above and the snapshot case before it: the demo dataset never
+     * dismisses a review, so this table only ever gains a row while the user is actually browsing —
+     * and a profile-scoped table the wipe cannot reach is the residue ADR-0006 forbids.
+     * Changelog: 2026-08-15 — Added for issue 4.6 (`budget_review`).
+     */
+    @Test
+    fun `a review dismissed during the demo is erased on the way out`() =
+        runTest {
+            assertTrue(repository.enter() is Ok)
+            database.budgetReviewDao().insertIfNew(
+                com.aicfo.core.database.entity.BudgetReviewEntity(
+                    id = "demo:review:2026-07-01",
+                    profileId = DemoModeRepository.DEMO_PROFILE_ID,
+                    monthStartIsoDate = "2026-07-01",
+                    ruleId = "RULE-BUD-REVIEW",
+                    ruleVersion = "1.0",
+                    totalBudgetedMinor = 30_000_00L,
+                    totalActualMinor = 28_000_00L,
+                    reviewedAtUtcMillis = clock.nowUtcMillis(),
+                ),
+            )
+
+            assertTrue(repository.exit() is Ok)
+
+            assertEquals(0, database.demoDao().countRowsFor(DemoModeRepository.DEMO_PROFILE_ID))
+            assertNull(
+                database.budgetReviewDao()
+                    .observeForMonth(DemoModeRepository.DEMO_PROFILE_ID, "2026-07-01")
+                    .first(),
+            )
+        }
+
+    /**
      * Input:  `exit()`.
      * Output: asserts the flag is cleared and the active profile goes back to the real one — which
      *         is what removes the banner and returns the dashboard to the user's own budget.

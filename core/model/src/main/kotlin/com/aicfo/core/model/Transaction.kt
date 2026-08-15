@@ -356,32 +356,6 @@ data class Transfer(
 )
 
 /**
- * A category, as far as issue 3.1 needs one (issue 3.1; FR-TXN-002).
- *
- * Why:  FR-TXN-002's three taps are "amount → category suggestion → save", so the add screen has to
- *       be able to *offer* categories. It cannot own them: the taxonomy editor and the merchant-rule
- *       knowledge base are issue 4.1, and auto-categorisation is 4.2 — both of which sit after this
- *       one in the dependency order (4.1 → 3.5 → 3.1). Today only demo mode seeds any categories, so
- *       a real profile shows an empty list and saves `categoryId = null`, which the column has always
- *       allowed.
- * What: an id and a display name — what a chip needs and nothing more.
- * Result: the add screen can render whatever categories the profile has without pre-empting 4.1.
- * Changelog: 2026-08-02 — Created for issue 3.1 (FR-TXN-002).
- *
- * **No `nature` and no `parentId`, though the column and the table have both.** Need/Want/Invest
- * classification is issue 4.3's and the parent/child taxonomy is 4.1's; a field here that no screen
- * reads would be a second, drifting definition of a model those issues are going to own properly.
- * Widening this class is the cheap change; unpicking a wrong one is not.
- *
- * Input:  [id]; [name] — the user-facing label, already the user's own words.
- * Output: an immutable value.
- */
-data class Category(
-    val id: String,
-    val name: String,
-)
-
-/**
  * A free-text label the user attaches to transactions (issue 3.6; FR-TXN-007, FR-TXN-008).
  *
  * Why:  FR-TXN-007 requires search by tag and FR-TXN-008 requires bulk retag, and a `List<String>`

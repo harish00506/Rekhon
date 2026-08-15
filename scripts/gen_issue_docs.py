@@ -640,8 +640,12 @@ ISSUES: list[Issue] = [
       ["Explicit, revocable consent; content stays on-device (P-01)."]),
 
     # ---------------- Epic 4 - Categorisation & Budgets ---------------- #
+    # FR-CAT-* does not exist in SRS v1.7 — verified against a full-text extraction of all 58 pages
+    # while implementing this issue. The categories editor is FR-SET-001 ("Settings MUST include:
+    # profile & household, categories editor, ..."), the nature column is AI-CLSN-001, and the
+    # merchant KB is SS8.1 Stage 1(b). Fixed at source, as issue 3.1's wrong FR id was.
     I("4.1", 4, "Categories editor + merchant-rule KB", "categorisation", "H", "3.5",
-      "SS8, SS29; FR-CAT-*", "SS4 AI Architecture",
+      "SS8.1, SS8.3.2, SS5.10, SS29; FR-SET-001, AI-CLSN-001, AI-ARC-006", "SS4 AI Architecture",
       "The category taxonomy editor plus the merchant->category rule KB stored as versioned data rows (`ai/knowledge/classification-kb.json`), not hardcoded logic.",
       ["Categories are user-editable; merchant rules live as versioned rows cited by ID (SS29).",
        "Adding/editing a rule uses the data-not-code path (`add-rulebook-rule`); each row is versioned (AI-ARC-006).",

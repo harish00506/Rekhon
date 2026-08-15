@@ -412,8 +412,7 @@ private fun AccountPicker(
 
 /**
  * FR-TXN-002's middle step — the category chips.
- * Why:    **hidden when the profile has no categories**, which is every real profile until issue 4.1
- *         seeds a taxonomy; only demo mode has any today. An empty picker reads as a broken one, and
+ * Why:    **hidden when the profile has no categories.** An empty picker reads as a broken one, and
  *         a control with no options must not sit in the tap budget. Tapping the selected chip again
  *         clears it, because a category chosen by mistake would otherwise be unclearable without
  *         leaving the screen.
@@ -422,6 +421,7 @@ private fun AccountPicker(
  *         and reachable without opening anything. `FlowRow` wraps them at any font scale.
  * Result: the composition, or nothing. Input: [uiState], [onEvent]. Output: none.
  * Changelog: 2026-08-02 — Created for issue 3.1.
+ *            2026-08-10 — Issue 4.2: gained the suggestion line under the chips.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -445,6 +445,7 @@ private fun CategoryPicker(
                 )
             }
         }
+        SuggestionNote(uiState.suggestion, onEvent)
     }
 }
 

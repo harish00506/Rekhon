@@ -10,6 +10,9 @@ import com.aicfo.core.datastore.OnboardingProfile
 import com.aicfo.core.datastore.SettingsSnapshot
 import com.aicfo.core.datastore.SettingsStore
 import com.aicfo.core.datastore.ThemeSetting
+import com.aicfo.core.model.Category
+import com.aicfo.core.model.CategoryNature
+import com.aicfo.data.repository.CategoryRepository
 import com.aicfo.data.repository.DemoModeRepository
 import com.aicfo.data.repository.QuickSetupRepository
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +45,8 @@ import org.junit.Test
  * Result: the start destination is proven for every state the flags can be in.
  * Changelog: 2026-07-25 — Created for issue 2.1.
  *            2026-07-28 — Issue 2.4: demo mode also decides the start destination.
+ *            2026-08-08 — Issue 4.1: the category seed is called from here, so whether it is called
+ *            at all — and what a failed one does to the start destination — is pinned here too.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class MainViewModelTest {
@@ -65,7 +70,12 @@ class MainViewModelTest {
     @Test
     fun `a fresh install opens on onboarding`() =
         runTest {
-            val viewModel = MainViewModel(StubSettingsStore(Ok(SettingsSnapshot())), StubDemoModeRepository())
+            val viewModel =
+                MainViewModel(
+                    StubSettingsStore(Ok(SettingsSnapshot())),
+                    StubDemoModeRepository(),
+                    StubCategoryRepository(),
+                )
             viewModel.startDestination.test {
                 assertEquals(CfoRoute.Onboarding, awaitItem())
                 cancelAndIgnoreRemainingEvents()
@@ -80,7 +90,12 @@ class MainViewModelTest {
     fun `an onboarded profile opens on the dashboard`() =
         runTest {
             val onboarded = SettingsSnapshot(onboardingCompletedAtUtcMillis = 1_800_000_000_000L)
-            val viewModel = MainViewModel(StubSettingsStore(Ok(onboarded)), StubDemoModeRepository())
+            val viewModel =
+                MainViewModel(
+                    StubSettingsStore(Ok(onboarded)),
+                    StubDemoModeRepository(),
+                    StubCategoryRepository(),
+                )
             viewModel.startDestination.test {
                 assertEquals(CfoRoute.Dashboard, awaitItem())
                 cancelAndIgnoreRemainingEvents()
@@ -97,7 +112,47 @@ class MainViewModelTest {
     fun `an unreadable store falls back to onboarding`() =
         runTest {
             val unreadable = StubSettingsStore(Err(AppError.Storage("IOException")))
-            val viewModel = MainViewModel(unreadable, StubDemoModeRepository())
+            val viewModel = MainViewModel(unreadable, StubDemoModeRepository(), StubCategoryRepository())
+            viewModel.startDestination.test {
+                assertEquals(CfoRoute.Onboarding, awaitItem())
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    // --- the category seed (issue 4.1, FR-SET-001) ------------------------------------------------
+
+    /**
+     * Input:  any cold start.
+     * Output: asserts the taxonomy seed was actually called.
+     *
+     * **This is the assertion that catches the whole feature quietly not shipping.** Every other
+     * test of the seed is in `CategoryRepositoryTest`, which proves it writes the right rows *when
+     * something calls it*; nothing but this proves anything ever does. That distinction has bitten
+     * this project before — the `merchant` column was plumbed end to end in issue 3.1 and only
+     * `DemoDataset` ever wrote one, so every real transaction read "Uncategorised" for days.
+     */
+    @Test
+    fun `a cold start seeds the category taxonomy`() =
+        runTest {
+            val categories = StubCategoryRepository()
+            MainViewModel(StubSettingsStore(Ok(SettingsSnapshot())), StubDemoModeRepository(), categories)
+
+            assertEquals(1, categories.seedCalls)
+        }
+
+    /**
+     * Input:  a seed that fails.
+     * Output: asserts the start destination is decided anyway. The seed runs after the destination
+     *         precisely so a storage failure cannot hold the app on the blank surface
+     *         `startDestination == null` renders; it is idempotent, so the next launch retries it.
+     */
+    @Test
+    fun `a failed seed does not stop the app opening`() =
+        runTest {
+            val categories = StubCategoryRepository(result = Err(AppError.Storage("SQLiteFullException")))
+            val viewModel =
+                MainViewModel(StubSettingsStore(Ok(SettingsSnapshot())), StubDemoModeRepository(), categories)
+
             viewModel.startDestination.test {
                 assertEquals(CfoRoute.Onboarding, awaitItem())
                 cancelAndIgnoreRemainingEvents()
@@ -117,7 +172,8 @@ class MainViewModelTest {
     fun `a demo in progress opens on the dashboard even with no profile`() =
         runTest {
             val demoMode = StubDemoModeRepository(initiallyActive = true)
-            val viewModel = MainViewModel(StubSettingsStore(Ok(SettingsSnapshot())), demoMode)
+            val viewModel =
+                MainViewModel(StubSettingsStore(Ok(SettingsSnapshot())), demoMode, StubCategoryRepository())
             viewModel.startDestination.test {
                 assertEquals(CfoRoute.Dashboard, awaitItem())
                 cancelAndIgnoreRemainingEvents()
@@ -134,7 +190,8 @@ class MainViewModelTest {
     fun `the banner follows the demo and exiting clears it`() =
         runTest {
             val demoMode = StubDemoModeRepository(initiallyActive = true)
-            val viewModel = MainViewModel(StubSettingsStore(Ok(SettingsSnapshot())), demoMode)
+            val viewModel =
+                MainViewModel(StubSettingsStore(Ok(SettingsSnapshot())), demoMode, StubCategoryRepository())
 
             viewModel.isDemoActive.test {
                 assertTrue(awaitItem())
@@ -207,4 +264,51 @@ private class StubDemoModeRepository(
             exited = true
             active.value = false
         }
+}
+
+/**
+ * A [CategoryRepository] that records whether the seed was asked for.
+ *
+ * Why:  [MainViewModel] deliberately ignores the seed's result — a failure is retried on the next
+ *       launch and there is nothing a user could do about it on a screen not yet drawn. That makes
+ *       "was it called at all?" invisible from the ViewModel's own state, so the stub counts it.
+ * What: counts [ensureSeeded] and returns whatever the test asked for; every other member is unused
+ *       here and fails loudly rather than pretending to work.
+ * Result: `a cold start seeds the category taxonomy` can assert the call happened.
+ * Changelog: 2026-08-08 — Created for issue 4.1.
+ *
+ * Input:  [result] — what [ensureSeeded] returns. Output: a stub repository.
+ */
+private class StubCategoryRepository(
+    private val result: Result<Int, AppError> = Ok(0),
+) : CategoryRepository {
+    /** How many times [ensureSeeded] was called. */
+    var seedCalls: Int = 0
+        private set
+
+    override suspend fun ensureSeeded(): Result<Int, AppError> {
+        seedCalls++
+        return result
+    }
+
+    // Not reached from MainViewModel. `error` rather than a benign default: a silent empty list here
+    // would make a future test of a screen that reads categories pass against nothing.
+    override fun observeCategories(): Flow<List<Category>> = error("not used by MainViewModel")
+
+    override suspend fun create(
+        name: String,
+        nature: CategoryNature,
+        parentId: String?,
+    ): Result<Category, AppError> = error("not used by MainViewModel")
+
+    override suspend fun update(
+        id: String,
+        name: String,
+        nature: CategoryNature,
+        parentId: String?,
+    ): Result<Category, AppError> = error("not used by MainViewModel")
+
+    override suspend fun delete(id: String): Result<Unit, AppError> = error("not used by MainViewModel")
+
+    override suspend fun countUsage(id: String): Result<Int, AppError> = error("not used by MainViewModel")
 }

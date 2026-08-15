@@ -3,12 +3,14 @@ package com.aicfo.feature.transactions
 import androidx.compose.runtime.Immutable
 import com.aicfo.core.model.Account
 import com.aicfo.core.model.Category
+import com.aicfo.core.model.CategoryNature
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.MoneyFormatter
 import com.aicfo.core.model.Tag
 import com.aicfo.core.model.Transaction
 import com.aicfo.core.model.TransactionSource
 import com.aicfo.data.repository.TransactionFilter
+import com.aicfo.domain.engines.nature.NatureVerdict
 import com.aicfo.domain.engines.recurring.RecurringSeries
 import java.time.LocalDate
 import java.time.LocalTime
@@ -112,6 +114,24 @@ data class AddTransactionUiState(
      * user happened to type a note.
      */
     val merchant: String = "",
+    /**
+     * What Stage-1 auto-categorisation proposes for [merchant], if anything (issue 4.2; SRS §8.1).
+     *
+     * **`null` is the ordinary state**, not an error: an unfamiliar merchant proposes nothing and
+     * §8.1 ends on the "Uncategorised" prompt, which here is simply the chip row with nothing
+     * selected. The screen renders a suggestion as a pre-selected chip plus a line naming the rule
+     * that fired (P-02) and a way to dismiss it (P-07).
+     */
+    val suggestion: CategorySuggestionUi? = null,
+    /**
+     * Whether the user has taken the category decision themselves (issue 4.2; P-07).
+     *
+     * Set by dismissing the suggestion **or by picking any category by hand**, and never cleared
+     * while the screen is open. It is what stops the next keystroke in the merchant field
+     * re-applying a proposal the user has already answered — a suggestion that keeps coming back
+     * is not a suggestion, it is an argument.
+     */
+    val isCategoryUserChosen: Boolean = false,
     val note: String = "",
     val isLoading: Boolean = true,
     val isSaving: Boolean = false,
@@ -364,9 +384,39 @@ sealed interface AddTransactionEvent {
     /** The user tapped Save. */
     data object Save : AddTransactionEvent
 
+    /** The user dismissed the category suggestion (issue 4.2; P-07). */
+    data object SuggestionDismissed : AddTransactionEvent
+
     /** The user dismissed the error banner. */
     data object DismissError : AddTransactionEvent
 }
+
+/**
+ * A Stage-1 category proposal, as the screen needs it (issue 4.2; SRS §8.1, P-02).
+ *
+ * Why:  the engine's `CategorySuggestion` carries a category **id** and an `EngineProvenance`, and
+ *       neither is something a composable can render. Resolving the id to a name and pulling the
+ *       cited rule out of the provenance happens once, in the ViewModel, so the screen stays a pure
+ *       function of its state and the chip label cannot disagree with the chip that is selected.
+ *
+ *       [ruleId] is carried rather than dropped because P-02 is not decoration here: the app is
+ *       filing the user's money somewhere they did not ask it to, and "why" has to have an answer
+ *       more specific than "the app guessed". It is shown verbatim — `CLS-MER-001` — which is ugly
+ *       and is the point: it is a citation into `ai/knowledge/classification-kb.json`, and a
+ *       prettier paraphrase would not be one.
+ * Result: everything the suggestion row renders, with nothing left to look up.
+ * Changelog: 2026-08-10 — Created for issue 4.2.
+ *
+ * Input:  [categoryId] — the category being proposed, live on this profile; [categoryName] — its
+ *         display name, resolved when the suggestion arrived; [ruleId] — the `CLS-*` row that
+ *         fired. Output: an immutable value.
+ */
+@Immutable
+data class CategorySuggestionUi(
+    val categoryId: String,
+    val categoryName: String,
+    val ruleId: String,
+)
 
 /**
  * The three things a user can do to the booked date (issue 3.4; FR-TXN-010).
@@ -479,6 +529,15 @@ sealed interface TransactionsEvent {
      * exactly what it removes — and cannot remove a different receipt if the sheet has moved on.
      */
     data class ReceiptDeleted(val attachmentId: String) : TransactionsEvent
+
+    /**
+     * The user corrected what this money became, or withdrew a correction (issue 4.3; §8.3, P-07).
+     *
+     * **`null` is a real choice, not an absence.** It withdraws the override and hands the
+     * transaction back to §8.3.1's decision order — which is the only reason the app can offer
+     * "actually, use the rules" as an option at all.
+     */
+    data class NatureOverridden(val nature: CategoryNature?) : TransactionsEvent
 
     /** The user typed in the search field (issue 3.6; FR-TXN-007). */
     data class SearchChanged(val query: String) : TransactionsEvent
@@ -652,6 +711,19 @@ data class TransactionsUiState(
      */
     val detail: Transaction? = null,
     /**
+     * What §8.3.1 decided the open transaction's money became, or `null` (issue 4.3; §8.3).
+     *
+     * **`null` means "not worked out yet", not "no nature"** — every transaction has one (§8.3), and
+     * the verdict arrives a moment after the sheet does because deciding it needs five joins. The
+     * sheet renders the section only once it is here, so an opening sheet never flashes a nature it
+     * is about to replace.
+     *
+     * The whole verdict rather than the nature alone, because the rule that fired and the
+     * review flag are what the section is *for* (P-02): "Need, because of the category" and "Need,
+     * but this is five times your usual" are different things to tell someone.
+     */
+    val detailNature: NatureVerdict? = null,
+    /**
      * The receipt attached to the open transaction, decrypted for display, or `null` (issue 3.8;
      * FR-OCR-005).
      *
@@ -674,6 +746,18 @@ data class TransactionsUiState(
 ) {
     /** Whether the user is picking rows for a bulk action (issue 3.6; FR-TXN-008). */
     val isSelecting: Boolean get() = selection.isNotEmpty()
+
+    /**
+     * Category names by id, for a row that has nothing else to call itself (issue 4.1).
+     *
+     * Why: the list row's title falls back note → merchant → category → "Uncategorised", and until
+     *      4.1 seeded a taxonomy the third step could not exist — no real profile had a category to
+     *      attach, so "Uncategorised" was true by construction. It stopped being true the moment the
+     *      seed landed, and the row went on saying it. Derived from [categories], which is already
+     *      loaded for the bulk recategorise picker, rather than adding a second read of the same
+     *      table.
+     */
+    val categoryNames: Map<String, String> get() = categories.associate { it.id to it.name }
 
     /** Whether the scheduled section has anything to show (issue 3.4). */
     val hasUpcoming: Boolean get() = upcoming.isNotEmpty()

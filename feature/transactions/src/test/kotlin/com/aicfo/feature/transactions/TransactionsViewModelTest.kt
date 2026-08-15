@@ -3,13 +3,17 @@ package com.aicfo.feature.transactions
 import androidx.paging.testing.asSnapshot
 import app.cash.turbine.test
 import com.aicfo.core.common.AppError
+import com.aicfo.core.model.CategoryNature
+import com.aicfo.core.model.EngineProvenance
 import com.aicfo.core.model.Money
+import com.aicfo.core.model.RuleCitation
 import com.aicfo.core.model.Tag
 import com.aicfo.core.model.Transaction
 import com.aicfo.core.model.TransactionSource
 import com.aicfo.core.model.TransactionType
 import com.aicfo.data.repository.FilteredTransaction
 import com.aicfo.data.repository.TransactionFilter
+import com.aicfo.domain.engines.nature.NatureVerdict
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -790,6 +794,91 @@ class TransactionsViewModelTest {
         transaction: Transaction,
         counterpart: String? = null,
     ) = FilteredTransaction(transaction = transaction, counterpartAccountId = counterpart)
+
+    // --- nature classification (issue 4.3; §8.3, P-07) ---------------------------------------------
+
+    /**
+     * Input:  a row tapped open, whose nature the repository already knows.
+     * Output: the verdict lands on the state. The sheet fetches it **when it opens** rather than the
+     *         list carrying it per row — §8.3.1 needs five joins, and doing them for every visible
+     *         transaction would be a query storm for a label most rows never show.
+     */
+    @Test
+    fun `opening a row fetches what its money became`() =
+        runTest {
+            val row = transaction { copy(id = "txn:1") }
+            repository.setTransactions(row)
+            repository.natures["txn:1"] = verdict(CategoryNature.NEED, "CLS-NAT-005")
+            val viewModel = TransactionsViewModel(repository, recurring, receipts, accounts)
+
+            viewModel.onEvent(TransactionsEvent.RowTapped(row))
+
+            assertEquals(CategoryNature.NEED, viewModel.uiState.value.detailNature?.nature)
+        }
+
+    /**
+     * P-07, and the reason `setNature(null)` is a real operation.
+     * Input:  an override, then a withdrawal.
+     * Output: both reach the repository, and the ViewModel **re-reads** rather than assuming — it
+     *         does not know what §8.3.1 will say once the correction is gone, and guessing would put
+     *         a second opinion about nature in the UI layer (P-03).
+     */
+    @Test
+    fun `overriding and withdrawing both reach the store, and the sheet re-reads`() =
+        runTest {
+            val row = transaction { copy(id = "txn:1") }
+            repository.setTransactions(row)
+            repository.natures["txn:1"] = verdict(CategoryNature.NEED, "CLS-NAT-005")
+            val viewModel = TransactionsViewModel(repository, recurring, receipts, accounts)
+            viewModel.onEvent(TransactionsEvent.RowTapped(row))
+
+            viewModel.onEvent(TransactionsEvent.NatureOverridden(CategoryNature.WANT))
+            viewModel.onEvent(TransactionsEvent.NatureOverridden(null))
+
+            assertEquals(
+                listOf("txn:1" to CategoryNature.WANT, "txn:1" to null),
+                repository.natureOverrides,
+            )
+            assertEquals(CategoryNature.WANT, viewModel.uiState.value.detailNature?.nature)
+        }
+
+    /**
+     * Input:  the detail sheet closed.
+     * Output: the nature goes with it. A stale verdict left behind would be shown for a moment the
+     *         next time any row was opened — the same guard `detailReceipt` has, for the same reason.
+     */
+    @Test
+    fun `closing the sheet clears the nature`() =
+        runTest {
+            val row = transaction { copy(id = "txn:1") }
+            repository.setTransactions(row)
+            repository.natures["txn:1"] = verdict(CategoryNature.NEED, "CLS-NAT-005")
+            val viewModel = TransactionsViewModel(repository, recurring, receipts, accounts)
+            viewModel.onEvent(TransactionsEvent.RowTapped(row))
+
+            viewModel.onEvent(TransactionsEvent.DetailDismissed)
+
+            assertNull(viewModel.uiState.value.detailNature)
+        }
+
+    /**
+     * Result: a verdict for the fake to hand back.
+     * Input:  [nature]; [ruleId]. Output: [NatureVerdict].
+     */
+    private fun verdict(
+        nature: CategoryNature,
+        ruleId: String,
+    ) = NatureVerdict(
+        nature = nature,
+        provenance =
+            EngineProvenance(
+                engineId = "nature-classifier",
+                engineVersion = "1.0",
+                computedAtUtcMillis = 1_786_082_400_000L,
+                evidence = listOf(RuleCitation(ruleId, "1.0")),
+                confidenceBps = 8_500,
+            ),
+    )
 }
 
 /**

@@ -30,6 +30,12 @@ file:line), then give a one-line **MERGE / DO NOT MERGE** verdict.
 8. **Docs** — changed engine has an up-to-date `ENGINE.md`; any SRS deviation has an ADR.
 9. **AI data integrity** — if `ai/**` changed, JSON/YAML parse and IDs/versions were bumped
    correctly (use the `add-rulebook-rule` checklist).
+10. **Session records & the quiz** (CLAUDE.md §10) — a `docs/sessions/YYYY-MM-DD-*.md` exists for
+    this session; every dependency change in the diff has a `DECISIONS.md` row; every changed
+    runtime call path is in `FLOW.md`; and **every major change in the diff has a recorded quiz
+    pass**. A major change with no quiz is ❌ — go and run it now, before the merge, rather than
+    noting it as missing. Report the quiz outcomes as recorded, fails included; a log with no
+    fails in it is not evidence of a gate working.
 
 If the Gradle build does not exist yet (greenfield), say so and check the items you can
 (traceability, string externalisation, money/time audit, ai/ integrity) rather than

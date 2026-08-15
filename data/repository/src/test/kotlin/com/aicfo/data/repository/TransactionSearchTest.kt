@@ -14,6 +14,8 @@ import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.TransactionSource
 import com.aicfo.core.model.TransactionType
+import com.aicfo.domain.engines.classification.ClassificationEngineFactory
+import com.aicfo.domain.engines.nature.NatureEngineFactory
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -80,6 +82,8 @@ class TransactionSearchTest {
                 ids,
                 TestDispatchers(UnconfinedTestDispatcher()),
                 activeProfileId,
+                ClassificationEngineFactory.create(),
+                NatureEngineFactory.create(),
             )
     }
 

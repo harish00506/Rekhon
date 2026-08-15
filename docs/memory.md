@@ -17,17 +17,40 @@
 
 ## Current state
 
-- **Version:** `0.3.6` (see [`../VERSION`](../VERSION)) · **Phase:** 0 — Foundation (**Epic 3 open**).
-  **Schema is v8** — unchanged by 3.5, the first Epic 3 issue that needed no migration.
-- **Currently working file:** none — issue 3.5 is **shipped**: committed on
-  `feature/3-5-transaction-source-tracking` and merged `--no-ff` into `dev`. Push skipped (no remote).
-- **Shipped to `dev`:** 3.1 add-transaction ≤ 3 taps (`db3ef2e`, merged `0750574`) · 3.2 transfers as
-  one logical record (`bcc9e2d`, merged `4472516`) · 3.3 splits across N category lines
-  (`6b091c3`, merged `2ad7735`) · 3.4 future-dated transactions
-  ([3.4](issues/3.4-future-dated-transactions.md) ·
-  [tracker](issues/3.4-future-dated-transactions-tracker.md)) — **890 tests total, 0 skipped; the
-  v7 → v8 upgrade path and a real date rollover verified on a device.**
-- **In progress:** nothing. **Next: 3.6** (search, filters, bulk edit), unblocked by 3.1.
+- **Version:** `0.4.0` (see [`../VERSION`](../VERSION)) · **Phase:** 1 — Core finance (**Epic 4 open**).
+  **Schema is v12** — unchanged by 4.1, which needed no migration: `category` has had `parent_id`,
+  `nature`, `is_system` and `deleted_at_utc_millis` since issue 1.6.
+- **Epics 1, 2 and 3 are done.** Phase 0 — Foundation is complete. Epic 3 closed at `0.3.11` with
+  issue 3.9 (opt-in on-device SMS parsing).
+- **Currently working file:** none — issue **4.1 is implemented and verified but not committed**, on
+  `feature/4-1-categories-editor-merchant-rule-kb`
+  ([tracker](issues/4.1-categories-editor-merchant-rule-kb-tracker.md)). The user has not asked for a
+  commit (workflow step 12).
+- **`dev` was two issues behind and nobody noticed.** 3.9 was finished, changelogged and versioned at
+  `0.3.11` while `dev` still read `0.3.10` — the branch was never merged. Merged as `a70c90c` before
+  4.1 branched off it. **Check `git log dev` against `VERSION` before starting an issue**, not just
+  the issue tracker, which said 3.9 was shipped.
+- **In progress:** nothing. **Next: 4.2** (auto-categorisation, AI-CLS Stage 1), unblocked by 4.1 —
+  it is also the first consumer of the `CLS-MER-*` merchant rules, which ship in 4.1 with no reader.
+- **4.1 seeded the first categories a real profile has ever had.** `CategoryEntity`, `CategoryDao` and
+  `transactions.category_id` shipped in issue 1.6; the add screen's chip row shipped in 3.1; bulk
+  recategorise shipped in 3.6 — and **`DemoDataset` was the only thing that ever wrote a category
+  row.** Four issues built on a table nothing could fill, with a test (`DemoModeRepositoryTest`)
+  asserting the emptiness the whole time. This is the third instance of the same lesson in this repo:
+  **a table with readers is not a table with writers — grep the write paths.**
+- **`FR-CAT-*` does not exist in the SRS.** Five for five on generated acceptance criteria being more
+  specific than the section they cite. 4.1 is FR-SET-001 + AI-CLSN-001 + §8.1. Fixed at source in
+  `scripts/gen_issue_docs.py`; the earlier wrong ids were 3.1, 3.3, 3.4 and 3.5.
+- **A timestamp is not a uniqueness source.** 4.1's created-category id was `category:<slug>-<now>`;
+  deleting "Fuel" and recreating it in the same millisecond hit the same primary key and `REPLACE`
+  resurrected the soft-deleted row with its old nature. Found by a test that asserted the *new* row
+  differed from the old one. Derived ids are for idempotence (the seed); generated ids are for
+  identity — do not use one for the other.
+- **A label can become a lie without anything changing.** The transaction row read
+  note → merchant → "Uncategorised" and never consulted the category. That was *true* while no real
+  profile could hold a category, and false the instant 4.1 seeded one — with no edit to that file.
+  **Code that is correct only because a state is unreachable needs re-reading when the state becomes
+  reachable.** Found on the emulator, not in review.
 - **0.3.6 fixed two FR-TXN-001 fields the add screen never captured: merchant and time of day.**
   Merchant was the notable one — the column (schema v1), the draft (3.1), the row's title fallback
   and 3.5's detail sheet all supported it, and **only `DemoDataset` ever wrote one**, so every row on

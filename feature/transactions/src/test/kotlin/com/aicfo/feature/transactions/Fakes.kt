@@ -10,6 +10,7 @@ import com.aicfo.core.common.Result
 import com.aicfo.core.model.Account
 import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Category
+import com.aicfo.core.model.CategoryNature
 import com.aicfo.core.model.EngineProvenance
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.Reconciliation
@@ -21,6 +22,7 @@ import com.aicfo.core.model.TransactionType
 import com.aicfo.core.model.Transfer
 import com.aicfo.data.repository.AccountDraft
 import com.aicfo.data.repository.AccountRepository
+import com.aicfo.data.repository.CashFlowSummary
 import com.aicfo.data.repository.FilteredTransaction
 import com.aicfo.data.repository.ReceiptAttachment
 import com.aicfo.data.repository.ReceiptRepository
@@ -34,6 +36,9 @@ import com.aicfo.data.repository.TransactionDraft
 import com.aicfo.data.repository.TransactionFilter
 import com.aicfo.data.repository.TransactionRepository
 import com.aicfo.data.repository.TransferDraft
+import com.aicfo.domain.engines.classification.CategorySuggestion
+import com.aicfo.domain.engines.nature.NatureBreakdown
+import com.aicfo.domain.engines.nature.NatureVerdict
 import com.aicfo.domain.engines.receipt.ReceiptFields
 import com.aicfo.domain.engines.recurring.Cadence
 import com.aicfo.domain.engines.recurring.RecurringOccurrence
@@ -180,6 +185,25 @@ internal class FakeTransactionRepository(
                 .mapValues { (_, rows) -> rows.fold(Money.ZERO) { running, row -> running + row.amount } }
         }
 
+    override fun observeRecent(limit: Int): Flow<List<FilteredTransaction>> =
+        transactions.map { list ->
+            failOnObserve?.let { throw IllegalStateException(it.code) }
+            list.sortedByDescending { it.occurredAtUtcMillis }.take(limit).map { FilteredTransaction(it) }
+        }
+
+    override fun observeMonthCashFlow(): Flow<CashFlowSummary> =
+        transactions.map { list ->
+            failOnObserve?.let { throw IllegalStateException(it.code) }
+            val income =
+                list.filter { it.type == TransactionType.INCOME }
+                    .fold(Money.ZERO) { running, row -> running + row.amount }
+            val expenseSigned =
+                list.filter { it.type == TransactionType.EXPENSE }
+                    .fold(Money.ZERO) { running, row -> running + row.amount }
+            val expense = Money.ZERO - expenseSigned
+            CashFlowSummary(income = income, expense = expense, net = income - expense)
+        }
+
     override fun observeSources(): Flow<List<TransactionSource>> =
         transactions.map { list ->
             failOnObserve?.let { throw IllegalStateException(it.code) }
@@ -242,6 +266,57 @@ internal class FakeTransactionRepository(
             failOnObserve?.let { throw IllegalStateException(it.code) }
             list
         }
+
+    /**
+     * What [suggestCategory] should answer, keyed by the merchant asked about (issue 4.2).
+     *
+     * Why:    a map rather than a single value, because the assertions that matter are about which
+     *         merchant was asked about — a debounce that fired on a stale keystroke would return the
+     *         *right* suggestion for the *wrong* merchant and look correct in a one-value fake.
+     * Result: an unlisted merchant answers `Ok(null)`, which is Stage 1's ordinary "I don't know".
+     */
+    val suggestions: MutableMap<String, CategorySuggestion> = mutableMapOf()
+
+    /** Every merchant [suggestCategory] was asked about, in order (issue 4.2). */
+    val suggestionQueries: MutableList<String> = mutableListOf()
+
+    override suspend fun suggestCategory(merchant: String): Result<CategorySuggestion?, AppError> {
+        suggestionQueries += merchant
+        failWith?.let { return Err(it) }
+        return Ok(suggestions[merchant])
+    }
+
+    /**
+     * What [natureOf] should answer, keyed by transaction id (issue 4.3).
+     *
+     * An unlisted id answers `Err(NotFound)` rather than a plausible nature: a test that opened a
+     * sheet for a row it never classified should say so loudly, not render a Want.
+     */
+    val natures: MutableMap<String, NatureVerdict> = mutableMapOf()
+
+    /** Every `(id, nature)` pair passed to [setNature], in order — `null` meaning "withdrawn". */
+    val natureOverrides: MutableList<Pair<String, CategoryNature?>> = mutableListOf()
+
+    override suspend fun natureOf(transactionId: String): Result<NatureVerdict, AppError> =
+        natures[transactionId]?.let { Ok(it) } ?: Err(AppError.NotFound)
+
+    override suspend fun setNature(
+        transactionId: String,
+        nature: CategoryNature?,
+    ): Result<Unit, AppError> {
+        natureOverrides += transactionId to nature
+        failWith?.let { return Err(it) }
+        // Mirrors the real store closely enough for a ViewModel test: the next read reflects the
+        // write, which is what lets a test assert the sheet **re-reads** rather than assuming the
+        // answer. A withdrawal (`null`) leaves the derived verdict alone, exactly as the real store
+        // does — what the rules then say is the repository's to decide, not this fake's.
+        natures[transactionId]?.let { existing ->
+            if (nature != null) natures[transactionId] = existing.copy(nature = nature)
+        }
+        return Ok(Unit)
+    }
+
+    override fun observeNatureBreakdown(): Flow<NatureBreakdown> = MutableStateFlow(NatureBreakdown())
 
     override suspend fun create(draft: TransactionDraft): Result<Transaction, AppError> {
         created += draft

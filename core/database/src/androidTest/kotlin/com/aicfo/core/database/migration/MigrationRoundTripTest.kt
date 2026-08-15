@@ -1,10 +1,12 @@
 package com.aicfo.core.database.migration
 
+import android.database.sqlite.SQLiteConstraintException
 import androidx.room.testing.MigrationTestHelper
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.aicfo.core.database.CfoDatabase
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -49,6 +51,8 @@ import org.junit.runner.RunWith
  *            2026-08-04 — Issue 3.6: added the 8 → 9 case (`tags`, `transaction_tags`). Additive,
  *            so it asserts the *index* as well as the rows: a `UNIQUE` index a migration forgot to
  *            create is invisible until a user happens to have two of something.
+ *            2026-08-15 — Issue 4.6: added the 14 → 15 case (`budget_review`), the same
+ *            refusal-not-declaration shape `migrate13To14` uses, keyed one level coarser.
  */
 @RunWith(AndroidJUnit4::class)
 class MigrationRoundTripTest {
@@ -682,6 +686,184 @@ class MigrationRoundTripTest {
     }
 
     /**
+     * 12 → 13: `transactions.nature`, the user's nature override (issue 4.3; §8.3).
+     *
+     * Why:    additive and one column, so the structural risk is the small one — a migration that
+     *         recreated `transactions` on its way to altering it would validate against
+     *         `schemas/13.json` and lose the ledger. But the **semantic** claim is the one worth a
+     *         test, and it is the opposite of `migrate7To8`'s: there, the absent backfill *was* the
+     *         bug, because every pre-existing row read as unposted. Here `NULL` is the correct and
+     *         complete value for every existing transaction — nobody has overridden anything yet,
+     *         and the automatic nature is derived on read rather than stored.
+     *
+     *         So this asserts the column arrives **empty**, not merely present. A migration that
+     *         helpfully backfilled it with a guessed nature would pass a shape check and quietly
+     *         convert five engine-derived guesses into five user decisions, which is exactly the
+     *         distinction §8.3.1 step 4 learns from.
+     * Input:  a transaction written at version 12. Output: it survives, with a null override that
+     *         then accepts a value.
+     */
+    @Test
+    fun migrate12To13_preservesTransactionsAndLeavesTheNatureOverrideEmpty() {
+        helper.createDatabase(TEST_DB, 12).use { db ->
+            db.execSQL(
+                "INSERT INTO transactions (id, profile_id, account_id, amount_minor, currency_code, " +
+                    "occurred_at_utc_millis, booked_on_iso_date, category_id, source, type, " +
+                    "created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('t1','p1','a1',-940000,'INR',1767312000000,'2026-08-10','c1','manual','expense'," +
+                    "1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 13, true, Migrations.MIGRATION_12_13)
+
+        migrated.query("SELECT amount_minor, nature FROM transactions WHERE id = 't1'").use { cursor ->
+            assertTrue("the pre-migration transaction must still be there", cursor.moveToFirst())
+            assertEquals("MNY-001: the amount must survive byte for byte", -940000L, cursor.getLong(0))
+            assertTrue(
+                "the override column must arrive empty — a backfilled guess would read as the user's decision",
+                cursor.isNull(1),
+            )
+        }
+
+        // And it is writable: an override set after the upgrade is the one thing this column stores.
+        migrated.execSQL("UPDATE transactions SET nature = 'want' WHERE id = 't1'")
+        migrated.query("SELECT nature FROM transactions WHERE id = 't1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("want", cursor.getString(0))
+        }
+        migrated.close()
+    }
+
+    /**
+     * 13 → 14: `budget_alert`, the record of what the user has already been told (issue 4.5;
+     * FR-BUD-004).
+     *
+     * Why:    the structural claim is the usual one — an existing budget must survive an additive
+     *         migration. The **semantic** claim is the one this feature lives or dies on, and it is
+     *         a claim about the *index*, not the table: FR-BUD-004 promises one alert per band per
+     *         month, and that promise is only as good as the constraint behind it.
+     *
+     *         So this test does not assert the index exists. It tries to insert the duplicate and
+     *         requires the database to refuse — because "the index is declared" and "the second WARN
+     *         cannot be written" are different statements, and only the second one is the
+     *         requirement. It then inserts the *other* band for the same budget and month and
+     *         requires that to succeed, since crossing 80% and later 100% must produce two messages;
+     *         an over-wide unique key would pass the first half of this test and silently swallow the
+     *         message that mattered most.
+     * Input:  a budget written at version 13. Output: it survives; the duplicate band is rejected and
+     *         the second band is accepted.
+     */
+    @Test
+    fun migrate13To14_preservesBudgetsAndMakesASecondAlertForOneBandImpossible() {
+        helper.createDatabase(TEST_DB, 13).use { db ->
+            db.execSQL(
+                "INSERT INTO budget (id, profile_id, category_id, period_start_iso_date, amount_minor, " +
+                    "rollover_enabled, source, created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('b1','p1','c1','2026-08-01',1000000,0,'manual',1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 14, true, Migrations.MIGRATION_13_14)
+
+        migrated.query("SELECT amount_minor FROM budget WHERE id = 'b1'").use { cursor ->
+            assertTrue("the pre-migration budget must still be there", cursor.moveToFirst())
+            assertEquals("MNY-001: the amount must survive byte for byte", 1000000L, cursor.getLong(0))
+        }
+
+        migrated.execSQL(insertAlert(id = "a1", band = "WARN"))
+
+        // The requirement, tested as a refusal rather than as a declaration.
+        assertThrows(SQLiteConstraintException::class.java) {
+            migrated.execSQL(insertAlert(id = "a2", band = "WARN"))
+        }
+
+        // ...but the promotion to the second band must still get through.
+        migrated.execSQL(insertAlert(id = "a3", band = "EXCEEDED"))
+        migrated.query("SELECT COUNT(*) FROM budget_alert WHERE budget_id = 'b1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("80% then 100% is two alerts, not one", 2, cursor.getInt(0))
+        }
+        migrated.close()
+    }
+
+    /**
+     * Builds one `budget_alert` insert.
+     * Why:    the three inserts above differ in exactly two values, and spelling the column list out
+     *         three times would hide that.
+     * Result: the SQL. Input: [id]; [band]. Output: [String].
+     */
+    private fun insertAlert(
+        id: String,
+        band: String,
+    ): String =
+        "INSERT INTO budget_alert (id, profile_id, budget_id, category_id, month_start_iso_date, " +
+            "band, rule_id, rule_version, notified_at_utc_millis) " +
+            "VALUES ('$id','p1','b1','c1','2026-08-01','$band','RULE-BUD-ALERT','1.0',1767312000000)"
+
+    /**
+     * 14 → 15: `budget_review`, the record that a closed month's review has been shown (issue 4.6;
+     * §5.5).
+     *
+     * Why:    the structural claim is the usual one — an existing budget survives an additive
+     *         migration. The **semantic** claim, as with `migrate13To14`, is about the unique index
+     *         rather than the table: `RULE-BUD-REVIEW.review_once_per_month` promises one review
+     *         card per profile per closed month, keyed by month alone (ADR-0020) — unlike
+     *         `budget_alert`, which is keyed one level finer, by band too, because two different
+     *         bands are two different messages. Here there is only ever one card for a month, so a
+     *         second claim for the same month must be refused, and a claim for a *different* month
+     *         must succeed.
+     * Input:  a budget written at version 14. Output: it survives; a duplicate claim for the same
+     *         month is rejected and a claim for a different month is accepted.
+     */
+    @Test
+    fun migrate14To15_preservesBudgetsAndMakesASecondClaimForOneMonthImpossible() {
+        helper.createDatabase(TEST_DB, 14).use { db ->
+            db.execSQL(
+                "INSERT INTO budget (id, profile_id, category_id, period_start_iso_date, amount_minor, " +
+                    "rollover_enabled, source, created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('b1','p1','c1','2026-08-01',1000000,0,'manual',1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 15, true, Migrations.MIGRATION_14_15)
+
+        migrated.query("SELECT amount_minor FROM budget WHERE id = 'b1'").use { cursor ->
+            assertTrue("the pre-migration budget must still be there", cursor.moveToFirst())
+            assertEquals("MNY-001: the amount must survive byte for byte", 1000000L, cursor.getLong(0))
+        }
+
+        migrated.execSQL(insertReviewClaim(id = "rv1", monthStartIsoDate = "2026-07-01"))
+
+        // The requirement, tested as a refusal rather than as a declaration.
+        assertThrows(SQLiteConstraintException::class.java) {
+            migrated.execSQL(insertReviewClaim(id = "rv2", monthStartIsoDate = "2026-07-01"))
+        }
+
+        // ...but a different reviewed month must still get through.
+        migrated.execSQL(insertReviewClaim(id = "rv3", monthStartIsoDate = "2026-08-01"))
+        migrated.query("SELECT COUNT(*) FROM budget_review WHERE profile_id = 'p1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("two different months are two different claims", 2, cursor.getInt(0))
+        }
+        migrated.close()
+    }
+
+    /**
+     * Builds one `budget_review` insert.
+     * Why:    the three inserts above differ in exactly two values, and spelling the column list out
+     *         three times would hide that.
+     * Result: the SQL. Input: [id]; [monthStartIsoDate]. Output: [String].
+     */
+    private fun insertReviewClaim(
+        id: String,
+        monthStartIsoDate: String,
+    ): String =
+        "INSERT INTO budget_review (id, profile_id, month_start_iso_date, rule_id, rule_version, " +
+            "total_budgeted_minor, total_actual_minor, reviewed_at_utc_millis) " +
+            "VALUES ('$id','p1','$monthStartIsoDate','RULE-BUD-REVIEW','1.0',1000000,850000,1767312000000)"
+
+    /**
      * 11 → 12 adds `sms_draft` (issue 3.9; §18, §23, P-01).
      *
      * Input:  a version-11 database holding a transaction with an exact paise amount.
@@ -700,6 +882,7 @@ class MigrationRoundTripTest {
      * `schemas/12.json` and lose the user's ledger. The amount is asserted byte for byte for the
      * reason `migrate1To2` gives (MNY-001).
      */
+
     @Test
     fun migrate11To12_preservesTransactionsAndEnforcesTheDraftGuarantees() {
         helper.createDatabase(TEST_DB, 11).use { db ->

@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Why:  §21.6 puts every user-visible string in resources — a hardcoded one cannot be translated
+        and cannot be checked for length at 200% font. `CfoHardcodedUiString` (issue 1.5) fails the
+        build on a literal in a :feature:* composable, so this file is not optional.
+  What: the budgets screen — the planned list with FR-BUD-003's figures, the unplanned section, the
+        FR-BUD-002 suggestions with their reasoning, the amount sheet, and the error messages.
+  Result: the whole feature's copy in one reviewable place.
+  Changelog: 2026-08-11 — Created for issue 4.4 (FR-BUD-001/002/003).
+
+  A note on the amounts: every %s here is filled by MoneyFormatter, which groups the Indian way
+  (₹1,23,456.78). None of these strings does arithmetic — the figures arrive computed (P-03).
+-->
+<resources>
+    <string name="budgets_title">Budgets</string>
+    <string name="budgets_set">Set a budget</string>
+    <string name="budgets_edit">Change</string>
+    <string name="budgets_delete">Remove</string>
+
+    <string name="budgets_section_planned">This month\'s plan</string>
+    <string name="budgets_section_unplanned">Spending with no budget</string>
+    <string name="budgets_section_suggested">Suggested for you</string>
+
+    <string name="budgets_empty_title">Nothing planned yet</string>
+    <string name="budgets_empty_body">A budget is a number you choose for a category, and the app
+        tells you how the month is going against it. Record a few transactions and it can suggest
+        one from what you actually spend.</string>
+
+    <!-- FR-BUD-003. Remaining is stated against the total so the figure has a size to be judged
+         by; a bare "₹2,400 left" hides whether that is most of the budget or the last of it. -->
+    <string name="budgets_planned_supporting">Spent this month</string>
+    <string name="budgets_planned_with_rollover">Spent this month · %1$s carried over</string>
+    <string name="budgets_remaining">%1$s left of %2$s</string>
+    <!-- Pace is a comparison, not a number: "am I ahead?" is the question, and the safe-pace figure
+         is shown so the user can check the answer rather than take it on trust (P-02). -->
+    <string name="budgets_pace_within">On pace — even spending would be %1$s by today</string>
+    <string name="budgets_pace_ahead">Ahead of pace — even spending would be %1$s by today</string>
+    <string name="budgets_projection_within">At this rate you\'ll finish around %1$s</string>
+    <string name="budgets_projection_over">At this rate you\'ll finish around %1$s — over budget</string>
+    <!-- Withheld rather than guessed: too few days have passed for a run rate to mean anything, and
+         a projection built on one day would be a number the app invented (P-03, RULE-BUD-PACE). -->
+    <string name="budgets_projection_pending">Too early in the month to project an ending</string>
+
+    <string name="budgets_unplanned_supporting">Spent this month, with nothing planned</string>
+    <string name="budgets_spent_description">Spent this month</string>
+
+    <!-- FR-BUD-002 + P-07: the intro says plainly that nothing happens without a tap. -->
+    <string name="budgets_suggested_intro">Based on what you\'ve actually spent. Nothing changes
+        until you accept one.</string>
+    <string name="budgets_suggestion_accept">Use this budget</string>
+    <string name="budgets_suggested_description">Suggested budget</string>
+    <!-- P-02: the amount is never shown without the reasoning that produced it. -->
+    <string name="budgets_reason_median">You usually spend about %1$s a month here.</string>
+    <string name="budgets_reason_seasonal">You usually spend about %1$s a month here, plus %2$d%%
+        for %3$s.</string>
+    <string name="budgets_reason_seasonal_generic">You usually spend about %1$s a month here, plus
+        %2$d%% for the season.</string>
+    <string name="budgets_reason_rule">Rule %1$s v%2$s</string>
+
+    <!-- The festivals and seasons the engine knows inflate spending, named as a user would say them
+         rather than by the ids the knowledge base uses. -->
+    <string name="budgets_season_diwali">Diwali</string>
+    <string name="budgets_season_dussehra_navratri">Dussehra and Navratri</string>
+    <string name="budgets_season_wedding">the wedding season</string>
+    <string name="budgets_season_tax_saving">the tax-saving season</string>
+    <string name="budgets_season_school_admission">school admissions</string>
+    <string name="budgets_season_monsoon">the monsoon</string>
+    <string name="budgets_season_summer">the summer</string>
+    <string name="budgets_season_onam_pongal">Onam and Pongal</string>
+    <string name="budgets_season_akshaya_tritiya">Akshaya Tritiya</string>
+
+    <string name="budget_editor_title">Budget for %1$s</string>
+    <string name="budget_editor_amount">Amount for this month</string>
+    <string name="budget_editor_rollover">Carry over what\'s left</string>
+    <!-- States both halves of FR-BUD-001's rollover, because the second is the surprising one: a
+         deficit is not carried, so one bad month does not quietly shrink the next. -->
+    <string name="budget_editor_rollover_help">Unspent money is added to next month. Going over is
+        not carried forward.</string>
+    <string name="budget_editor_save">Save</string>
+    <string name="budget_editor_cancel">Cancel</string>
+
+    <!--
+      FR-BUD-004's bands (issue 4.5). The chip states the band, the banner summarises how many
+      categories are in one — the banner never repeats a figure, because the card below it already
+      carries the amounts and two copies of a number are two chances to disagree.
+
+      ICU plurals for the counts: "1 categories" is the kind of thing that makes an app feel
+      machine-made on exactly the screen where the user is already unhappy.
+
+      Note the percent signs: the two plurals take a %1$d and so are run through String.format,
+      where a literal percent must be escaped as %%. The four plain strings take no arguments, are
+      never formatted, and must therefore use a single % — an escaped one renders verbatim.
+    -->
+    <string name="budgets_band_warn">80% used</string>
+    <string name="budgets_band_exceeded">Over budget</string>
+    <string name="budgets_band_warn_description">This category has used 80% of its budget</string>
+    <string name="budgets_band_exceeded_description">This category is over its budget</string>
+    <plurals name="budgets_alert_banner_exceeded">
+        <item quantity="one">%1$d category is over budget this month</item>
+        <item quantity="other">%1$d categories are over budget this month</item>
+    </plurals>
+    <plurals name="budgets_alert_banner_warned">
+        <item quantity="one">%1$d category has used 80%% or more of its budget</item>
+        <item quantity="other">%1$d categories have used 80%% or more of their budget</item>
+    </plurals>
+
+    <!--
+      Issue 4.6 (§5.5): the month-end look-back. The summary states last month's two totals; each
+      material row states the same shape suggestions do — the number, the reason, the rule — plus an
+      accept action reusing FR-BUD-002's wording, since accepting a proposal is the same action
+      whichever screen offered it. A row with no proposal says so honestly rather than showing
+      nothing, which would read as the app having overlooked it.
+    -->
+    <string name="budgets_review_title">Last month\'s review</string>
+    <string name="budgets_review_summary">You planned %1$s and spent %2$s in total.</string>
+    <string name="budgets_review_over">%1$s spent of %2$s planned — %3$d%% over</string>
+    <string name="budgets_review_under">%1$s spent of %2$s planned — %3$d%% under</string>
+    <string name="budgets_review_no_history">Not enough history yet to propose a new amount.</string>
+    <string name="budgets_review_dismiss">Got it</string>
+
+    <string name="budgets_error_dismiss">Dismiss</string>
+    <string name="budgets_error_bad_amount">Enter an amount of zero or more.</string>
+    <string name="budgets_error_no_category">That category is no longer there.</string>
+    <string name="budgets_error_storage">We couldn\'t reach your saved budgets. Try again.</string>
+    <string name="budgets_error_not_found">That budget is no longer there.</string>
+    <string name="budgets_error_generic">Something went wrong. Try again.</string>
+</resources>

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.aicfo.app.navigation.CfoRoute
 import com.aicfo.core.common.getOrNull
 import com.aicfo.core.datastore.SettingsStore
+import com.aicfo.data.repository.CategoryRepository
 import com.aicfo.data.repository.DemoModeRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,14 +30,29 @@ import javax.inject.Inject
  *       makes explicit: a demo user has **no profile**. Reading only the onboarding flag would send
  *       someone who backgrounded the app mid-demo back to the welcome screen, with their sample data
  *       still sitting in the database and no banner to explain it.
- * What: exposes [startDestination], [isDemoActive], and the way out of the demo.
+ * What: exposes [startDestination], [isDemoActive], and the way out of the demo; and seeds the
+ *       category taxonomy on the way past.
  * Result: the app opens on the right screen without ever flashing the wrong one, and never shows
  *       fabricated figures without saying so.
  * Changelog: 2026-07-25 — Created for issue 2.1.
  *            2026-07-28 — Issue 2.4: demo mode decides the start destination and drives the banner.
+ *            2026-08-08 — Issue 4.1: calls `CategoryRepository.ensureSeeded` at cold start.
+ *
+ * **Why the category seed is called from here, of all places.** A profile with no categories cannot
+ * use FR-TXN-002's "amount → category suggestion → save", and the three obvious seeding sites all
+ * miss a path: `OnboardingWriter` only touches DataStore, `QuickSetupRepository.applySeeds` returns
+ * early for a user who skipped quick setup, and seeding from the editor would leave the add screen
+ * empty for anyone who never opens it. This is the one place that runs on every cold start whatever
+ * the user did, so one idempotent call here covers all three — and the profiles that were onboarded
+ * before issue 4.1 existed. It is a startup side effect in a navigation ViewModel, which is not
+ * tidy; the alternative was four call sites that each have to remember.
+ *
+ * **Its result is deliberately not surfaced**, for the same reason [exitDemo]'s is not: the seed is
+ * idempotent, so a failed write is retried on the next launch, and there is no action a user could
+ * take about it on a screen that has not been drawn yet.
  *
  * Input:  [settingsStore] — holds the onboarding-completion flag; [demoMode] — the demo flag and
- *         the wipe.
+ *         the wipe; [categories] — the taxonomy store, for the seed.
  * Output: an observable start destination and demo state.
  */
 @HiltViewModel
@@ -45,6 +61,7 @@ class MainViewModel
     constructor(
         settingsStore: SettingsStore,
         private val demoMode: DemoModeRepository,
+        private val categories: CategoryRepository,
     ) : ViewModel() {
         private val _startDestination = MutableStateFlow<CfoRoute?>(null)
 
@@ -79,6 +96,9 @@ class MainViewModel
                 val inDemo = demoMode.isActive.first()
                 _startDestination.value =
                     if (onboarded || inDemo) CfoRoute.Dashboard else CfoRoute.Onboarding
+                // Issue 4.1: after the destination, never before it — seeding is not what the user is
+                // waiting for, and a slow or failed write must not hold the app on a blank surface.
+                categories.ensureSeeded()
             }
         }
 

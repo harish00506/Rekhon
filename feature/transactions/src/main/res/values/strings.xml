@@ -8,6 +8,8 @@
   `MoneyFormatter`, so Indian digit grouping (₹1,23,456.78) stays in one place (P-06).
 -->
 <resources>
+    <!-- Issue 4.1: the way into FR-SET-001's categories editor, which lives in :feature:categories. -->
+    <string name="transactions_manage_categories">Categories</string>
     <string name="transactions_title">Transactions</string>
     <string name="transactions_empty">No transactions yet. Tap + to add your first one.</string>
     <string name="transactions_uncategorised">Uncategorised</string>
@@ -341,4 +343,36 @@
     <string name="sms_done">Done</string>
     <string name="sms_error">Couldn\'t do that (%1$s). Please try again.</string>
     <string name="sms_dismiss_error">OK</string>
+
+    <!--
+      Issue 4.2 — Stage-1 auto-categorisation (SRS §8.1, P-02, P-07).
+
+      The rule id is shown VERBATIM and on purpose. P-02 says every output names the rule that
+      fired, and `CLS-MER-001` is a citation into ai/knowledge/classification-kb.json that can
+      actually be looked up — a friendlier paraphrase would not be. The app has just filed the
+      user's money somewhere they did not ask it to; "why" has to have a checkable answer.
+
+      Worded as a proposal, never as a statement of fact: the user decides (P-07).
+    -->
+    <string name="add_txn_category_suggested">Suggested: %1$s · rule %2$s</string>
+    <string name="add_txn_category_suggestion_dismiss">Not this</string>
+
+    <!--
+      Issue 4.3 — nature classification (SRS §8.3, P-02, P-07).
+
+      The five names are the user's vocabulary for §8.3's five natures, not the enum's: "Kept &amp;
+      growing" rather than INVEST, because the point of the label is that someone can tell at a
+      glance which of their money is gone and which is still theirs.
+
+      The rule id is shown verbatim for the same reason the category suggestion shows one — it is a
+      citation into ai/knowledge/classification-kb.json, and a paraphrase is not checkable.
+    -->
+    <string name="transactions_detail_nature">What this became</string>
+    <string name="transactions_detail_nature_reason">Decided by rule %1$s — tap to change</string>
+    <string name="transactions_detail_nature_unsure">We\'re not sure about this one. Your answer is kept.</string>
+    <string name="nature_need">Need</string>
+    <string name="nature_want">Want</string>
+    <string name="nature_invest">Kept &amp; growing</string>
+    <string name="nature_asset">Turned into something</string>
+    <string name="nature_liability">Debt</string>
 </resources>

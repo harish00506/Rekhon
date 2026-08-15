@@ -1,0 +1,470 @@
+# =============================================================================
+# Golden file for budget suggestions and status (issue 4.4; SRS §5.5, §21.5).
+#
+# FR-BUD-002's acceptance criterion is "a golden-file test on the suggestion
+# math". Every record fixes an input and states BOTH the number that must come
+# out AND the rows that must be cited for it, because a suggestion that lands on
+# the right rupee for the wrong reason is still wrong — and it stays wrong,
+# invisibly, until the month or the category changes.
+#
+# The seasonal records matter most. A multiplier applied from the wrong window
+# is undetectable in any single month: eight of the nine calendar events overlap
+# another, four of them wrap the year end, and every one of them produces a
+# plausible-looking number in the month next door.
+#
+# Why a text file and not JSON: this module is pure Kotlin with no serialisation
+# dependency by design (ARC-002), so the fixture is parsed by the test that
+# reads it — the bargain golden/nature.txt already struck.
+#
+# Format: records separated by a line of `===`, fields as `# key=value`:
+#     kind          suggest | status | alert                     (required)
+#     case          a label, used in failure messages            (required)
+#
+#   when kind is a suggestion:
+#     category      the category name, matched against the KB    (required)
+#     months        monthly totals in paise, oldest first        (required)
+#     target_month  1..12, the month being budgeted for          (required)
+#     observed      months of history this profile has           (required)
+#     expect_amount the suggestion in paise, or `none`           (required)
+#     expect_median the unadjusted median in paise, or `none`    (required)
+#     expect_event  the cited seasonal event id, or `none`       (required)
+#     expect_conf   provenance confidence in bps, or `none`      (required)
+#     cite          rule/KB ids, comma separated, in order       (required)
+#
+#   when kind is a status:
+#     planned       the budget the user set, in paise            (required)
+#     carried       rolled over from last month, in paise        (required)
+#     spent         spent so far this month, in paise            (required)
+#     days          days in the budget month                     (required)
+#     elapsed       days gone, inclusive of today                (required)
+#     expect_budgeted / expect_remaining / expect_safe_pace      (required)
+#     expect_projected  the run-rate figure, or `none`           (required)
+#     expect_overspent / expect_ahead / expect_will_overspend    (required)
+#     cite          rule ids, comma separated                    (required)
+#
+#   when kind is a review (issue 4.6, §5.5):
+#     month         the REVIEWED month start, ISO yyyy-MM-dd     (required)
+#     target_month  1..12, the month a proposal would apply to,   (required)
+#                   which is the month AFTER the one reviewed
+#     observed      months of history this profile has            (required)
+#     cats          the budgeted categories, `|` separated; each  (required)
+#                   is name/budgeted/actual/months, where months
+#                   is `;` separated paise oldest first, or `none`
+#     expect_total_budgeted / expect_total_actual  in paise       (required)
+#     expect_dirs   OVER | UNDER | ON_PLAN per category, in order (required)
+#     expect_variance_bps  magnitudes per category, in order      (required)
+#     expect_proposals  proposed paise or `none`, in order        (required)
+#     cite          the rows the REVIEW cites; a proposal carries  (required)
+#                   its own RULE-BUD-SUGGEST citation, asserted
+#                   by the test rather than restated per record
+#
+#   when kind is an alert (issue 4.5, FR-BUD-004):
+#     budgeted      planned + carried over, in paise             (required)
+#     spent         spent so far this month, in paise            (required)
+#     expect_band   WARN | EXCEEDED | none                       (required)
+#     expect_used_bps    share of the budget used, or `none`     (required)
+#     expect_overspent_by  paise past the budget, or `none`      (required)
+#     cite          rule ids, comma separated                    (required)
+#
+# Any other `#` line is a comment, including this block.
+# =============================================================================
+
+===
+# --- FR-BUD-002: an ordinary month, no calendar event ------------------------
+# The baseline. Groceries in July: the monsoon prior inflates Health, Transport
+# and Vehicle, and deliberately not this one — a seasonality engine that nudged
+# every category every month would be an engine with no signal in it.
+# kind=suggest
+# case=ordinary month is the plain median
+# category=Groceries
+# months=800000,900000,850000
+# target_month=7
+# observed=24
+# expect_amount=850000
+# expect_median=850000
+# expect_event=none
+# expect_conf=10000
+# cite=RULE-BUD-SUGGEST
+===
+# --- the median is the point of the whole design -----------------------------
+# One ₹40,000 hospital month against two ordinary ones. A mean would suggest
+# ₹18,333 and quietly budget for a second emergency; the median suggests what a
+# normal month costs. This record is the reason `medianOf` is not `average`.
+# kind=suggest
+# case=a one-off ticket does not move the median
+# category=Health
+# months=500000,4000000,600000
+# target_month=2
+# observed=24
+# expect_amount=600000
+# expect_median=600000
+# expect_event=none
+# expect_conf=10000
+# cite=RULE-BUD-SUGGEST
+===
+# --- overlapping events: the MAX prior wins, they are never multiplied -------
+# October is both Diwali (1.38) and Dussehra/Navratri (1.20) for Shopping.
+# Multiplying would claim 1.66 — a number no row in the KB supports, and one
+# that would grow every time a future editor adds an event to the same month.
+# kind=suggest
+# case=Diwali beats Dussehra for October shopping
+# category=Shopping
+# months=350000,420000,380000
+# target_month=10
+# observed=24
+# expect_amount=520000
+# expect_median=380000
+# expect_event=diwali
+# expect_conf=10000
+# cite=RULE-BUD-SUGGEST,diwali
+===
+# --- shrinkage: the same festival, on a six-month-old install ----------------
+# k = 6/24, so Diwali's +38% is applied at a quarter strength: +9.5%. A young
+# install has not earned the right to assert a pattern it has never seen. Same
+# inputs as the record above except `observed`, so a shrinkage bug cannot hide
+# behind a different median.
+# kind=suggest
+# case=a young profile shrinks the prior toward no adjustment
+# category=Shopping
+# months=350000,420000,380000
+# target_month=10
+# observed=6
+# expect_amount=420000
+# expect_median=380000
+# expect_event=diwali
+# expect_conf=10000
+# cite=RULE-BUD-SUGGEST,diwali
+===
+# --- a window that wraps the year end ----------------------------------------
+# Wedding season is "Nov-Feb". A naive `month in start..end` matches nothing for
+# January, and January is exactly when a travel budget needs it. This record
+# also pins the rounding tie: ₹2,750 is equidistant, and ties round UP, because
+# on a spending cap the generous direction is the one that does not set the user
+# up to fail by a rupee.
+# kind=suggest
+# case=January travel is inside the Nov-Feb wedding window
+# category=Travel
+# months=200000,240000,220000
+# target_month=1
+# observed=24
+# expect_amount=280000
+# expect_median=220000
+# expect_event=wedding_season
+# expect_conf=10000
+# cite=RULE-BUD-SUGGEST,wedding_season
+===
+# --- an even-length window takes the midpoint, not the lower middle ----------
+# Two months only, which is the floor. Taking the lower of the two middles would
+# bias every even window downward — on a budget that reads as a cut nobody
+# asked for. Confidence drops with the window: 2 of 3 months, rounded down.
+# kind=suggest
+# case=two months median to their midpoint
+# category=Dining
+# months=300000,500000
+# target_month=7
+# observed=24
+# expect_amount=400000
+# expect_median=400000
+# expect_event=none
+# expect_conf=6666
+# cite=RULE-BUD-SUGGEST
+===
+# --- below the floor there is no opinion, and that is an answer --------------
+# One month is not a median of anything. Returning `null` rather than that
+# month's figure is the difference between advice and an echo (P-07).
+# kind=suggest
+# case=one month is not enough history to suggest anything
+# category=Fuel
+# months=500000
+# target_month=7
+# observed=1
+# expect_amount=none
+# expect_median=none
+# expect_event=none
+# expect_conf=none
+# cite=
+===
+# --- FR-BUD-003: exactly on the safe-pace line, mid-month --------------------
+# Half the month gone, half the budget spent. Not ahead of pace (the test is
+# strictly greater, so the line itself is not a warning) and the run rate lands
+# exactly on the budget.
+# kind=status
+# case=half the month, half the budget
+# planned=1000000
+# carried=0
+# spent=500000
+# days=30
+# elapsed=15
+# expect_budgeted=1000000
+# expect_remaining=500000
+# expect_safe_pace=500000
+# expect_projected=1000000
+# expect_overspent=false
+# expect_ahead=false
+# expect_will_overspend=false
+# cite=RULE-BUD-PACE
+===
+# --- the projection is withheld, not guessed ---------------------------------
+# Day 2 of 31. The run rate here would read ₹15,50,000 off a single ₹1,000
+# purchase. `none` rather than a hedged number: a figure the screen would have
+# to apologise for trains the user to ignore the figure that matters.
+# Note it is still `ahead` of pace — that comparison is sound on day 2 even
+# though the projection is not.
+# kind=status
+# case=day two withholds the projection but still reports pace
+# planned=1000000
+# carried=0
+# spent=100000
+# days=31
+# elapsed=2
+# expect_budgeted=1000000
+# expect_remaining=900000
+# expect_safe_pace=64500
+# expect_projected=none
+# expect_overspent=false
+# expect_ahead=true
+# expect_will_overspend=false
+# cite=RULE-BUD-PACE
+===
+# --- the boundary itself: day three projects ---------------------------------
+# One day later than the record above, with the floor at 3. If this record and
+# the one above ever agree, `min_elapsed_days_for_projection` has stopped doing
+# anything.
+# kind=status
+# case=day three is the first day a projection is offered
+# planned=1000000
+# carried=0
+# spent=150000
+# days=31
+# elapsed=3
+# expect_budgeted=1000000
+# expect_remaining=850000
+# expect_safe_pace=96700
+# expect_projected=1549995
+# expect_overspent=false
+# expect_ahead=true
+# expect_will_overspend=true
+# cite=RULE-BUD-PACE
+===
+# --- rollover raises the bar the month is measured against (FR-BUD-001) ------
+# ₹1,000 unspent last month rolls in, so this month is judged against ₹6,000
+# rather than ₹5,000. Already overspent, and the run rate says it will finish
+# worse. Both flags true, from different arithmetic — remaining is a fact,
+# will_overspend is a forecast.
+# kind=status
+# case=carried-over budget is included in every figure
+# planned=500000
+# carried=100000
+# spent=700000
+# days=30
+# elapsed=20
+# expect_budgeted=600000
+# expect_remaining=-100000
+# expect_safe_pace=399960
+# expect_projected=1050000
+# expect_overspent=true
+# expect_ahead=true
+# expect_will_overspend=true
+# cite=RULE-BUD-PACE
+===
+# --- the last day of a short month -------------------------------------------
+# February, fully elapsed: the safe pace is the whole budget and the run rate is
+# the actual. Landing exactly on the budget is not an overspend — the boundary
+# a naive `>=` would get wrong, in the direction that nags a user who did
+# everything right.
+# kind=status
+# case=spending the budget exactly is not an overspend
+# planned=1000000
+# carried=0
+# spent=1000000
+# days=28
+# elapsed=28
+# expect_budgeted=1000000
+# expect_remaining=0
+# expect_safe_pace=1000000
+# expect_projected=1000000
+# expect_overspent=false
+# expect_ahead=false
+# expect_will_overspend=false
+# cite=RULE-BUD-PACE
+===
+# --- FR-BUD-004: one rupee short of the warn band ----------------------------
+# ₹7,900 of a ₹10,000 budget. Silence here is the whole point of the band: an
+# alert that fires at 79% is an alert the user turns off before it ever reaches
+# the 100% message that mattered.
+# kind=alert
+# case=just below the warn band says nothing
+# budgeted=1000000
+# spent=790000
+# expect_band=none
+# expect_used_bps=none
+# expect_overspent_by=none
+# cite=
+===
+# --- the warn boundary itself ------------------------------------------------
+# Exactly 80%. The comparison is `>=`, so the boundary is inside the band — a
+# user who has spent precisely four fifths of their budget is told, because the
+# rule says 80%, not "past 80%".
+# kind=alert
+# case=exactly the warn band warns
+# budgeted=1000000
+# spent=800000
+# expect_band=WARN
+# expect_used_bps=8000
+# expect_overspent_by=none
+# cite=RULE-BUD-ALERT
+===
+# --- truncation never interrupts early ---------------------------------------
+# ₹2,399.99 of a ₹3,000 budget is 79.99966%. Real division would round it to
+# 80% and fire; integer bps truncate to 7999 and stay quiet. This record is why
+# `usedBps` scales before it divides and holds no `Double` (MNY-001/MNY-002) —
+# with a Double this passes today and fires a rupee early on some other budget.
+# kind=alert
+# case=a fraction below the band truncates down, not up
+# budgeted=300000
+# spent=239999
+# expect_band=none
+# expect_used_bps=none
+# expect_overspent_by=none
+# cite=
+===
+# --- deep inside the warn band, still one band -------------------------------
+# 99.99%. Not exceeded: the budget has not been spent, and calling it spent
+# would be the app telling the user something untrue by a rupee.
+# kind=alert
+# case=one rupee short of the budget is still only a warning
+# budgeted=1000000
+# spent=999900
+# expect_band=WARN
+# expect_used_bps=9999
+# expect_overspent_by=none
+# cite=RULE-BUD-ALERT
+===
+# --- the exceeded boundary: spending it exactly ------------------------------
+# 100% on the nose. EXCEEDED, and `overspent_by` is zero rather than absent —
+# the band is reached, and the amount past it is genuinely ₹0. The message this
+# feeds says "you have used your budget", not "you have overspent by ₹0", which
+# is why the band and the amount are separate fields.
+# kind=alert
+# case=spending the budget exactly reaches the exceeded band
+# budgeted=1000000
+# spent=1000000
+# expect_band=EXCEEDED
+# expect_used_bps=10000
+# expect_overspent_by=0
+# cite=RULE-BUD-ALERT
+===
+# --- past the budget ---------------------------------------------------------
+# 101%. ₹100 over ₹10,000. The only record where `overspent_by` is a figure the
+# notification will actually quote, so it is also the one the guardrail check
+# in :app is written against.
+# kind=alert
+# case=past the budget reports how far past
+# budgeted=1000000
+# spent=1010000
+# expect_band=EXCEEDED
+# expect_used_bps=10100
+# expect_overspent_by=10000
+# cite=RULE-BUD-ALERT
+===
+# --- an unset budget has no bands --------------------------------------------
+# Zero budget with real spending against it. `none`, not EXCEEDED: a category
+# the user never budgeted is not a category they have overspent, and this is
+# also the guard that keeps the ratio from dividing by zero.
+# kind=alert
+# case=a zero budget is not an infinite overspend
+# budgeted=0
+# spent=500000
+# expect_band=none
+# expect_used_bps=none
+# expect_overspent_by=none
+# cite=
+===
+# --- nothing spent yet --------------------------------------------------------
+# The floor of the range. Included because 0/N is the other end of the division
+# and a sign error would show up here first.
+# kind=alert
+# case=nothing spent crosses nothing
+# budgeted=1000000
+# spent=0
+# expect_band=none
+# expect_used_bps=none
+# expect_overspent_by=none
+# cite=
+===
+# --- a mixed month: one over, one under, one on plan ---------------------------
+# The main §5.5 record, and the reason the review is month-shaped: the two
+# totals are the headline, and they are only checkable against the whole set of
+# categories at once. All three names are absent from every seasonality window,
+# so the proposals here are pure medians — a seasonal record follows.
+#   Groceries  8,000 planned, 11,240 actual -> +324,000 paise = 4050 bps  OVER
+#   Rent       4,000 planned,  2,100 actual -> -190,000 paise = 4750 bps  UNDER
+#   Fuel       3,000 planned,  3,050 actual ->   +5,000 paise =  166 bps  on plan
+# kind=review
+# case=a month with one of each verdict
+# month=2026-07-01
+# target_month=8
+# observed=24
+# cats=Groceries/800000/1124000/1000000;1100000;1124000|Rent/400000/210000/200000;210000;220000|Fuel/300000/305000/300000;305000;310000
+# expect_total_budgeted=1500000
+# expect_total_actual=1639000
+# expect_dirs=OVER,UNDER,ON_PLAN
+# expect_variance_bps=4050,4750,166
+# expect_proposals=1100000,210000,none
+# cite=RULE-BUD-REVIEW
+===
+# --- the boundary, from both sides --------------------------------------------
+# `min_variance_pct` is 15, and the comparison is `>=`, so 1500 bps is INSIDE
+# the band. These two rows differ by 1,000 paise and must land on opposite
+# verdicts; an off-by-one here silences a real finding or invents one.
+#   Books  10,000 planned, 11,500 actual -> exactly 1500 bps  OVER
+#   Pens   10,000 planned, 11,490 actual ->         1490 bps  on plan
+# kind=review
+# case=exactly at the threshold is material, a rupee under is not
+# month=2026-07-01
+# target_month=8
+# observed=24
+# cats=Books/1000000/1150000/1140000;1150000;1160000|Pens/1000000/1149000/1140000;1149000;1160000
+# expect_total_budgeted=2000000
+# expect_total_actual=2299000
+# expect_dirs=OVER,ON_PLAN
+# expect_variance_bps=1500,1490
+# expect_proposals=1150000,none
+# cite=RULE-BUD-REVIEW
+===
+# --- a material gap the app cannot price --------------------------------------
+# One month of history, and `min_months_required` is 2. The variance is still
+# reported: "you went 60% over on Repairs" is worth saying even when the app has
+# no replacement number to offer. A row that vanished because it could not be
+# priced would hide the finding behind the proposal.
+# kind=review
+# case=variance is reported even when there is no proposal
+# month=2026-07-01
+# target_month=8
+# observed=1
+# cats=Repairs/500000/800000/600000
+# expect_total_budgeted=500000
+# expect_total_actual=800000
+# expect_dirs=OVER
+# expect_variance_bps=6000
+# expect_proposals=none
+# cite=RULE-BUD-REVIEW
+===
+# --- a budget of zero ----------------------------------------------------------
+# A category budgeted at exactly nothing, with real spending against it. 0 bps
+# and on plan, not an infinite overspend: with no plan there is no share of a
+# plan to be off by. This is also the guard that keeps the ratio from dividing
+# by zero, and it is the review's counterpart to the alert fixture's zero case.
+# kind=review
+# case=a zero budget has no variance to report
+# month=2026-07-01
+# target_month=8
+# observed=24
+# cats=Sundries/0/500000/400000;500000;600000
+# expect_total_budgeted=0
+# expect_total_actual=500000
+# expect_dirs=ON_PLAN
+# expect_variance_bps=0
+# expect_proposals=none
+# cite=RULE-BUD-REVIEW
+===

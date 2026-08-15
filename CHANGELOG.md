@@ -6,6 +6,332 @@ Single source of truth for the version number is the repo-root [`VERSION`](VERSI
 `app/build.gradle.kts` `versionName` equal to it. Epics map to the SRS roadmap (§26); every
 entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`](docs/issues/00-issue-workflow.md).
 
+## [0.5.0] — Epic 5: Dashboard, Export & Widget
+
+> The user's daily surfaces: the home dashboard, Safe-to-Spend, privacy blur, local JSON
+> export/import, and the home-screen widget.
+
+### [0.5.0] — The landing screen stops being four placeholders and a promise  (2026-08-15)
+
+- **Implemented:** issue 5.1 — home dashboard v1 (**FR-DASH-\***, §5.2, P-02/P-03/P-04). The
+  dashboard has shown net worth (2.6), the needs/wants/savings plan (2.3) and the true-spend
+  breakdown (4.3) since earlier issues; this fills in the three figures its own doc comment named
+  as still owed — budget status, this month's cash flow, and recent activity — leaving Safe-to-Spend
+  as 5.2's sole remaining placeholder.
+- **Budget status reuses `BudgetRepository.observeBudgets()`/`observeAlerts()` exactly as
+  `:feature:budgets` already does** — a second consumer of the same mechanism, not a new one. The
+  "needs attention" line cites its rule (`RULE-BUD-ALERT`, P-02), the same citation the budgets
+  screen's own banner shows for the identical alert. The summary folds only *budgeted* categories'
+  totals — an unbudgeted category's spend does not inflate a figure against a plan it was never
+  part of.
+- **This month's cash flow is one new SQL statement, not a new engine.** `TransactionDao.observeMonthCashFlow`
+  sums income and expense with one `CASE WHEN`, no rule or judgment involved, so it carries no
+  `EngineProvenance` — the same distinction that already separates `observeDayTotals` from
+  `observeNatureBreakdown`. An earlier version combined two `observeDayTotals` calls instead and hit
+  a real `kotlinx-coroutines-test` failure — two Room query flows meeting inside `combine()` under
+  `UnconfinedTestDispatcher` threw "Detected use of different schedulers" — which is why this
+  shipped as one query.
+- **Recent activity is bounded by count, not by time — deliberately not the mistake issue 3.6
+  fixed.** `TransactionRepository.observeRecent(limit)` is a new, small `LIMIT`-bounded read; the
+  time-windowed `observeRecent` 3.6 removed stays removed, and the full ledger is still one tap away
+  through "View transactions".
+- **A real usability bug was found and fixed by running the app, not by a test.** The dashboard's
+  `Column` has never scrolled — issue 1.10's four-row screen never needed to. This issue's three
+  added sections pushed the bottom of the screen, including every navigation button, off-screen and
+  permanently unreachable; no Compose UI test in this codebase measures a real screen height against
+  real content, so nothing caught it until the emulator did. Fixed with `verticalScroll`.
+- **Verified on device, fully offline** (P-04, airplane mode confirmed via `adb shell settings get
+  global airplane_mode_on` = 1): launched against real, pre-existing profile data, watched every new
+  section render its real figures (including the alert citation and all five recent rows), scrolled
+  to the previously-unreachable buttons, and navigated to Budgets and confirmed the two screens agree
+  on the same category's numbers.
+- **Screenshot tests**, `feature/dashboard`'s first — the Paparazzi Gradle plugin was applied to no
+  `:feature:*` module before this. Light/dark/200% baselines cover the fully-populated state and the
+  all-empty state (no net worth, no budget, no transactions), so an empty-state regression is visible
+  even though it has no numbers to eyeball wrong.
+
+## [0.4.0] — Epic 4: Categorisation & Budgets
+
+> What a payment was *for*. The `category` table has existed since issue 1.6 with nothing but the
+> demo dataset writing to it; this epic makes the taxonomy the user's, then teaches the app to fill
+> it in.
+
+### [0.4.4] — Told once, and only what the maths can back  (2026-08-13)
+
+- **Implemented:** issue 4.5 — budget alerts at 80% and 100% (**FR-BUD-004**, §5.5, AI-ARC-004,
+  AI-ARC-006, P-02/P-03/P-04). 4.4 gave the user a number to aim at and a screen that says how the
+  month is going; this tells them when it stops going well, without waiting for them to look.
+- **The thresholds are a new rule row, not two new params on an existing one.** `RULE-BUD-ALERT` at
+  `version: 1.0` in `ai/rules/rules-kb.json` (**v1.10.0**). Adding them to `RULE-BUD-PACE` would have
+  bumped a shipped row's version, which is [ADR-0017](docs/adr/0017-budget-thresholds-stay-a-typed-mirror.md)'s
+  trigger 3 and would have forced the runtime `ai/` loader — `:core:rules`, an asset pipeline, a
+  `rules_knowledge_base` table and seven mirrors retrofitted — before this issue could compile. The
+  split is also right on the merits: pace answers "am I on track?", alerting answers "should this
+  person be interrupted?" ([ADR-0019](docs/adr/0019-budget-alert-bands-mint-a-new-rule-row.md)).
+  4.4's tripwire test is **retargeted, not deleted** — it now guards a permanent boundary.
+- **"Tell them once" is enforced by the schema, not by careful code.** New `budget_alert` table at
+  **v14** with `UNIQUE(profile_id, budget_id, month_start_iso_date, band)`, so a second warning for
+  the same month cannot be inserted whatever the calling code believes — including when two workers
+  run at once or one retries after a partial failure. The band is part of the key, so crossing 80%
+  and later 100% produces two messages; a boolean on `budget` would have swallowed the second, which
+  is the more important one.
+- **The notification text is verified before it is posted** (AI-ARC-004). New `NumericGuardrail`
+  extracts every rupee amount and percentage from the composed message and requires each to match a
+  value the engine actually returned, rendered through `MoneyFormatter`. Fail-closed: the default
+  allowed set is empty, so a caller that forgets to declare its values gets silence. A correct sum
+  the engine never computed is refused too — being arithmetically true is not the standard (GRD-003).
+  This is a **documented subset** of `ai/chat/guardrail.md`; the full L3 gate is issue 9.7, and its
+  REGENERATE/REFUSE ladder is inapplicable here because there is no LLM on this path.
+- **The band shows in-app whether or not a notification was ever sent** (P-02). A notification is
+  sent once and can be missed, denied or swiped away; a crossed band stays true for the rest of the
+  month. The permission is asked for **after** a budget is saved, never at launch — Android offers
+  that prompt twice in an app's life, and one made before the user has a budget is one they deny
+  permanently. A denial is a designed-for state, not a degraded one.
+- **Two real defects, both found by tests rather than by review.** A rule row may set `exceeded_pct`
+  below 100, at which point the band is reached while the budget still has money in it and
+  `spent − budgeted` went negative — the overspend figure is now floored at zero, so the notifier can
+  never render a negative "overspend". And the band labels used `%%` in strings that take no format
+  arguments, which `stringResource` does not process: the screen would have shown a literal `80%%`.
+- **`MigrationSafetyTest` refused the new table for having no tombstone column**, which was a real
+  design question rather than a formality. Argued as an exemption instead of adding the column: a row
+  records that a person was interrupted, which is not undoable, and the unique index counts
+  soft-deleted rows — so a "deleted" alert would still not fire again and the column could only
+  mislead. Stated consequence: deleting and recreating a budget inside one month does not re-notify.
+- **Every new gate was watched to fail first**, both by editing only `ai/rules/rules-kb.json` and no
+  Kotlin — which is also what proves the Gradle `inputs.file` wiring still stops a drift test passing
+  against a file it never read.
+- **Out of scope, deliberately:** the runtime `ai/` loader (deferred again, recorded in ADR-0019),
+  the full L3 guardrail (9.7), notification policy and quiet hours (9.6), and the monthly review
+  (4.6).
+
+### [0.4.5] — Told once, and a look back at last month too  (2026-08-15)
+
+- **Implemented:** issue 4.6 — monthly budget review (**FR-BUD-\***, §5.5, P-02/P-03/P-07). 4.5 told
+  the user when they crossed a line *during* the month; this tells them what the month actually
+  looked like once it closed, and offers a priced adjustment for the one ahead.
+- **The engine half already existed.** `BudgetEngine.review`, `BudgetMonthReview`, and
+  `RULE-BUD-REVIEW` v1.0 (`ai/rules/rules-kb.json` v1.11.0) shipped in an earlier session with full
+  golden/unit/drift coverage. This release closes the gap that was left: there was no database
+  table, no repository method, and no UI — the review computed correctly and nobody could see it.
+- **`review_once_per_month` is enforced by the schema, the same pattern 4.5 set.** New `budget_review`
+  table at **v15**, `UNIQUE(profile_id, month_start_iso_date)` — one level coarser than `budget_alert`'s
+  key, because a review is one card for the whole month rather than one status per band
+  ([ADR-0020](docs/adr/0020-budget-review-keyed-by-month-not-category.md)). Dismissing it, or
+  accepting any one category's proposal, is enough to close the card; it does not reopen until the
+  next month closes.
+- **A proposal prices the month ahead, not the month reviewed.** Each material finding's replacement
+  budget is priced by calling the same `BudgetEngine.suggest` a plain suggestion card calls, targeted
+  at the current month — so a reviewed proposal is provably the same number a suggestion would show,
+  and accepting it writes to the month the user is standing in, never the closed one.
+- **A finding with too little history says so, honestly** (P-03). The engine does not fabricate a
+  number it cannot price; the card states that plainly rather than showing nothing or a guess.
+- **A real, pre-existing residue gap was found and fixed along the way.** `DemoDao.deleteBudgetAlerts`
+  has existed since issue 4.5 but `DemoModeRepository.exit()` never called it — a `budget_alert` row
+  written during a demo session survived every wipe since 4.5 shipped, invisible to the "no residue"
+  test for the same reason a missing table is invisible to it. Fixed alongside wiring the analogous
+  call for the new `budget_review` table.
+- **Verified on device**, including the part JVM tests cannot reach: rolled the emulator's clock back
+  a month, budgeted and overspent a category through the running app, rolled the clock forward, and
+  watched the review card render the correct totals, variance and citation; dismissed it and
+  confirmed it stayed gone across a full process restart, proving the claim is a real database row
+  and not screen state.
+
+### [0.4.3] — A number to aim at, and the split lines that were being ignored  (2026-08-11)
+
+- **Implemented:** issue 4.4 — budgets CRUD + suggestions (**FR-BUD-001**, **FR-BUD-002**,
+  **FR-BUD-003**, §5.5, AI-ARC-003/006, P-02/P-03/P-07). Epic 4 had given the app a taxonomy, a
+  category per transaction and a nature per rupee; none of it produced a *plan*. Now a category can
+  carry a monthly amount, and the app says where the month is heading against it.
+- **The bug this uncovered is older than the feature.** Nothing in the repo could sum spending per
+  category, and the one monthly aggregation that existed read the **parent** transaction's
+  `category_id` only. A ₹4,000 supermarket run split into ₹3,000 groceries and ₹1,000 wine has a
+  parent with no category at all, so the whole ₹4,000 fell past §8.3.1's step 5 to the fallback and
+  landed in Wants — the lines the user took the trouble to enter were invisible to every figure on
+  screen. **The 50/30/20 rings and true spend will read differently for anyone who has split a
+  transaction** ([ADR-0018](docs/adr/0018-split-aware-category-spend.md)).
+- **Every spend query is now a `UNION ALL`** of transactions with no live split lines and live split
+  lines, so a payment is counted exactly once, by its lines where it has them. The `NOT EXISTS`
+  clause is what makes double-counting impossible. ADR-0009 predicted this shape for 4.3 *and* 4.4;
+  4.3 did not do it, and no test in 4.3 could tell the difference — there was no split fixture in
+  `NatureRepositoryTest` until now.
+- **New `:domain:engines:budget`** proposes what a category should cost: the median of the last three
+  months, lifted by a seasonal prior when one applies. The prior is the **max** of the matching
+  festivals, never their product — multiplying Diwali by Dussehra is nonsense — and it is shrunk
+  toward 1 by how many months of history the profile actually has, so a two-month-old profile is not
+  told to budget for a festival it has never been through. All in integer basis points (MNY-002),
+  rounded to ₹100 so a suggestion reads as a human number rather than ₹4,283.51.
+- **The suggestion is never shown as a bare amount** (P-02). The card carries the median it came
+  from, the festival that moved it and by how much, and the rule id and version that fired — so a
+  user can disagree with the reasoning rather than only with the number. Accepting is a tap and
+  nothing else writes a budget row (P-07); the ViewModel test asserts that absence directly.
+- **A projection the engine will not make is a sentence, not a gap.** Below three elapsed days a run
+  rate says more about one coffee than about the month, so the screen says the month is too early to
+  project rather than showing a figure nobody could stand behind (P-03).
+- **Rollover carries a surplus and never a deficit.** Unspent money is added to next month; going
+  over is not carried forward. Rolling a deficit would silently shrink a budget the user set, turning
+  one bad month into two without ever saying so — and the switch's help text states both halves.
+- **No schema change.** `BudgetEntity` has shipped since v2 with `category_id`, `rollover_enabled`,
+  `source`, `rule_id` and `rule_version` unused; ADR-0004 wrote those columns for this issue. The
+  database stays at **v13**.
+- **Two rules minted, not two constants** (CLAUDE.md §6): `RULE-BUD-SUGGEST` and `RULE-BUD-PACE` in
+  `ai/rules/rules-kb.json` (**v1.9.0**), mirrored as typed Kotlin guarded by drift tests. ADR-0005
+  named 4.4 as a possible trigger to build the runtime `ai/` loader; it did not fire, because 4.4
+  makes the budget **amount** user-editable, not a rule **threshold**
+  ([ADR-0017](docs/adr/0017-budget-thresholds-stay-a-typed-mirror.md)).
+- **Every new gate was watched to fail first.** Three by editing only `ai/` files — which also proves
+  the Gradle `inputs.file` wiring that stops a drift test passing against a file it never read — and
+  the split regression by reintroducing the exact defect and watching
+  `a split payment is classified by its lines, not by its empty parent` go red on
+  `expected Money(minor=300000) but was Money(minor=0)`.
+- **Out of scope, deliberately:** 80%/100% alerts are issue 4.5 and the monthly review is 4.6. No
+  alert thresholds were minted here.
+
+### [0.4.2] — What a rupee became, and the right to disagree  (2026-08-10)
+
+- **Implemented:** issue 4.3 — nature classification (**AI-CLS-N**, §8.3, §8.3.1, AI-ARC-003/006,
+  P-02/P-03/P-07). Every transaction now answers "what did this money become?" — Need, Want, kept &
+  growing, turned into something, or debt — and the user can overrule any of it in one tap.
+- **The obvious implementation is wrong, and §8.3.1 has five steps above it saying so.** Reading
+  `category.nature` is step 5 of six. An EMI paid into a loan account is debt service because of the
+  **account**, whatever category it carries; a transfer into a gold account is a conversion, not
+  spending, even when someone tagged it Shopping; and money the user has already called a Want stays
+  one. All three failures run the same direction — they **inflate true spend**, the figure
+  Safe-to-Spend, the health score and the Purchase Advisor are all calibrated against.
+- **New `:domain:engines:nature`** implements steps 1–5 with step 6 as a confidence flag. Steps 1–3
+  fire on the account's *type*, because `loan_amortization_rows`, a goals table and a holdings table
+  — all three named by §8.3.1 — do not exist
+  ([ADR-0016](docs/adr/0016-nature-classification-by-account-type.md)).
+- **Schema v12 → v13: one nullable column, and it holds only the correction.** `transactions.nature`
+  is what the *user* said; everything else is derived on read. No backfill, no recompute job when a
+  rule changes, and no way for a stored value to disagree with the rules that produced it — the shape
+  that already bit the net-worth series in 3.10. It also keeps the signal step 4 learns from: an
+  engine-written value could not be told apart from a user's decision.
+- **The golden file caught a real bug the unit tests could not.** Steps 2–3 originally read only the
+  *counterpart* account, so the arriving leg of an SIP fell past every account step to the category —
+  half of every conversion labelled a Want. It surfaced because the golden file fixes the **cited
+  rule**, not only the nature: four of six steps can produce NEED, so half those records would pass
+  under a decision order with two steps swapped.
+- **Step 6 raises a question rather than answering it.** §8.3.1's own example is ₹9,400 at a grocery
+  whose median is ₹2,000 — festival stock-up (still a Need) or a party (a Want)? The nature is kept
+  and the confidence drops below the floor so the sheet says the app is unsure. §8.3 is explicit that
+  it never blocks a save.
+- **True spend ships understated, and the dashboard says so.** §8.3's formula is
+  `NEED + WANT + interest/fees`, and splitting an EMI needs the amortisation row this build has no
+  table for — so loan repayments are reported separately and counted as nothing. An understated figure
+  the user is *told* about is a different thing from one they are not (P-02).
+- **The dashboard now shows a plan and an outcome side by side.** "This month, actually — Needs ₹… ·
+  Wants ₹… · Kept ₹…", beneath the budget bar. A dashboard showing only the plan is one that can never
+  disagree with the user.
+- **Both new gates were watched to fail first**: swapping `CLS-NAT-004` and `CLS-NAT-005` in the
+  knowledge base turned the drift test red, and mis-citing one golden record turned
+  `every record is decided by the expected rule` red **while the nature assertion still passed**. The
+  migration's "the override column must arrive empty" assertion was proved on a device by adding a
+  deliberate backfill and watching it fail.
+- `classification-kb.json` → **v1.3**: `CLS-NAT-001`…`006` gain ids and versions (AI-ARC-006), plus a
+  `stage_nature` block holding the five confidence values, §8.3.1's `3×` multiple and the true-spend
+  split.
+
+### [0.4.1] — The app fills the category in, and says which rule it used  (2026-08-10)
+
+- **Implemented:** issue 4.2 — Stage-1 auto-categorisation (**AI-CLS**, §8.1, AI-ARC-003/006,
+  P-02/P-03/P-07). Type a merchant on the add screen and the category chip pre-selects itself, with
+  a line underneath naming the rule that fired and a way to refuse it.
+- **This is the consumer ADR-0014 promised.** Issue 4.1 shipped thirteen `CLS-MER-*` merchant rules
+  that *nothing resolved*, and wrote down that it had. They resolve now — new pure-Kotlin module
+  `:domain:engines:classification`, one interface, provenance on every suggestion.
+- **§8.1 is a precedence chain, not a matcher**, and this ships two of its three tiers:
+  **(a)** what the user has filed under this exact merchant before, **(b)** the shipped knowledge
+  base, and then §8.1's "Uncategorised" prompt — which here is simply the chip row, untouched. The
+  on-device TF-IDF model, §8.1(c), is deferred with its reasons in
+  [ADR-0015](docs/adr/0015-stage-1-classification-tiers-and-the-kb-mirror.md). **The interface does
+  not pretend it exists**; no empty parameter waits for a producer.
+- **The user's own filing outranks anything shipped.** Someone who files Swiggy under Groceries
+  because they only order instamart is not out-argued by a rule that says Dining. And a merchant
+  they have filed *inconsistently* proposes nothing **and does not fall through to the knowledge
+  base** — they have formed an opinion, and a confused opinion is still theirs.
+- **Reading the rules for the first time found a wrong one.** `CLS-MER-011` matched the bare literal
+  `coin`, which files a laundromat under Investment — money the 50/30/20 view would then count as
+  saving. Fixed as a data row (§6): `coin` dropped at **v1.1**, id kept, version bumped, never
+  renamed. `zerodha` already covers every real descriptor for Zerodha's Coin.
+- **Whole-word matching is the feature, not a refinement.** `CLS-MER-010`'s literal is `lic`. As a
+  substring it files every **Licious** order under *Insurance*, where it becomes a NEED, joins the
+  emergency-fund essentials, and is the last place anyone would look for a food spend. Four fixtures
+  (`LICIOUS`, `DELICIOUS`, `PUBLICIS`, `GARLIC`) hold both boundaries.
+- **No new table and no migration** — the DB stays at **v12**. §8.1(a) says "the user's correction
+  history", and `transactions` already is that history: one `GROUP BY` over merchant and category.
+  A dedicated table would be a second copy of the ledger, able to disagree with it. Splits count for
+  nothing (a split is the user saying a merchant is several things at once) and deleted rows count
+  for nothing (a decision withdrawn is not a decision).
+- **P-02 shows the rule id verbatim** — "Suggested: Dining · rule CLS-MER-001". That is ugly and it
+  is the point: it is a citation into `ai/knowledge/classification-kb.json` that a user or reviewer
+  can look up, and "we thought it looked like food" is not. **P-07 is the "Not this" beside it**, and
+  tapping any other chip refuses it too, permanently for that screen.
+- **A threshold that could switch the feature off silently is refused at construction.** Setting
+  `min_confidence_bps` above `word_match_bps` would leave the knowledge-base tier firing only on
+  merchants typed with no descriptor — almost none of them — while every test scoring it against bare
+  names kept passing. `ClassificationRules` will not build that way.
+- **Eval gate (§21.5, §8's ≥ 92%):** seventy-five frozen merchant descriptors — fifty-five labelled
+  across all thirteen rules, twenty that must be refused. Scores **96% accuracy, 0 wrong categories,
+  20/20 refusals**. It is deliberately **not 100%**: `AMAZONPAY` and `BYJUS` are real descriptors this
+  engine misses, left in with the reason beside them, because a set curated until it scores perfectly
+  measures the curation.
+- **All four new gates were watched to fail before they were trusted** — the drift test against a
+  renamed category, the accuracy gate against five mislabelled fixtures, the zero-tolerance refusal
+  gate against a planted match. The lesson from
+  `docs/report/2026-07-25-governance-standards-audit.md`, applied.
+- `classification-kb.json` → **v1.2**, gaining a `stage1` block (the confidence a match is worth and
+  the floor below which Stage 1 defers) and `CLS-USER-HISTORY@1.0`, the id tier (a) cites.
+  `ENGINE.md` documents four known limits, including the two the eval set records as misses.
+
+### [0.4.0] — A taxonomy that exists, and is yours  (2026-08-08)
+
+- **Implemented:** issue 4.1 — the categories editor and the merchant-rule knowledge base
+  (**FR-SET-001**, **AI-CLSN-001**, §8.1, AI-ARC-006). A real profile is seeded with fifteen default
+  categories on first launch, and every one of them can be renamed, re-natured, nested one level or
+  deleted.
+- **The gap this closes was invisible and total.** `CategoryEntity`, `CategoryDao` and
+  `transactions.category_id` shipped in issue 1.6, the add-transaction screen has offered a category
+  chip row since 3.1, and bulk recategorise since 3.6 — **and the only thing in the codebase that
+  ever wrote a category row was `DemoDataset`.** `DemoModeRepositoryTest` asserted a real profile had
+  exactly zero, and it was right: the chip row was empty and every transaction read "Uncategorised".
+  Four issues built on a table nothing could fill.
+- **`FR-CAT-*`, which the backlog cited for this issue, does not exist in SRS v1.7** — verified
+  against a full-text extraction of all 58 pages. That is **five for five** on generated acceptance
+  criteria being more specific than the section they cite. Fixed at source in
+  `scripts/gen_issue_docs.py`.
+- **The seed is called from `MainViewModel.init`, and the three obvious places all miss a path:**
+  `OnboardingWriter` only touches DataStore, `QuickSetupRepository.applySeeds` returns early for a
+  user who skipped quick setup, and seeding from the editor leaves the add screen empty for anyone
+  who never opens it. One idempotent call at cold start covers all three — plus the profiles
+  onboarded before this issue existed. **A profile that deleted every default is not re-seeded**: the
+  guard counts soft-deleted rows, so the app does not overrule a decision the user made (P-07).
+- **A timestamp is not a uniqueness source.** The first draft derived a created category's id from
+  its name and the create stamp; deleting "Fuel" and recreating it inside the same millisecond
+  produced the same primary key, so `REPLACE` quietly resurrected the soft-deleted row with its old
+  nature. Found by `a name freed by a delete can be used again`, fixed by using the injected
+  `IdGenerator` (P-08). Seeded ids stay derived — that is what makes the seed idempotent.
+- **A categorised transaction was still calling itself "Uncategorised."** The list row's title fell
+  back note → merchant → "Uncategorised" and never consulted the category. Harmless for as long as no
+  real profile could have one; a false statement about the row the moment the seed landed. **Found on
+  the emulator by saving one**, not by reading the code, and now pinned by a test.
+- **`CLS-CAT-001`…`015` and `CLS-MER-001`…`013`** (`ai/knowledge/classification-kb.json` v1.1) carry
+  a stable id and a version each. The category defaults are read by `CategorySeed` and guarded by
+  `ClassificationKbDriftTest` — **verified to bite against two separate mutations**. The merchant
+  rules have **no runtime consumer until issue 4.2**, and gain their ids now anyway because an id
+  added later than the row it names is an id that may already be missing from a stored insight
+  ([ADR-0014](docs/adr/0014-classification-kb-seed-mirror-and-unconsumed-merchant-rules.md)).
+- **One nature, two spellings, one translation.** `category.nature` has stored `invest` since 1.6;
+  §8.3 and the knowledge base say `INVESTMENT`. `CategoryNature` carries both — `storedValue` is the
+  only thing that reaches a column, `kbValue` the only thing compared against `ai/`.
+- **Deleting a category does not delete the money**, and the dialog says so with a number:
+  "1 transaction uses this category and will read as Uncategorised. Nothing is deleted and no amount
+  changes." A count that cannot be read says so rather than claiming zero (P-02).
+- **No schema change** — the DB stays at v12. `category` has had `parent_id`, `nature`, `is_system`
+  and `deleted_at_utc_millis` since issue 1.6; nothing here needed a migration.
+- New module `:feature:categories` (FR-SET-001 files the editor under Settings, which has no shell
+  yet); `CategoryRepository` in `:data:repository`; `Category` widened and moved to its own file in
+  `:core:model`.
+
 ## [0.3.0] — Epic 3: Transactions & Capture
 
 > The capture path. The `transactions` table has existed since issue 1.6 with nothing the user could
