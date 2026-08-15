@@ -32,6 +32,7 @@ import org.junit.Test
  * What: the full `UiState` sequence through load, edit, accept, delete and every failure branch.
  * Result: every state the screen can be in is reachable and asserted.
  * Changelog: 2026-08-11 — Created for issue 4.4.
+ *            2026-08-15 — Issue 4.6: added the monthly-review cases.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class BudgetsViewModelTest {
@@ -456,6 +457,80 @@ class BudgetsViewModelTest {
             val viewModel = BudgetsViewModel(FailingBudgetRepository())
 
             assertTrue(viewModel.uiState.value.alerts.isEmpty())
+        }
+
+    // --- monthly review (issue 4.6; §5.5) -----------------------------------------------------------
+
+    @Test
+    fun `the review reaches state`() =
+        runTest {
+            val repository = FakeBudgetRepository(initialReview = reviewRow(name = "Groceries"))
+
+            val viewModel = BudgetsViewModel(repository)
+
+            assertEquals("Groceries", viewModel.uiState.value.review?.categories?.single()?.categoryName)
+        }
+
+    @Test
+    fun `a review stream that fails leaves the budgets readable`() =
+        runTest {
+            // Same reasoning as the alert case above: a review is a look back, not the plan the user
+            // came to read, so a broken read here must not blank the list.
+            val viewModel = BudgetsViewModel(FailingBudgetRepository())
+
+            assertNull(viewModel.uiState.value.review)
+        }
+
+    @Test
+    fun `accepting a review proposal routes through the same write outcome as any other save`() =
+        runTest {
+            val repository = FakeBudgetRepository(initialReview = reviewRow(name = "Groceries"))
+            val viewModel = BudgetsViewModel(repository)
+
+            viewModel.onEvent(BudgetsEvent.AcceptReviewProposal("category:Groceries"))
+
+            assertEquals(listOf("category:Groceries"), repository.reviewAccepted)
+            // The same contextual permission prompt every other write arms (issue 4.5) — accepting a
+            // review proposal is one more way a budget gets written, not a special case of it.
+            assertTrue(viewModel.uiState.value.requestNotificationPermission)
+        }
+
+    @Test
+    fun `a refused review proposal reports the error rather than the prompt`() =
+        runTest {
+            val repository = FakeBudgetRepository(initialReview = reviewRow(name = "Groceries"))
+            repository.nextError = AppError.NotFound
+            val viewModel = BudgetsViewModel(repository)
+
+            viewModel.onEvent(BudgetsEvent.AcceptReviewProposal("category:Groceries"))
+
+            assertEquals(AppError.NotFound.code, viewModel.uiState.value.errorCode)
+            assertFalse(viewModel.uiState.value.requestNotificationPermission)
+        }
+
+    @Test
+    fun `dismissing the review clears it from state`() =
+        runTest {
+            val repository = FakeBudgetRepository(initialReview = reviewRow(name = "Groceries"))
+            val viewModel = BudgetsViewModel(repository)
+
+            viewModel.onEvent(BudgetsEvent.DismissReview)
+
+            assertEquals(1, repository.dismissCount)
+            assertNull(viewModel.uiState.value.review)
+        }
+
+    @Test
+    fun `a refused dismissal reports the error and leaves the review up`() =
+        runTest {
+            val repository = FakeBudgetRepository(initialReview = reviewRow(name = "Groceries"))
+            repository.nextError = AppError.Storage("no database")
+            val viewModel = BudgetsViewModel(repository)
+
+            viewModel.onEvent(BudgetsEvent.DismissReview)
+
+            assertEquals("storage", viewModel.uiState.value.errorCode)
+            assertEquals("Groceries", viewModel.uiState.value.review?.categories?.single()?.categoryName)
         }
 
     // --- live updates -----------------------------------------------------------------------------

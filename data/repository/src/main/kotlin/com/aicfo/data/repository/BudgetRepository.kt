@@ -11,16 +11,20 @@ import com.aicfo.core.common.runCatchingToResult
 import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.database.entity.BudgetAlertEntity
 import com.aicfo.core.database.entity.BudgetEntity
+import com.aicfo.core.database.entity.BudgetReviewEntity
 import com.aicfo.core.model.Category
 import com.aicfo.core.model.Money
 import com.aicfo.domain.engines.budget.BudgetAlert
 import com.aicfo.domain.engines.budget.BudgetAlertInput
 import com.aicfo.domain.engines.budget.BudgetEngine
+import com.aicfo.domain.engines.budget.BudgetReview
+import com.aicfo.domain.engines.budget.BudgetReviewInput
 import com.aicfo.domain.engines.budget.BudgetStatus
 import com.aicfo.domain.engines.budget.BudgetStatusInput
 import com.aicfo.domain.engines.budget.BudgetSuggestion
 import com.aicfo.domain.engines.budget.BudgetSuggestionInput
 import com.aicfo.domain.engines.budget.MonthlySpend
+import com.aicfo.domain.engines.budget.ReviewedCategoryInput
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -108,7 +112,12 @@ data class CategoryBudgetAlert(
  * **Budgets share the `budget` table with quick setup's nature-level envelopes** (ADR-0004). The two
  * are separated by `category_id`: null for an envelope, set for one of these. Neither read sees the
  * other's rows, which is why `observeLatestEnvelopes` still drives the dashboard rings unchanged.
+ *
+ * **Eleven operations across three features** (budgets, alerts, review) that all read and write the
+ * same `budget`-family tables — the count below is the interface's, not a design choice, and
+ * splitting it would scatter one repository's responsibility across several to satisfy a counter.
  */
+@Suppress("TooManyFunctions")
 interface BudgetRepository {
     /**
      * Every category with its budget and live status, for the current month.
@@ -197,6 +206,45 @@ interface BudgetRepository {
      */
     suspend fun markNotified(alert: CategoryBudgetAlert): Result<Boolean, AppError>
 
+    /**
+     * The last closed month's budget review, for the card on the budgets screen (issue 4.6; §5.5).
+     * Why:    `null` covers two different truths at once, deliberately: nothing was budgeted last
+     *         month, or the review has already been dismissed (`RULE-BUD-REVIEW.review_once_per_month`,
+     *         [dismissReview]'s claim). Unlike [observeAlerts], **this one does deduplicate** — a
+     *         review is a one-time task to act on or dismiss, not an ongoing status like a crossed
+     *         band, so the same card returning every time the screen reopens would be exactly the
+     *         nagging the rule exists to prevent.
+     * Result: the review, or `null` when there is nothing to show. Re-emitted whenever a transaction,
+     *         a budget, or the claim changes.
+     * Input:  none. Output: `Flow<BudgetReview?>`.
+     */
+    fun observeReview(): Flow<BudgetReview?>
+
+    /**
+     * Accepts a reviewed category's proposed adjustment as **this month's** budget (FR-BUD-*, P-07).
+     * Why:    re-reads [observeReview] rather than taking the amount from the screen, for the reason
+     *         [acceptSuggestion] gives: the number written is provably the one the engine produced.
+     *         Writes to the current month, not the reviewed one — a proposal prices the month the
+     *         user is standing in (see `DefaultBudgetEngine.proposalFor`), and the reviewed month is
+     *         already closed and cannot be re-budgeted.
+     * Result: `Ok` with the stored id, or `NotFound` when the category has no material proposal —
+     *         either it was on-plan, or the engine had too little history to price one.
+     * Input:  [categoryId]. Output: `Result<String, AppError>`.
+     */
+    suspend fun acceptReviewProposal(categoryId: String): Result<String, AppError>
+
+    /**
+     * Dismisses the last closed month's review, so [observeReview] stops showing it.
+     * Why:    the claim [observeReview] checks, mirroring [markNotified]'s insert-and-check shape —
+     *         a `budget_review` row for (profile, reviewed month) is what makes "reviewed once" a
+     *         property of the schema rather than of the screen remembering not to reopen it.
+     * Result: `Ok(true)` when this call claimed it; `Ok(false)` when it was already claimed, or
+     *         when there was nothing to review — dismissing nothing is not an error, and nothing
+     *         is written.
+     * Input:  none. Output: `Result<Boolean, AppError>`.
+     */
+    suspend fun dismissReview(): Result<Boolean, AppError>
+
     companion object {
         /** `manual` — the user typed this number themselves. */
         const val SOURCE_MANUAL = "manual"
@@ -219,9 +267,11 @@ interface BudgetRepository {
  *         [dispatchers]; [activeProfileId] — which profile's budgets, so the demo keeps its own.
  * Output: [BudgetRepository].
  * Changelog: 2026-08-11 — Created for issue 4.4.
+ *            2026-08-15 — Issue 4.6: added the monthly review (`observeReview`,
+ *            `acceptReviewProposal`, `dismissReview`).
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-// Eight of these are [BudgetRepository]'s own operations and the rest assemble engine inputs from
+// Eleven of these are [BudgetRepository]'s own operations and the rest assemble engine inputs from
 // rows, which is this class's entire job (ARC-005). The count is the interface's, not a design
 // choice — the same argument `CfoDatabase` and `DemoDao` make. Splitting the private helpers into a
 // collaborator would scatter one responsibility to satisfy a counter.
@@ -352,6 +402,55 @@ internal class RoomBudgetRepository(
             }
         }
 
+    override fun observeReview(): Flow<BudgetReview?> =
+        activeProfileId.flatMapLatest { profileId ->
+            rawReview(profileId).combine(
+                database.budgetReviewDao().observeForMonth(profileId, reviewedMonth(clock.today()).startIsoDate),
+            ) { review, claimed -> if (claimed != null) null else review }
+                .flowOn(dispatchers.io)
+        }
+
+    override suspend fun acceptReviewProposal(categoryId: String): Result<String, AppError> {
+        // Read through the same Flow the card showed, for the reason acceptSuggestion re-reads
+        // observeSuggestions: the amount written is provably the one the engine produced.
+        val proposal =
+            observeReview().first()?.categories?.firstOrNull { it.categoryId == categoryId }?.proposal
+                ?: return Err(AppError.NotFound)
+        return write(
+            categoryId = categoryId,
+            amount = proposal.amount,
+            rolloverEnabled = false,
+            source = BudgetRepository.SOURCE_SUGGESTED,
+            citation = proposal.provenance.evidence.firstOrNull(),
+        )
+    }
+
+    override suspend fun dismissReview(): Result<Boolean, AppError> =
+        withContext(dispatchers.io) {
+            runCatchingToResult {
+                val profileId = activeProfileId.first()
+                // The *raw* review, not observeReview(): a claim already on record must still be
+                // found so this call can honestly answer false rather than mistaking "already
+                // claimed" for "nothing to claim" — the two collapse to the same null otherwise.
+                val review = rawReview(profileId).first() ?: return@runCatchingToResult false
+                val citation = review.provenance.evidence.first()
+                val inserted =
+                    database.budgetReviewDao().insertIfNew(
+                        BudgetReviewEntity(
+                            id = budgetReviewId(profileId, review.monthStartIsoDate),
+                            profileId = profileId,
+                            monthStartIsoDate = review.monthStartIsoDate,
+                            ruleId = citation.ruleId,
+                            ruleVersion = citation.ruleVersion,
+                            totalBudgetedMinor = review.totalBudgeted.minor,
+                            totalActualMinor = review.totalActual.minor,
+                            reviewedAtUtcMillis = clock.nowUtcMillis(),
+                        ),
+                    )
+                inserted != INSERT_IGNORED
+            }
+        }
+
     override suspend fun deleteBudget(id: String): Result<Unit, AppError> =
         withContext(dispatchers.io) {
             runCatchingToResult {
@@ -478,6 +577,92 @@ internal class RoomBudgetRepository(
                 ),
             )
         return ((alert as Ok).value)?.let { CategoryBudgetAlert(budgetId, row.category, it) }
+    }
+
+    /**
+     * The last closed month, seen from today (issue 4.6; §5.5).
+     * Why:    a named function rather than inlining `MonthWindow.closed(...minusMonths(1))` at every
+     *         call site, the way [carriedOverFor] does for rollover — [observeReview] and
+     *         [dismissReview] both need the identical window, and a copy that drifted from
+     *         `carriedOverFor`'s would make the review disagree with rollover about where last
+     *         month ended.
+     * Result: the reviewed month, fully elapsed. Input: [today]. Output: [MonthWindow].
+     */
+    private fun reviewedMonth(today: LocalDate): MonthWindow =
+        MonthWindow.closed(LocalDate.parse(MonthWindow.current(today).startIsoDate).minusMonths(1))
+
+    /**
+     * The month-end review, before the dismissed-claim check is folded in (issue 4.6; §5.5).
+     * Why:    split out of [observeReview] so [dismissReview] can read the same computation without
+     *         going through the deduplication that makes an already-dismissed month look like an
+     *         empty one — the two are different facts, and only [observeReview] is allowed to
+     *         conflate them for the screen.
+     * Result: the review, or `null` when nothing was budgeted last month. Re-emitted whenever a
+     *         transaction or a budget changes.
+     * Input:  [profileId]. Output: `Flow<BudgetReview?>`.
+     */
+    private fun rawReview(profileId: String): Flow<BudgetReview?> {
+        val reviewed = reviewedMonth(clock.today())
+        val history = historyWindow(LocalDate.parse(reviewed.startIsoDate))
+        return combine(
+            database.categoryDao().observeForProfile(profileId),
+            database.budgetDao().observeCategoryBudgets(profileId, reviewed.startIsoDate),
+            database.transactionDao()
+                .observeCategorySpend(profileId, reviewed.startIsoDate, reviewed.actualsEndIsoDate),
+            database.transactionDao()
+                .observeMonthlyCategorySpend(profileId, history.first, history.second),
+        ) { categories, budgets, actuals, monthlySpend ->
+            reviewFor(categories.mapNotNull { it.toCategory() }, budgets, actuals, monthlySpend, reviewed)
+        }
+    }
+
+    /**
+     * Turns one closed month's rows into a [BudgetReview].
+     * Why:    only categories that had a budget are reviewed — an unbudgeted category has no plan to
+     *         have missed, which is [PlannedSection]'s distinction from the budgets screen applied
+     *         here too. The per-category monthly-spend history is grouped the same way
+     *         [suggestionFor] groups it, because it feeds the same [BudgetEngine.suggest] call by way
+     *         of `DefaultBudgetEngine.proposalFor` — one history shape, read twice.
+     * Result: the review, or `null` when no category had a budget (a legitimate state, not an error).
+     * Input:  [categories]; [budgets] — last month's plans; [actuals] — last month's spend;
+     *         [monthlySpend] — the months before the reviewed one, for pricing a proposal;
+     *         [reviewed] — the closed month's window. Output: [BudgetReview]?.
+     */
+    private fun reviewFor(
+        categories: List<Category>,
+        budgets: List<BudgetEntity>,
+        actuals: List<com.aicfo.core.database.dao.CategorySpendRow>,
+        monthlySpend: List<com.aicfo.core.database.dao.MonthlyCategorySpendRow>,
+        reviewed: MonthWindow,
+    ): BudgetReview? {
+        val budgetByCategory = budgets.associateBy { it.categoryId }
+        val actualByCategory = actuals.associate { it.categoryId to Money(it.spentMinor) }
+        val historyByCategory = monthlySpend.groupBy { it.categoryId }
+        val monthsObserved = monthlySpend.map { it.monthKey }.distinct().size
+        val reviewedCategories =
+            categories.mapNotNull { category ->
+                val budget = budgetByCategory[category.id] ?: return@mapNotNull null
+                ReviewedCategoryInput(
+                    categoryId = category.id,
+                    categoryName = category.name,
+                    budgeted = Money(budget.amountMinor),
+                    actual = actualByCategory[category.id] ?: Money.ZERO,
+                    monthlySpends =
+                        historyByCategory[category.id].orEmpty()
+                            .map { MonthlySpend("${it.monthKey}-01", Money(it.spentMinor)) },
+                )
+            }
+        val review =
+            engine.review(
+                BudgetReviewInput(
+                    monthStartIsoDate = reviewed.startIsoDate,
+                    categories = reviewedCategories,
+                    targetMonth = clock.today().monthValue,
+                    monthsObserved = monthsObserved,
+                    nowUtcMillis = clock.nowUtcMillis(),
+                ),
+            )
+        return (review as Ok).value
     }
 
     /**
@@ -612,6 +797,19 @@ internal fun budgetAlertId(
     budgetId: String,
     band: String,
 ): String = "$budgetId:alert:$band"
+
+/**
+ * The id of one review claim: one profile, one reviewed month.
+ *
+ * Why:  derived rather than generated, for the reason [budgetAlertId] gives — and it is what the
+ *       unique index protects here too, one level coarser (no band, no budget: ADR-0020).
+ * Result: a stable id. Input: [profileId]; [monthStartIsoDate] — the reviewed month, TIM-002.
+ * Output: [String]. Changelog: 2026-08-15 — Created for issue 4.6.
+ */
+internal fun budgetReviewId(
+    profileId: String,
+    monthStartIsoDate: String,
+): String = "$profileId:review:$monthStartIsoDate"
 
 /**
  * Collapses a `Result<Result<T, E>, E>` produced by `runCatchingToResult` around a block that

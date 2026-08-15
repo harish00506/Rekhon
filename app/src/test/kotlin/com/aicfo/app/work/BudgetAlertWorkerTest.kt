@@ -23,6 +23,7 @@ import com.aicfo.data.repository.CategoryBudgetAlert
 import com.aicfo.data.repository.CategoryBudgetSuggestion
 import com.aicfo.domain.engines.budget.BudgetAlert
 import com.aicfo.domain.engines.budget.BudgetAlertBand
+import com.aicfo.domain.engines.budget.BudgetReview
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
@@ -252,6 +253,14 @@ private class RecordingBudgetRepository : BudgetRepository {
         error("the worker must never accept a suggestion on the user's behalf (P-07)")
 
     override suspend fun deleteBudget(id: String): Result<Unit, AppError> = error("the worker must never delete")
+
+    override fun observeReview(): Flow<BudgetReview?> = error("the worker must not read the monthly review")
+
+    override suspend fun acceptReviewProposal(categoryId: String): Result<String, AppError> =
+        error("the worker must never accept a review proposal on the user's behalf (P-07)")
+
+    override suspend fun dismissReview(): Result<Boolean, AppError> =
+        error("the worker must never dismiss the review on the user's behalf")
 }
 
 /**

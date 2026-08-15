@@ -227,8 +227,11 @@ class MigrationSafetyTest {
      *         it by adding a string — this test makes that a deliberate, reviewed edit.
      */
     @Test
-    fun `only the three argued-for tables are exempt from the per-row invariants`() {
-        assertEquals(setOf("audit_log", "sms_draft", "budget_alert"), INVARIANT_EXEMPT_TABLES.keys)
+    fun `only the four argued-for tables are exempt from the per-row invariants`() {
+        assertEquals(
+            setOf("audit_log", "sms_draft", "budget_alert", "budget_review"),
+            INVARIANT_EXEMPT_TABLES.keys,
+        )
     }
 
     /**
@@ -257,6 +260,33 @@ class MigrationSafetyTest {
         assertTrue(
             "budget_alert must NOT have deleted_at_utc_millis — a row records that a person was " +
                 "notified, which cannot be undone, and the unique index counts tombstones anyway",
+            "deleted_at_utc_millis" !in columns,
+        )
+    }
+
+    /**
+     * Input:  the `budget_review` table's columns.
+     * Output: asserts it keeps profile scoping and deliberately has no tombstone.
+     *
+     * Same argument as `budget_alert` above, one level coarser: a row here is not something the
+     * user made, it is the record that a review card was shown and dismissed, and the unique index
+     * that guarantees one review per profile per month counts soft-deleted rows too — a "deleted"
+     * claim would not let the card come back, only make a reader think it would.
+     */
+    @Test
+    fun `budget_review keeps profile scoping and deliberately has no tombstone`() {
+        val columns =
+            SchemaFixtures.load(CfoDatabase.VERSION)
+                .database
+                .entitiesByTableName()
+                .getValue("budget_review")
+                .fieldsByColumnName()
+                .keys
+
+        assertTrue("budget_review must carry profile_id so no query can span profiles", "profile_id" in columns)
+        assertTrue(
+            "budget_review must NOT have deleted_at_utc_millis — a row records that a review was " +
+                "shown, which cannot be undone, and the unique index counts tombstones anyway",
             "deleted_at_utc_millis" !in columns,
         )
     }
@@ -360,6 +390,14 @@ private val INVARIANT_EXEMPT_TABLES =
             "counts soft-deleted rows, so a 'deleted' alert would still not fire again. Deleting " +
             "and recreating a budget inside one month therefore does not re-notify, which is the " +
             "side of that trade this feature should err on. Rows leave with the profile.",
+        "budget_review" to
+            "the record that a closed month's review card was shown (issue 4.6, §5.5): a row is " +
+            "not something the user created and can lose, it is the fact that a review was " +
+            "presented — one level coarser than budget_alert, keyed by month alone rather than " +
+            "month and band (ADR-0020). A tombstone would be worse than absent for the same " +
+            "reason: the unique index that guarantees one review per profile per month counts " +
+            "soft-deleted rows, so a 'deleted' claim would not bring the card back. Rows leave " +
+            "with the profile.",
         "sms_draft" to
             "unconfirmed proposals parsed from the inbox (issue 3.9, ADR-0013): a pending draft is " +
             "not user data, it is an inference drawn from messages the user can withdraw " +

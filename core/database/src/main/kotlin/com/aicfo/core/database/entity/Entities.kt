@@ -604,6 +604,56 @@ data class BudgetAlertEntity(
 )
 
 /**
+ * The record that a closed month's budget review has been shown to the user (issue 4.6; §5.5).
+ *
+ * Why:    `RULE-BUD-REVIEW.review_once_per_month` is documentation, not enforcement — the same
+ *         split `BudgetAlertEntity` draws. Without a persisted claim, reopening the budgets screen
+ *         after dismissing last month's review would compute the identical `BudgetReview` again
+ *         and show the card straight back, since the engine is pure and the closed month's data
+ *         does not change. **Keyed by (profile, month) alone, not per category** — this is a
+ *         review-and-move-on card, not a persistent per-finding status like the alert bands, so
+ *         one dismissal closes the whole month (ADR-0020).
+ * What:   one row per (profile, reviewed month) once the user has dismissed or acted on it.
+ * Result: a Room row in `budget_review`, added at schema version 15 by issue 4.6.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-08-15 — Created for issue 4.6 (FR-BUD-*, §5.5).
+ *
+ * **No per-category detail is stored**, for the reason `BudgetAlertEntity` gives for amounts: the
+ * totals are derivable from the budget and the transactions at any time, and a copy here could
+ * disagree with the screen. The totals are still stamped, purely as an audit trail (AI-ARC-006,
+ * P-02) of what the reviewed month looked like at the moment it was dismissed.
+ */
+@Entity(
+    tableName = "budget_review",
+    indices = [
+        Index("profile_id", "month_start_iso_date", unique = true),
+    ],
+)
+data class BudgetReviewEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** TIM-002: the first day of the **reviewed** (closed) month, ISO `yyyy-MM-dd`. */
+    @ColumnInfo(name = "month_start_iso_date")
+    val monthStartIsoDate: String,
+    /** The rulebook row that produced this review, and its version (AI-ARC-006, P-02). */
+    @ColumnInfo(name = "rule_id")
+    val ruleId: String,
+    @ColumnInfo(name = "rule_version")
+    val ruleVersion: String,
+    /** Audit-only snapshot of the reviewed month's totals (MNY-001), not re-read by the app. */
+    @ColumnInfo(name = "total_budgeted_minor")
+    val totalBudgetedMinor: Long,
+    @ColumnInfo(name = "total_actual_minor")
+    val totalActualMinor: Long,
+    /** TIM-001: when the user dismissed or acted on the review, UTC epoch millis. */
+    @ColumnInfo(name = "reviewed_at_utc_millis")
+    val reviewedAtUtcMillis: Long,
+)
+
+/**
  * A money movement the user expects to repeat (issue 2.3; FR-ONB-002, FR-TXN-006).
  *
  * Why:    quick setup captures a salary and a rent that recur every month, and FR-TXN-006 describes

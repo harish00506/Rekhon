@@ -15,8 +15,11 @@ import com.aicfo.data.repository.CategoryBudgetAlert
 import com.aicfo.data.repository.CategoryBudgetSuggestion
 import com.aicfo.domain.engines.budget.BudgetAlert
 import com.aicfo.domain.engines.budget.BudgetAlertBand
+import com.aicfo.domain.engines.budget.BudgetReview
 import com.aicfo.domain.engines.budget.BudgetStatus
 import com.aicfo.domain.engines.budget.BudgetSuggestion
+import com.aicfo.domain.engines.budget.ReviewedCategory
+import com.aicfo.domain.engines.budget.VarianceDirection
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
@@ -47,10 +50,12 @@ internal class FakeBudgetRepository(
     initialBudgets: List<CategoryBudget> = emptyList(),
     initialSuggestions: List<CategoryBudgetSuggestion> = emptyList(),
     initialAlerts: List<CategoryBudgetAlert> = emptyList(),
+    initialReview: BudgetReview? = null,
 ) : BudgetRepository {
     private val budgets = MutableStateFlow(initialBudgets)
     private val suggestions = MutableStateFlow(initialSuggestions)
     private val alerts = MutableStateFlow(initialAlerts)
+    private val review = MutableStateFlow(initialReview)
 
     /** What the next write returns, or `null` for success. Cleared after it is used once. */
     var nextError: AppError? = null
@@ -64,6 +69,13 @@ internal class FakeBudgetRepository(
     /** Every [deleteBudget] call, in order. */
     val deleted: MutableList<String> = mutableListOf()
 
+    /** Every [acceptReviewProposal] call, in order (issue 4.6). */
+    val reviewAccepted: MutableList<String> = mutableListOf()
+
+    /** How many times [dismissReview] was called (issue 4.6). */
+    var dismissCount: Int = 0
+        private set
+
     override fun observeBudgets(): Flow<List<CategoryBudget>> = budgets
 
     override fun observeSuggestions(): Flow<List<CategoryBudgetSuggestion>> = suggestions
@@ -75,6 +87,20 @@ internal class FakeBudgetRepository(
     override suspend fun pendingAlerts(): Result<List<CategoryBudgetAlert>, AppError> = Ok(alerts.value)
 
     override suspend fun markNotified(alert: CategoryBudgetAlert): Result<Boolean, AppError> = Ok(true)
+
+    override fun observeReview(): Flow<BudgetReview?> = review
+
+    override suspend fun acceptReviewProposal(categoryId: String): Result<String, AppError> {
+        takeError()?.let { return Err(it) }
+        reviewAccepted += categoryId
+        return Ok("budget:$categoryId")
+    }
+
+    override suspend fun dismissReview(): Result<Boolean, AppError> {
+        takeError()?.let { return Err(it) }
+        dismissCount++
+        return Ok(true)
+    }
 
     override suspend fun setBudget(
         categoryId: String,
@@ -113,6 +139,11 @@ internal class FakeBudgetRepository(
         alerts.value = value
     }
 
+    /** Replaces what the review stream is emitting (issue 4.6). */
+    fun emitReview(value: BudgetReview?) {
+        review.value = value
+    }
+
     /** Result: the staged error, consumed so the *next* call succeeds. Output: [AppError]?. */
     private fun takeError(): AppError? = nextError?.also { nextError = null }
 }
@@ -142,6 +173,13 @@ internal class FailingBudgetRepository : BudgetRepository {
 
     override suspend fun markNotified(alert: CategoryBudgetAlert): Result<Boolean, AppError> =
         Err(AppError.Storage("no database"))
+
+    override fun observeReview(): Flow<BudgetReview?> = flow { throw IOException("no database") }
+
+    override suspend fun acceptReviewProposal(categoryId: String): Result<String, AppError> =
+        Err(AppError.Storage("no database"))
+
+    override suspend fun dismissReview(): Result<Boolean, AppError> = Err(AppError.Storage("no database"))
 
     override suspend fun setBudget(
         categoryId: String,
@@ -178,6 +216,12 @@ internal class SuggestionlessBudgetRepository(
     override suspend fun pendingAlerts(): Result<List<CategoryBudgetAlert>, AppError> = Ok(emptyList())
 
     override suspend fun markNotified(alert: CategoryBudgetAlert): Result<Boolean, AppError> = Ok(true)
+
+    override fun observeReview(): Flow<BudgetReview?> = MutableStateFlow(null)
+
+    override suspend fun acceptReviewProposal(categoryId: String): Result<String, AppError> = Err(AppError.NotFound)
+
+    override suspend fun dismissReview(): Result<Boolean, AppError> = Ok(false)
 
     override suspend fun setBudget(
         categoryId: String,
@@ -286,6 +330,49 @@ internal fun suggestionRow(
                     testProvenance(RuleCitation("RULE-BUD-SUGGEST", "1.0"), window = "2026-05-01..2026-07-31"),
             ),
     )
+
+/**
+ * Builds a [BudgetReview] for a test (issue 4.6; §5.5).
+ * Why:    same bargain as [alertRow] and [suggestionRow] — the test states the direction and
+ *         proposal it wants rendered rather than making the engine derive them, so a screen test
+ *         fails for screen reasons. The provenance is real because [BudgetReview] refuses to be
+ *         built without a cited rule (P-02).
+ * Result: a review with one reviewed category. Input: [name]; [direction]; [budgeted]; [actual];
+ *         [proposal] — `null` for an on-plan row or one with too little history to price.
+ *         Output: [BudgetReview].
+ * Changelog: 2026-08-15 — Created for issue 4.6.
+ */
+internal fun reviewRow(
+    name: String = "Groceries",
+    direction: VarianceDirection = VarianceDirection.OVER,
+    budgeted: Money = Money(1_000_000L),
+    actual: Money = Money(1_300_000L),
+    proposal: BudgetSuggestion? = null,
+): BudgetReview {
+    val variance = actual - budgeted
+    return BudgetReview(
+        monthStartIsoDate = "2026-07-01",
+        totalBudgeted = budgeted,
+        totalActual = actual,
+        categories =
+            listOf(
+                ReviewedCategory(
+                    categoryId = "category:$name",
+                    categoryName = name,
+                    budgeted = budgeted,
+                    actual = actual,
+                    variance = variance,
+                    varianceBps = (variance.minor.let { if (it < 0) -it else it } * BPS_FULL / budgeted.minor).toInt(),
+                    direction = direction,
+                    proposal = proposal,
+                ),
+            ),
+        provenance = testProvenance(RuleCitation("RULE-BUD-REVIEW", "1.0")),
+    )
+}
+
+/** 10 000 bps = 100% (MNY-002), the unit [reviewRow] computes `varianceBps` in. */
+private const val BPS_FULL = 10_000
 
 /**
  * Result: a provenance a fixture can carry. Input: [citation]; [window] — the history read, which a

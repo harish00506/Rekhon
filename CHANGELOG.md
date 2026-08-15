@@ -60,6 +60,38 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
   the full L3 guardrail (9.7), notification policy and quiet hours (9.6), and the monthly review
   (4.6).
 
+### [0.4.5] — Told once, and a look back at last month too  (2026-08-15)
+
+- **Implemented:** issue 4.6 — monthly budget review (**FR-BUD-\***, §5.5, P-02/P-03/P-07). 4.5 told
+  the user when they crossed a line *during* the month; this tells them what the month actually
+  looked like once it closed, and offers a priced adjustment for the one ahead.
+- **The engine half already existed.** `BudgetEngine.review`, `BudgetMonthReview`, and
+  `RULE-BUD-REVIEW` v1.0 (`ai/rules/rules-kb.json` v1.11.0) shipped in an earlier session with full
+  golden/unit/drift coverage. This release closes the gap that was left: there was no database
+  table, no repository method, and no UI — the review computed correctly and nobody could see it.
+- **`review_once_per_month` is enforced by the schema, the same pattern 4.5 set.** New `budget_review`
+  table at **v15**, `UNIQUE(profile_id, month_start_iso_date)` — one level coarser than `budget_alert`'s
+  key, because a review is one card for the whole month rather than one status per band
+  ([ADR-0020](docs/adr/0020-budget-review-keyed-by-month-not-category.md)). Dismissing it, or
+  accepting any one category's proposal, is enough to close the card; it does not reopen until the
+  next month closes.
+- **A proposal prices the month ahead, not the month reviewed.** Each material finding's replacement
+  budget is priced by calling the same `BudgetEngine.suggest` a plain suggestion card calls, targeted
+  at the current month — so a reviewed proposal is provably the same number a suggestion would show,
+  and accepting it writes to the month the user is standing in, never the closed one.
+- **A finding with too little history says so, honestly** (P-03). The engine does not fabricate a
+  number it cannot price; the card states that plainly rather than showing nothing or a guess.
+- **A real, pre-existing residue gap was found and fixed along the way.** `DemoDao.deleteBudgetAlerts`
+  has existed since issue 4.5 but `DemoModeRepository.exit()` never called it — a `budget_alert` row
+  written during a demo session survived every wipe since 4.5 shipped, invisible to the "no residue"
+  test for the same reason a missing table is invisible to it. Fixed alongside wiring the analogous
+  call for the new `budget_review` table.
+- **Verified on device**, including the part JVM tests cannot reach: rolled the emulator's clock back
+  a month, budgeted and overspent a category through the running app, rolled the clock forward, and
+  watched the review card render the correct totals, variance and citation; dismissed it and
+  confirmed it stayed gone across a full process restart, proving the claim is a real database row
+  and not screen state.
+
 ### [0.4.3] — A number to aim at, and the split lines that were being ignored  (2026-08-11)
 
 - **Implemented:** issue 4.4 — budgets CRUD + suggestions (**FR-BUD-001**, **FR-BUD-002**,

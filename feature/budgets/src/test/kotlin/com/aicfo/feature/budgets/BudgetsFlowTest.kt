@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performTextInput
 import com.aicfo.core.designsystem.theme.CfoTheme
 import com.aicfo.core.model.Money
 import com.aicfo.domain.engines.budget.BudgetAlertBand
+import com.aicfo.domain.engines.budget.VarianceDirection
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -34,6 +35,7 @@ import org.robolectric.annotation.Config
  *       state and the error banner.
  * Result: the screen is exercised on every `test` run, not only when a device is attached.
  * Changelog: 2026-08-11 — Created for issue 4.4.
+ *            2026-08-15 — Issue 4.6: added the monthly-review cases.
  *
  * On the JVM via Robolectric, following `:feature:categories`'s `CategoriesFlowTest`.
  */
@@ -362,6 +364,80 @@ class BudgetsFlowTest {
 
         compose.onNodeWithText(plural(R.plurals.budgets_alert_banner_exceeded, 1)).assertIsDisplayed()
         compose.onNodeWithText(text(R.string.budgets_band_exceeded)).performScrollTo().assertIsDisplayed()
+    }
+
+    // --- issue 4.6: the monthly review -------------------------------------------------------------
+
+    @Test
+    fun `a material finding shows the variance, both rules and the proposed amount`() {
+        val proposal = suggestionRow(name = "Groceries", amount = Money(850_000L), median = Money(850_000L)).suggestion
+        setContent(
+            BudgetsUiState(
+                isLoading = false,
+                review =
+                    reviewRow(
+                        name = "Groceries",
+                        direction = VarianceDirection.OVER,
+                        budgeted = Money(1_000_000L),
+                        actual = Money(1_300_000L),
+                        proposal = proposal,
+                    ),
+            ),
+        )
+
+        compose.onNodeWithText(text(R.string.budgets_review_title)).assertIsDisplayed()
+        val summary = text(R.string.budgets_review_summary, "₹10,000.00", "₹13,000.00")
+        compose.onNodeWithText(summary).assertIsDisplayed()
+        // P-02 in one screen: the finding never appears without both rules that stand behind it —
+        // RULE-BUD-REVIEW decided this month was worth reviewing, RULE-BUD-SUGGEST priced the row.
+        val variance = text(R.string.budgets_review_over, "₹13,000.00", "₹10,000.00", 30)
+        compose.onNodeWithText(variance).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.budgets_reason_rule, "RULE-BUD-REVIEW", "1.0")).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.budgets_reason_rule, "RULE-BUD-SUGGEST", "1.0")).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a finding with too little history to price says so rather than showing nothing`() {
+        setContent(
+            BudgetsUiState(isLoading = false, review = reviewRow(name = "Groceries", proposal = null)),
+        )
+
+        compose.onNodeWithText(text(R.string.budgets_review_no_history)).performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun `an on-plan month renders no review card at all`() {
+        setContent(BudgetsUiState(isLoading = false, review = null))
+
+        compose.onNodeWithText(text(R.string.budgets_review_title)).assertDoesNotExist()
+    }
+
+    @Test
+    fun `accepting a review proposal is a tap, not automatic`() {
+        val proposal = suggestionRow(name = "Groceries", amount = Money(850_000L)).suggestion
+        val events = mutableListOf<BudgetsEvent>()
+        setContent(
+            BudgetsUiState(isLoading = false, review = reviewRow(name = "Groceries", proposal = proposal)),
+            onEvent = { events += it },
+        )
+
+        assertTrue(events.isEmpty())
+        compose.onNodeWithText(text(R.string.budgets_suggestion_accept)).performScrollTo().performClick()
+
+        assertEquals(listOf(BudgetsEvent.AcceptReviewProposal("category:Groceries")), events)
+    }
+
+    @Test
+    fun `dismissing the review sends exactly that event`() {
+        val events = mutableListOf<BudgetsEvent>()
+        setContent(
+            BudgetsUiState(isLoading = false, review = reviewRow(name = "Groceries")),
+            onEvent = { events += it },
+        )
+
+        compose.onNodeWithText(text(R.string.budgets_review_dismiss)).performScrollTo().performClick()
+
+        assertEquals(listOf(BudgetsEvent.DismissReview), events)
     }
 
     /** Result: a plural string from this module's resources. Input: [id]; [count]. Output: the text. */

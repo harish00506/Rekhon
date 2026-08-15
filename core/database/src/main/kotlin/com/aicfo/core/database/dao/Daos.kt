@@ -16,6 +16,7 @@ import com.aicfo.core.database.entity.AttachmentEntity
 import com.aicfo.core.database.entity.AuditLogEntity
 import com.aicfo.core.database.entity.BudgetAlertEntity
 import com.aicfo.core.database.entity.BudgetEntity
+import com.aicfo.core.database.entity.BudgetReviewEntity
 import com.aicfo.core.database.entity.CategoryEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
 import com.aicfo.core.database.entity.ProfileEntity
@@ -1920,6 +1921,45 @@ interface BudgetAlertDao {
     ): List<BudgetAlertEntity>
 }
 
+/**
+ * Records and reads whether a closed month's budget review has been shown (issue 4.6; §5.5).
+ *
+ * Why:  the same one-question shape as [BudgetAlertDao] — "has this been claimed?" — and the same
+ *       reason for [insertIfNew]: the table's unique index on (profile, month) is what makes
+ *       "reviewed once" true, not the caller checking first.
+ * What: one guarded insert, one live read the repository folds into `observeReview`.
+ * Result: at most one open review card per profile, per closed month (`RULE-BUD-REVIEW`).
+ * Changelog: 2026-08-15 — Created for issue 4.6.
+ */
+@Dao
+interface BudgetReviewDao {
+    /**
+     * Records that this month's review has been dismissed or acted on, unless it already was.
+     * Result: `-1` when a claim already existed; the new rowid otherwise.
+     * Input:  [review]. Output: [Long] rowid, or `-1`.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfNew(review: BudgetReviewEntity): Long
+
+    /**
+     * Observes whether a profile's reviewed month has been claimed.
+     * Why:    `observeReview` combines this with the freshly computed [BudgetReviewEntity] to decide
+     *         whether the card should still show — a non-null row collapses the result to `null`,
+     *         the same fold `pendingAlerts` does with `forMonth`'s rows.
+     * Result: the claim row, or `null` when nothing has been claimed yet.
+     * Input:  [profileId]; [monthStartIsoDate] — the reviewed month, TIM-002.
+     * Output: `Flow<BudgetReviewEntity?>`.
+     */
+    @Query(
+        "SELECT * FROM budget_review WHERE profile_id = :profileId " +
+            "AND month_start_iso_date = :monthStartIsoDate LIMIT 1",
+    )
+    fun observeForMonth(
+        profileId: String,
+        monthStartIsoDate: String,
+    ): Flow<BudgetReviewEntity?>
+}
+
 /** Reads and writes recurring rules (issue 2.3; FR-ONB-002, FR-TXN-006). */
 @Dao
 interface RecurringRuleDao {
@@ -2060,6 +2100,17 @@ interface DemoDao {
     suspend fun deleteBudgetAlerts(profileId: String): Int
 
     /**
+     * Result: rows removed from `budget_review`. Input: [profileId]. Output: the count.
+     *
+     * Added by issue 4.6, which introduced the table. Unlike [deleteBudgetAlerts] there is no
+     * ordering requirement against [deleteBudgets] — `budget_review` carries no `budget_id`, since
+     * it claims a whole reviewed month rather than one budget (ADR-0020) — but it is still a
+     * profile-scoped table the wipe must reach, per [countRowsFor].
+     */
+    @Query("DELETE FROM budget_review WHERE profile_id = :profileId")
+    suspend fun deleteBudgetReviews(profileId: String): Int
+
+    /**
      * Result: rows removed from `net_worth_snapshot`. Input: [profileId]. Output: the count.
      *
      * Added by issue 2.6, which introduced the table. A profile-scoped table that the wipe does not
@@ -2165,7 +2216,7 @@ interface DemoDao {
      *         Deliberately **not** filtered by `deleted_at_utc_millis`: a soft-deleted row is
      *         precisely the residue being looked for, so it must count.
      * Result: `0` once the profile has been erased.
-     * Input:  [profileId]. Output: the total row count across all thirteen tables.
+     * Input:  [profileId]. Output: the total row count across all fourteen tables.
      */
     @Query(
         "SELECT (SELECT COUNT(*) FROM profile WHERE id = :profileId) + " +
@@ -2178,6 +2229,7 @@ interface DemoDao {
             "(SELECT COUNT(*) FROM category WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM budget WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM budget_alert WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM budget_review WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM recurring_rule WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM net_worth_snapshot WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM sms_draft WHERE profile_id = :profileId)",

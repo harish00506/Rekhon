@@ -42,6 +42,7 @@ import com.aicfo.domain.engines.budget.BudgetAlertBand
  * Result: FR-BUD-001's CRUD and FR-BUD-002's one-tap accept are reachable, and every figure on the
  *       screen came from the engine (P-03) with a rule attached (P-02).
  * Changelog: 2026-08-11 — Created for issue 4.4.
+ *            2026-08-15 — Added the monthly review section for issue 4.6.
  *
  * Input:  [modifier]; [viewModel]. Output: the rendered screen.
  */
@@ -97,6 +98,10 @@ fun BudgetsContent(
         // Above the plan, because it is the answer to the question the user opened this screen with
         // (issue 4.5, FR-BUD-004). It renders whether or not a notification was ever posted.
         BudgetAlertBanner(uiState = uiState)
+
+        // Below the alert (now) and above the plan (this month): a look back at the month that just
+        // closed, before the one being lived in (issue 4.6, §5.5).
+        BudgetReviewSection(uiState = uiState, onEvent = onEvent)
 
         // Above the list rather than over it, for the reason `ReconcilePanel` states: the row the
         // sheet refers to stays visible and stays live underneath.

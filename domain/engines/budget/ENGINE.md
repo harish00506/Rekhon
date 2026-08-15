@@ -29,6 +29,7 @@ interface BudgetEngine {
     fun suggest(input: BudgetSuggestionInput): Result<BudgetSuggestion?, AppError>
     fun status(input: BudgetStatusInput): Result<BudgetStatus, AppError>
     fun alert(input: BudgetAlertInput): Result<BudgetAlert?, AppError>
+    fun review(input: BudgetReviewInput): Result<BudgetReview?, AppError>
 }
 ```
 
@@ -53,6 +54,18 @@ interface BudgetEngine {
   `spent`, `overspentBy` (present for `EXCEEDED` only), and `provenance`. **`null` is a valid
   answer** — below the warn band, and for an unset (zero) budget, which is also the division-by-zero
   guard.
+
+- **Review input** — `BudgetReviewInput`: `monthStartIsoDate` (the **reviewed**, already-closed
+  month), `categories` (one `ReviewedCategoryInput` per budgeted category — `budgeted`, `actual`,
+  `monthlySpends`), `targetMonth` (1–12, the month a proposal would apply to — the one the user is
+  standing in, **not** the reviewed one), `monthsObserved`, `nowUtcMillis`, `rules`.
+- **Review output** — `BudgetReview?`: `monthStartIsoDate`, `totalBudgeted`/`totalActual` (summed
+  here — P-03 does not exempt addition), `categories` (every budgeted category, including on-plan
+  ones), and `provenance` citing `RULE-BUD-REVIEW`. **`null` is a valid answer** — nobody budgeted
+  anything last month. Each `ReviewedCategory` carries `variance` (signed), `varianceBps`
+  (magnitude), `direction` (`OVER`/`UNDER`/`ON_PLAN`), and `proposal` — priced by calling [suggest]
+  internally, so a reviewed proposal is provably the same number a plain suggestion would show for
+  the same category, `null` for `ON_PLAN` rows and also for a material row with too little history.
 
 **This engine performs no calendar arithmetic.** `daysInPeriod` and `daysElapsed` arrive already
 resolved by the repository, which owns the injected `Clock` and the profile time zone (TIM-001).
@@ -110,6 +123,33 @@ the honest amount past the budget is nothing.
 **The band is a decision, not a notification.** Whether one is *sent* is the repository's and the
 worker's question, because only they know what the user has already been told.
 
+### §5.5 — the monthly review
+
+| Step | What happens | Result |
+|------|--------------|--------|
+| 1 | For each budgeted category, `variance = actual − budgeted` (signed) | the gap |
+| 2 | `varianceBps = \|variance\| × 10 000 / budgeted`, integer, saturated at `Int.MAX_VALUE`, `0` for a zero budget | the magnitude |
+| 3 | If `varianceBps ≥ min_variance_pct × 100` → `OVER` or `UNDER` by the sign of `variance`; else `ON_PLAN` | the direction |
+| 4 | For `OVER`/`UNDER` rows only, call [suggest] with `targetMonth`/`monthsObserved`/`rules` from the review input | the proposal, or `null` for want of history |
+| 5 | Sum every category's `budgeted`/`actual` | `totalBudgeted`/`totalActual` |
+| 6 | If no category was budgeted, stop | `null` — not an error, a user who has not budgeted yet |
+
+**The materiality threshold is the same shape as the alert bands, one rule row over.** Both compare
+a spend to a plan as basis points against a rule-supplied percentage; `RULE-BUD-REVIEW` is the
+review's own row rather than a param on `RULE-BUD-ALERT`, for the identical reason `RULE-BUD-ALERT`
+is its own row and not a param on `RULE-BUD-PACE` — different questions, edited for different
+reasons, and a shipped row's version must not move to answer a second one (ADR-0017's trigger 3).
+
+**A proposal prices the month ahead, not the month reviewed.** `targetMonth` is read from the review
+input, never derived from `monthStartIsoDate` — pricing a finished month's seasonal prior onto the
+month the user is about to spend in would be a subtly wrong number that looked plausible.
+
+**Two rules stand behind one finding, at two levels.** The review's own `provenance` cites
+`RULE-BUD-REVIEW`, which decided the month was worth reviewing and this category worth mentioning.
+Each `ReviewedCategory.proposal`, when there is one, carries its own `provenance` citing
+`RULE-BUD-SUGGEST` — the same rule an ordinary suggestion cites — because it *is* the same
+calculation, called from a different caller.
+
 ## Assumptions & guardrails
 
 - **No `Double` or `Float` appears anywhere in this module** (MNY-001). The median of an even window
@@ -146,6 +186,10 @@ worker's question, because only they know what the user has already been told.
   a band every time it is asked; the once-per-month promise is a `UNIQUE(profile_id, budget_id,
   month_start_iso_date, band)` index on `budget_alert`. The flag records the intent, the index is the
   mechanism.
+- **`review_once_per_month` is the identical pattern, one level coarser.** The engine returns a
+  review every time it is asked; the once-per-month promise is a `UNIQUE(profile_id,
+  month_start_iso_date)` index on `budget_review` — no band, no category, because a review is a
+  single card for the whole month rather than one status per band (ADR-0020).
 
 ## Rules / knowledge consumed
 
@@ -154,6 +198,7 @@ worker's question, because only they know what the user has already been told.
 | `RULE-BUD-SUGGEST` (`ai/rules/rules-kb.json` v1.10.0) | `lookback_months`, `min_months_required`, `seasonality_enabled`, `shrinkage_denominator_months`, `round_to_minor` |
 | `RULE-BUD-PACE` (`ai/rules/rules-kb.json` v1.10.0) | `projection_basis`, `min_elapsed_days_for_projection` |
 | `RULE-BUD-ALERT` (`ai/rules/rules-kb.json` v1.10.0) | `warn_pct`, `exceeded_pct`, `notify_once_per_band_per_month` |
+| `RULE-BUD-REVIEW` (`ai/rules/rules-kb.json` v1.11.0) | `min_variance_pct`, `proposal_basis`, `review_once_per_month` |
 | `ai/knowledge/calendar-seasonality.json` v1.0 | the nine calendar events, their windows, the categories they inflate, their priors, and the shrinkage rule |
 
 Both are **typed mirrors** (`BudgetRules`, `SeasonalityPriors`), not loaded at runtime — the
@@ -175,6 +220,9 @@ instant and the cited rows:
 - an alert cites `RULE-BUD-ALERT` **alone** — the bands come from that row and nothing on that path
   reads pace, so citing both would point the user's "why am I seeing this?" at a rule that had no
   part in the decision.
+- a review cites `RULE-BUD-REVIEW` on the whole result; each material category's `proposal`, when
+  there is one, carries its **own** provenance citing `RULE-BUD-SUGGEST` (and any seasonal event),
+  because materiality and pricing are different claims made by different rows.
 
 A suggestion is the only result in this app that states its `inputWindow` — `"2026-05-01..2026-07-31"`
 — because "median of three months" is only checkable if the three months are named.
@@ -183,10 +231,10 @@ A suggestion is the only result in this app that states its `inputWindow` — `"
 
 | Test | What it holds |
 |------|---------------|
-| `BudgetGoldenTest` | 20 frozen records over `golden/budget.txt`; asserts amounts, medians, all four status figures, the derived flags and the **ordered** citations. A meta-test asserts the fixture still covers the seasonal, unadjusted, no-suggestion, wrapping-window and withheld-projection paths |
-| `BudgetEngineTest` | both thresholds at / just below / just above their boundary, read from `BudgetRules` rather than literals; median and rounding edges; rollover; provenance |
+| `BudgetGoldenTest` | 20 frozen records over `golden/budget.txt`; asserts amounts, medians, all four status figures, the derived flags and the **ordered** citations. A meta-test asserts the fixture still covers the seasonal, unadjusted, no-suggestion, wrapping-window and withheld-projection paths, plus 8 `kind=review` records covering the mixed/threshold/unpriceable/zero-budget review paths |
+| `BudgetEngineTest` | both thresholds at / just below / just above their boundary, read from `BudgetRules` rather than literals; median and rounding edges; rollover; provenance; the review's own boundary cases (79/80/99.99/100/101%, zero budget, zero variance, unpriceable-but-reported row, empty-categories → `null`, target-month-not-reviewed-month seasonal correctness, dual citation) |
 | `SeasonalityPriorsTest` | both window shapes including the four that wrap the year end, max-not-product, and the three points of the shrinkage curve |
-| `RulebookDriftTest` | every `RULE-BUD-*` threshold and version against the real rulebook, plus the permanent assertion that the alert bands are **not** on `RULE-BUD-PACE` |
+| `RulebookDriftTest` | every `RULE-BUD-*` threshold and version against the real rulebook, plus the permanent assertions that the alert bands are **not** on `RULE-BUD-PACE` and the review's variance/proposal-basis params are **not** on `RULE-BUD-SUGGEST` |
 | `SeasonalityKbDriftTest` | every event's id, window (**re-parsed from the KB's own `"Oct-Nov"` strings**, not copied), inflated categories and multiplier |
 
 Coverage: module ≥ 85% (`koverVerify` gate), money math 100%.
@@ -202,3 +250,4 @@ the Gradle `inputs.file` wiring — the specific vacuous-gate failure this repo 
 |---------|------|--------|
 | 1.0 | 2026-08-11 | Created for issue 4.4 (FR-BUD-001/002/003) |
 | 1.0 | 2026-08-13 | Added `alert` for issue 4.5 (FR-BUD-004). **Version unchanged, deliberately**: no existing figure moved, so every result computed under 1.0 is still reproducible under 1.0 (AI-ARC-006). `BudgetPace` and `BudgetAlertBands` were split out of `DefaultBudgetEngine` in the same commit — a pure move, guarded by the golden file |
+| 1.0 | 2026-08-15 | Added `review` for issue 4.6 (§5.5). **Version unchanged, for the same reason**: `review` calls the unchanged `suggest` internally rather than duplicating its math, so nothing already shipped moved. `BudgetMonthReview` was added as a new pure calculator alongside `BudgetPace`/`BudgetAlertBands`, same shape |

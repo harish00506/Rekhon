@@ -54,6 +54,7 @@ Newest last. "Why" is one line; the ADR holds the argument.
 | [0017](docs/adr/0017-budget-thresholds-stay-a-typed-mirror.md) | 2026-08-11 | Budget thresholds stay a typed mirror; the `ai/` loader is deferred again, **trigger list narrowed to three** | ADR-0005's first trigger had not actually fired, and the narrowed list makes the next deferral impossible to argue loosely |
 | [0018](docs/adr/0018-split-aware-category-spend.md) | 2026-08-11 | Category spend is a `UNION ALL` of unsplit transactions and live split lines | A payment must be counted exactly once — by its lines where it has them — or a split silently double-counts |
 | [0019](docs/adr/0019-budget-alert-bands-mint-a-new-rule-row.md) | 2026-08-13 | FR-BUD-004's bands mint `RULE-BUD-ALERT` v1.0 rather than bump `RULE-BUD-PACE` | Bumping a shipped row fires ADR-0017's trigger 3 and forces the whole runtime loader; the split is also right on the merits — pace is arithmetic, alerts are attention |
+| [0020](docs/adr/0020-budget-review-keyed-by-month-not-category.md) | 2026-08-15 | `budget_review`'s claim is keyed `(profile, month)`, not `(profile, month, category)` | A review is one card for the whole closed month, not one status per finding — keying it finer would imply a per-finding-acknowledged screen this issue does not build |
 
 ---
 

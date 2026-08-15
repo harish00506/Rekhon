@@ -7,6 +7,7 @@ import com.aicfo.data.repository.CategoryBudget
 import com.aicfo.data.repository.CategoryBudgetAlert
 import com.aicfo.data.repository.CategoryBudgetSuggestion
 import com.aicfo.domain.engines.budget.BudgetAlertBand
+import com.aicfo.domain.engines.budget.BudgetReview
 
 /**
  * Everything the budgets screen renders, as one value (issue 4.4; ARC-004, FR-BUD-001/002/003).
@@ -19,6 +20,7 @@ import com.aicfo.domain.engines.budget.BudgetAlertBand
  * Changelog:
  *   2026-08-11 — Created for issue 4.4.
  *   2026-08-13 — Added the alert bands and the notification prompt for issue 4.5 (FR-BUD-004).
+ *   2026-08-15 — Added the monthly review for issue 4.6 (§5.5).
  *
  * **Not one number here is computed on this side** (P-03). [CategoryBudget.status] arrives from
  * `BudgetEngine` through the repository with its provenance attached; the properties below only
@@ -27,9 +29,10 @@ import com.aicfo.domain.engines.budget.BudgetAlertBand
  *
  * Input:  [isLoading]; [budgets] — every live category, budgeted or not; [suggestions] — proposals
  *         for categories with history and no budget; [alerts] — the bands crossed this month
- *         (FR-BUD-004); [editing] — the open amount sheet, `null` when closed; [errorCode] — an
- *         `AppError.code`, never a message, so the wording stays in `strings.xml` (§21.6);
- *         [requestNotificationPermission] — a one-shot flag asking the screen to prompt.
+ *         (FR-BUD-004); [review] — last closed month's review, `null` once dismissed or when
+ *         nothing was budgeted (§5.5); [editing] — the open amount sheet, `null` when closed;
+ *         [errorCode] — an `AppError.code`, never a message, so the wording stays in `strings.xml`
+ *         (§21.6); [requestNotificationPermission] — a one-shot flag asking the screen to prompt.
  * Output: an immutable snapshot for the composable.
  */
 @Immutable
@@ -38,6 +41,7 @@ data class BudgetsUiState(
     val budgets: List<CategoryBudget> = emptyList(),
     val suggestions: List<CategoryBudgetSuggestion> = emptyList(),
     val alerts: List<CategoryBudgetAlert> = emptyList(),
+    val review: BudgetReview? = null,
     val editing: BudgetEditorState? = null,
     val errorCode: String? = null,
     val requestNotificationPermission: Boolean = false,
@@ -104,11 +108,14 @@ data class BudgetsUiState(
      * Why: the same distinction the categories editor draws, and for the same
      *      reason — still loading, a failed read, and a genuinely empty plan are three different
      *      states that all leave the list empty, and only the third is an invitation. Suggestions
-     *      count as content: a user with proposals waiting has something to act on, and telling them
-     *      the screen is empty while offering them three budgets would contradict itself.
+     *      and the review count as content, for the same reason: a user with proposals waiting, or
+     *      a closed month to look back on, has something to act on, and telling them the screen is
+     *      empty while showing it to them would contradict itself.
      */
     val isEmpty: Boolean
-        get() = !isLoading && errorCode == null && planned.isEmpty() && unplanned.isEmpty() && suggestions.isEmpty()
+        get() =
+            !isLoading && errorCode == null && planned.isEmpty() && unplanned.isEmpty() &&
+                suggestions.isEmpty() && review == null
 }
 
 /**
@@ -205,4 +212,15 @@ sealed interface BudgetsEvent {
      * one that goes stale the moment the user changes it in system settings.
      */
     data object NotificationPermissionSettled : BudgetsEvent
+
+    /**
+     * The user accepted a reviewed category's proposed adjustment (issue 4.6; §5.5, P-07).
+     *
+     * **A tap, always** — the same rule [AcceptSuggestion] states, for the same reason: nothing
+     * writes a budget row until this event arrives from a finger.
+     */
+    data class AcceptReviewProposal(val categoryId: String) : BudgetsEvent
+
+    /** The user dismissed the monthly review card (issue 4.6; §5.5). */
+    data object DismissReview : BudgetsEvent
 }

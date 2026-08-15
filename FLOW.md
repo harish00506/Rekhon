@@ -102,17 +102,34 @@ CfoNavHost      composable<CfoRoute.Budgets> { BudgetsScreen() }
 │
 └─ BudgetsScreen()                             feature/budgets/BudgetsScreen.kt
     ├─ hiltViewModel<BudgetsViewModel>()
-    │   └─ init { observeBudgets(); observeSuggestions(); observeAlerts() }
-    │       └─ BudgetRepository.observeBudgets()      data/repository — ARC-005
-    │           ├─ MonthWindow.current(clock.today())          injected Clock (TIM-001)
-    │           ├─ database.budgetDao().observeCategoryBudgets(profileId, month.startIsoDate)
-    │           └─ engine.status(...)                          → shape C
-    │               └─ CategoryBudget(category, budgeted, spent, status)
+    │   └─ init { observeBudgets(); observeSuggestions(); observeAlerts(); observeReview() }
+    │       ├─ BudgetRepository.observeBudgets()      data/repository — ARC-005
+    │       │   ├─ MonthWindow.current(clock.today())          injected Clock (TIM-001)
+    │       │   ├─ database.budgetDao().observeCategoryBudgets(profileId, month.startIsoDate)
+    │       │   └─ engine.status(...)                          → shape C
+    │       │       └─ CategoryBudget(category, budgeted, spent, status)
+    │       │
+    │       └─ BudgetRepository.observeReview()      issue 4.6, §5.5
+    │           ├─ reviewedMonth(clock.today())        last CLOSED month, one before .current()
+    │           ├─ rawReview(profileId): combine(categories, budgets, actuals, history spend)
+    │           │   └─ engine.review(...)                      → shape C
+    │           │       └─ BudgetReview(totals, categories, provenance)?
+    │           └─ .combine(budgetReviewDao().observeForMonth(...)) { review, claimed ->
+    │                  if claimed != null → null }            once-per-month claim folded in
     │           ⇣
     │       _uiState.update { … }  →  uiState: StateFlow<BudgetsUiState>
     │
     └─ collectAsStateWithLifecycle()  →  recomposition
         ├─ BudgetAlertBanner(uiState)
+        ├─ BudgetReviewSection(uiState, onEvent)          issue 4.6
+        │    ⇡  onEvent(BudgetsEvent.AcceptReviewProposal) / DismissReview
+        │    └─ BudgetsViewModel.onEvent(event)
+        │        ├─ acceptReviewProposal() → repository.acceptReviewProposal(categoryId)
+        │        │   └─ write(...) targeting MonthWindow.current — the month ahead, not reviewed
+        │        └─ dismissReview() → repository.dismissReview()
+        │            └─ budgetReviewDao().insertIfNew(...)     OnConflictStrategy.IGNORE
+        │                └─ UNIQUE(profile_id, month_start_iso_date)
+        │                    → observeReview() re-emits null next tick (Room invalidation)
         └─ BudgetCard(budget, band, onEvent)
              ⇡  onEvent(BudgetsEvent.Save)
              └─ BudgetsViewModel.onEvent(event)
@@ -210,6 +227,13 @@ disagree (see [ADR-0017](docs/adr/0017-budget-thresholds-stay-a-typed-mirror.md)
 
 **A result that cannot cite a rule cannot be constructed.** The `require` in `init` is why "show the
 work" is not a convention someone can forget — it is a precondition on the type.
+
+**The review is the same shape, one call further.** `BudgetEngine.review(input)` walks every
+budgeted category, decides materiality the identical way `alert` decides a band (`varianceBps`
+against `RULE-BUD-REVIEW.min_variance_pct`), and for each material row calls **its own `suggest`**
+to price a proposal — the same `BudgetEngine.suggest` a plain suggestion card calls, so a reviewed
+proposal is provably the same number. See `domain/engines/budget/ENGINE.md` for the full formula;
+it is not re-drawn here because it is the alert diagram above with one more internal call.
 
 ---
 

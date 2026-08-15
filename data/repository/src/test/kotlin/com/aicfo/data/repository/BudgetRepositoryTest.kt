@@ -13,6 +13,7 @@ import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Money
 import com.aicfo.domain.engines.budget.BudgetAlertBand
 import com.aicfo.domain.engines.budget.BudgetEngineFactory
+import com.aicfo.domain.engines.budget.VarianceDirection
 import com.aicfo.domain.engines.classification.ClassificationEngineFactory
 import com.aicfo.domain.engines.nature.NatureEngineFactory
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -51,6 +52,7 @@ import java.time.LocalDate
  *       boundary, and the write paths' provenance.
  * Result: the first per-category spend total in the app is proven against a real SQL engine.
  * Changelog: 2026-08-11 — Created for issue 4.4.
+ *            2026-08-15 — Issue 4.6: added the monthly review cases.
  *
  * Unencrypted in-memory Room and the **real** engines rather than stubs, the same reasoning
  * [NatureRepositoryTest] gives: the claim is that a budget figure reaches the screen, and a stub
@@ -417,6 +419,153 @@ class BudgetRepositoryTest {
             assertEquals(clock.nowUtcMillis(), row.notifiedAtUtcMillis)
         }
 
+    // --- monthly review (issue 4.6; §5.5) -------------------------------------------------------
+
+    /**
+     * Input:  a July grocery budget of ₹10,000 with ₹13,000 spent (30% over) and three months of
+     *         history before it (April–June, median ₹8,500 — the exact fixture
+     *         `three months of history produce a suggestion that cites its rule` uses).
+     * Output: the review reports Groceries as `OVER` and material, with a proposal priced at the
+     *         same median a plain suggestion would show — the whole point of routing the review's
+     *         proposal through [BudgetEngine.suggest] rather than a second copy of the formula.
+     */
+    @Test
+    fun `a material overspend is reported with a proposal citing both rules`() =
+        runTest(dispatcher) {
+            expense(Money(-8_000_00L), categoryId = idOf("Groceries"), isoDate = "2026-04-10")
+            expense(Money(-9_000_00L), categoryId = idOf("Groceries"), isoDate = "2026-05-10")
+            expense(Money(-8_500_00L), categoryId = idOf("Groceries"), isoDate = "2026-06-10")
+            writeJulyBudget(idOf("Groceries"), Money(10_000_00L), rolloverEnabled = false)
+            expense(Money(-13_000_00L), categoryId = idOf("Groceries"), isoDate = "2026-07-10")
+
+            val review = budgets.observeReview().first()
+
+            assertEquals(REVIEWED_PERIOD, review?.monthStartIsoDate)
+            assertEquals(listOf("RULE-BUD-REVIEW"), review?.provenance?.evidence?.map { it.ruleId })
+            val groceries = review?.categories?.first { it.categoryName == "Groceries" }
+            assertEquals(VarianceDirection.OVER, groceries?.direction)
+            assertEquals(1, review?.materialCategories?.size)
+            assertEquals(Money(8_500_00L), groceries?.proposal?.amount)
+        }
+
+    /**
+     * Input:  a July budget spent within 15% of plan.
+     * Output: the category appears in the review — every budgeted category does — but not among
+     *         [BudgetReview.materialCategories], and carries no proposal. A review that reported
+     *         every on-plan category as a finding would teach the user to ignore it.
+     */
+    @Test
+    fun `a budget kept within variance is reported but not as a finding`() =
+        runTest(dispatcher) {
+            writeJulyBudget(idOf("Groceries"), Money(10_000_00L), rolloverEnabled = false)
+            expense(Money(-10_500_00L), categoryId = idOf("Groceries"), isoDate = "2026-07-10")
+
+            val review = budgets.observeReview().first()
+
+            val groceries = review?.categories?.first { it.categoryName == "Groceries" }
+            assertEquals(VarianceDirection.ON_PLAN, groceries?.direction)
+            assertNull("an on-plan row is not a finding", groceries?.proposal)
+            assertTrue(review?.materialCategories.isNullOrEmpty())
+        }
+
+    /** Input: no budget existed last month. Output: `null` — nothing to review is not an error. */
+    @Test
+    fun `nothing budgeted last month means nothing to review`() =
+        runTest(dispatcher) {
+            expense(Money(-1_000_00L), categoryId = idOf("Groceries"), isoDate = "2026-07-10")
+
+            assertNull(budgets.observeReview().first())
+        }
+
+    /**
+     * Input:  a reviewable month, dismissed, then dismissed again.
+     * Output: the card disappears after the first dismissal, the first call reports it claimed the
+     *         review, and the second — finding a claim already on record — reports `false` rather
+     *         than mistaking "already claimed" for "nothing to claim" (the two collapse to the same
+     *         `null` from [BudgetRepository.observeReview]).
+     */
+    @Test
+    fun `dismissing a review hides it, once`() =
+        runTest(dispatcher) {
+            writeJulyBudget(idOf("Groceries"), Money(10_000_00L), rolloverEnabled = false)
+            expense(Money(-13_000_00L), categoryId = idOf("Groceries"), isoDate = "2026-07-10")
+            assertTrue("a review must exist before it can be dismissed", budgets.observeReview().first() != null)
+
+            assertTrue("the first dismissal must claim it", budgets.dismissReview().expectOk())
+            assertNull("the card is gone once claimed", budgets.observeReview().first())
+            assertTrue("the second dismissal must not re-claim it", !budgets.dismissReview().expectOk())
+        }
+
+    /** Input: `dismissReview` with nothing budgeted last month. Output: `false`, and nothing written. */
+    @Test
+    fun `dismissing when there was nothing to review claims nothing`() =
+        runTest(dispatcher) {
+            assertTrue(!budgets.dismissReview().expectOk())
+            assertEquals(0, budgetReviewRowCount())
+        }
+
+    /**
+     * Input:  the review from the first test, accepted.
+     * Output: a budget at the proposed amount lands in **August**, the month the user is standing
+     *         in, not July — a proposal prices the month ahead, and July is already closed and
+     *         cannot be re-budgeted. Recorded as `suggested`, citing `RULE-BUD-SUGGEST`, the same
+     *         pairing [BudgetRepository.acceptSuggestion] stores, for the same audit reason.
+     */
+    @Test
+    fun `accepting a review proposal budgets the current month, not the reviewed one`() =
+        runTest(dispatcher) {
+            expense(Money(-8_000_00L), categoryId = idOf("Groceries"), isoDate = "2026-04-10")
+            expense(Money(-9_000_00L), categoryId = idOf("Groceries"), isoDate = "2026-05-10")
+            expense(Money(-8_500_00L), categoryId = idOf("Groceries"), isoDate = "2026-06-10")
+            writeJulyBudget(idOf("Groceries"), Money(10_000_00L), rolloverEnabled = false)
+            expense(Money(-13_000_00L), categoryId = idOf("Groceries"), isoDate = "2026-07-10")
+
+            budgets.acceptReviewProposal(idOf("Groceries")).expectOk()
+
+            val row = budgetFor("Groceries")
+            assertEquals(Money(8_500_00L), row.status.budgeted)
+            assertEquals(BudgetRepository.SOURCE_SUGGESTED, row.source)
+            assertEquals("RULE-BUD-SUGGEST", ruleIdOf(idOf("Groceries")))
+            val storedId = categoryBudgetId(REAL_PROFILE, idOf("Groceries"), CURRENT_PERIOD)
+            val stored = database.budgetDao().findById(storedId)
+            assertEquals(
+                "the write must land on August, not the reviewed July",
+                CURRENT_PERIOD,
+                stored?.periodStartIsoDate,
+            )
+        }
+
+    /**
+     * Input:  a category with no material proposal — either on-plan or too little history.
+     * Output: `NotFound`, the same refusal [BudgetRepository.acceptSuggestion] gives for a category
+     *         nothing was proposed for, rather than a zero or a stale budget.
+     */
+    @Test
+    fun `accepting a review proposal that does not exist reports it`() =
+        runTest(dispatcher) {
+            writeJulyBudget(idOf("Groceries"), Money(10_000_00L), rolloverEnabled = false)
+            expense(Money(-10_500_00L), categoryId = idOf("Groceries"), isoDate = "2026-07-10")
+
+            assertEquals(AppError.NotFound, (budgets.acceptReviewProposal(idOf("Groceries")) as Err).error)
+        }
+
+    /**
+     * Input:  a review dismissed on the real profile, then a switch to the demo.
+     * Output: the demo sees nothing to review — `enter()` seeds no budgets in a closed month — and
+     *         the real profile's claim stays invisible to it (ADR-0006, P-01).
+     */
+    @Test
+    fun `one profile's review never reaches another`() =
+        runTest(dispatcher) {
+            writeJulyBudget(idOf("Groceries"), Money(10_000_00L), rolloverEnabled = false)
+            expense(Money(-13_000_00L), categoryId = idOf("Groceries"), isoDate = "2026-07-10")
+            budgets.dismissReview().expectOk()
+
+            activeProfileId.value = DEMO_PROFILE
+
+            assertNull(budgets.observeReview().first())
+        }
+
     // --- budgets, status and provenance ---------------------------------------------------------
 
     /**
@@ -750,10 +899,19 @@ class BudgetRepositoryTest {
             cursor.getInt(0)
         }
 
+    private fun budgetReviewRowCount(): Int =
+        database.query("SELECT COUNT(*) FROM budget_review", emptyArray()).use { cursor ->
+            cursor.moveToFirst()
+            cursor.getInt(0)
+        }
+
     private companion object {
         const val REAL_PROFILE = "local"
         const val DEMO_PROFILE = "demo"
         const val CURRENT_PERIOD = "2026-08-01"
+
+        /** July: the closed month `observeReview` looks at when the clock reads 15 August 2026. */
+        const val REVIEWED_PERIOD = "2026-07-01"
 
         /** From 15 Aug to 10 Sep — far enough to change the month, which is what the key turns on. */
         const val SEPTEMBER_DAYS_AHEAD = 26L

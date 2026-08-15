@@ -51,6 +51,8 @@ import org.junit.runner.RunWith
  *            2026-08-04 — Issue 3.6: added the 8 → 9 case (`tags`, `transaction_tags`). Additive,
  *            so it asserts the *index* as well as the rows: a `UNIQUE` index a migration forgot to
  *            create is invisible until a user happens to have two of something.
+ *            2026-08-15 — Issue 4.6: added the 14 → 15 case (`budget_review`), the same
+ *            refusal-not-declaration shape `migrate13To14` uses, keyed one level coarser.
  */
 @RunWith(AndroidJUnit4::class)
 class MigrationRoundTripTest {
@@ -798,6 +800,68 @@ class MigrationRoundTripTest {
         "INSERT INTO budget_alert (id, profile_id, budget_id, category_id, month_start_iso_date, " +
             "band, rule_id, rule_version, notified_at_utc_millis) " +
             "VALUES ('$id','p1','b1','c1','2026-08-01','$band','RULE-BUD-ALERT','1.0',1767312000000)"
+
+    /**
+     * 14 → 15: `budget_review`, the record that a closed month's review has been shown (issue 4.6;
+     * §5.5).
+     *
+     * Why:    the structural claim is the usual one — an existing budget survives an additive
+     *         migration. The **semantic** claim, as with `migrate13To14`, is about the unique index
+     *         rather than the table: `RULE-BUD-REVIEW.review_once_per_month` promises one review
+     *         card per profile per closed month, keyed by month alone (ADR-0020) — unlike
+     *         `budget_alert`, which is keyed one level finer, by band too, because two different
+     *         bands are two different messages. Here there is only ever one card for a month, so a
+     *         second claim for the same month must be refused, and a claim for a *different* month
+     *         must succeed.
+     * Input:  a budget written at version 14. Output: it survives; a duplicate claim for the same
+     *         month is rejected and a claim for a different month is accepted.
+     */
+    @Test
+    fun migrate14To15_preservesBudgetsAndMakesASecondClaimForOneMonthImpossible() {
+        helper.createDatabase(TEST_DB, 14).use { db ->
+            db.execSQL(
+                "INSERT INTO budget (id, profile_id, category_id, period_start_iso_date, amount_minor, " +
+                    "rollover_enabled, source, created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('b1','p1','c1','2026-08-01',1000000,0,'manual',1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 15, true, Migrations.MIGRATION_14_15)
+
+        migrated.query("SELECT amount_minor FROM budget WHERE id = 'b1'").use { cursor ->
+            assertTrue("the pre-migration budget must still be there", cursor.moveToFirst())
+            assertEquals("MNY-001: the amount must survive byte for byte", 1000000L, cursor.getLong(0))
+        }
+
+        migrated.execSQL(insertReviewClaim(id = "rv1", monthStartIsoDate = "2026-07-01"))
+
+        // The requirement, tested as a refusal rather than as a declaration.
+        assertThrows(SQLiteConstraintException::class.java) {
+            migrated.execSQL(insertReviewClaim(id = "rv2", monthStartIsoDate = "2026-07-01"))
+        }
+
+        // ...but a different reviewed month must still get through.
+        migrated.execSQL(insertReviewClaim(id = "rv3", monthStartIsoDate = "2026-08-01"))
+        migrated.query("SELECT COUNT(*) FROM budget_review WHERE profile_id = 'p1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("two different months are two different claims", 2, cursor.getInt(0))
+        }
+        migrated.close()
+    }
+
+    /**
+     * Builds one `budget_review` insert.
+     * Why:    the three inserts above differ in exactly two values, and spelling the column list out
+     *         three times would hide that.
+     * Result: the SQL. Input: [id]; [monthStartIsoDate]. Output: [String].
+     */
+    private fun insertReviewClaim(
+        id: String,
+        monthStartIsoDate: String,
+    ): String =
+        "INSERT INTO budget_review (id, profile_id, month_start_iso_date, rule_id, rule_version, " +
+            "total_budgeted_minor, total_actual_minor, reviewed_at_utc_millis) " +
+            "VALUES ('$id','p1','$monthStartIsoDate','RULE-BUD-REVIEW','1.0',1000000,850000,1767312000000)"
 
     /**
      * 11 → 12 adds `sms_draft` (issue 3.9; §18, §23, P-01).

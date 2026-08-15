@@ -155,7 +155,18 @@ internal class RoomDemoModeRepository(
                 database.withTransaction {
                     // Children before the parent: if this fails part-way, what is left is rows under
                     // a profile that still exists, rather than orphans no query can reach to clean up.
+                    // Issue 4.5: not written by enter(), but produced while the user browses if a
+                    // demo budget crosses a band. Called before deleteBudgets for the ordering reason
+                    // above — an alert is a child of a budget. This call was missing until issue 4.6
+                    // noticed it while wiring the analogous budget_review table below: a table the
+                    // wipe cannot reach is residue ADR-0006 forbids, and it had been reachable but
+                    // unreached since 4.5 shipped.
+                    demo.deleteBudgetAlerts(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteBudgets(DemoModeRepository.DEMO_PROFILE_ID)
+                    // Issue 4.6: no ordering requirement against deleteBudgets — budget_review carries
+                    // no budget_id, since it claims a whole reviewed month rather than one budget
+                    // (ADR-0020) — but still profile-scoped residue the wipe must reach.
+                    demo.deleteBudgetReviews(DemoModeRepository.DEMO_PROFILE_ID)
                     // Issue 2.6: not written by enter(), but produced while the user browses — the
                     // daily job snapshots whichever profile is active. A profile-scoped table the
                     // wipe does not reach is the residue ADR-0006 forbids.

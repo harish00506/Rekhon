@@ -32,6 +32,7 @@ import javax.inject.Inject
  * Changelog:
  *   2026-08-11 — Created for issue 4.4.
  *   2026-08-13 — Added the alert collector and the contextual permission prompt for issue 4.5.
+ *   2026-08-15 — Added the monthly-review collector, accept and dismiss for issue 4.6.
  *
  * **This class computes no money** (P-03). Spent, remaining, safe pace and the projection all arrive
  * from `BudgetEngine` through the repository, each carrying the rule that produced it; the only
@@ -43,7 +44,13 @@ import javax.inject.Inject
  * also hold the screen at `isLoading` until both had answered.
  *
  * Input:  [repository] — the budget store. Output: an observable screen state.
+ *
+ * **Thirteen event handlers and collectors** — four collectors and nine event handlers, one per
+ * thing this screen's user can do (budgets, suggestions, alerts, and now the monthly review). The
+ * count below is the screen's surface, not a design choice — splitting it would need a second
+ * ViewModel sharing one UiState, which is the harder problem ARC-004 exists to avoid.
  */
+@Suppress("TooManyFunctions")
 @HiltViewModel
 class BudgetsViewModel
     @Inject
@@ -63,6 +70,7 @@ class BudgetsViewModel
             observeBudgets()
             observeSuggestions()
             observeAlerts()
+            observeReview()
         }
 
         /**
@@ -117,6 +125,23 @@ class BudgetsViewModel
         }
 
         /**
+         * Keeps the monthly review in step with the store (issue 4.6; §5.5).
+         * Result: [uiState] carries last closed month's review, or `null` once dismissed or when
+         *         nothing was budgeted. **A failure is swallowed to `null`**, the same reasoning
+         *         [observeSuggestions] gives: a review is a look back, not the budgets the user came
+         *         to read, and a broken read here must not blank the list [observeBudgets] already
+         *         showed successfully.
+         * Input:  none. Output: none (launches a collector).
+         * Changelog: 2026-08-15 — Created for issue 4.6.
+         */
+        private fun observeReview() {
+            repository.observeReview()
+                .onEach { review -> _uiState.update { it.copy(review = review) } }
+                .catch { _uiState.update { it.copy(review = null) } }
+                .launchIn(viewModelScope)
+        }
+
+        /**
          * Handles something the user did.
          * Why:    one entry point, so the sealed interface's exhaustiveness guarantees no
          *         interaction is silently unhandled.
@@ -142,6 +167,8 @@ class BudgetsViewModel
                 BudgetsEvent.DismissError -> _uiState.update { it.copy(errorCode = null) }
                 BudgetsEvent.NotificationPermissionSettled ->
                     _uiState.update { it.copy(requestNotificationPermission = false) }
+                is BudgetsEvent.AcceptReviewProposal -> acceptReviewProposal(event.categoryId)
+                BudgetsEvent.DismissReview -> dismissReview()
             }
         }
 
@@ -206,6 +233,42 @@ class BudgetsViewModel
         private fun accept(categoryId: String) {
             _uiState.update { it.copy(errorCode = null) }
             viewModelScope.launch { applyWriteOutcome(repository.acceptSuggestion(categoryId)) }
+        }
+
+        /**
+         * Accepts a reviewed category's proposed adjustment as this month's budget (issue 4.6; P-07).
+         * Why:    routed through [applyWriteOutcome] like every other write, so a successful accept
+         *         also re-arms the notification-permission prompt exactly as [save] and [accept] do
+         *         — the review is one more way a budget gets written, not a special case of it.
+         * Result: the row updates; on failure the banner explains. The review card itself is left
+         *         alone — accepting one category's proposal does not mean the rest of the review has
+         *         been seen, so it stays up until [dismissReview] or the month turns over.
+         * Input:  [categoryId]. Output: none (launches on `viewModelScope`).
+         * Changelog: 2026-08-15 — Created for issue 4.6.
+         */
+        private fun acceptReviewProposal(categoryId: String) {
+            _uiState.update { it.copy(errorCode = null) }
+            viewModelScope.launch { applyWriteOutcome(repository.acceptReviewProposal(categoryId)) }
+        }
+
+        /**
+         * Dismisses the monthly review card (issue 4.6; §5.5).
+         * Why:    a plain write with no sheet to close and no permission prompt to arm, so it does not
+         *         go through [applyWriteOutcome] — that function's whole shape is for the budget
+         *         sheet's save/accept outcomes, and a review dismissal is neither.
+         * Result: [uiState] clears `review` on success; on failure the banner explains. The store's
+         *         own claim is what actually stops the card returning — this update just saves the
+         *         screen from waiting for the next emission to catch up.
+         * Input:  none. Output: none (launches on `viewModelScope`).
+         * Changelog: 2026-08-15 — Created for issue 4.6.
+         */
+        private fun dismissReview() {
+            viewModelScope.launch {
+                when (val outcome = repository.dismissReview()) {
+                    is Ok -> _uiState.update { it.copy(review = null) }
+                    is Err -> _uiState.update { it.copy(errorCode = outcome.error.displayCode()) }
+                }
+            }
         }
 
         /**
