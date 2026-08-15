@@ -6,6 +6,50 @@ Single source of truth for the version number is the repo-root [`VERSION`](VERSI
 `app/build.gradle.kts` `versionName` equal to it. Epics map to the SRS roadmap (§26); every
 entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`](docs/issues/00-issue-workflow.md).
 
+## [0.5.0] — Epic 5: Dashboard, Export & Widget
+
+> The user's daily surfaces: the home dashboard, Safe-to-Spend, privacy blur, local JSON
+> export/import, and the home-screen widget.
+
+### [0.5.0] — The landing screen stops being four placeholders and a promise  (2026-08-15)
+
+- **Implemented:** issue 5.1 — home dashboard v1 (**FR-DASH-\***, §5.2, P-02/P-03/P-04). The
+  dashboard has shown net worth (2.6), the needs/wants/savings plan (2.3) and the true-spend
+  breakdown (4.3) since earlier issues; this fills in the three figures its own doc comment named
+  as still owed — budget status, this month's cash flow, and recent activity — leaving Safe-to-Spend
+  as 5.2's sole remaining placeholder.
+- **Budget status reuses `BudgetRepository.observeBudgets()`/`observeAlerts()` exactly as
+  `:feature:budgets` already does** — a second consumer of the same mechanism, not a new one. The
+  "needs attention" line cites its rule (`RULE-BUD-ALERT`, P-02), the same citation the budgets
+  screen's own banner shows for the identical alert. The summary folds only *budgeted* categories'
+  totals — an unbudgeted category's spend does not inflate a figure against a plan it was never
+  part of.
+- **This month's cash flow is one new SQL statement, not a new engine.** `TransactionDao.observeMonthCashFlow`
+  sums income and expense with one `CASE WHEN`, no rule or judgment involved, so it carries no
+  `EngineProvenance` — the same distinction that already separates `observeDayTotals` from
+  `observeNatureBreakdown`. An earlier version combined two `observeDayTotals` calls instead and hit
+  a real `kotlinx-coroutines-test` failure — two Room query flows meeting inside `combine()` under
+  `UnconfinedTestDispatcher` threw "Detected use of different schedulers" — which is why this
+  shipped as one query.
+- **Recent activity is bounded by count, not by time — deliberately not the mistake issue 3.6
+  fixed.** `TransactionRepository.observeRecent(limit)` is a new, small `LIMIT`-bounded read; the
+  time-windowed `observeRecent` 3.6 removed stays removed, and the full ledger is still one tap away
+  through "View transactions".
+- **A real usability bug was found and fixed by running the app, not by a test.** The dashboard's
+  `Column` has never scrolled — issue 1.10's four-row screen never needed to. This issue's three
+  added sections pushed the bottom of the screen, including every navigation button, off-screen and
+  permanently unreachable; no Compose UI test in this codebase measures a real screen height against
+  real content, so nothing caught it until the emulator did. Fixed with `verticalScroll`.
+- **Verified on device, fully offline** (P-04, airplane mode confirmed via `adb shell settings get
+  global airplane_mode_on` = 1): launched against real, pre-existing profile data, watched every new
+  section render its real figures (including the alert citation and all five recent rows), scrolled
+  to the previously-unreachable buttons, and navigated to Budgets and confirmed the two screens agree
+  on the same category's numbers.
+- **Screenshot tests**, `feature/dashboard`'s first — the Paparazzi Gradle plugin was applied to no
+  `:feature:*` module before this. Light/dark/200% baselines cover the fully-populated state and the
+  all-empty state (no net worth, no budget, no transactions), so an empty-state regression is visible
+  even though it has no numbers to eyeball wrong.
+
 ## [0.4.0] — Epic 4: Categorisation & Budgets
 
 > What a payment was *for*. The `category` table has existed since issue 1.6 with nothing but the

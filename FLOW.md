@@ -144,6 +144,16 @@ path by which the screen learns anything.
 
 **The ViewModel computes no money** (P-03). Every figure on that screen arrived from an engine.
 
+**Issue 5.1 reuses this identically, no new shape.** `DashboardViewModel` calls the same
+`BudgetRepository.observeBudgets()`/`observeAlerts()` shown above — a second consumer of the exact
+mechanism, not a new one — plus two new `TransactionRepository` reads that are plain repository
+sums, not engine calls, so neither belongs in Shape C: `observeMonthCashFlow()` (one `CASE WHEN`
+SQL statement, no `combine()` — an earlier version combined two `observeDayTotals` calls and hit
+`kotlinx-coroutines-test`'s "different schedulers" error when two Room query flows met inside
+`combine` under `UnconfinedTestDispatcher`; one query sidesteps it) and `observeRecent(limit)` (a
+count-bounded `LIMIT` query, not the time-windowed `observeRecent` issue 3.6 removed — the full
+ledger stays reachable through `observeFiltered`).
+
 ---
 
 ## 3 · Shape B — a background worker

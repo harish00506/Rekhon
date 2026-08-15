@@ -159,6 +159,39 @@ interface TransactionRepository {
     fun observeDayTotals(filter: TransactionFilter): Flow<Map<String, Money>>
 
     /**
+     * Observes the newest few transactions, count-bounded (issue 5.1; FR-DASH-*).
+     *
+     * Why:    the dashboard's recent-activity preview wants a handful of rows on the screen the app
+     *         opens to, not the whole ledger [observeFiltered] pages over. **This is not the fixed
+     *         30-day `observeRecent` issue 3.6 removed** — that one was a time window, and a user
+     *         with six months of history could not reach month four through it. This is bounded by
+     *         *count*: the full ledger stays exactly as reachable as it was after 3.6, one tap away
+     *         through the Transactions screen, so a preview here does not reintroduce the problem
+     *         3.6 fixed.
+     * Result: emits on every change, newest first; soft-deleted rows excluded; future-dated rows
+     *         excluded the same way the unfiltered [observeFiltered] case is (FR-TXN-010) — a
+     *         scheduled payment belongs on `observeUpcoming`, not in a preview of what already
+     *         happened.
+     * Input:  [limit] — how many rows at most. Output: `Flow<List<FilteredTransaction>>`.
+     */
+    fun observeRecent(limit: Int): Flow<List<FilteredTransaction>>
+
+    /**
+     * Observes this month's income, expense and net cash flow (issue 5.1; FR-DASH-*).
+     *
+     * Why:    a raw ledger aggregation, not an engine result — unlike [observeNatureBreakdown],
+     *         nothing here classifies a transaction; it only sums the ones the transaction's own
+     *         `type` column already says are income or expense, over the current profile-zone
+     *         month (TIM-001/TIM-002). That is the same distinction [observeDayTotals] draws, and
+     *         it is why this carries no [com.aicfo.core.model.EngineProvenance] either.
+     * Result: emits on every change. [CashFlowSummary.income]/[CashFlowSummary.expense] are always
+     *         non-negative magnitudes, matching the convention `BudgetStatus.spent` already uses —
+     *         the sign lives in [CashFlowSummary.net], not in the two halves that produced it.
+     * Input:  none — the active profile and the current month. Output: `Flow<CashFlowSummary>`.
+     */
+    fun observeMonthCashFlow(): Flow<CashFlowSummary>
+
+    /**
      * Observes the sources present anywhere in the active profile's ledger (issue 3.6; FR-TXN-009).
      *
      * Why:    the source chips. Issue 3.5 derived them in the ViewModel from the rows it had, which
@@ -698,6 +731,28 @@ internal class RoomTransactionRepository(
                 // this line is then overflow-checked (MNY-001).
                 .map { rows -> rows.associate { it.isoDate to Money(it.totalMinor) } }
                 .flowOn(dispatchers.io)
+        }
+
+    override fun observeRecent(limit: Int): Flow<List<FilteredTransaction>> =
+        activeProfileId.flatMapLatest { profileId ->
+            database.transactionDao().observeRecent(profileId, clock.today().toString(), limit)
+                .map { rows -> rows.mapNotNull { it.toFilteredTransaction() } }
+                .flowOn(dispatchers.io)
+        }
+
+    override fun observeMonthCashFlow(): Flow<CashFlowSummary> =
+        activeProfileId.flatMapLatest { profileId ->
+            // The same window observeNatureBreakdown resolves, and read the same way: once per
+            // subscription, inside flatMapLatest, so entering or leaving the demo rebuilds it
+            // (TIM-001/TIM-002).
+            val month = MonthWindow.current(clock.today())
+            database.transactionDao()
+                .observeMonthCashFlow(profileId, month.startIsoDate, month.actualsEndIsoDate)
+                .map { row ->
+                    val income = Money(row.incomeMinor)
+                    val expense = Money(row.expenseMinor)
+                    CashFlowSummary(income = income, expense = expense, net = income - expense)
+                }.flowOn(dispatchers.io)
         }
 
     override fun observeSources(): Flow<List<TransactionSource>> =

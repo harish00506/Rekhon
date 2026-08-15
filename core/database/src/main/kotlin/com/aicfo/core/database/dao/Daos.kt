@@ -1254,7 +1254,85 @@ interface TransactionDao {
             "(SELECT transfer_id FROM transactions WHERE id IN (:ids) AND transfer_id IS NOT NULL)",
     )
     suspend fun findTransferSiblingIds(ids: List<String>): List<String>
+
+    /**
+     * The newest few transactions, unfiltered (issue 5.1; FR-DASH-*).
+     *
+     * Why:    the dashboard's recent-activity preview needs a handful of rows, not the whole ledger
+     *         [pagedFiltered] pages over. **Bounded by count, not by time** — unlike the fixed
+     *         30-day `observeRecent` issue 3.6 removed (see [TransactionRepository]'s doc comment),
+     *         this cannot strand old data: the full ledger stays one tap away through the
+     *         Transactions screen, and `LIMIT` costs the query nothing a time window would have
+     *         saved. Mirrors [pagedFiltered]'s column shape (the counterpart-account subquery
+     *         included) so the same [TransactionListRow] mapper serves both.
+     * Result: newest first by instant; soft-deleted rows excluded; future-dated rows excluded via
+     *         [toIsoDate] the same way [pagedFiltered]'s unfiltered case is (FR-TXN-010) — a
+     *         scheduled payment belongs to `observeUpcoming`, not a preview of what already happened.
+     * Input:  [profileId]; [toIsoDate] — today in the profile zone (TIM-001), from the caller's
+     *         injected `Clock`; [limit] — how many rows at most.
+     * Output: `Flow<List<TransactionListRow>>`.
+     * Changelog: 2026-08-15 — Created for issue 5.1.
+     */
+    @Transaction
+    @Query(
+        "SELECT *, (SELECT s.account_id FROM transactions s WHERE s.transfer_id = transactions.transfer_id " +
+            "AND s.id <> transactions.id AND s.deleted_at_utc_millis IS NULL LIMIT 1) " +
+            "AS counterpart_account_id " +
+            "FROM transactions WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
+            "AND booked_on_iso_date <= :toIsoDate " +
+            "ORDER BY occurred_at_utc_millis DESC, id DESC LIMIT :limit",
+    )
+    fun observeRecent(
+        profileId: String,
+        toIsoDate: String,
+        limit: Int,
+    ): Flow<List<TransactionListRow>>
+
+    /**
+     * This month's income and expense, summed in one statement (issue 5.1; FR-DASH-*).
+     *
+     * Why:    **one query, not two combined `Flow`s.** An earlier version called
+     *         [observeDayTotals] twice — once per [com.aicfo.core.model.TransactionType] — and
+     *         combined them; under `kotlinx.coroutines.test.UnconfinedTestDispatcher` two Room
+     *         query flows meeting inside `combine` threw "Detected use of different schedulers",
+     *         because Room's own invalidation-tracker coroutine and the test scheduler disagreed
+     *         about which one was live. A single `CASE WHEN` sum sidesteps the whole class of bug
+     *         and costs the database one pass over the same rows instead of two.
+     * Result: one row, always — `COALESCE(...,0)` so a month with nothing in it is a real zero
+     *         total, not an absent row the repository would have to invent one for.
+     * Input:  [profileId]; [fromIsoDate]/[toIsoDate] — inclusive ISO `yyyy-MM-dd` bounds (TIM-002),
+     *         the caller's current-month window. Output: `Flow<CashFlowTotalsRow>`.
+     * Changelog: 2026-08-15 — Created for issue 5.1.
+     */
+    @Query(
+        "SELECT " +
+            "COALESCE(SUM(CASE WHEN type = 'income' THEN amount_minor ELSE 0 END), 0) AS income_minor, " +
+            "COALESCE(SUM(CASE WHEN type = 'expense' THEN -amount_minor ELSE 0 END), 0) AS expense_minor " +
+            "FROM transactions WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
+            "AND transfer_id IS NULL " +
+            "AND booked_on_iso_date >= :fromIsoDate AND booked_on_iso_date <= :toIsoDate",
+    )
+    fun observeMonthCashFlow(
+        profileId: String,
+        fromIsoDate: String,
+        toIsoDate: String,
+    ): Flow<CashFlowTotalsRow>
 }
+
+/**
+ * This month's income and expense, as SQLite summed them (issue 5.1; FR-DASH-*).
+ *
+ * Why:  the projection [TransactionDao.observeMonthCashFlow] returns — both magnitudes
+ *       non-negative (the `-amount_minor` flip is in the SQL, not left for the repository to get
+ *       wrong), matching the convention [CategorySpendRow.spentMinor] already sets.
+ * Result: what [com.aicfo.data.repository.CashFlowSummary] is built from.
+ * Input:  [incomeMinor]; [expenseMinor] — paise (MNY-001). Output: a Room projection.
+ * Changelog: 2026-08-15 — Created for issue 5.1.
+ */
+data class CashFlowTotalsRow(
+    @ColumnInfo(name = "income_minor") val incomeMinor: Long,
+    @ColumnInfo(name = "expense_minor") val expenseMinor: Long,
+)
 
 /**
  * One day's net total, as SQLite computes it (issue 3.6; FR-TXN-007).

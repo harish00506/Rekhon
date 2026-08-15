@@ -39,4 +39,27 @@
     <string name="dashboard_actual_label">This month, actually</string>
     <string name="dashboard_actual_values">Needs %1$s · Wants %2$s · Kept %3$s</string>
     <string name="dashboard_actual_debt_note">Loan repayments are shown separately and aren\'t counted as spending yet.</string>
+
+    <!-- Issue 5.1 — this month's cash flow, beside the plan/actual pair above it. -->
+    <string name="dashboard_cash_flow_label">This month\'s cash flow</string>
+    <string name="dashboard_cash_flow_values">Received %1$s · Spent %2$s</string>
+
+    <!--
+      Issue 5.1 — the budget summary card. The alert line cites its rule (P-02), matching how
+      :feature:budgets' own banner does for the same alert — a figure the dashboard did not compute
+      and must not repeat without saying where it came from.
+    -->
+    <string name="dashboard_budget_status_label">Your budget this month</string>
+    <string name="dashboard_budget_status_values">%1$s of %2$s spent</string>
+    <string name="dashboard_budget_status_empty">No budgets set yet. Set one from Your budgets.</string>
+    <plurals name="dashboard_budget_alerts">
+        <item quantity="one">%1$d category needs attention</item>
+        <item quantity="other">%1$d categories need attention</item>
+    </plurals>
+    <string name="dashboard_reason_rule">Rule %1$s v%2$s</string>
+
+    <!-- Issue 5.1 — the recent-activity preview; the full ledger is "View transactions" above. -->
+    <string name="dashboard_recent_activity_label">Recent activity</string>
+    <string name="dashboard_recent_activity_empty">No transactions yet.</string>
+    <string name="dashboard_recent_activity_unnamed">Transaction</string>
 </resources>

@@ -22,6 +22,7 @@ import com.aicfo.core.model.TransactionType
 import com.aicfo.core.model.Transfer
 import com.aicfo.data.repository.AccountDraft
 import com.aicfo.data.repository.AccountRepository
+import com.aicfo.data.repository.CashFlowSummary
 import com.aicfo.data.repository.FilteredTransaction
 import com.aicfo.data.repository.ReceiptAttachment
 import com.aicfo.data.repository.ReceiptRepository
@@ -182,6 +183,25 @@ internal class FakeTransactionRepository(
             list.filter { it.matches(filter) }
                 .groupBy { it.bookedOn }
                 .mapValues { (_, rows) -> rows.fold(Money.ZERO) { running, row -> running + row.amount } }
+        }
+
+    override fun observeRecent(limit: Int): Flow<List<FilteredTransaction>> =
+        transactions.map { list ->
+            failOnObserve?.let { throw IllegalStateException(it.code) }
+            list.sortedByDescending { it.occurredAtUtcMillis }.take(limit).map { FilteredTransaction(it) }
+        }
+
+    override fun observeMonthCashFlow(): Flow<CashFlowSummary> =
+        transactions.map { list ->
+            failOnObserve?.let { throw IllegalStateException(it.code) }
+            val income =
+                list.filter { it.type == TransactionType.INCOME }
+                    .fold(Money.ZERO) { running, row -> running + row.amount }
+            val expenseSigned =
+                list.filter { it.type == TransactionType.EXPENSE }
+                    .fold(Money.ZERO) { running, row -> running + row.amount }
+            val expense = Money.ZERO - expenseSigned
+            CashFlowSummary(income = income, expense = expense, net = income - expense)
         }
 
     override fun observeSources(): Flow<List<TransactionSource>> =

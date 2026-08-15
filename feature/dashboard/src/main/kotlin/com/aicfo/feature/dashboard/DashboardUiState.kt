@@ -2,6 +2,10 @@ package com.aicfo.feature.dashboard
 
 import androidx.compose.runtime.Immutable
 import com.aicfo.core.model.Money
+import com.aicfo.data.repository.CashFlowSummary
+import com.aicfo.data.repository.CategoryBudget
+import com.aicfo.data.repository.CategoryBudgetAlert
+import com.aicfo.data.repository.FilteredTransaction
 import com.aicfo.domain.engines.nature.NatureBreakdown
 
 /**
@@ -57,11 +61,79 @@ data class DashboardUiState(
      */
     val natureBreakdown: NatureBreakdown? = null,
     /**
+     * This month's income, expense and net (issue 5.1; FR-DASH-*).
+     *
+     * `null` until the first emission — the same rule [netWorth] follows, and for the same reason:
+     * a zeroed card before the read has actually happened would be a figure the app made up (P-03).
+     */
+    val cashFlow: CashFlowSummary? = null,
+    /**
+     * Every category with its live status this month (issue 5.1; FR-DASH-*).
+     *
+     * `null` until the first emission; **not the same absence as "nothing budgeted"**, which is an
+     * empty list once [BudgetTotals] filters out the unbudgeted rows — see [budgetTotals]. Kept as
+     * the raw rows, not a total, so the getter is the one place that sums them (P-03: the state
+     * itself computes nothing, [BudgetsUiState] in `:feature:budgets` makes the same choice).
+     */
+    val budgets: List<CategoryBudget>? = null,
+    /**
+     * Budgets currently sitting in an alert band, for the "needs attention" line (issue 5.1;
+     * FR-DASH-*; FR-BUD-004).
+     *
+     * Empty by default rather than nullable: unlike [budgets], a bare list is never ambiguous here —
+     * "no alerts yet" and "genuinely nothing to warn about" render identically, so a failed read
+     * clears this list rather than raising a banner, the same choice [natureBreakdown]'s read makes.
+     */
+    val budgetAlerts: List<CategoryBudgetAlert> = emptyList(),
+    /**
+     * The newest few transactions, for the recent-activity preview (issue 5.1; FR-DASH-*).
+     *
+     * `null` until the first emission, for the reason [budgets] gives — the empty list is a real
+     * state (a brand-new profile) and must read differently from "not read yet".
+     */
+    val recentActivity: List<FilteredTransaction>? = null,
+    /**
      * An `AppError.code` when something failed, else `null`.
      * The **code**, not a message: the wording belongs in this feature's `strings.xml` (§21.6), so
      * the state stays free of user-visible copy and the screen can localise it.
      */
     val errorCode: String? = null,
+) {
+    /**
+     * The month's budgeted and spent totals across every **budgeted** category (issue 5.1).
+     *
+     * Why:    unbudgeted categories carry `budgeted = Money.ZERO` by construction (`CategoryBudget`'s
+     *         own doc comment) but real spend, and folding their spend into this total would make
+     *         "spent" exceed "budgeted" by exactly the amount nobody planned for — a card that reads
+     *         as a blown budget when nothing was ever budgeted. Excluding them is what
+     *         `:feature:budgets`' own `PlannedSection` does for the same reason.
+     * Result: the totals, or `null` when [budgets] has not loaded yet **or** nothing has been
+     *         budgeted this month — both render the same empty state, matching how the screen
+     *         already treats "not loaded" and "genuinely nothing" for [spendSplit].
+     * Input:  none — reads [budgets]. Output: `BudgetTotals?`.
+     */
+    val budgetTotals: BudgetTotals?
+        get() {
+            val planned = budgets?.filterNot { it.isUnbudgeted }
+            if (planned.isNullOrEmpty()) return null
+            return BudgetTotals(
+                budgeted = planned.fold(Money.ZERO) { running, row -> running + row.status.budgeted },
+                spent = planned.fold(Money.ZERO) { running, row -> running + row.status.spent },
+            )
+        }
+}
+
+/**
+ * The budget summary card's two figures, already folded (issue 5.1).
+ * Why:    the arithmetic lives in one place — [DashboardUiState.budgetTotals]'s getter — rather than
+ *         in the composable, so a screenshot test and a ViewModel test agree on what "the total" means.
+ * Result: what the card renders. Input: [budgeted]; [spent]. Output: an immutable value.
+ * Changelog: 2026-08-15 — Created for issue 5.1.
+ */
+@Immutable
+data class BudgetTotals(
+    val budgeted: Money,
+    val spent: Money,
 )
 
 /**

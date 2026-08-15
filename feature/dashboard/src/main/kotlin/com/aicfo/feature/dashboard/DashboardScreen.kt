@@ -4,12 +4,15 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -17,11 +20,13 @@ import com.aicfo.core.designsystem.chart.CfoProportionBar
 import com.aicfo.core.designsystem.chart.CfoProportionSegment
 import com.aicfo.core.designsystem.component.CfoAmountText
 import com.aicfo.core.designsystem.component.CfoCard
+import com.aicfo.core.designsystem.component.CfoListRow
 import com.aicfo.core.designsystem.component.CfoSecondaryButton
 import com.aicfo.core.designsystem.theme.CfoDimens
 import com.aicfo.core.designsystem.theme.CfoTheme
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.MoneyFormatter
+import com.aicfo.data.repository.CategoryBudgetAlert
 
 /**
  * The dashboard (ARC-004) — the app's home screen.
@@ -78,7 +83,12 @@ fun DashboardContent(
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = modifier.fillMaxWidth().padding(CfoDimens.spaceMd),
+        // Issue 5.1: the reference implementation (1.10) never scrolled — it had four rows. This
+        // issue's three added sections are what first pushed the bottom of the screen, including
+        // every navigation button, past the fold; without this the buttons render but are
+        // unreachable on any device shorter than the content, found by running the app, not by a
+        // test (no Compose UI test measures a real screen height against real content).
+        modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(CfoDimens.spaceMd),
         verticalArrangement = Arrangement.spacedBy(CfoDimens.spaceMd),
     ) {
         Text(text = stringResource(R.string.dashboard_title), style = MaterialTheme.typography.headlineSmall)
@@ -96,6 +106,11 @@ fun DashboardContent(
         SpendSplitSection(uiState)
         // Issue 4.3: the plan is above, the outcome is here. Adjacent on purpose.
         ActualSpendSection(uiState)
+        // Issue 5.1: three more figures, each already real from its own repository — none computed
+        // on this screen (P-03).
+        CashFlowSection(uiState)
+        BudgetStatusSection(uiState)
+        RecentActivitySection(uiState)
 
         // Directly under the split bar rather than with the other actions: the bar is the plan at
         // the nature level and the budgets screen is the plan at the category level, so the way to
@@ -225,6 +240,116 @@ private fun ActualSpendSection(uiState: DashboardUiState) {
             text = stringResource(R.string.dashboard_actual_debt_note),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * This month's income and expense (issue 5.1; FR-DASH-*).
+ * Why:    a raw ledger fact, not a judgment — no rule fired deciding it, so unlike
+ *         [BudgetAlertsLine] there is nothing to cite (P-02 only asks for a citation where one
+ *         exists). Nothing before the first read, the same rule [ActualSpendSection] follows.
+ * Result: the line, or nothing. Input: [uiState]. Output: none.
+ * Changelog: 2026-08-15 — Created for issue 5.1.
+ */
+@Composable
+private fun CashFlowSection(uiState: DashboardUiState) {
+    val flow = uiState.cashFlow ?: return
+    Text(text = stringResource(R.string.dashboard_cash_flow_label))
+    Text(
+        text =
+            stringResource(
+                R.string.dashboard_cash_flow_values,
+                MoneyFormatter.format(flow.income),
+                MoneyFormatter.format(flow.expense),
+            ),
+        style = MaterialTheme.typography.bodyMedium,
+    )
+}
+
+/**
+ * The budget summary card, or the empty state when nothing is planned yet (issue 5.1; FR-DASH-*).
+ * Why:    the totals come from [DashboardUiState.budgetTotals], already folded (P-03) — this only
+ *         renders them. Unlike [CashFlowSection] this always shows its label, matching
+ *         [SpendSplitSection]'s choice: the empty case here has an action ("set one from Your
+ *         budgets"), so it is worth a line rather than silence.
+ * Result: the card, or the empty-state line. Input: [uiState]. Output: none.
+ * Changelog: 2026-08-15 — Created for issue 5.1.
+ */
+@Composable
+private fun BudgetStatusSection(uiState: DashboardUiState) {
+    Text(text = stringResource(R.string.dashboard_budget_status_label))
+    val totals = uiState.budgetTotals
+    if (totals == null) {
+        Text(text = stringResource(R.string.dashboard_budget_status_empty))
+        return
+    }
+    Text(
+        text =
+            stringResource(
+                R.string.dashboard_budget_status_values,
+                MoneyFormatter.format(totals.spent),
+                MoneyFormatter.format(totals.budgeted),
+            ),
+        style = MaterialTheme.typography.bodyMedium,
+    )
+    BudgetAlertsLine(uiState.budgetAlerts)
+}
+
+/**
+ * The "needs attention" line, with the rule that fired (issue 5.1; FR-BUD-004, P-02).
+ * Why:    split out of [BudgetStatusSection] to stay within the 40-line limit (§21.6), and because
+ *         it is the one figure on this card that a rule decided rather than a plain sum — the same
+ *         citation `:feature:budgets`' own banner shows for the identical alert (`BudgetReviewCard`
+ *         and `BudgetAlertBanner` set the precedent this copies).
+ * Result: the count and its citation, or nothing when there is nothing to warn about.
+ * Input:  [alerts]. Output: none.
+ * Changelog: 2026-08-15 — Created for issue 5.1.
+ */
+@Composable
+private fun BudgetAlertsLine(alerts: List<CategoryBudgetAlert>) {
+    if (alerts.isEmpty()) return
+    Text(
+        text = pluralStringResource(R.plurals.dashboard_budget_alerts, alerts.size, alerts.size),
+        style = MaterialTheme.typography.bodySmall,
+        color = CfoTheme.extendedColors.warning,
+    )
+    val citation = alerts.first().alert.provenance.evidence.firstOrNull() ?: return
+    Text(
+        text = stringResource(R.string.dashboard_reason_rule, citation.ruleId, citation.ruleVersion),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+/**
+ * The recent-activity preview, or the empty state (issue 5.1; FR-DASH-*).
+ * Why:    a preview only — [TransactionRepository.observeRecent]'s own doc comment is why this does
+ *         not reintroduce the fixed-window mistake issue 3.6 fixed. "See all" is
+ *         `DashboardActions.onNavigateToTransactions`, already on screen below this section.
+ * Result: up to a handful of rows, newest first, or the empty-state line. Input: [uiState].
+ * Output: none.
+ * Changelog: 2026-08-15 — Created for issue 5.1.
+ */
+@Composable
+private fun RecentActivitySection(uiState: DashboardUiState) {
+    val recent = uiState.recentActivity
+    Text(text = stringResource(R.string.dashboard_recent_activity_label))
+    if (recent.isNullOrEmpty()) {
+        Text(text = stringResource(R.string.dashboard_recent_activity_empty))
+        return
+    }
+    recent.forEach { row ->
+        val transaction = row.transaction
+        CfoListRow(
+            title = transaction.merchant ?: stringResource(R.string.dashboard_recent_activity_unnamed),
+            supporting = transaction.bookedOn,
+            trailing = {
+                CfoAmountText(
+                    amount = transaction.amount,
+                    contentDescription = MoneyFormatter.format(transaction.amount),
+                )
+            },
         )
     }
 }

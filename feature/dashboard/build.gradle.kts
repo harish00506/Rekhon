@@ -2,6 +2,9 @@
 // each other (ARC-001); cross-feature nav goes through :app's typed nav graph.
 plugins {
     alias(libs.plugins.cfo.android.feature)
+    // Issue 5.1: not part of the feature convention plugin (only :core:designsystem applied it
+    // before this) — the acceptance criteria ask for light/dark/200% screenshot tests, which need it.
+    alias(libs.plugins.paparazzi)
 }
 
 android {

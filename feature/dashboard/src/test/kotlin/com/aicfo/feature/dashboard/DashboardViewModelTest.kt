@@ -4,6 +4,11 @@ import app.cash.turbine.test
 import com.aicfo.core.common.AppError
 import com.aicfo.core.common.FakeClock
 import com.aicfo.core.model.Money
+import com.aicfo.core.model.Transaction
+import com.aicfo.core.model.TransactionSource
+import com.aicfo.core.model.TransactionType
+import com.aicfo.data.repository.CashFlowSummary
+import com.aicfo.domain.engines.budget.BudgetAlertBand
 import com.aicfo.domain.engines.nature.NatureBreakdown
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -37,8 +42,9 @@ class DashboardViewModelTest {
     private val budget = FakeQuickSetupRepository()
     private val netWorth = FakeNetWorthRepository()
     private val transactions = FakeTransactionRepository()
+    private val budgets = FakeBudgetRepository()
 
-    private fun viewModel() = DashboardViewModel(clock, budget, netWorth, transactions)
+    private fun viewModel() = DashboardViewModel(clock, budget, netWorth, transactions, budgets)
 
     /** `viewModelScope` runs on `Dispatchers.Main`, which has no factory on a plain JVM. */
     @Before
@@ -319,5 +325,173 @@ class DashboardViewModelTest {
 
             assertNull(state.natureBreakdown)
             assertNull("a failed nature read raised a banner", state.errorCode)
+        }
+
+    // --- this month's cash flow (issue 5.1) ---------------------------------------------------
+
+    /**
+     * Input:  a cash-flow summary from the repository.
+     * Output: the figure reaches the state, unchanged — this section computes nothing (P-03).
+     */
+    @Test
+    fun `this month's cash flow reaches the state`() =
+        runTest {
+            transactions.setCashFlow(
+                CashFlowSummary(income = Money(85_000_00L), expense = Money(32_000_00L), net = Money(53_000_00L)),
+            )
+
+            val state = viewModel().uiState.value
+
+            assertEquals(Money(85_000_00L), state.cashFlow?.income)
+            assertEquals(Money(32_000_00L), state.cashFlow?.expense)
+        }
+
+    /**
+     * Input:  a repository whose cash-flow read fails.
+     * Output: the section clears and **no error banner** — the same isolation rule
+     *         [observeNature]'s failure test above proves, applied to the newest card beside it.
+     */
+    @Test
+    fun `a failed cash-flow read is silent and leaves the rest of the dashboard alone`() =
+        runTest {
+            transactions.failOnCashFlow = AppError.Storage("disk")
+
+            val state = viewModel().uiState.value
+
+            assertNull(state.cashFlow)
+            assertNull("a failed cash-flow read raised a banner", state.errorCode)
+        }
+
+    // --- budget status (issue 5.1) ------------------------------------------------------------
+
+    /**
+     * Input:  one budgeted category and one unbudgeted one, both with spend.
+     * Output: [DashboardUiState.budgetTotals] sums only the budgeted row — an unbudgeted category's
+     *         spend must not inflate a total against a plan it was never part of.
+     */
+    @Test
+    fun `budget totals fold only the budgeted categories`() =
+        runTest {
+            budgets.emitBudgets(
+                listOf(
+                    dashboardBudgetRow(
+                        id = "budget:1",
+                        name = "Groceries",
+                        budgeted = Money(1_000_000L),
+                        spent = Money(400_000L),
+                    ),
+                    dashboardBudgetRow(id = null, name = "Misc", spent = Money(200_000L)),
+                ),
+            )
+
+            val totals = viewModel().uiState.value.budgetTotals
+
+            assertEquals(Money(1_000_000L), totals?.budgeted)
+            assertEquals(Money(400_000L), totals?.spent)
+        }
+
+    /**
+     * Input:  no categories budgeted this month.
+     * Output: the totals are **absent, not zeroed** — the same rule [spendSplit] follows, and for
+     *         the same reason: a ₹0 card the app assembled from nothing is a figure it made up (P-03).
+     */
+    @Test
+    fun `no budgets yet leaves the totals absent rather than zeroed`() {
+        assertNull(viewModel().uiState.value.budgetTotals)
+    }
+
+    /**
+     * Input:  a repository whose budget-status read fails.
+     * Output: an error banner — **unlike** the cash-flow and nature failures above, because the plan
+     *         itself failing to read is exactly what `:feature:budgets`' own budgets stream surfaces
+     *         too, and the dashboard must not quietly disagree with it.
+     */
+    @Test
+    fun `a failed budget-status read surfaces an error`() =
+        runTest {
+            budgets.failOnBudgets = AppError.Storage("disk")
+
+            val state = viewModel().uiState.value
+
+            assertTrue("a failed budget-status read must surface an error", state.errorCode != null)
+        }
+
+    /**
+     * Input:  a budget sitting in the warn band.
+     * Output: the alert reaches the state carrying the rule that fired (P-02) — the same
+     *         `RULE-BUD-ALERT` citation `:feature:budgets`' own banner shows for the same alert.
+     */
+    @Test
+    fun `budget alerts reach the state with their rule citation`() =
+        runTest {
+            budgets.emitAlerts(listOf(dashboardAlertRow(band = BudgetAlertBand.WARN)))
+
+            val alert = viewModel().uiState.value.budgetAlerts.first()
+
+            assertEquals("RULE-BUD-ALERT", alert.alert.provenance.evidence.first().ruleId)
+        }
+
+    /**
+     * Input:  a repository whose alert read fails.
+     * Output: the alert line clears and **no error banner** — an alert is advisory, and the plan it
+     *         advises about is what the budget-status failure above already surfaces.
+     */
+    @Test
+    fun `a failed alert read clears the alerts rather than raising a banner`() =
+        runTest {
+            budgets.failOnAlerts = AppError.Storage("disk")
+
+            val state = viewModel().uiState.value
+
+            assertTrue(state.budgetAlerts.isEmpty())
+            assertNull("a failed alert read raised a banner", state.errorCode)
+        }
+
+    // --- recent activity (issue 5.1) ------------------------------------------------------------
+
+    /**
+     * Input:  a handful of transactions from the repository.
+     * Output: they reach the state, in the order the repository returned them — this section
+     *         computes nothing (P-03), it only renders what `TransactionRepository.observeRecent`
+     *         already ordered.
+     */
+    @Test
+    fun `recent activity reaches the state`() =
+        runTest {
+            val txn =
+                Transaction(
+                    id = "txn:1",
+                    accountId = "account:1",
+                    amount = Money(-450_00L),
+                    occurredAtUtcMillis = 1_755_500_000_000L,
+                    bookedOn = "2026-08-15",
+                    categoryId = null,
+                    merchant = "Big Bazaar",
+                    note = null,
+                    source = TransactionSource.MANUAL,
+                    type = TransactionType.EXPENSE,
+                )
+            transactions.setRecent(txn)
+
+            val recent = viewModel().uiState.value.recentActivity
+
+            assertEquals(1, recent?.size)
+            assertEquals("Big Bazaar", recent?.first()?.transaction?.merchant)
+        }
+
+    /**
+     * Input:  a repository whose recent-activity read fails.
+     * Output: the section clears and **no error banner** — the same isolation rule every other
+     *         secondary section on this screen follows.
+     */
+    @Test
+    fun `a failed recent-activity read is silent and leaves the rest of the dashboard alone`() =
+        runTest {
+            transactions.failOnRecent = AppError.Storage("disk")
+
+            val state = viewModel().uiState.value
+
+            assertNull(state.recentActivity)
+            assertNull("a failed recent-activity read raised a banner", state.errorCode)
         }
 }

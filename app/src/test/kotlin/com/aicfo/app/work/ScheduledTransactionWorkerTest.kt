@@ -16,6 +16,7 @@ import com.aicfo.core.model.Tag
 import com.aicfo.core.model.Transaction
 import com.aicfo.core.model.TransactionSource
 import com.aicfo.core.model.Transfer
+import com.aicfo.data.repository.CashFlowSummary
 import com.aicfo.data.repository.FilteredTransaction
 import com.aicfo.data.repository.SplitDraft
 import com.aicfo.data.repository.TransactionDraft
@@ -157,6 +158,11 @@ private class RecordingTransactionRepository : TransactionRepository {
     override fun observeUpcoming(): Flow<List<Transaction>> = flowOf(emptyList())
 
     override fun observeDayTotals(filter: TransactionFilter): Flow<Map<String, Money>> = flowOf(emptyMap())
+
+    override fun observeRecent(limit: Int): Flow<List<FilteredTransaction>> = flowOf(emptyList())
+
+    override fun observeMonthCashFlow(): Flow<CashFlowSummary> =
+        flowOf(CashFlowSummary(income = Money.ZERO, expense = Money.ZERO, net = Money.ZERO))
 
     override fun observeSources(): Flow<List<TransactionSource>> = flowOf(emptyList())
 

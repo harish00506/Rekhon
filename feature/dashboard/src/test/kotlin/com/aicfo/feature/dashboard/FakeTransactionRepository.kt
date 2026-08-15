@@ -10,6 +10,7 @@ import com.aicfo.core.model.Tag
 import com.aicfo.core.model.Transaction
 import com.aicfo.core.model.TransactionSource
 import com.aicfo.core.model.Transfer
+import com.aicfo.data.repository.CashFlowSummary
 import com.aicfo.data.repository.FilteredTransaction
 import com.aicfo.data.repository.SplitDraft
 import com.aicfo.data.repository.TransactionDraft
@@ -25,31 +26,64 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
 /**
- * A transactions store that answers one question (issue 4.3).
+ * A transactions store that answers exactly what the dashboard reads (issue 4.3; issue 5.1).
  *
- * Why:  the dashboard reads exactly one thing from this repository — §8.3's monthly split — and
- *       everything else here **throws rather than returning a plausible value**, the shape
- *       `:app`'s `RecordingTransactionRepository` established. A fake that quietly returned empty
- *       lists for the other eighteen members would let this screen start depending on one of them
- *       without any test noticing.
- * Result: the breakdown flow, controllable, and a loud failure for anything else.
+ * Why:  the dashboard reads three things from this repository — §8.3's monthly split, this month's
+ *       cash flow, and a recent-activity preview — and everything else here **throws rather than
+ *       returning a plausible value**, the shape `:app`'s `RecordingTransactionRepository`
+ *       established. A fake that quietly returned empty lists for the other sixteen members would
+ *       let this screen start depending on one of them without any test noticing.
+ * Result: three controllable flows, each independently failable, and a loud failure for anything
+ *       else — so a test can prove one stream's failure does not blank the others.
  * Changelog: 2026-08-10 — Created for issue 4.3.
+ *            2026-08-15 — Issue 5.1: cash flow and recent activity joined the breakdown.
  */
 internal class FakeTransactionRepository : TransactionRepository {
     private val breakdown = MutableStateFlow(NatureBreakdown())
+    private val cashFlow =
+        MutableStateFlow(CashFlowSummary(income = Money.ZERO, expense = Money.ZERO, net = Money.ZERO))
+    private val recent = MutableStateFlow<List<FilteredTransaction>>(emptyList())
 
     /** When non-null, [observeNatureBreakdown] throws this instead of emitting. */
     var failOnObserve: AppError? = null
+
+    /** When non-null, [observeMonthCashFlow] throws this instead of emitting (issue 5.1). */
+    var failOnCashFlow: AppError? = null
+
+    /** When non-null, [observeRecent] throws this instead of emitting (issue 5.1). */
+    var failOnRecent: AppError? = null
 
     /** Sets what this month became. Input: [value]. Output: none. */
     fun setBreakdown(value: NatureBreakdown) {
         breakdown.value = value
     }
 
+    /** Sets this month's cash flow (issue 5.1). Input: [value]. Output: none. */
+    fun setCashFlow(value: CashFlowSummary) {
+        cashFlow.value = value
+    }
+
+    /** Sets the recent-activity preview rows (issue 5.1). Input: [value]. Output: none. */
+    fun setRecent(vararg value: Transaction) {
+        recent.value = value.map { FilteredTransaction(it) }
+    }
+
     override fun observeNatureBreakdown(): Flow<NatureBreakdown> =
         breakdown.map { value ->
             failOnObserve?.let { throw IllegalStateException(it.code) }
             value
+        }
+
+    override fun observeMonthCashFlow(): Flow<CashFlowSummary> =
+        cashFlow.map { value ->
+            failOnCashFlow?.let { throw IllegalStateException(it.code) }
+            value
+        }
+
+    override fun observeRecent(limit: Int): Flow<List<FilteredTransaction>> =
+        recent.map { value ->
+            failOnRecent?.let { throw IllegalStateException(it.code) }
+            value.take(limit)
         }
 
     override fun observeFiltered(filter: TransactionFilter): Flow<PagingData<FilteredTransaction>> =
