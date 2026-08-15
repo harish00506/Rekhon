@@ -81,8 +81,10 @@ data class DashboardUiState(
      * FR-DASH-*; FR-BUD-004).
      *
      * Empty by default rather than nullable: unlike [budgets], a bare list is never ambiguous here —
-     * "no alerts yet" and "genuinely nothing to warn about" render identically, so a failed read
-     * clears this list rather than raising a banner, the same choice [natureBreakdown]'s read makes.
+     * "no alerts yet" and "genuinely nothing to warn about" render identically. Derived from
+     * [budgets] in the same update, via `BudgetRepository.alertFor` — not its own read, and not its
+     * own failure mode: a broken budgets read surfaces through [errorCode] exactly once, not once
+     * per figure it happens to affect.
      */
     val budgetAlerts: List<CategoryBudgetAlert> = emptyList(),
     /**

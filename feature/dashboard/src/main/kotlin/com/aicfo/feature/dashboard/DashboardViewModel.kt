@@ -74,7 +74,6 @@ class DashboardViewModel
             observeNature()
             observeCashFlow()
             observeBudgetStatus()
-            observeBudgetAlerts()
             observeRecentActivity()
         }
 
@@ -164,42 +163,34 @@ class DashboardViewModel
         }
 
         /**
-         * Keeps the budget summary in step with the stored budgets (issue 5.1; FR-DASH-*).
+         * Keeps the budget summary and its alert line in step with the stored budgets (issue 5.1;
+         * FR-DASH-*, FR-BUD-004).
          *
-         * Why:    a **separate** collector from [observeBudgetAlerts], even though both read
-         *         `BudgetRepository`, for the reason [observeNetWorth] and [observeBudget] already
-         *         are separate: one failing must not blank the other.
-         * Result: [uiState] carries the rows [DashboardUiState.budgetTotals] folds, or a read failure
-         *         sets [DashboardUiState.errorCode] — unlike [observeCashFlow], a broken read of the
-         *         plan itself is surfaced, matching how `:feature:budgets` treats its own budgets
-         *         stream.
+         * Why:    **one collector, not two.** An earlier version ran a second, independent
+         *         subscription to `BudgetRepository.observeAlerts()` beside this one — but
+         *         `observeAlerts()` is itself `observeBudgets().map { ... }`, so the dashboard was
+         *         opening `BudgetRepository`'s three-Room-query `combine()` twice per load for data
+         *         that comes from the same read. It also meant one failure could show two different
+         *         faces: an error banner from this collector and a silently-emptied alert line from
+         *         the other, for the same underlying cause. [BudgetRepository.alertFor] derives the
+         *         alert for each row **synchronously, from rows this collector already has** — no
+         *         second subscription, and one `.catch` now covers both figures honestly.
+         * Result: [uiState] carries the rows [DashboardUiState.budgetTotals] folds and the alerts
+         *         (each with the rule that fired, P-02) in the same update; a read failure sets
+         *         [DashboardUiState.errorCode], matching how `:feature:budgets` treats its own
+         *         budgets stream.
          * Input:  none. Output: none (launches a collector).
          * Changelog: 2026-08-15 — Created for issue 5.1.
+         *            2026-08-16 — Merged with the separate alerts collector this issue also added,
+         *            after a review found the double subscription and the failure-handling split.
          */
         private fun observeBudgetStatus() {
             budgetRepository.observeBudgets()
-                .onEach { rows -> _uiState.update { it.copy(budgets = rows) } }
+                .onEach { rows ->
+                    val alerts = rows.mapNotNull(budgetRepository::alertFor)
+                    _uiState.update { it.copy(budgets = rows, budgetAlerts = alerts) }
+                }
                 .catch { failure -> _uiState.update { it.copy(errorCode = failure.toAppError().code) } }
-                .launchIn(viewModelScope)
-        }
-
-        /**
-         * Keeps the "needs attention" line in step with the alert bands crossed this month (issue
-         * 5.1; FR-DASH-*, FR-BUD-004).
-         *
-         * Why:    a failure clears the list rather than raising a banner — the same choice
-         *         [observeCashFlow] and [observeNature] make, and for the same reason: an alert line
-         *         is advisory, and the plan it is advising about is what [observeBudgetStatus]
-         *         already surfaces a real error for.
-         * Result: [uiState] carries the alerts, each with the rule that fired (P-02) — rendered by
-         *         the screen the same way `:feature:budgets`' own alert banner does.
-         * Input:  none. Output: none (launches a collector).
-         * Changelog: 2026-08-15 — Created for issue 5.1.
-         */
-        private fun observeBudgetAlerts() {
-            budgetRepository.observeAlerts()
-                .onEach { rows -> _uiState.update { it.copy(budgetAlerts = rows) } }
-                .catch { _uiState.update { it.copy(budgetAlerts = emptyList()) } }
                 .launchIn(viewModelScope)
         }
 

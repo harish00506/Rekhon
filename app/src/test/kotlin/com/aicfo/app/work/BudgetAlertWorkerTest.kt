@@ -238,6 +238,8 @@ private class RecordingBudgetRepository : BudgetRepository {
 
     override fun observeBudgets(): Flow<List<CategoryBudget>> = error("the worker must not read budgets")
 
+    override fun alertFor(row: CategoryBudget): CategoryBudgetAlert? = error("the worker must not read budgets")
+
     override fun observeSuggestions(): Flow<List<CategoryBudgetSuggestion>> =
         error("the worker must not read suggestions")
 

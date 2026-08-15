@@ -82,6 +82,12 @@ internal class FakeBudgetRepository(
 
     override fun observeAlerts(): Flow<List<CategoryBudgetAlert>> = alerts
 
+    // This module still reads observeAlerts() directly, not alertFor (issue 5.1 gave the dashboard
+    // the reason to prefer the latter; :feature:budgets' own screen has no second subscription to
+    // avoid). Matched against the same staged list rather than left unsupported, so a future test
+    // that does start calling it gets a real answer instead of a surprise crash.
+    override fun alertFor(row: CategoryBudget): CategoryBudgetAlert? = alerts.value.find { it.budgetId == row.id }
+
     // The notification path is the worker's, not this screen's: these exist so the fake satisfies the
     // interface, and every band the screen renders comes from `observeAlerts` above (issue 4.5).
     override suspend fun pendingAlerts(): Result<List<CategoryBudgetAlert>, AppError> = Ok(alerts.value)
@@ -168,6 +174,10 @@ internal class FailingBudgetRepository : BudgetRepository {
 
     override fun observeAlerts(): Flow<List<CategoryBudgetAlert>> = flow { throw IOException("no database") }
 
+    // Synchronous, so it cannot throw the way the Flow above does; every row it would ever be asked
+    // about already came from a failed observeBudgets(), which nothing here reaches in that case.
+    override fun alertFor(row: CategoryBudget): CategoryBudgetAlert? = null
+
     override suspend fun pendingAlerts(): Result<List<CategoryBudgetAlert>, AppError> =
         Err(AppError.Storage("no database"))
 
@@ -212,6 +222,8 @@ internal class SuggestionlessBudgetRepository(
         flow { throw IOException("cannot read history") }
 
     override fun observeAlerts(): Flow<List<CategoryBudgetAlert>> = MutableStateFlow(emptyList())
+
+    override fun alertFor(row: CategoryBudget): CategoryBudgetAlert? = null
 
     override suspend fun pendingAlerts(): Result<List<CategoryBudgetAlert>, AppError> = Ok(emptyList())
 

@@ -420,11 +420,16 @@ class DashboardViewModelTest {
      * Input:  a budget sitting in the warn band.
      * Output: the alert reaches the state carrying the rule that fired (P-02) — the same
      *         `RULE-BUD-ALERT` citation `:feature:budgets`' own banner shows for the same alert.
+     *         Derived from the same [budgets] emission via `BudgetRepository.alertFor` (issue 5.1
+     *         review, 2026-08-16) — not a second stream — so seeding [FakeBudgetRepository.emitBudgets]
+     *         plus [FakeBudgetRepository.alertForResult] is what drives it now, not a separate alerts
+     *         flow.
      */
     @Test
     fun `budget alerts reach the state with their rule citation`() =
         runTest {
-            budgets.emitAlerts(listOf(dashboardAlertRow(band = BudgetAlertBand.WARN)))
+            budgets.alertForResult = dashboardAlertRow(band = BudgetAlertBand.WARN)
+            budgets.emitBudgets(listOf(dashboardBudgetRow()))
 
             val alert = viewModel().uiState.value.budgetAlerts.first()
 
@@ -432,19 +437,22 @@ class DashboardViewModelTest {
         }
 
     /**
-     * Input:  a repository whose alert read fails.
-     * Output: the alert line clears and **no error banner** — an alert is advisory, and the plan it
-     *         advises about is what the budget-status failure above already surfaces.
+     * Input:  a repository whose budgets read fails.
+     * Output: **both** the totals and the alert line go stale together, behind the one error banner
+     *         [observeBudgetStatus] already raises — there is no longer a separate alert read that
+     *         could fail on its own and show a second, different face for the same cause (the
+     *         2026-08-16 review's finding).
      */
     @Test
-    fun `a failed alert read clears the alerts rather than raising a banner`() =
+    fun `a failed budgets read leaves the alerts empty behind the same banner, not a second face`() =
         runTest {
-            budgets.failOnAlerts = AppError.Storage("disk")
+            budgets.alertForResult = dashboardAlertRow(band = BudgetAlertBand.WARN)
+            budgets.failOnBudgets = AppError.Storage("disk")
 
             val state = viewModel().uiState.value
 
             assertTrue(state.budgetAlerts.isEmpty())
-            assertNull("a failed alert read raised a banner", state.errorCode)
+            assertTrue("a failed budgets read must surface an error", state.errorCode != null)
         }
 
     // --- recent activity (issue 5.1) ------------------------------------------------------------

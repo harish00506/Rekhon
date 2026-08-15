@@ -182,6 +182,22 @@ interface BudgetRepository {
     fun observeAlerts(): Flow<List<CategoryBudgetAlert>>
 
     /**
+     * Decides which alert band, if any, one already-fetched row has crossed (FR-BUD-004).
+     *
+     * Why:    a pure, synchronous companion to [observeAlerts], for a caller that has already read
+     *         [observeBudgets] itself and would otherwise have to open a **second** subscription to
+     *         `observeBudgets()`'s three-Room-query `combine()` just to learn what [observeAlerts]
+     *         derives from the same rows. The dashboard is exactly this caller (issue 5.1): before
+     *         this existed, its budget-status card and its "needs attention" line each triggered the
+     *         whole budget read independently, doubling the query cost on the app's landing screen.
+     *         No I/O and no clock read happen here — this is the same engine call [observeAlerts]
+     *         already makes internally, exposed so a second read is never needed to reach it.
+     * Result: the alert, or `null` when the row is below the warn band or has no budget.
+     * Input:  [row] — a row already read from [observeBudgets]. Output: `CategoryBudgetAlert?`.
+     */
+    fun alertFor(row: CategoryBudget): CategoryBudgetAlert?
+
+    /**
      * The bands crossed that the user has **not** yet been told about (FR-BUD-004).
      * Why:    the worker's input. Separate from [observeAlerts] because the two answer different
      *         questions — "what is true?" and "what is new?" — and only the second may interrupt
@@ -339,23 +355,31 @@ internal class RoomBudgetRepository(
         return write(categoryId, amount, rolloverEnabled, BudgetRepository.SOURCE_MANUAL, citation = null)
     }
 
-    override suspend fun acceptSuggestion(categoryId: String): Result<String, AppError> {
-        // Read the suggestion through the same Flow the screen saw, so an accepted number is
-        // provably the number that was shown rather than one recomputed a moment later — the two
-        // could differ across a month boundary, and the user tapped the one they read.
-        val suggestion =
-            observeSuggestions().first().firstOrNull { it.category.id == categoryId }
-                ?: return Err(AppError.NotFound)
-        return write(
-            categoryId = categoryId,
-            amount = suggestion.suggestion.amount,
-            rolloverEnabled = false,
-            source = BudgetRepository.SOURCE_SUGGESTED,
-            // The first citation is the rule; a seasonal suggestion appends the calendar event.
-            // Storing the rule is what lets a later reviewer reproduce this amount (AI-ARC-006).
-            citation = suggestion.suggestion.provenance.evidence.firstOrNull(),
-        )
-    }
+    override suspend fun acceptSuggestion(categoryId: String): Result<String, AppError> =
+        // Guarded for the reason [acceptReviewProposal] is, and fixed in the same pass: this reads
+        // three Room queries and the suggestion engine before it writes anything, and an unguarded
+        // throw from any of them crossed a layer boundary into `viewModelScope` (§21.6). The shape
+        // predates issue 4.6 — 4.6 copied it, which is how one review found both.
+        withContext(dispatchers.io) {
+            runCatchingToResult {
+                // Read the suggestion through the same Flow the screen saw, so an accepted number is
+                // provably the number that was shown rather than one recomputed a moment later — the
+                // two could differ across a month boundary, and the user tapped the one they read.
+                val suggestion =
+                    observeSuggestions().first().firstOrNull { it.category.id == categoryId }
+                        ?: return@runCatchingToResult Err(AppError.NotFound)
+                write(
+                    categoryId = categoryId,
+                    amount = suggestion.suggestion.amount,
+                    rolloverEnabled = false,
+                    source = BudgetRepository.SOURCE_SUGGESTED,
+                    // The first citation is the rule; a seasonal suggestion appends the calendar
+                    // event. Storing it is what lets a later reviewer reproduce this amount
+                    // (AI-ARC-006).
+                    citation = suggestion.suggestion.provenance.evidence.firstOrNull(),
+                )
+            }.flatten()
+        }
 
     override fun observeAlerts(): Flow<List<CategoryBudgetAlert>> =
         // Derived from the budgets rather than read from `budget_alert`: the band is a fact about the
@@ -410,20 +434,31 @@ internal class RoomBudgetRepository(
                 .flowOn(dispatchers.io)
         }
 
-    override suspend fun acceptReviewProposal(categoryId: String): Result<String, AppError> {
-        // Read through the same Flow the card showed, for the reason acceptSuggestion re-reads
-        // observeSuggestions: the amount written is provably the one the engine produced.
-        val proposal =
-            observeReview().first()?.categories?.firstOrNull { it.categoryId == categoryId }?.proposal
-                ?: return Err(AppError.NotFound)
-        return write(
-            categoryId = categoryId,
-            amount = proposal.amount,
-            rolloverEnabled = false,
-            source = BudgetRepository.SOURCE_SUGGESTED,
-            citation = proposal.provenance.evidence.firstOrNull(),
-        )
-    }
+    override suspend fun acceptReviewProposal(categoryId: String): Result<String, AppError> =
+        // Guarded, unlike the first version of this method. `observeReview().first()` is not a cheap
+        // lookup — it runs four Room queries and the review engine — and anything it throws (a disk
+        // error, an engine failure surfacing through `reviewFor`'s unchecked cast) used to escape a
+        // `Result`-returning API entirely, landing on `viewModelScope` where nothing catches it: a
+        // crash, not the error banner `BudgetsViewModel` believes it is handling. §21.6 is explicit
+        // that no exception crosses a layer boundary. Found by review, 2026-08-16; see issue 4.7 for
+        // the unchecked engine casts that make the inner throw reachable at all.
+        withContext(dispatchers.io) {
+            runCatchingToResult {
+                // Read through the same Flow the card showed, for the reason acceptSuggestion
+                // re-reads observeSuggestions: the amount written is provably the one the engine
+                // produced — and, since 2026-08-16, provably the one the card actually displayed.
+                val proposal =
+                    observeReview().first()?.categories?.firstOrNull { it.categoryId == categoryId }?.proposal
+                        ?: return@runCatchingToResult Err(AppError.NotFound)
+                write(
+                    categoryId = categoryId,
+                    amount = proposal.amount,
+                    rolloverEnabled = false,
+                    source = BudgetRepository.SOURCE_SUGGESTED,
+                    citation = proposal.provenance.evidence.firstOrNull(),
+                )
+            }.flatten()
+        }
 
     override suspend fun dismissReview(): Result<Boolean, AppError> =
         withContext(dispatchers.io) {
@@ -561,10 +596,14 @@ internal class RoomBudgetRepository(
      *         two numbers. Unbudgeted rows are skipped before the engine sees them; the engine would
      *         also return null for a zero budget, and relying on that would mean the *screen's*
      *         meaning of "no budget" and the engine's happened to coincide.
+     *
+     *         **Public** (issue 5.1) — see the interface doc comment for why: a caller that already
+     *         holds a row from [observeBudgets] can reach the same answer [observeAlerts] would give
+     *         it without opening a second subscription to get there.
      * Result: the alert, or `null` when this row is below the warn band or has no budget.
      * Input:  [row]. Output: [CategoryBudgetAlert]?.
      */
-    private fun alertFor(row: CategoryBudget): CategoryBudgetAlert? {
+    override fun alertFor(row: CategoryBudget): CategoryBudgetAlert? {
         val budgetId = row.id ?: return null
         val alert =
             engine.alert(
@@ -603,7 +642,17 @@ internal class RoomBudgetRepository(
      */
     private fun rawReview(profileId: String): Flow<BudgetReview?> {
         val reviewed = reviewedMonth(clock.today())
-        val history = historyWindow(LocalDate.parse(reviewed.startIsoDate))
+        // `clock.today()`, NOT the reviewed month's start. `historyWindow` returns the whole months
+        // *before* the month it is given, so passing the reviewed month would drop the reviewed month
+        // itself from the history the proposal is priced from — reviewing July while pricing from
+        // April–June, ignoring the very month the finding is about. It also broke the guarantee
+        // `ENGINE.md` §5.5 and `DefaultBudgetEngine`'s own comment both state, that a reviewed
+        // proposal is "provably the same number a plain suggestion would show for the same category":
+        // `observeSuggestions` passes `clock.today()` here, so anything else makes the two disagree.
+        // Excluding the anomalous month is not a defence either — RULE-BUD-SUGGEST is a *median*,
+        // which is chosen precisely to resist a one-off month without dropping it. Found by review,
+        // 2026-08-16.
+        val history = historyWindow(clock.today())
         return combine(
             database.categoryDao().observeForProfile(profileId),
             database.budgetDao().observeCategoryBudgets(profileId, reviewed.startIsoDate),
@@ -625,8 +674,9 @@ internal class RoomBudgetRepository(
      *         of `DefaultBudgetEngine.proposalFor` — one history shape, read twice.
      * Result: the review, or `null` when no category had a budget (a legitimate state, not an error).
      * Input:  [categories]; [budgets] — last month's plans; [actuals] — last month's spend;
-     *         [monthlySpend] — the months before the reviewed one, for pricing a proposal;
-     *         [reviewed] — the closed month's window. Output: [BudgetReview]?.
+     *         [monthlySpend] — the same history window `observeSuggestions` reads (the closed months
+     *         up to and **including** the reviewed one), so the proposal is the number a plain
+     *         suggestion would show; [reviewed] — the closed month's window. Output: [BudgetReview]?.
      */
     private fun reviewFor(
         categories: List<Category>,

@@ -524,6 +524,21 @@ class TransactionRepositoryTest {
             assertTrue(repository.observeRecent(limit = 10).first().isEmpty())
         }
 
+    @Test
+    fun `observeRecent excludes a soft-deleted transaction`() =
+        runTest {
+            val account = newAccount()
+            val deleted = repository.create(TransactionDraft(account.id, Money(-500_00L))).expectOk()
+            repository.create(TransactionDraft(account.id, Money(-250_00L), merchant = "Still here")).expectOk()
+
+            repository.delete(deleted.id).expectOk()
+
+            val recent = repository.observeRecent(limit = 10).first()
+
+            assertEquals(1, recent.size)
+            assertEquals("Still here", recent.first().transaction.merchant)
+        }
+
     // --- profile isolation -------------------------------------------------------------------------
 
     @Test

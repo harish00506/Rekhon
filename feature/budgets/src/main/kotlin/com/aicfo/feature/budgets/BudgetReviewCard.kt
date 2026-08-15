@@ -83,6 +83,14 @@ private fun ReviewedCategoryRow(
     if (proposal == null) {
         Text(text = stringResource(R.string.budgets_review_no_history), style = MaterialTheme.typography.bodySmall)
     } else {
+        // The number the button writes, shown before the button (P-02, P-07). Until a 2026-08-16
+        // review caught it, this row rendered the variance and the Accept button but never the
+        // proposed amount — so a tap authorised a figure the user had not been shown. The trailing
+        // slot above is `actual` (what the month cost), which is a different number entirely.
+        Text(
+            text = stringResource(R.string.budgets_review_proposal, MoneyFormatter.format(proposal.amount)),
+            style = MaterialTheme.typography.bodyMedium,
+        )
         CfoButton(
             text = stringResource(R.string.budgets_suggestion_accept),
             onClick = { onEvent(BudgetsEvent.AcceptReviewProposal(category.categoryId)) },

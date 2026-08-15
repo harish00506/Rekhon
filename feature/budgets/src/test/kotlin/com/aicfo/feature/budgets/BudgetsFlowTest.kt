@@ -394,6 +394,13 @@ class BudgetsFlowTest {
         compose.onNodeWithText(variance).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(text(R.string.budgets_reason_rule, "RULE-BUD-REVIEW", "1.0")).assertIsDisplayed()
         compose.onNodeWithText(text(R.string.budgets_reason_rule, "RULE-BUD-SUGGEST", "1.0")).assertIsDisplayed()
+        // The assertion this test was **named** for and did not make until 2026-08-16. Without it,
+        // the card rendered the variance, the rules and an Accept button that wrote `proposal.amount`
+        // — a number the user was never shown (P-02, P-07) — and every test here still passed.
+        // ₹8,500.00 is the proposal; ₹13,000.00 above is what the month actually cost, so this can
+        // only pass if the proposal itself is on screen.
+        val proposed = text(R.string.budgets_review_proposal, "₹8,500.00")
+        compose.onNodeWithText(proposed).performScrollTo().assertIsDisplayed()
     }
 
     @Test

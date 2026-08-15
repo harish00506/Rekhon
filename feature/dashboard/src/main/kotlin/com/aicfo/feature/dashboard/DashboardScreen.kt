@@ -24,6 +24,7 @@ import com.aicfo.core.designsystem.component.CfoListRow
 import com.aicfo.core.designsystem.component.CfoSecondaryButton
 import com.aicfo.core.designsystem.theme.CfoDimens
 import com.aicfo.core.designsystem.theme.CfoTheme
+import com.aicfo.core.model.DateFormatter
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.MoneyFormatter
 import com.aicfo.data.repository.CategoryBudgetAlert
@@ -343,7 +344,9 @@ private fun RecentActivitySection(uiState: DashboardUiState) {
         val transaction = row.transaction
         CfoListRow(
             title = transaction.merchant ?: stringResource(R.string.dashboard_recent_activity_unnamed),
-            supporting = transaction.bookedOn,
+            // DateFormatter, not the raw field: `bookedOn` is a stored ISO string (TIM-002), and
+            // this rendered a literal "2026-08-15" to users until a 2026-08-16 review caught it.
+            supporting = DateFormatter.day(transaction.bookedOn),
             trailing = {
                 CfoAmountText(
                     amount = transaction.amount,

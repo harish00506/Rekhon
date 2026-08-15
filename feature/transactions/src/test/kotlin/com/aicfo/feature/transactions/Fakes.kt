@@ -116,9 +116,15 @@ internal class FakeTransactionRepository(
     /**
      * Seeds the **scheduled** list (issue 3.4; FR-TXN-010).
      *
-     * Separate from [setTransactions] because the real store keeps them separate: `observeRecent`
-     * stops at today and `observeUpcoming` starts tomorrow, so a fake that served one list to both
-     * would let a ViewModel test pass while the screen showed a scheduled payment among its actuals.
+     * Separate from [setTransactions] because the real store keeps them separate: the real
+     * `observeFiltered`'s unfiltered case stops at today and `observeUpcoming` starts tomorrow, so a
+     * fake that served one list to both would let a ViewModel test pass while the screen showed a
+     * scheduled payment among its actuals.
+     *
+     * **This fake does not enforce that bound itself, on this list or on [observeRecent] below** —
+     * here, unlike the real repository, "what's recent" and "what's upcoming" are exactly what a
+     * test chooses to seed into each list, not something a date comparison decides. A test that
+     * wants to prove the *real* boundary belongs in `TransactionRepositoryTest`, against real dates.
      *
      * Input: [seed] — the future-dated transactions to hold. Output: none.
      */
@@ -185,12 +191,24 @@ internal class FakeTransactionRepository(
                 .mapValues { (_, rows) -> rows.fold(Money.ZERO) { running, row -> running + row.amount } }
         }
 
+    /**
+     * Sorted and bounded by [limit] — **not date-bounded** (issue 5.1 review, 2026-08-16). The real
+     * `TransactionRepository.observeRecent` excludes future-dated rows; this fake does not, matching
+     * every other read here — a test that seeds a future-dated row into [setTransactions] and needs
+     * it excluded should use [setUpcoming] instead, or assert the real bound in
+     * `TransactionRepositoryTest`.
+     */
     override fun observeRecent(limit: Int): Flow<List<FilteredTransaction>> =
         transactions.map { list ->
             failOnObserve?.let { throw IllegalStateException(it.code) }
             list.sortedByDescending { it.occurredAtUtcMillis }.take(limit).map { FilteredTransaction(it) }
         }
 
+    /**
+     * Sums whatever [setTransactions] holds — **not month-bounded** (issue 5.1 review, 2026-08-16),
+     * for the same reason [observeRecent] above isn't: the real `MonthWindow`-bound query is
+     * `TransactionRepositoryTest`'s to prove, not this fake's to re-derive.
+     */
     override fun observeMonthCashFlow(): Flow<CashFlowSummary> =
         transactions.map { list ->
             failOnObserve?.let { throw IllegalStateException(it.code) }

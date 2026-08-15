@@ -307,6 +307,26 @@ class BudgetRepositoryTest {
         }
 
     /**
+     * Input:  a row already read from `observeBudgets`, sitting in the warn band.
+     * Output: asserts the public, synchronous `alertFor(row)` agrees with `observeAlerts()` — the
+     *         two must never disagree, since `observeAlerts()` is implemented as exactly this call
+     *         mapped over the same rows (issue 5.1's review: a caller that already holds the row,
+     *         the dashboard being the case that motivated this, reaches `alertFor` directly rather
+     *         than opening a second subscription to `observeBudgets()` to get the same answer).
+     */
+    @Test
+    fun `alertFor agrees with observeAlerts for the same row`() =
+        runTest(dispatcher) {
+            budgets.setBudget(idOf("Groceries"), Money(10_000_00L), rolloverEnabled = false).expectOk()
+            expense(Money(-8_000_00L), categoryId = idOf("Groceries"))
+
+            val direct = budgets.alertFor(budgetFor("Groceries"))
+
+            assertEquals(alertFor("Groceries")?.alert?.band, direct?.alert?.band)
+            assertEquals(BudgetAlertBand.WARN, direct?.alert?.band)
+        }
+
+    /**
      * Input:  an unbudgeted category with spending in it.
      * Output: asserts silence. Every category appears in `observeBudgets` including the unbudgeted
      *         ones, so without the guard this would alert about a plan the user never made — on
@@ -422,12 +442,25 @@ class BudgetRepositoryTest {
     // --- monthly review (issue 4.6; §5.5) -------------------------------------------------------
 
     /**
-     * Input:  a July grocery budget of ₹10,000 with ₹13,000 spent (30% over) and three months of
-     *         history before it (April–June, median ₹8,500 — the exact fixture
-     *         `three months of history produce a suggestion that cites its rule` uses).
-     * Output: the review reports Groceries as `OVER` and material, with a proposal priced at the
-     *         same median a plain suggestion would show — the whole point of routing the review's
-     *         proposal through [BudgetEngine.suggest] rather than a second copy of the formula.
+     * Input:  a July grocery budget of ₹10,000 with ₹13,000 spent (30% over), and April–June history
+     *         of ₹8,000 / ₹9,000 / ₹8,500.
+     * Output: the review reports Groceries as `OVER` and material, with a proposal priced at
+     *         **exactly the number a plain suggestion shows for the same category** — the guarantee
+     *         `ENGINE.md` §5.5 and `DefaultBudgetEngine`'s own comment both state, and the whole
+     *         point of routing the proposal through [BudgetEngine.suggest] rather than a second copy
+     *         of the formula.
+     *
+     *         The window is the last three **closed** months — May, June and July — so the median is
+     *         ₹9,000, not April–June's ₹8,500. **This test asserted ₹8,500 until 2026-08-16**, when a
+     *         review found `rawReview` was passing the reviewed month's start to `historyWindow`
+     *         instead of today, dropping July — the very month the finding is about — from the
+     *         history that prices its own replacement. The fixture had been shifted a month back
+     *         from the one its doc comment claimed to share with
+     *         `three months of history produce a suggestion that cites its rule`, which is what made
+     *         the wrong number look right.
+     *
+     *         The parity is now asserted **against the live suggestion** rather than a copied
+     *         literal, so the two can never drift apart again without this failing.
      */
     @Test
     fun `a material overspend is reported with a proposal citing both rules`() =
@@ -445,7 +478,13 @@ class BudgetRepositoryTest {
             val groceries = review?.categories?.first { it.categoryName == "Groceries" }
             assertEquals(VarianceDirection.OVER, groceries?.direction)
             assertEquals(1, review?.materialCategories?.size)
-            assertEquals(Money(8_500_00L), groceries?.proposal?.amount)
+            // Median of the last three closed months: May 9,000 · June 8,500 · July 13,000.
+            assertEquals(Money(9_000_00L), groceries?.proposal?.amount)
+            assertEquals(
+                "a reviewed proposal must be the number a plain suggestion would show (ENGINE.md §5.5)",
+                suggestionFor("Groceries").suggestion.amount,
+                groceries?.proposal?.amount,
+            )
         }
 
     /**
@@ -520,10 +559,17 @@ class BudgetRepositoryTest {
             writeJulyBudget(idOf("Groceries"), Money(10_000_00L), rolloverEnabled = false)
             expense(Money(-13_000_00L), categoryId = idOf("Groceries"), isoDate = "2026-07-10")
 
+            // Read before accepting: the write creates an August budget, and a category that has one
+            // is no longer suggested for (P-07), so this is the last moment the parity is observable.
+            val suggested = suggestionFor("Groceries").suggestion.amount
+
             budgets.acceptReviewProposal(idOf("Groceries")).expectOk()
 
             val row = budgetFor("Groceries")
-            assertEquals(Money(8_500_00L), row.status.budgeted)
+            // 9,000, not 8,500 — see `a material overspend is reported with a proposal citing both
+            // rules` for why this changed on 2026-08-16.
+            assertEquals(Money(9_000_00L), row.status.budgeted)
+            assertEquals("the amount written must be the one the engine proposed", suggested, row.status.budgeted)
             assertEquals(BudgetRepository.SOURCE_SUGGESTED, row.source)
             assertEquals("RULE-BUD-SUGGEST", ruleIdOf(idOf("Groceries")))
             val storedId = categoryBudgetId(REAL_PROFILE, idOf("Groceries"), CURRENT_PERIOD)

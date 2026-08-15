@@ -144,15 +144,31 @@ path by which the screen learns anything.
 
 **The ViewModel computes no money** (P-03). Every figure on that screen arrived from an engine.
 
-**Issue 5.1 reuses this identically, no new shape.** `DashboardViewModel` calls the same
-`BudgetRepository.observeBudgets()`/`observeAlerts()` shown above — a second consumer of the exact
-mechanism, not a new one — plus two new `TransactionRepository` reads that are plain repository
-sums, not engine calls, so neither belongs in Shape C: `observeMonthCashFlow()` (one `CASE WHEN`
-SQL statement, no `combine()` — an earlier version combined two `observeDayTotals` calls and hit
+**Issue 5.1 reuses this identically, no new shape.** `DashboardViewModel` reads the same
+`BudgetRepository.observeBudgets()` shown above — a second consumer of the exact mechanism, not a
+new one — plus two new `TransactionRepository` reads that are plain repository sums, not engine
+calls, so neither belongs in Shape C: `observeMonthCashFlow()` (one `CASE WHEN` SQL statement, no
+`combine()` — an earlier version combined two `observeDayTotals` calls and hit
 `kotlinx-coroutines-test`'s "different schedulers" error when two Room query flows met inside
 `combine` under `UnconfinedTestDispatcher`; one query sidesteps it) and `observeRecent(limit)` (a
 count-bounded `LIMIT` query, not the time-windowed `observeRecent` issue 3.6 removed — the full
 ledger stays reachable through `observeFiltered`).
+
+**The dashboard does *not* call `observeAlerts()`** — the one place its budget path differs from the
+budgets screen's:
+
+```
+DashboardViewModel.observeBudgetStatus()                 ONE collector, not two
+└─ BudgetRepository.observeBudgets()                     the combine() above, subscribed once
+    └─ rows.mapNotNull(budgetRepository::alertFor)       synchronous, same engine.alert call
+        └─ _uiState.update { copy(budgets, budgetAlerts) }   both figures, one emission, one catch
+```
+
+`observeAlerts()` is literally `observeBudgets().map { mapNotNull(::alertFor) }`, so calling it
+beside `observeBudgets()` opened that three-query `combine()` a second time for data the first
+subscription already had — and let one read failure show two different faces (a banner from one
+collector, a silently-emptied line from the other). `alertFor` is the same engine call reached
+without the second subscription. `:feature:budgets` still calls `observeAlerts()` and is unchanged.
 
 ---
 

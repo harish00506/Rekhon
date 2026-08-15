@@ -1,15 +1,9 @@
 package com.aicfo.feature.dashboard
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
 import app.cash.paparazzi.DeviceConfig
 import app.cash.paparazzi.Paparazzi
-import com.aicfo.core.designsystem.theme.CfoDimens
 import com.aicfo.core.designsystem.theme.CfoTheme
 import com.aicfo.core.model.Category
 import com.aicfo.core.model.CategoryNature
@@ -95,23 +89,22 @@ class DashboardScreenshotTest {
         uiState: DashboardUiState,
         darkTheme: Boolean,
     ) {
+        // No wrapping Column, and no padding of its own: `DashboardContent` already applies
+        // `fillMaxWidth().padding(CfoDimens.spaceMd)` and its own vertical arrangement, so the
+        // harness that used to wrap it here rendered every baseline at double the real padding —
+        // a picture of a screen the app never draws. Found by review, 2026-08-16.
         CfoTheme(darkTheme = darkTheme) {
             Surface {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(CfoDimens.spaceMd),
-                    verticalArrangement = Arrangement.spacedBy(CfoDimens.spaceMd),
-                ) {
-                    DashboardContent(
-                        uiState = uiState,
-                        onEvent = {},
-                        actions =
-                            DashboardActions(
-                                onNavigateToTransactions = {},
-                                onNavigateToAccounts = {},
-                                onNavigateToBudgets = {},
-                            ),
-                    )
-                }
+                DashboardContent(
+                    uiState = uiState,
+                    onEvent = {},
+                    actions =
+                        DashboardActions(
+                            onNavigateToTransactions = {},
+                            onNavigateToAccounts = {},
+                            onNavigateToBudgets = {},
+                        ),
+                )
             }
         }
     }
@@ -174,7 +167,12 @@ class DashboardScreenshotTest {
                     accountId = "account:1",
                     amount = Money(-2_450_00L),
                     occurredAtUtcMillis = 1_755_500_000_000L,
-                    bookedOn = "2 Jan",
+                    // A **real** stored value, ISO `yyyy-MM-dd` (TIM-002) — not the pre-formatted
+                    // "2 Jan" this fixture used to carry. That shortcut is exactly why the baselines
+                    // could not reveal that the screen was rendering raw ISO dates to users: the
+                    // fixture had already done the formatting the screen was failing to do. A
+                    // fixture the repository could never produce proves nothing about the screen.
+                    bookedOn = "2026-08-15",
                     categoryId = "category:groceries",
                     merchant = "Big Bazaar",
                     note = null,

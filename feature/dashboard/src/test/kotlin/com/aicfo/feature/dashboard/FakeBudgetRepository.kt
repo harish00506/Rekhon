@@ -23,31 +23,29 @@ import kotlinx.coroutines.flow.map
  * A [BudgetRepository] the dashboard tests drive directly (issue 5.1).
  *
  * Why:  the dashboard reads exactly two things from this repository — the current month's
- *       per-category status, for the budget summary card, and the alert bands, for the "needs
- *       attention" line — and everything else here **throws rather than returning a plausible
- *       value**, the same bargain [FakeTransactionRepository] strikes beside it.
- * What: two `MutableStateFlow`s, each independently failable.
+ *       per-category status, for the budget summary card, and [alertFor], to derive the "needs
+ *       attention" line from rows it already has — and everything else here **throws rather than
+ *       returning a plausible value**, the same bargain [FakeTransactionRepository] strikes beside
+ *       it. **Not [observeAlerts]** — the dashboard stopped calling it (a 2026-08-16 review found it
+ *       was opening `BudgetRepository`'s combine() a second time for the same data [observeBudgets]
+ *       already reads), so a test that reached it here would be proving the old design again.
+ * What: one `MutableStateFlow`, failable, plus a settable [alertFor] answer.
  * Result: both branches of the dashboard's budget section are reachable from a unit test.
  * Changelog: 2026-08-15 — Created for issue 5.1.
+ *            2026-08-16 — `alertFor` replaced the separate alerts stream.
  */
 internal class FakeBudgetRepository : BudgetRepository {
     private val budgets = MutableStateFlow<List<CategoryBudget>>(emptyList())
-    private val alerts = MutableStateFlow<List<CategoryBudgetAlert>>(emptyList())
 
     /** When non-null, [observeBudgets] throws this instead of emitting. */
     var failOnBudgets: AppError? = null
 
-    /** When non-null, [observeAlerts] throws this instead of emitting. */
-    var failOnAlerts: AppError? = null
+    /** What [alertFor] returns for every row, until a test says otherwise. */
+    var alertForResult: CategoryBudgetAlert? = null
 
     /** Replaces what the budgets stream is emitting. Input: [value]. Output: none. */
     fun emitBudgets(value: List<CategoryBudget>) {
         budgets.value = value
-    }
-
-    /** Replaces what the alert stream is emitting. Input: [value]. Output: none. */
-    fun emitAlerts(value: List<CategoryBudgetAlert>) {
-        alerts.value = value
     }
 
     override fun observeBudgets(): Flow<List<CategoryBudget>> =
@@ -56,11 +54,9 @@ internal class FakeBudgetRepository : BudgetRepository {
             value
         }
 
-    override fun observeAlerts(): Flow<List<CategoryBudgetAlert>> =
-        alerts.map { value ->
-            failOnAlerts?.let { throw IllegalStateException(it.code) }
-            value
-        }
+    override fun alertFor(row: CategoryBudget): CategoryBudgetAlert? = alertForResult
+
+    override fun observeAlerts(): Flow<List<CategoryBudgetAlert>> = unsupported()
 
     override fun observeSuggestions(): Flow<List<CategoryBudgetSuggestion>> = unsupported()
 
