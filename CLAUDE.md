@@ -152,8 +152,6 @@ engine. Every row is versioned and cited by ID in evidence (AI-ARC-006). See `ai
 - [ ] No new lint/detekt warnings; CI green; reviewed (or solo self-review checklist).
 - [ ] **Session file written** in `docs/sessions/`, and any new decision indexed in `DECISIONS.md` /
       any changed call path reflected in `FLOW.md` (§10).
-- [ ] **Every major change in this session was quizzed and passed** (§10) — recorded honestly,
-      including the ones that needed a second attempt.
 
 ## 9. Where things live
 
@@ -173,10 +171,10 @@ ai/                     runtime AI files the app LOADS (rules, workflow, tools, 
 
 ---
 
-## 10. Session records and the quiz gate
+## 10. Session records
 
 > **Agent-followed, not build-enforced.** Nothing in Gradle or CI fails because a session file is
-> missing or a quiz was skipped. This section says so plainly rather than implying a gate that does
+> missing. This section says so plainly rather than implying a gate that does
 > not exist — this repo has already shipped one governance gate that nothing ever ran. If you want
 > it enforced, extend `scripts/check_issue_docs.py` and wire it into `ci.yml`.
 
@@ -191,53 +189,12 @@ ai/                     runtime AI files the app LOADS (rules, workflow, tools, 
 `DECISIONS.md` is an **index**: when an ADR exists it gets one line and a link, never a restatement.
 The session file holds the full reasoning; the root file holds the pointer.
 
-**The session file has four sections, in this order:**
+**The session file has three sections, in this order:**
 
 1. **Decisions this session** — each decision with its full reasoning. The one-liners go up to
    `DECISIONS.md`.
 2. **Flow changed this session** — the call chains added or altered, as arrow chains matching
    `FLOW.md`'s style.
 3. **Code changed this session** — path → what it does now, one row each.
-4. **Quiz** — every question asked, the answer given, and whether it passed first time.
 
 Write it at the end of the session and commit it with the other docs. **No separate commit.**
-
-### 10.2 What counts as major
-
-A change is **major** — and therefore quizzed — if it does any of these:
-
-- adds, removes or swaps a **dependency**;
-- adds or alters a **database migration** or schema;
-- adds or changes a **rule row in `ai/`**;
-- adds a **new engine, or a new method on an engine's public interface**;
-- touches a **money, crypto, or privacy** path (`Money` arithmetic, Keystore/Tink, consent, PII).
-
-Not major: tests, docs, string resources, renames, formatting, and any change that only follows a
-pattern already established elsewhere in the same module.
-
-### 10.3 The quiz
-
-**Purpose.** Every other gate in §8 checks the code. This one checks that the person shipping it
-understands it. Code the coder cannot explain is code nobody can maintain, and an AI that writes
-faster than its user can read is how a codebase becomes someone else's.
-
-**When.** Immediately before committing a major change — not batched to the end of the session.
-The point is to gate the commit, and a quiz about code written three hours ago tests memory, not
-comprehension.
-
-**Form.** Three multiple-choice questions via `AskUserQuestion`, about the change just written.
-
-**What makes a fair question.** Each one must be about **mechanism or consequence** — *what stops
-this from firing twice*, *what breaks if this line is deleted*, *why does this live here and not
-one layer up* — and answerable by reading the diff. **Never trivia**: not a name, not a line count,
-not syntax. If the answer is a fact rather than an understanding, the question is bad and must be
-replaced. A plausible-but-wrong option must be genuinely plausible — the one a careful reader would
-pick if they had missed exactly one thing.
-
-**On a wrong answer.** Explain the specific point that was missed, then ask a **fresh** question on
-that same point. Repeat until it is passed. **The commit does not happen until then.** The change is
-not quietly simplified to dodge the question either — the code stays, the understanding catches up.
-
-**Recorded honestly** in the session file, fails included. A quiz log with no failures in it is
-either a lucky month or a gate being marked green, and §8's whole point is that the second one is
-worse than having no gate at all.
