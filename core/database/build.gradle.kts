@@ -7,6 +7,10 @@
 plugins {
     alias(libs.plugins.cfo.android.library)
     alias(libs.plugins.ksp)
+    // Issue 5.4: the entities are the archive format. §5.10's export is a lossless dump of every
+    // profile-scoped table, so the shape it writes IS the schema — see the note on `@Serializable`
+    // in Entities.kt for why a parallel set of DTOs would be less safe rather than more.
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -62,11 +66,15 @@ dependencies {
     // SEC-003: Tink only — no raw javax.crypto anywhere in this module.
     implementation(libs.tink.android)
 
+    // Issue 5.4: `api`, not `implementation` — the entities carry `@Serializable`, so
+    // `:data:repository` needs the runtime on its compile classpath to build the archive envelope
+    // around them. It was a `testImplementation` here until this issue (issue 1.7's schema parsing).
+    api(libs.kotlinx.serialization.json)
+
     testImplementation(libs.kotlinx.coroutines.test)
     // Issue 1.7: parses the exported schema JSON so DB-003 is checked on the JVM, not only on a
     // device. Both are JVM artifacts, which is what makes the migration guard runnable in CI.
     testImplementation(libs.room.migration)
-    testImplementation(libs.kotlinx.serialization.json)
 
     androidTestImplementation(libs.androidx.test.junit)
     androidTestImplementation(libs.androidx.test.runner)

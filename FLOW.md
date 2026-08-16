@@ -221,6 +221,55 @@ BudgetAlertWorker.doWork()
                                                app lock — the most exposed surface there is)
 ```
 
+### 2.05 · Export and import — the only path that can destroy everything (issue 5.4)
+
+Two directions, and the ordering in the second is the whole safety of the feature.
+
+```
+EXPORT
+DashboardEvent.ExportRequested
+└─ ArchiveRepository.export()                        data/repository — ARC-005
+    ├─ activeProfileId.first()                       the demo exports itself, never the real profile
+    └─ archiveDao().<14 reads>                       SELECT *, tombstones INCLUDED, ORDER BY id
+        └─ Json.encodeToString(CfoArchive(...))      entities ARE the format (ADR-0023)
+    ⇣  ArchiveUiState.ReadyToWrite(json)
+ArchiveHost (STATEFUL half — owns the Uri)
+└─ CreateDocument("application/json") → context.writeText(uri, json)
+    ⇡ DashboardEvent.ExportWritten(written)  →  Exported | Failed("archive.writeFailed")
+
+IMPORT
+ArchiveHost └─ OpenDocument(["application/json"]) → context.readText(uri)
+    ⇡ DashboardEvent.ImportPicked(json)
+        └─ ArchiveUiState.PendingImport(json)        NOTHING TOUCHED YET
+            └─ AlertDialog "Replace everything on this device?"
+                ├─ ImportCancelled → Idle            costs nothing
+                └─ ImportConfirmed
+                    └─ ArchiveRepository.import(json)
+                        ├─ decode(json)              PARSE + schemaVersion CHECK **FIRST**
+                        │   └─ Err → Validation(field), database untouched
+                        └─ database.withTransaction {
+                               wipe(profileId)       reuses DemoDao's 14 deletes, FK order
+                               restore(archive)      archiveDao inserts, REPLACE
+                           }
+    ⇣  ArchiveUiState.Imported(rows, exportedAt)
+```
+
+**Three orderings carry the risk, and each is asserted.**
+
+*Parse before delete.* `decode` runs outside the transaction. The failure this prevents is a wipe
+followed by a parse error, which would be unrecoverable — `ArchiveRepositoryTest` asserts the row
+count is unchanged after a refusal.
+
+*Pick is not import.* `ImportPicked` only opens the dialog. `DashboardArchiveTest` asserts the
+repository was never called, because wiring those together would look identical on screen until
+someone's data was gone.
+
+*One transaction.* Wipe and restore commit together or not at all.
+
+**The Uri never leaves `ArchiveHost`.** The launchers need an `ActivityResultRegistryOwner`, so they
+live in the stateful half; the body gets a plain lambda and the ViewModel deals in text. Putting them
+in the stateless body broke every Paparazzi baseline at once, which is how the constraint was found.
+
 ### 2.1 · The dashboard's headline figure (issue 5.2)
 
 Shape C again, but it is the **first read in the app assembled from other repositories** rather than

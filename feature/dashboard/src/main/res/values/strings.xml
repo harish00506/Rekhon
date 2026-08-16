@@ -89,4 +89,34 @@
     <string name="dashboard_recent_activity_label">Recent activity</string>
     <string name="dashboard_recent_activity_empty">No transactions yet.</string>
     <string name="dashboard_recent_activity_unnamed">Transaction</string>
+
+    <!--
+      Issue 5.4 — the local JSON export/import archive (§5.10, §34, P-01).
+
+      "Your data", not "backup", for the export: this is portability — the user's own copy, in a
+      file they can read — and calling it a backup would imply the app is keeping something safe
+      for them, which Epic 8's encrypted backup is for.
+
+      The import confirmation says what will actually happen in the words that matter. "Are you
+      sure?" tells someone nothing; "everything currently on this device is replaced" is the one
+      fact they need before tapping, and it is the only destructive action in the app.
+    -->
+    <string name="dashboard_export_action">Export your data</string>
+    <string name="dashboard_import_action">Import a backup</string>
+    <string name="dashboard_import_confirm_title">Replace everything on this device?</string>
+    <string name="dashboard_import_confirm_body">Importing replaces every account, transaction, budget
+        and category currently on this device with the contents of the file you picked. What is here
+        now cannot be recovered afterwards — export it first if you want to keep it.</string>
+    <string name="dashboard_import_confirm_action">Replace my data</string>
+    <string name="dashboard_import_cancel_action">Cancel</string>
+    <string name="dashboard_archive_working">Working…</string>
+    <string name="dashboard_archive_exported">Exported. Your data is in the file you chose.</string>
+    <!-- A count the user can check against the file they picked, rather than a bare "done" (P-02). -->
+    <string name="dashboard_archive_imported">Imported %1$d rows.</string>
+    <string name="dashboard_archive_dismiss">OK</string>
+    <string name="dashboard_archive_unreadable">That file isn\'t an AI Personal CFO backup.</string>
+    <string name="dashboard_archive_wrong_version">That backup was made by a different version of the
+        app. Nothing on this device has been changed.</string>
+    <string name="dashboard_archive_write_failed">Couldn\'t write to that location. Try somewhere else.</string>
+    <string name="dashboard_archive_failed">Something went wrong. Nothing on this device has been changed.</string>
 </resources>

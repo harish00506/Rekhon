@@ -11,6 +11,47 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The user's daily surfaces: the home dashboard, Safe-to-Spend, privacy blur, local JSON
 > export/import, and the home-screen widget.
 
+### [0.5.4] — Issue 5.4: Export/import JSON archive  (2026-08-16)
+
+- **Implemented:** §5.10's local JSON archive — a full export of the user's data and a lossless
+  import back (**§34**, **P-01**). Two buttons on the dashboard using the system file picker; no
+  cloud, no network path, and none is ever to be added here.
+- **This is not Epic 8.** Issue 8.1 builds the *encrypted* backup for disaster recovery; this is the
+  *plaintext, readable, portable* copy the user owns. Different artefacts, different threat models
+  ([ADR-0023](docs/adr/0023-archive-replaces-and-carries-no-blobs.md)).
+- **The Room entities are the archive format**, carrying `@Serializable`. The conventional
+  alternative — fourteen DTOs and twenty-eight mappers — has exactly one failure mode and it is
+  silent: somebody adds a column, forgets the mapper, and every export from then on drops that data
+  with no test able to see it. Here a new column is in the archive the moment it is in the table. The
+  cost is that a property rename changes the file format, which `ArchiveFormatTest` pins deliberately.
+- **Import replaces, behind a confirmation**, inside one `withTransaction`. The file is parsed and
+  version-checked **before anything is deleted**, so a refused archive leaves the device untouched —
+  the failure this ordering exists to prevent is a wipe followed by a parse error.
+- **The wipe reuses `DemoDao`** rather than writing a second one that could drift from it. That DAO's
+  doc comment claimed its safety came from only ever receiving the demo profile id; it now receives
+  the real one, so the comment was rewritten rather than quietly invalidated.
+- **Receipts and `audit_log` stay behind.** A plaintext file the user may email themselves must never
+  carry decrypted receipts (attachment *rows* travel, images do not); `audit_log` has no
+  `profile_id`, so the schema cannot scope it to the exported profile.
+- **The restore does not go through each table's own `upsertAll`** — `BudgetAlertDao` and
+  `BudgetReviewDao` use `IGNORE`, correctly, for their once-per-band and once-per-month claims. A
+  restore through them would silently drop rows, so `ArchiveDao` owns `REPLACE` inserts.
+- **Fixed before shipping, found by running it:** every refused import showed the generic "something
+  went wrong" instead of the specific reason, because `AppError.Validation.code` is the constant
+  `"validation"` — the two archive-specific messages were unreachable. The ViewModel test asserted
+  only `is Failed`, so it passed. Both the code and the test were fixed.
+- **Also fixed by a test:** putting the file pickers in the stateless `DashboardContent` needed an
+  `ActivityResultRegistryOwner`, which broke every Paparazzi baseline at once — the composable is
+  documented as renderable without Hilt or navigation. The launchers moved to the stateful half.
+- **Tests:** full `unitTests` green, `:app:connectedDebugAndroidTest` 7/7 from a clean install. The
+  round-trip test seeds **every one of the fourteen tables and every nullable column**, because a
+  round trip only covers what its fixture populates; it was watched go red against a single dropped
+  table. Plus the empty and 2,000-row cases, the version gate (asserting the data survives the
+  refusal), demo isolation, tombstones, and export determinism. Verified on the `CfoTest` emulator in
+  **airplane mode**: exported 99 rows to a 65 KB file, confirmed no `audit_log` and no image bytes
+  and integer paise; added a ₹7,777 transaction, imported, and watched it vanish; and confirmed a
+  doctored `schemaVersion` is refused with the demo data intact.
+
 ### [0.5.3] — Issue 5.3: Privacy blur toggle  (2026-08-16)
 
 - **Implemented:** a one-tap blur that hides every amount in the app (**§23**, **FR-PRIV-***,

@@ -294,6 +294,24 @@ object RepositoryFactory {
         )
 
     /**
+     * Builds the export/import archive store (issue 5.4; §5.10, §34, P-01).
+     * Why:    takes the whole [database] rather than DAOs, for the reason [quickSetup] does — the
+     *         import's all-or-nothing guarantee rests on `withTransaction`, which is a method on the
+     *         database, and the archive spans every table anyway.
+     * Result: an [ArchiveRepository] over the encrypted database.
+     * Input:  [database]; [clock] — stamps the archive (TIM-001); [dispatchers];
+     *         [activeProfileId] — which profile is exported and replaced, so the demo can be
+     *         exported without ever touching the real one (ADR-0006).
+     * Output: [ArchiveRepository].
+     */
+    fun archive(
+        database: CfoDatabase,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        activeProfileId: Flow<String>,
+    ): ArchiveRepository = RoomArchiveRepository(database, clock, dispatchers, activeProfileId)
+
+    /**
      * Builds the Safe-to-Spend store (issue 5.2; §5.2, §14, AI-STS).
      * Why:    takes two repositories rather than more DAOs — the precedent [receipts] and [sms] set,
      *         and here it is what stops "what this month's money became" from having a second

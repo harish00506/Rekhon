@@ -4,6 +4,7 @@ import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import kotlinx.serialization.Serializable
 
 /*
  * The base schema: profile, account, transaction, category (SRS §20; MNY-001, TIM-001/002, DB-003).
@@ -18,6 +19,19 @@ import androidx.room.PrimaryKey
  *       money as `Long` paise, timestamps as UTC epoch millis with date-only fields as ISO
  *       strings, and soft delete plus per-profile scoping on every row.
  * Result: an encrypted schema later features extend rather than rewrite.
+ *
+ * **Why every profile-scoped entity carries `@Serializable` (issue 5.4).** §5.10's export is a
+ * lossless dump of these tables, so the archive's shape *is* the schema — and the obvious
+ * alternative, a parallel set of hand-written DTOs with mappers both ways, is less safe rather than
+ * more. Fifteen tables and 156 columns of mapper have exactly one failure mode: somebody adds a
+ * column, forgets the DTO, and every future export silently drops that data with no test able to
+ * notice. Serialising the entities makes that unrepresentable — a new column is in the archive the
+ * moment it is in the table.
+ *
+ * The cost is that a **Kotlin property rename changes the archive format**, because kotlinx
+ * serialises by property name. `ArchiveFormatTest` pins every field name for exactly that reason:
+ * the format is a contract with files already on users' phones, and it should take a red build to
+ * change it. `AuditLogEntity` is deliberately *not* serialisable — see [AuditLogEntity].
  * Changelog: 2026-07-25 — Created for issue 1.6 (profile, account, transaction, category).
  *
  * **Invariants, enforced by review and by the `:lint` detectors from issue 1.5:**
@@ -39,6 +53,7 @@ import androidx.room.PrimaryKey
  * Input:  see the constructor. Output: a Room row in `profile`.
  * Changelog: 2026-07-25 — Created for issue 1.6.
  */
+@Serializable
 @Entity(tableName = "profile")
 data class ProfileEntity(
     @PrimaryKey
@@ -70,6 +85,7 @@ data class ProfileEntity(
  *            2026-07-28 — Issue 2.5: `institution` and `archived_at_utc_millis` added at schema
  *            version 4; the type list moved to `AccountType`, which is now its only definition.
  */
+@Serializable
 @Entity(
     tableName = "account",
     indices = [Index("profile_id"), Index("profile_id", "deleted_at_utc_millis")],
@@ -158,6 +174,7 @@ data class AccountEntity(
  *
  * Table named `transactions`: `transaction` is a reserved SQL keyword.
  */
+@Serializable
 @Entity(
     tableName = "transactions",
     indices = [
@@ -300,6 +317,7 @@ data class TransactionEntity(
  * (ADR-0006), and a table they cannot reach by `profile_id` alone would leave residue behind when a
  * demo is exited. `MigrationSafetyTest` enforces the same rule on every table but `audit_log`.
  */
+@Serializable
 @Entity(
     tableName = "transaction_splits",
     indices = [
@@ -364,6 +382,7 @@ data class TransactionSplitEntity(
  * demo — may each have a `travel` tag, and they are different rows; a global unique index would make
  * entering the demo fail on the second profile's first collision.
  */
+@Serializable
 @Entity(
     tableName = "tags",
     indices = [Index(value = ["profile_id", "name"], unique = true)],
@@ -410,6 +429,7 @@ data class TagEntity(
  * and a hard `DELETE` in a bulk retag would be the one irreversible step in an otherwise reversible
  * feature.
  */
+@Serializable
 @Entity(
     tableName = "transaction_tags",
     indices = [
@@ -447,6 +467,7 @@ data class TransactionTagEntity(
  * Input:  see the constructor. Output: a Room row.
  * Changelog: 2026-07-25 — Created for issue 1.6.
  */
+@Serializable
 @Entity(
     tableName = "category",
     indices = [Index("profile_id"), Index("parent_id")],
@@ -495,6 +516,7 @@ data class CategoryEntity(
  * able to say which rule proposed it and at what version, or the user's drill-down shows a number
  * with no derivation (AI-ARC-006). A budget the user typed carries `source = manual` and no rule.
  */
+@Serializable
 @Entity(
     tableName = "budget",
     indices = [
@@ -568,6 +590,7 @@ data class BudgetEntity(
  * disagree with the screen. What cannot be re-derived — that a person was interrupted — is what the
  * row holds.
  */
+@Serializable
 @Entity(
     tableName = "budget_alert",
     indices = [
@@ -623,6 +646,7 @@ data class BudgetAlertEntity(
  * disagree with the screen. The totals are still stamped, purely as an audit trail (AI-ARC-006,
  * P-02) of what the reviewed month looked like at the moment it was dismissed.
  */
+@Serializable
 @Entity(
     tableName = "budget_review",
     indices = [
@@ -673,6 +697,7 @@ data class BudgetReviewEntity(
  * the UI resolves to a string resource, and [name] stays null and reserved for issue 3.7's rules,
  * which are named after a real merchant and so *are* data rather than copy.
  */
+@Serializable
 @Entity(
     tableName = "recurring_rule",
     indices = [
@@ -749,6 +774,14 @@ data class RecurringRuleEntity(
  * - **No soft delete.** A security log a caller can quietly retire is not a security log. Rows go
  *   only when the whole database does (erase-all, SEC-006).
  * - **No `updated_at`.** An event happened at an instant; it is never edited.
+ *
+ * **A fourth absence, added by issue 5.4: no `@Serializable`, so it is not in the export.** The
+ * first absence forces it — with no `profile_id` there is no way to scope this table to the profile
+ * being exported, and 5.4's import *replaces* what it restores, so including it would mean either
+ * erasing security events or duplicating them. The design spec's data-model bullet lists
+ * `audit_log` among the portable tables; the schema it describes cannot support that, and the
+ * schema is right. See ADR-0023. A security log is also a record of what happened on *this device*,
+ * not the user's financial data to carry to another one.
  */
 @Entity(
     tableName = "audit_log",
@@ -794,6 +827,7 @@ data class AuditLogEntity(
  * is impossible, and P-02 requires the working — a history point the user cannot break down into
  * assets and liabilities is a number with no derivation.
  */
+@Serializable
 @Entity(
     tableName = "net_worth_snapshot",
     indices = [Index("profile_id", "as_of_iso_date")],
@@ -854,6 +888,7 @@ data class NetWorthSnapshotEntity(
  * tombstoned parent it should have followed stays behind. The link is enforced by the repository,
  * which is the only class allowed to write either side (ARC-005).
  */
+@Serializable
 @Entity(
     tableName = "attachments",
     indices = [Index("transaction_id"), Index("profile_id")],
@@ -922,6 +957,7 @@ data class AttachmentEntity(
  * make `ON DELETE CASCADE` fire on a hard delete that never happens. The link is enforced by
  * `SmsRepository`, the only class allowed to write either side (ARC-005).
  */
+@Serializable
 @Entity(
     tableName = "sms_draft",
     indices = [

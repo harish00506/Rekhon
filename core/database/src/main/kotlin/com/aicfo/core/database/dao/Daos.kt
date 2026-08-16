@@ -2150,9 +2150,17 @@ interface RecurringRuleDao {
  * Changelog: 2026-07-28 — Created for issue 2.4.
  *
  * **Every query is scoped by `profile_id` and takes it as a parameter** — there is no
- * "delete everything" here. That is what keeps the real profile safe from a mistyped call: the
- * worst a bug can do is erase the profile it was handed, and the only id ever handed to it is the
- * demo one.
+ * "delete everything" here. That is what keeps a mistyped call survivable: the worst a bug can do is
+ * erase the profile it was handed.
+ *
+ * **Issue 5.4 gave it a second caller, and a real profile id.** Until then the only id ever handed
+ * to this DAO was the demo one, and this comment said so as part of the safety argument. That is no
+ * longer true: `ArchiveRepository.import` replaces the active profile's rows, and reusing this wipe
+ * is deliberate — a second "delete every table for a profile" written beside it is one that drifts
+ * from it, and the table this one forgets is the residue ADR-0006 forbids *and* the row a restore
+ * would silently keep. The safety now rests entirely on the parameterisation and on
+ * [countRowsFor], which is what it should have rested on all along; the caller being the demo was
+ * never the mechanism, only a fact about the day it was written.
  *
  * **`audit_log` is not touched.** It has no `profile_id` — the app lock gates the whole app before
  * any profile is chosen — and it is append-only by design (see [AuditLogDao]). Security events are
@@ -2313,6 +2321,171 @@ interface DemoDao {
             "(SELECT COUNT(*) FROM sms_draft WHERE profile_id = :profileId)",
     )
     suspend fun countRowsFor(profileId: String): Int
+}
+
+/**
+ * Reads and restores every row of a profile, for §5.10's archive (issue 5.4).
+ *
+ * Why:  the reads that already exist cannot be reused for this, and the reason matters. They are
+ *       `Flow`s that filter tombstones (`deleted_at_utc_millis IS NULL`), because a screen must not
+ *       show a deleted row. An archive must carry it: a soft-deleted transaction that came back to
+ *       life on import would be a deletion the user made and the app quietly undid. So these are
+ *       one-shot, unfiltered, and ordered by primary key so two exports of unchanged data are
+ *       byte-identical (P-08).
+ * What: one `SELECT *` and one `@Insert(REPLACE)` per profile-scoped table — the read mirror of
+ *       [DemoDao]'s deletes, plus the writes that put them back.
+ * Result: `ArchiveRepository` can dump and restore a profile without touching a DAO of its own.
+ *
+ * **The inserts live here rather than reusing each table's own DAO, deliberately.** Those fourteen
+ * `upsertAll`s disagree about conflict strategy — `BudgetAlertDao` and `BudgetReviewDao` use
+ * `IGNORE`, correctly, because their rows are once-per-band and once-per-month *claims*. A restore
+ * that went through them would silently drop rows whenever a claim already existed, which is
+ * exactly the data loss an archive exists to prevent. Here every write is `REPLACE`, which is the
+ * right rule for restoring into a profile the import has just wiped.
+ * Changelog: 2026-08-16 — Created for issue 5.4.
+ *
+ * **`audit_log` is absent, and the schema forces it**: that table has no `profile_id` to scope by.
+ * See [com.aicfo.core.database.entity.AuditLogEntity] and ADR-0023.
+ *
+ * **A table missing from here is user data silently dropped from every export**, which is why the
+ * count tracks the schema exactly as [DemoDao]'s does — and why `ArchiveRoundTripTest` seeds every
+ * table rather than the interesting ones.
+ */
+@Dao
+// One read per profile-scoped table. The count is the schema's, not a design choice (as DemoDao).
+@Suppress("TooManyFunctions")
+interface ArchiveDao {
+    /** Result: the profile row itself. Input: [profileId]. Output: 0 or 1 rows. */
+    @Query("SELECT * FROM profile WHERE id = :profileId")
+    suspend fun profiles(profileId: String): List<ProfileEntity>
+
+    /** Result: every account, tombstones included. Input: [profileId]. */
+    @Query("SELECT * FROM account WHERE profile_id = :profileId ORDER BY id")
+    suspend fun accounts(profileId: String): List<AccountEntity>
+
+    /** Result: every transaction, tombstones and future-dated rows included. Input: [profileId]. */
+    @Query("SELECT * FROM transactions WHERE profile_id = :profileId ORDER BY id")
+    suspend fun transactions(profileId: String): List<TransactionEntity>
+
+    /** Result: every split line (ADR-0009). Input: [profileId]. */
+    @Query("SELECT * FROM transaction_splits WHERE profile_id = :profileId ORDER BY id")
+    suspend fun transactionSplits(profileId: String): List<TransactionSplitEntity>
+
+    /** Result: every tag. Input: [profileId]. */
+    @Query("SELECT * FROM tags WHERE profile_id = :profileId ORDER BY id")
+    suspend fun tags(profileId: String): List<TagEntity>
+
+    /**
+     * Result: every transaction↔tag link. Input: [profileId].
+     * Ordered by both halves of the composite key — the table has no single id column.
+     */
+    @Query("SELECT * FROM transaction_tags WHERE profile_id = :profileId ORDER BY transaction_id, tag_id")
+    suspend fun transactionTags(profileId: String): List<TransactionTagEntity>
+
+    /** Result: the whole category taxonomy, including the user's edits. Input: [profileId]. */
+    @Query("SELECT * FROM category WHERE profile_id = :profileId ORDER BY id")
+    suspend fun categories(profileId: String): List<CategoryEntity>
+
+    /** Result: every budget, nature-level and per-category. Input: [profileId]. */
+    @Query("SELECT * FROM budget WHERE profile_id = :profileId ORDER BY id")
+    suspend fun budgets(profileId: String): List<BudgetEntity>
+
+    /** Result: every alert already sent, so a restore does not re-notify (FR-BUD-004). Input: [profileId]. */
+    @Query("SELECT * FROM budget_alert WHERE profile_id = :profileId ORDER BY id")
+    suspend fun budgetAlerts(profileId: String): List<BudgetAlertEntity>
+
+    /** Result: every month-end review claim (ADR-0020). Input: [profileId]. */
+    @Query("SELECT * FROM budget_review WHERE profile_id = :profileId ORDER BY id")
+    suspend fun budgetReviews(profileId: String): List<BudgetReviewEntity>
+
+    /** Result: every recurring rule, confirmed and dismissed alike (FR-TXN-006). Input: [profileId]. */
+    @Query("SELECT * FROM recurring_rule WHERE profile_id = :profileId ORDER BY id")
+    suspend fun recurringRules(profileId: String): List<RecurringRuleEntity>
+
+    /** Result: the whole net-worth series (FR-ACC-005, issue 6.6's chart). Input: [profileId]. */
+    @Query("SELECT * FROM net_worth_snapshot WHERE profile_id = :profileId ORDER BY id")
+    suspend fun netWorthSnapshots(profileId: String): List<NetWorthSnapshotEntity>
+
+    /**
+     * Result: the attachment **rows**, never the images. Input: [profileId].
+     *
+     * The blobs stay on the device: a plaintext archive that carried decrypted receipts would take
+     * them wherever the user sends the file (ADR-0023, P-01). The row keeps `file_name`, so an
+     * archive imported on the same device still finds its images.
+     */
+    @Query("SELECT * FROM attachments WHERE profile_id = :profileId ORDER BY id")
+    suspend fun attachments(profileId: String): List<AttachmentEntity>
+
+    /** Result: every SMS draft, in whatever state the user left it (§18, §23). Input: [profileId]. */
+    @Query("SELECT * FROM sms_draft WHERE profile_id = :profileId ORDER BY id")
+    suspend fun smsDrafts(profileId: String): List<SmsDraftEntity>
+
+    // --- restore: one write per table, REPLACE, into a profile the import has just wiped --------
+
+    /** Result: the profile row is present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertProfiles(rows: List<ProfileEntity>)
+
+    /** Result: the accounts are present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAccounts(rows: List<AccountEntity>)
+
+    /** Result: the taxonomy is present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCategories(rows: List<CategoryEntity>)
+
+    /** Result: the ledger is present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTransactions(rows: List<TransactionEntity>)
+
+    /** Result: the split lines are present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTransactionSplits(rows: List<TransactionSplitEntity>)
+
+    /** Result: the tags are present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTags(rows: List<TagEntity>)
+
+    /** Result: the tag links are present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTransactionTags(rows: List<TransactionTagEntity>)
+
+    /** Result: the budgets are present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBudgets(rows: List<BudgetEntity>)
+
+    /**
+     * Result: the alert claims are present. Input: [rows]. Output: none (suspends).
+     * REPLACE, unlike `BudgetAlertDao`'s IGNORE — see this interface's doc comment for why a
+     * restore must not go through the claim-shaped writer.
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBudgetAlerts(rows: List<BudgetAlertEntity>)
+
+    /** Result: the month-end review claims are present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBudgetReviews(rows: List<BudgetReviewEntity>)
+
+    /** Result: the recurring rules are present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertRecurringRules(rows: List<RecurringRuleEntity>)
+
+    /** Result: the net-worth series is present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertNetWorthSnapshots(rows: List<NetWorthSnapshotEntity>)
+
+    /**
+     * Result: the attachment rows are present. Input: [rows]. Output: none (suspends).
+     * The rows only — the archive never carried the images (ADR-0023), so a restore on another
+     * device leaves `file_name` pointing at a blob that is not there. `AttachmentDao`'s reads
+     * already tolerate a missing file; the transaction keeps its record of having had a receipt.
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAttachments(rows: List<AttachmentEntity>)
+
+    /** Result: the SMS drafts are present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSmsDrafts(rows: List<SmsDraftEntity>)
 }
 
 /**

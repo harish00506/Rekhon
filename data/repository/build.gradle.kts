@@ -2,6 +2,9 @@
 // domain models to ViewModels; depends downward on core + domain.
 plugins {
     alias(libs.plugins.cfo.android.library)
+    // Issue 5.4: §5.10's export archive is JSON. kotlinx.serialization was already the project's
+    // one serializer (DECISIONS.md); this module is a new consumer of it, not a new dependency.
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {

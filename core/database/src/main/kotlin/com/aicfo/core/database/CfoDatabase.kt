@@ -3,6 +3,7 @@ package com.aicfo.core.database
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import com.aicfo.core.database.dao.AccountDao
+import com.aicfo.core.database.dao.ArchiveDao
 import com.aicfo.core.database.dao.AttachmentDao
 import com.aicfo.core.database.dao.AuditLogDao
 import com.aicfo.core.database.dao.BudgetAlertDao
@@ -124,6 +125,12 @@ abstract class CfoDatabase : RoomDatabase() {
      * exist, and Room's exported schema describes tables, not queries. It did not move [VERSION].
      */
     abstract fun demoDao(): DemoDao
+
+    /**
+     * Input: none. Output: the archive DAO.
+     * Reads and restores every row of a profile, for §5.10's export archive (issue 5.4).
+     */
+    abstract fun archiveDao(): ArchiveDao
 
     companion object {
         /**

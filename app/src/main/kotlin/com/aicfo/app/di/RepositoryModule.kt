@@ -8,6 +8,7 @@ import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.datastore.ConsentStore
 import com.aicfo.core.datastore.SettingsStore
 import com.aicfo.data.repository.AccountRepository
+import com.aicfo.data.repository.ArchiveRepository
 import com.aicfo.data.repository.BudgetRepository
 import com.aicfo.data.repository.CategoryRepository
 import com.aicfo.data.repository.DemoModeRepository
@@ -213,6 +214,25 @@ object RepositoryModule {
         dispatchers: DispatcherProvider,
         demoMode: DemoModeRepository,
     ): BudgetRepository = RepositoryFactory.budgets(database, engine, clock, dispatchers, demoMode.activeProfileId)
+
+    /**
+     * The export/import archive store (issue 5.4; §5.10, §34, P-01).
+     * Why:    takes the gated [CfoDatabase] like every binding here — an archive is *all* of the
+     *         user's financial data at once, so it is the last thing that should be readable before
+     *         an unlock. Follows the demo (ADR-0006), so exporting inside the demo writes the sample
+     *         data and importing there cannot reach the real profile.
+     * Result: an [ArchiveRepository]. Input: [database], [clock], [dispatchers], [demoMode].
+     *         Output: the repository.
+     * Changelog: 2026-08-16 — Created for issue 5.4.
+     */
+    @Provides
+    @Singleton
+    fun provideArchiveRepository(
+        database: CfoDatabase,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        demoMode: DemoModeRepository,
+    ): ArchiveRepository = RepositoryFactory.archive(database, clock, dispatchers, demoMode.activeProfileId)
 
     /**
      * The Safe-to-Spend store (issue 5.2; §5.2, §14, AI-STS).
