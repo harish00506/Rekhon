@@ -206,6 +206,12 @@ private fun FilterFacet(
  *         **The bounds are magnitudes**, which is why neither field offers a sign: "between ₹100 and
  *         ₹500" is a statement about size, and under a signed comparison it would exclude every
  *         expense in the range.
+ *
+ *         **The privacy blur (issue 5.3) deliberately does not reach these two**, unlike every
+ *         read-only amount in the app. They are fields the user is typing into: masking one would
+ *         replace what they had just entered with dots and leave them unable to correct it. A filter
+ *         bound is also a number the user supplied rather than one about their money, so there is
+ *         nothing here for a shoulder-surfer to learn.
  * Result: the composition. Input: [filter], [onEvent]. Output: none.
  * Changelog: 2026-08-04 — Created for issue 3.6.
  */
@@ -214,8 +220,8 @@ private fun AmountRangeFields(
     filter: TransactionFilter,
     onEvent: (TransactionsEvent) -> Unit,
 ) {
-    var minText by remember { mutableStateOf(filter.minAmount?.let { MoneyFormatter.format(it) }.orEmpty()) }
-    var maxText by remember { mutableStateOf(filter.maxAmount?.let { MoneyFormatter.format(it) }.orEmpty()) }
+    var minText by remember { mutableStateOf(filter.minAmount?.let(MoneyFormatter::format).orEmpty()) }
+    var maxText by remember { mutableStateOf(filter.maxAmount?.let(MoneyFormatter::format).orEmpty()) }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(CfoDimens.spaceSm),

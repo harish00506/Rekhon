@@ -13,6 +13,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,6 +29,7 @@ import com.aicfo.app.lock.AppLockGate
 import com.aicfo.app.navigation.CfoNavHost
 import com.aicfo.app.navigation.CfoRoute
 import com.aicfo.core.designsystem.component.CfoDemoBanner
+import com.aicfo.core.designsystem.component.LocalPrivacyBlur
 import com.aicfo.core.designsystem.theme.CfoDimens
 import com.aicfo.core.designsystem.theme.CfoTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -118,7 +120,15 @@ private fun AppContent(
 ) {
     val navController = rememberNavController()
     val isDemoActive by viewModel.isDemoActive.collectAsStateWithLifecycle()
+    val isBlurred by viewModel.isPrivacyBlurred.collectAsStateWithLifecycle()
     val currentEntry by navController.currentBackStackEntryAsState()
+
+    // Issue 5.3: the capture half of the requirement. A mask stops someone reading the screen; only
+    // FLAG_SECURE stops a screenshot, a screen recording or a shared call from carrying the figures
+    // off the device. Driven by the same flag as the mask, so the two can never disagree — and
+    // cleared on dispose, or a blurred session would leave every later screen uncapturable.
+    // Issue 11.2 still owns the always-on policy and the recents-thumbnail guard.
+    PrivacyCaptureGuard(secure = isBlurred)
 
     Column(modifier = Modifier.fillMaxSize()) {
         if (isDemoActive) {
@@ -139,7 +149,17 @@ private fun AppContent(
         // A Box rather than a second Scaffold: MainActivity's already owns the window insets, and
         // nesting one inside it would apply them twice and push the FAB above the gesture bar.
         Box(modifier = Modifier.weight(1f)) {
-            CfoNavHost(startDestination = startDestination, navController = navController)
+            // Issue 5.3: provided around the graph rather than inside a screen — the argument the
+            // demo banner above makes, for the same reason. No destination, existing or added
+            // later, can render an amount outside this provider.
+            CompositionLocalProvider(LocalPrivacyBlur provides isBlurred) {
+                CfoNavHost(startDestination = startDestination, navController = navController)
+            }
+            CfoPrivacyBlurToggle(
+                blurred = isBlurred,
+                onToggle = viewModel::setPrivacyBlur,
+                modifier = Modifier.align(Alignment.TopEnd).padding(CfoDimens.spaceMd),
+            )
             if (currentEntry.showsAddTransactionFab()) {
                 CfoAddTransactionFab(
                     onClick = { navController.navigate(CfoRoute.AddTransaction) },

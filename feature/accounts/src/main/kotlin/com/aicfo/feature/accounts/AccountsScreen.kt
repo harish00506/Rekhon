@@ -31,9 +31,9 @@ import com.aicfo.core.designsystem.component.CfoButton
 import com.aicfo.core.designsystem.component.CfoCard
 import com.aicfo.core.designsystem.component.CfoListRow
 import com.aicfo.core.designsystem.component.CfoSecondaryButton
+import com.aicfo.core.designsystem.component.maskedAmount
 import com.aicfo.core.designsystem.theme.CfoDimens
 import com.aicfo.core.model.Account
-import com.aicfo.core.model.MoneyFormatter
 
 /**
  * The accounts list (issue 2.5; FR-ACC-001, FR-ACC-007, ARC-004).
@@ -197,7 +197,7 @@ private fun Account.rowTitle(): String =
 @Composable
 private fun Account.rowSupporting(): String {
     val typeLabel = stringResource(AccountLabels.typeLabel(type))
-    val opened = MoneyFormatter.format(openingBalance)
+    val opened = maskedAmount(openingBalance)
     return if (institution.isNullOrBlank()) {
         "$typeLabel · ${stringResource(R.string.accounts_row_supporting_no_institution, opened)}"
     } else {

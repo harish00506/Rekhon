@@ -11,6 +11,48 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The user's daily surfaces: the home dashboard, Safe-to-Spend, privacy blur, local JSON
 > export/import, and the home-screen widget.
 
+### [0.5.3] — Issue 5.3: Privacy blur toggle  (2026-08-16)
+
+- **Implemented:** a one-tap blur that hides every amount in the app (**§23**, **FR-PRIV-***,
+  **P-01**). An eye icon in the app chrome, reachable from any screen; the state persists in
+  DataStore and survives process death.
+- **The persistence half already existed** — `privacy_blur_enabled` has been in `cfo_settings.proto`
+  since issue 1.9 and `SettingsStore` has implemented it since. Nothing read it. This issue is the
+  UI half plus the capture guard.
+- **It masks text; it does not blur pixels** ([ADR-0022](docs/adr/0022-privacy-blur-masks-text-and-sets-flag-secure.md)).
+  `Modifier.blur` is a **silent no-op below API 31**, does not stop a screenshot, and blurs the
+  navigation along with the figures. Amounts become `₹•••••••` through `LocalPrivacyBlur`, read by
+  `CfoAmountText` and by a new `maskedAmount(...)` helper.
+- **Both paths, not just the component.** Amounts reached the screen two ways: 14 `CfoAmountText`
+  call sites and ~24 `MoneyFormatter.format(...)` interpolated into `stringResource(...)` — the
+  cash-flow line, the budget totals, the whole budgets screen, and 5.2's own Safe-to-Spend
+  breakdown. Blurring only the component would have left most of the app readable.
+- **The mask is fixed-width, and that is the point.** Every amount masks to the same string
+  regardless of magnitude: a mask that matched the number's own length would hide the digits and
+  leak the order of magnitude, which for a salary or a balance is most of what makes it sensitive.
+  The sign survives, so direction is never conveyed by colour alone (P-02).
+- **`FLAG_SECURE` while the blur is on** — a mask stops someone reading the screen; only this stops
+  a screenshot, a screen recording or a shared call. Driven by the same flag, cleared on dispose.
+  Issue 11.2 still owns the always-on policy and the recents guard.
+- **Notifications too.** A budget alert renders on the lock screen, *without* the app lock, to
+  anyone who glances at a phone on a table — the biggest shoulder-surfing surface the app has. With
+  the blur on, `BudgetAlertNotifier` sends the category and the band and **no digits at all**, not
+  even the percentage.
+- **Editable amount fields are exempt** — add-transaction, the account editor, the budget editor and
+  the transaction filter's bounds. Masking what someone is typing breaks input, and a field they
+  opened themselves is not a shoulder-surfing surface.
+- **Accessibility:** a masked amount announces "Amount hidden" instead of reading the figure aloud —
+  a blur that leaves the screen reader saying "₹34,600" has moved the leak to the speaker. The
+  toggle reports on/off through `stateDescription`, not through a changed icon alone.
+- **Tests:** full `unitTests` green. `PrivacyBlurTest` pins the fixed-width property over seven
+  orders of magnitude; `DashboardPrivacyBlurTest` (Robolectric Compose UI) sweeps **every** rendered
+  string for a rupee-plus-digit and was watched go red against a single reverted call site;
+  `MainViewModelTest` covers the persist-and-read-back round trip and the fail-open default;
+  `BudgetAlertWorkerTest` covers both notification variants; a `blurred_light` Paparazzi baseline
+  shows the masked layout holds. Verified on the `CfoTest` emulator in **airplane mode**: every
+  amount masked across dashboard and accounts, `adb screencap` returned **0 bytes** with the blur on
+  and 178 KB with it off, and the blur survived a force-stop. `:app:connectedDebugAndroidTest` 7/7.
+
 ### [0.5.2] — Issue 5.2: Safe-to-Spend card  (2026-08-16)
 
 - **Implemented:** the Safe-to-Spend engine and card (**§5.2**, **§14**, **AI-STS**, **P-02/P-03**).

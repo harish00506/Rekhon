@@ -21,9 +21,9 @@ import com.aicfo.core.designsystem.component.CfoAmountText
 import com.aicfo.core.designsystem.component.CfoButton
 import com.aicfo.core.designsystem.component.CfoCard
 import com.aicfo.core.designsystem.component.CfoSecondaryButton
+import com.aicfo.core.designsystem.component.maskedAmount
 import com.aicfo.core.designsystem.theme.CfoDimens
 import com.aicfo.core.model.Money
-import com.aicfo.core.model.MoneyFormatter
 
 /**
  * FR-ACC-006's reconciliation panel (issue 2.7; P-02, ARC-004).
@@ -197,6 +197,6 @@ private fun FigureRow(
         // The label is the screen reader's context; without it the amount is announced bare. The
         // wording goes through MoneyFormatter, never Money's toString, which would read out
         // "Money(minor=42350)" to anyone using TalkBack.
-        CfoAmountText(amount = amount, contentDescription = "$label ${MoneyFormatter.format(amount)}")
+        CfoAmountText(amount = amount, contentDescription = "$label ${maskedAmount(amount)}")
     }
 }

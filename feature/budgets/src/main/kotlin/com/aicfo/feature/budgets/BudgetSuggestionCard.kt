@@ -9,8 +9,8 @@ import androidx.compose.ui.res.stringResource
 import com.aicfo.core.designsystem.component.CfoButton
 import com.aicfo.core.designsystem.component.CfoCard
 import com.aicfo.core.designsystem.component.CfoListRow
+import com.aicfo.core.designsystem.component.maskedAmount
 import com.aicfo.core.designsystem.theme.CfoDimens
-import com.aicfo.core.model.MoneyFormatter
 import com.aicfo.data.repository.CategoryBudgetSuggestion
 
 /**
@@ -94,7 +94,7 @@ private fun SuggestionCard(
  */
 @Composable
 private fun CategoryBudgetSuggestion.reason(): String {
-    val median = MoneyFormatter.format(suggestion.medianAmount)
+    val median = maskedAmount(suggestion.medianAmount)
     if (!suggestion.isSeasonallyAdjusted) {
         return stringResource(R.string.budgets_reason_median, median)
     }

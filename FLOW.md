@@ -174,6 +174,53 @@ subscription already had — and let one read failure show two different faces (
 collector, a silently-emptied line from the other). `alertFor` is the same engine call reached
 without the second subscription. `:feature:budgets` still calls `observeAlerts()` and is unchanged.
 
+### 2.0 · The privacy blur — one flag, every amount (issue 5.3)
+
+Not a screen: a value that travels **down the whole tree** and is read at the two places money is
+rendered. The only path in the app shaped this way, and deliberately so.
+
+```
+MainViewModel.isPrivacyBlurred : StateFlow<Boolean>
+└─ SettingsStore.observe()                    Proto DataStore — privacy_blur_enabled
+    │   (read failure → false: the blur is a display preference, not a security
+    │    boundary. The boundary is AppLockGate/SessionLock, which fails CLOSED.)
+    ⇣
+MainActivity.AppContent
+├─ PrivacyCaptureGuard(secure = isBlurred)    DisposableEffect on the Activity window
+│   └─ FLAG_SECURE add / clear                → screenshot, screen-record, share = blank
+│       (cleared onDispose, or a blurred session leaves every later screen uncapturable)
+├─ CfoPrivacyBlurToggle(blurred, onToggle)    app chrome, top-end — one tap from ANY screen
+│   ⇡  onToggle → MainViewModel.setPrivacyBlur(enabled)
+│       └─ SettingsStore.setPrivacyBlurEnabled()   persists, then re-emits above
+└─ CompositionLocalProvider(LocalPrivacyBlur provides isBlurred) {
+       CfoNavHost(...)                        every destination, existing or added later
+   }
+        ⇣  read at exactly two places, in :core:designsystem
+        ├─ CfoAmountText(amount)              14 call sites — the component path
+        └─ maskedAmount(amount)               ~24 call sites — the `stringResource("%1$s of %2$s")` path
+             └─ maskOf(amount) → "-₹•••••••"  FIXED width, sign kept, no digits
+```
+
+**Why a `CompositionLocal` and not a parameter.** The alternative is a `Boolean` threaded through
+forty call signatures, and the one screen somebody forgets is the one still showing a balance in a
+meeting. A local cannot be forgotten.
+
+**Why two read points and not one.** Amounts reach the screen two ways — a composable, and a
+formatted string dropped into a `stringResource` placeholder, because a sentence cannot contain a
+composable. `DashboardPrivacyBlurTest` sweeps every rendered string for `₹`-plus-digit, so a future
+screen that reaches for `MoneyFormatter.format` in a composable fails the build on the dashboard.
+
+**The worker reads the same flag, separately**, because it has no composition:
+
+```
+BudgetAlertWorker.doWork()
+└─ settingsStore.observe().first()            once per batch, not per alert
+    └─ notifier.notify(alert, blurAmounts)
+        └─ compose(alert, blurAmounts)        blurred → category + band, NO digits at all
+                                              (a lock-screen notification renders without the
+                                               app lock — the most exposed surface there is)
+```
+
 ### 2.1 · The dashboard's headline figure (issue 5.2)
 
 Shape C again, but it is the **first read in the app assembled from other repositories** rather than

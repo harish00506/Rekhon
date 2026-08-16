@@ -10,8 +10,8 @@ import com.aicfo.core.designsystem.component.CfoButton
 import com.aicfo.core.designsystem.component.CfoCard
 import com.aicfo.core.designsystem.component.CfoListRow
 import com.aicfo.core.designsystem.component.CfoSecondaryButton
+import com.aicfo.core.designsystem.component.maskedAmount
 import com.aicfo.core.designsystem.theme.CfoDimens
-import com.aicfo.core.model.MoneyFormatter
 import com.aicfo.domain.engines.budget.BudgetReview
 import com.aicfo.domain.engines.budget.ReviewedCategory
 import com.aicfo.domain.engines.budget.VarianceDirection
@@ -88,7 +88,7 @@ private fun ReviewedCategoryRow(
         // proposed amount — so a tap authorised a figure the user had not been shown. The trailing
         // slot above is `actual` (what the month cost), which is a different number entirely.
         Text(
-            text = stringResource(R.string.budgets_review_proposal, MoneyFormatter.format(proposal.amount)),
+            text = stringResource(R.string.budgets_review_proposal, maskedAmount(proposal.amount)),
             style = MaterialTheme.typography.bodyMedium,
         )
         CfoButton(
@@ -103,8 +103,8 @@ private fun ReviewedCategoryRow(
 private fun BudgetReview.summary(): String =
     stringResource(
         R.string.budgets_review_summary,
-        MoneyFormatter.format(totalBudgeted),
-        MoneyFormatter.format(totalActual),
+        maskedAmount(totalBudgeted),
+        maskedAmount(totalActual),
     )
 
 /**
@@ -126,8 +126,8 @@ private fun BudgetReview.citation(): String {
  */
 @Composable
 private fun ReviewedCategory.varianceSentence(): String {
-    val actual = MoneyFormatter.format(this.actual)
-    val budgeted = MoneyFormatter.format(this.budgeted)
+    val actual = maskedAmount(this.actual)
+    val budgeted = maskedAmount(this.budgeted)
     return when (direction) {
         VarianceDirection.OVER -> stringResource(R.string.budgets_review_over, actual, budgeted, variancePercent)
         VarianceDirection.UNDER -> stringResource(R.string.budgets_review_under, actual, budgeted, variancePercent)

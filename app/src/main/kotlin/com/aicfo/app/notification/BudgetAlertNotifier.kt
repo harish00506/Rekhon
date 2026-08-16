@@ -39,10 +39,21 @@ interface BudgetAlertNotifier {
      *         permission is absent or because the text failed the guardrail. The caller does not
      *         distinguish them; both mean the user was not told this way, which is a supported state
      *         rather than a failure (the in-app banner still shows the band).
-     * Input:  [alert] — the band and every figure that may appear in the message.
+     * Input:  [alert] — the band and every figure that may appear in the message;
+     *         [blurAmounts] — issue 5.3's privacy blur. When `true` the message keeps the category
+     *         and the band and carries **no figures at all**.
      * Output: [Boolean].
+     *
+     * **Why the flag is a parameter rather than a `SettingsStore` read in here.** A notification is
+     * composed off the main thread from a worker that is already a coroutine, and the read is
+     * `suspend`; taking it as an argument keeps this interface synchronous and keeps DataStore out
+     * of the one class whose job is Android's notification stack. It also makes the blurred and
+     * unblurred messages equally easy to assert.
      */
-    fun notify(alert: CategoryBudgetAlert): Boolean
+    fun notify(
+        alert: CategoryBudgetAlert,
+        blurAmounts: Boolean,
+    ): Boolean
 }
 
 /**
@@ -82,9 +93,13 @@ internal class AndroidBudgetAlertNotifier
          *         for a user who said no, so a refused post is not a failure and must not be reported
          *         as one.
          * Result: see [BudgetAlertNotifier.notify].
-         * Input:  [alert]. Output: [Boolean].
+         * Input:  [alert]; [blurAmounts]. Output: [Boolean].
+         * Changelog: 2026-08-16 — Issue 5.3: honours the privacy blur.
          */
-        override fun notify(alert: CategoryBudgetAlert): Boolean {
+        override fun notify(
+            alert: CategoryBudgetAlert,
+            blurAmounts: Boolean,
+        ): Boolean {
             // Two separate refusals, and both are the user's: the runtime permission on API 33+, and
             // the per-app or per-channel switch in settings. Checking only the first would post into
             // a void the user explicitly closed.
@@ -100,7 +115,7 @@ internal class AndroidBudgetAlertNotifier
             }
             if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
 
-            val (title, body) = compose(alert)
+            val (title, body) = compose(alert, blurAmounts)
 
             // Checked on the composed text, both halves, against exactly the values the engine
             // returned. A figure that is not in this list may not appear on the user's phone.
@@ -141,12 +156,34 @@ internal class AndroidBudgetAlertNotifier
          *         above check the result against exactly those values. The two bands read differently
          *         on purpose: a warning names how far through the budget the user is, an overspend
          *         names how far past it, because those are the two different things they need to know.
-         * Result: the title and the body. Input: [alert]. Output: a pair of [String].
+         * Result: the title and the body. Input: [alert]; [blurAmounts]. Output: a pair of [String].
+         * Changelog: 2026-08-16 — Issue 5.3: the figure-free variants.
+         *
+         * **The blurred variants carry no digits at all — not even the percentage.** A lock-screen
+         * notification is the single most exposed surface this app has: it renders without the app
+         * lock, to anyone who glances at the phone face-up on a table, which is precisely the
+         * shoulder-surfing case §23 is about. Masking the on-screen figures while a notification
+         * announced "You have spent ₹8,000 of ₹10,000" would leave the biggest hole open. The band
+         * and the category survive, because a warning nobody can act on is not worth sending.
          */
-        private fun compose(alert: CategoryBudgetAlert): Pair<String, String> {
+        private fun compose(
+            alert: CategoryBudgetAlert,
+            blurAmounts: Boolean,
+        ): Pair<String, String> {
+            val exceeded = alert.alert.band == BudgetAlertBand.EXCEEDED
+            if (blurAmounts) {
+                val title =
+                    if (exceeded) {
+                        context.getString(R.string.budget_alert_exceeded_title, alert.category.name)
+                    } else {
+                        context.getString(R.string.budget_alert_warn_title_blurred, alert.category.name)
+                    }
+                return title to context.getString(R.string.budget_alert_body_blurred)
+            }
+
             val budgeted = MoneyFormatter.format(alert.alert.budgeted)
             val spent = MoneyFormatter.format(alert.alert.spent)
-            return if (alert.alert.band == BudgetAlertBand.EXCEEDED) {
+            return if (exceeded) {
                 val overspent = MoneyFormatter.format(alert.alert.overspentBy ?: Money.ZERO)
                 context.getString(R.string.budget_alert_exceeded_title, alert.category.name) to
                     context.getString(R.string.budget_alert_exceeded_body, spent, budgeted, overspent)

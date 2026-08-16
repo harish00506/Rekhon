@@ -62,6 +62,102 @@ class MainViewModelTest {
         Dispatchers.resetMain()
     }
 
+    // --- the privacy blur (issue 5.3; §23, FR-PRIV-*) -------------------------------------------
+
+    /**
+     * Input:  a fresh profile.
+     * Output: asserts amounts are visible by default.
+     *
+     * Why:    a blur that defaulted **on** would hide every figure on first launch and look like a
+     *         broken app, with no clue that a toggle explains it — the same reasoning
+     *         `SettingsStoreTest` records for the stored default. Pinned here too because this is
+     *         the value the UI actually reads.
+     */
+    @Test
+    fun `amounts are visible until the user hides them`() =
+        runTest {
+            viewModel(FakeAppSettingsStore()).isPrivacyBlurred.test {
+                assertFalse(awaitItem())
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    /**
+     * The round trip this feature is.
+     * Input:  a toggle on, then off.
+     * Output: asserts the flag is **written and read back**, not held in memory.
+     *
+     * Why:    the write is what makes the blur survive process death, and that is not a detail:
+     *         someone who hides their figures before handing the phone over would otherwise have
+     *         them reappear the moment Android killed the app in the background — which is exactly
+     *         when they are not watching. A fake whose setter returned `Ok(Unit)` and changed
+     *         nothing would let a ViewModel that never wrote at all pass, which is why
+     *         [FakeAppSettingsStore] makes writes visible to reads.
+     *
+     *         Collected through Turbine rather than read off `.value`: the flow is shared
+     *         `WhileSubscribed`, so with no collector the upstream never runs and `.value` sits at
+     *         its initial `false` forever. That is the right production behaviour — the work stops
+     *         when the UI goes away (ARC-006) — and it means a test has to subscribe like the screen
+     *         does.
+     */
+    @Test
+    fun `the toggle is written to settings and read back`() =
+        runTest {
+            val viewModel = viewModel(FakeAppSettingsStore())
+
+            viewModel.isPrivacyBlurred.test {
+                assertFalse(awaitItem())
+
+                viewModel.setPrivacyBlur(true)
+                assertTrue("the blur must persist, not live in memory", awaitItem())
+
+                viewModel.setPrivacyBlur(false)
+                assertFalse(awaitItem())
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    /**
+     * Input:  a profile that already had the blur on — the app relaunching after a process death.
+     * Output: asserts it comes back on.
+     */
+    @Test
+    fun `a stored blur survives a relaunch`() =
+        runTest {
+            val stored = FakeAppSettingsStore(SettingsSnapshot(privacyBlurEnabled = true))
+
+            viewModel(stored).isPrivacyBlurred.test {
+                // The initial `false` is the StateFlow's seed, replaced as soon as the stored value
+                // arrives — the same two-emission shape `startDestination`'s tests assert.
+                assertTrue(awaitItem() || awaitItem())
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    /**
+     * Input:  a settings store that cannot be read.
+     * Output: asserts amounts stay **visible**.
+     *
+     * Why:    a deliberate choice worth pinning. Failing closed here would turn a DataStore hiccup
+     *         into an app where every figure has vanished for a reason the user cannot diagnose and
+     *         cannot undo. The blur is a display preference, not a security boundary — the security
+     *         boundary is the app lock (SEC-002), which does fail closed.
+     */
+    @Test
+    fun `an unreadable store leaves amounts visible`() =
+        runTest {
+            val unreadable = StubSettingsStore(Err(AppError.Storage("IOException")))
+
+            viewModel(unreadable).isPrivacyBlurred.test {
+                assertFalse(awaitItem())
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    /** Result: a ViewModel over [settings], with the other collaborators stubbed. */
+    private fun viewModel(settings: SettingsStore): MainViewModel =
+        MainViewModel(settings, StubDemoModeRepository(), StubCategoryRepository())
+
     /**
      * Input:  a store with no completion timestamp — a fresh install.
      * Output: asserts the app opens on onboarding, and that it reports `null` first rather than
