@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Design-system copy (§21.6, ACC-*).
+
+  Why:  this module has held no strings until issue 5.3, deliberately — `CfoAmountText`'s own doc
+        comment records that wording belongs to the calling feature, because only the screen knows
+        whether a figure is "spent", "received" or "balance".
+
+        The privacy-blur label is the stated exception, and the distinction is worth keeping: it
+        describes the **component's own state**, not the meaning of any particular figure. There is
+        no wording the caller could supply for it — a screen that passed "Safe to spend this month,
+        ₹34,600" as its content description would have the screen reader announce the very amount
+        the user just hid, which is why the blurred branch discards the caller's wording entirely.
+-->
+<resources>
+    <!--
+      Announced by TalkBack in place of a masked amount (issue 5.3; §23, FR-PRIV-*).
+      Deliberately says nothing about the value, not even its sign: the spoken channel is the one
+      place a "blur" cannot rely on the reader being the only person in the room.
+    -->
+    <string name="cfo_amount_hidden">Amount hidden</string>
+</resources>

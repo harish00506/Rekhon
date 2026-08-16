@@ -5,13 +5,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import com.aicfo.core.designsystem.R
 import com.aicfo.core.designsystem.theme.CfoAmountTextStyle
 import com.aicfo.core.designsystem.theme.CfoTheme
 import com.aicfo.core.model.Money
-import com.aicfo.core.model.MoneyFormatter
 
 /**
  * Renders a monetary amount — the one component every screen in this app will use.
@@ -33,10 +34,19 @@ import com.aicfo.core.model.MoneyFormatter
  * belongs in the feature's `strings.xml` (§21.6). Without one, the screen reader falls back to the
  * formatted amount, which is terse but never wrong.
  *
+ * Changelog: 2026-08-16 — Issue 5.3: honours [LocalPrivacyBlur].
+ *
+ * **The privacy blur is read here, not passed in** (issue 5.3). Fourteen call sites render an
+ * amount through this component and none of them has to know the feature exists — which is the
+ * point, because the one screen somebody forgot to wire would be the one still showing a balance in
+ * a meeting. The caller's [contentDescription] is **discarded while blurred**: a screen reader
+ * announcing "Safe to spend this month, ₹34,600" would read out loud exactly what the user just
+ * hid, and the caller's wording usually contains the figure.
+ *
  * Input:  [amount] — the value, `Long` paise; [modifier]; [contentDescription] — localised
- *         wording from the caller; [showSign] — false only where a sign would be noise, such as a
- *         column that is already labelled "spending"; [textAlign].
- * Output: the rendered amount.
+ *         wording from the caller, used only when the blur is off; [showSign] — false only where a
+ *         sign would be noise, such as a column that is already labelled "spending"; [textAlign].
+ * Output: the rendered amount, or its mask.
  */
 @Composable
 fun CfoAmountText(
@@ -46,14 +56,19 @@ fun CfoAmountText(
     showSign: Boolean = true,
     textAlign: TextAlign? = null,
 ) {
-    val formatted = MoneyFormatter.format(amount)
+    val blurred = LocalPrivacyBlur.current
+    val formatted = maskedAmount(amount)
     val text =
         when {
             !showSign -> formatted
+            // No leading "+" on a mask: it would be the one glyph that varies with the value, and a
+            // masked column where some rows gained a character would leak which figures are inflows.
+            blurred -> formatted
             amount.minor > 0L -> "+$formatted"
             // A negative amount already carries its own minus from the formatter.
             else -> formatted
         }
+    val announced = if (blurred) stringResource(R.string.cfo_amount_hidden) else contentDescription ?: text
     Text(
         text = text,
         style = CfoAmountTextStyle,
@@ -66,7 +81,7 @@ fun CfoAmountText(
         softWrap = false,
         modifier =
             modifier.semantics {
-                this.contentDescription = contentDescription ?: text
+                this.contentDescription = announced
             },
     )
 }
