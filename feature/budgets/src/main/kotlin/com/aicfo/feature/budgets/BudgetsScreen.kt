@@ -23,10 +23,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.aicfo.core.designsystem.component.CfoCard
 import com.aicfo.core.designsystem.component.CfoListRow
 import com.aicfo.core.designsystem.component.CfoSecondaryButton
+import com.aicfo.core.designsystem.component.maskedAmount
 import com.aicfo.core.designsystem.theme.CfoAmountTextStyle
 import com.aicfo.core.designsystem.theme.CfoDimens
 import com.aicfo.core.model.Money
-import com.aicfo.core.model.MoneyFormatter
 import com.aicfo.data.repository.CategoryBudget
 import com.aicfo.domain.engines.budget.BudgetAlertBand
 
@@ -253,8 +253,8 @@ private fun BudgetFigures(budget: CategoryBudget) {
         text =
             stringResource(
                 R.string.budgets_remaining,
-                MoneyFormatter.format(status.remaining),
-                MoneyFormatter.format(status.budgeted),
+                maskedAmount(status.remaining),
+                maskedAmount(status.budgeted),
             ),
         style = MaterialTheme.typography.bodyMedium,
         color = if (status.isOverspent) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
@@ -263,7 +263,7 @@ private fun BudgetFigures(budget: CategoryBudget) {
         text =
             stringResource(
                 if (status.isAheadOfPace) R.string.budgets_pace_ahead else R.string.budgets_pace_within,
-                MoneyFormatter.format(status.safePaceToDate),
+                maskedAmount(status.safePaceToDate),
             ),
         style = MaterialTheme.typography.bodySmall,
     )
@@ -275,8 +275,8 @@ private fun BudgetFigures(budget: CategoryBudget) {
                 // about one coffee than about the month (RULE-BUD-PACE).
                 projected == null -> stringResource(R.string.budgets_projection_pending)
                 status.isProjectedToOverspend ->
-                    stringResource(R.string.budgets_projection_over, MoneyFormatter.format(projected))
-                else -> stringResource(R.string.budgets_projection_within, MoneyFormatter.format(projected))
+                    stringResource(R.string.budgets_projection_over, maskedAmount(projected))
+                else -> stringResource(R.string.budgets_projection_within, maskedAmount(projected))
             },
         style = MaterialTheme.typography.bodySmall,
     )
@@ -291,7 +291,7 @@ private fun BudgetFigures(budget: CategoryBudget) {
 @Composable
 private fun CategoryBudget.plannedSupporting(): String =
     if (rolloverEnabled && status.carriedOver > Money.ZERO) {
-        stringResource(R.string.budgets_planned_with_rollover, MoneyFormatter.format(status.carriedOver))
+        stringResource(R.string.budgets_planned_with_rollover, maskedAmount(status.carriedOver))
     } else {
         stringResource(R.string.budgets_planned_supporting)
     }
@@ -369,7 +369,7 @@ internal fun BudgetAmountText(
     contentDescription: String,
 ) {
     Text(
-        text = MoneyFormatter.format(amount),
+        text = maskedAmount(amount),
         style = CfoAmountTextStyle,
         color = MaterialTheme.colorScheme.onSurface,
         maxLines = 1,

@@ -22,11 +22,11 @@ import com.aicfo.core.designsystem.component.CfoAmountText
 import com.aicfo.core.designsystem.component.CfoCard
 import com.aicfo.core.designsystem.component.CfoListRow
 import com.aicfo.core.designsystem.component.CfoSecondaryButton
+import com.aicfo.core.designsystem.component.maskedAmount
 import com.aicfo.core.designsystem.theme.CfoDimens
 import com.aicfo.core.designsystem.theme.CfoTheme
 import com.aicfo.core.model.DateFormatter
 import com.aicfo.core.model.Money
-import com.aicfo.core.model.MoneyFormatter
 import com.aicfo.data.repository.CategoryBudgetAlert
 import com.aicfo.domain.engines.safetospend.SafeToSpend
 import com.aicfo.domain.engines.safetospend.SafeToSpendComponent
@@ -209,7 +209,7 @@ private fun SafeToSpendSection(safeToSpend: SafeToSpend?) {
                     // additions that plainly do not sum to the headline, so a user cannot check the
                     // figure — which is the entire point of showing it (P-02). The minus is what
                     // makes the arithmetic verifiable at a glance.
-                    MoneyFormatter.format(line.signedAmount),
+                    maskedAmount(line.signedAmount),
                 ),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -304,9 +304,9 @@ private fun ActualSpendSection(uiState: DashboardUiState) {
         text =
             stringResource(
                 R.string.dashboard_actual_values,
-                MoneyFormatter.format(breakdown.needs),
-                MoneyFormatter.format(breakdown.wants),
-                MoneyFormatter.format(breakdown.invested),
+                maskedAmount(breakdown.needs),
+                maskedAmount(breakdown.wants),
+                maskedAmount(breakdown.invested),
             ),
         style = MaterialTheme.typography.bodyMedium,
     )
@@ -335,8 +335,8 @@ private fun CashFlowSection(uiState: DashboardUiState) {
         text =
             stringResource(
                 R.string.dashboard_cash_flow_values,
-                MoneyFormatter.format(flow.income),
-                MoneyFormatter.format(flow.expense),
+                maskedAmount(flow.income),
+                maskedAmount(flow.expense),
             ),
         style = MaterialTheme.typography.bodyMedium,
     )
@@ -363,8 +363,8 @@ private fun BudgetStatusSection(uiState: DashboardUiState) {
         text =
             stringResource(
                 R.string.dashboard_budget_status_values,
-                MoneyFormatter.format(totals.spent),
-                MoneyFormatter.format(totals.budgeted),
+                maskedAmount(totals.spent),
+                maskedAmount(totals.budgeted),
             ),
         style = MaterialTheme.typography.bodyMedium,
     )
@@ -424,7 +424,7 @@ private fun RecentActivitySection(uiState: DashboardUiState) {
             trailing = {
                 CfoAmountText(
                     amount = transaction.amount,
-                    contentDescription = MoneyFormatter.format(transaction.amount),
+                    contentDescription = maskedAmount(transaction.amount),
                 )
             },
         )
