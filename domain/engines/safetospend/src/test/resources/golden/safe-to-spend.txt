@@ -1,0 +1,116 @@
+Golden file for :domain:engines:safetospend (issue 5.2; AI-STS, RULE-STS v1.0).
+
+Every record is one month. Amounts are PAISE (MNY-001), never rupees — a fixture written in rupees
+is a fixture that silently passes at a hundredth of the amount it claims. `expect` is the headline
+figure and may be negative; `lines` is the breakdown in display order, and it is asserted as well as
+the figure, because a total that came out right from the wrong terms is the failure a golden file
+exists to catch.
+
+Record format — one `# key=value` per line, records separated by a line of `===`:
+
+  income          paise, the period's income (RULE-STS.income_basis, resolved by the caller)
+  spent           paise, true spend so far (needs + wants, issue 4.3)
+  scheduled       paise, future-dated transactions due inside the window
+  recurring       paise, confirmed recurring rules due inside the window
+  goals           paise, the month's savings envelope not yet made
+  buffer_pct      whole percent (optional, default 5 — RULE-STS.buffer_pct)
+  include_goals   true|false (optional, default true)
+  floor           true|false (optional, default false)
+  expect          paise, the headline figure
+  lines           comma-separated SafeToSpendComponent names, in order
+
+Absent amount keys are zero. The whole file shares one instant and one window, so it is
+reproducible to the byte (P-08) — this engine reads no clock (TIM-001).
+
+===
+# label=an ordinary salaried month, every term present
+# income=8000000
+# spent=1240000
+# scheduled=1800000
+# recurring=200000
+# goals=1500000
+# expect=2860000
+# lines=INCOME,BUFFER,SPENT,SCHEDULED,RECURRING,GOALS
+
+===
+# label=cold start - the 1st of the month, nothing spent and nothing due
+# income=5000000
+# expect=4750000
+# lines=INCOME,BUFFER
+
+===
+# label=overcommitted - the figure goes negative rather than clamping
+# income=3000000
+# spent=2800000
+# recurring=850000
+# expect=-800000
+# lines=INCOME,BUFFER,SPENT,RECURRING
+
+===
+# label=boundary - a zero buffer withholds nothing and draws no line
+# income=5000000
+# spent=900000
+# buffer_pct=0
+# expect=4100000
+# lines=INCOME,SPENT
+
+===
+# label=boundary - the buffer rounds HALF_EVEN to whole paise (5% of 123457 = 6172.85)
+# income=123457
+# expect=117284
+# lines=INCOME,BUFFER
+
+===
+# label=goal contributions switched off - neither subtracted nor shown
+# income=5000000
+# goals=1200000
+# include_goals=false
+# expect=4750000
+# lines=INCOME,BUFFER
+
+===
+# label=the floor engaged - the clamp names the shortfall it is hiding
+# income=3000000
+# spent=2800000
+# recurring=850000
+# floor=true
+# expect=0
+# lines=INCOME,BUFFER,SPENT,RECURRING,SHORTFALL
+
+===
+# label=boundary - the floor is below zero, not at it, so an exact zero hides nothing
+# income=5000000
+# spent=5000000
+# buffer_pct=0
+# floor=true
+# expect=0
+# lines=INCOME,SPENT
+
+===
+# label=the floor left alone by a solvent month
+# income=5000000
+# spent=1000000
+# floor=true
+# expect=3750000
+# lines=INCOME,BUFFER,SPENT
+
+===
+# label=boundary - the smallest income that still leaves something (one rupee)
+# income=100
+# expect=95
+# lines=INCOME,BUFFER
+
+===
+# label=boundary - the largest legal buffer withholds all but a hundredth
+# income=5000000
+# buffer_pct=99
+# expect=50000
+# lines=INCOME,BUFFER
+
+===
+# label=large amounts - fifty lakh income against a crore of commitments
+# income=500000000
+# spent=123456789
+# scheduled=987654321
+# expect=-636111110
+# lines=INCOME,BUFFER,SPENT,SCHEDULED

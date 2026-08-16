@@ -64,6 +64,7 @@ include(":domain:engines:sms")         // §18/§23 reads amount/direction/payee
 include(":domain:engines:classification") // §8.1 Stage 1 — merchant → category, with confidence + evidence
 include(":domain:engines:nature")      // §8.3 — what a rupee became: Need/Want/Invest/Asset/Liability
 include(":domain:engines:budget")      // §5.5 — FR-BUD-002/003 suggested budgets + spent/pace/projection
+include(":domain:engines:safetospend") // §5.2/§14 AI-STS — what is left to spend this month, and why
 include(":domain:usecase")
 
 // :data:*                  the ONLY DAO/network touchers (ARC-005)

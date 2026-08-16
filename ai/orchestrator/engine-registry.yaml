@@ -83,6 +83,15 @@ engines:
     reads: [../rules/rules-kb.json]      # RULE-EMI-40, RULE-COOL-OFF, RULE-20-4-10 ...
     srs: "§13"
 
+  - id: AI-STS
+    name: Safe-to-Spend
+    layer: L5
+    module: ":domain:engines:safetospend"
+    version: "1.0"
+    contract: "income + commitments -> {safeToSpend, ordered breakdown lines} (signed paise)"
+    reads: [../rules/rules-kb.json]      # RULE-STS
+    srs: "§5.2, §14"
+
   - id: AI-FHS
     name: Financial Health Score
     layer: L3
