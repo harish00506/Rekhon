@@ -55,6 +55,10 @@ dependencies {
     // Issue 4.4: SRS §5.5. `api` — BudgetStatus and BudgetSuggestion are what CategoryBudget and
     // CategoryBudgetSuggestion expose, so the budgets ViewModel must be able to name them.
     api(project(":domain:engines:budget"))
+    // Issue 5.2: SRS §5.2/§14. `api` — SafeToSpend is what observeSafeToSpend emits, breakdown and
+    // all, so the dashboard must be able to name it and every line on it (the reasoning `:networth`
+    // set above).
+    api(project(":domain:engines:safetospend"))
 
     // withTransaction — the atomicity guarantee applySeeds is built on (issue 2.3).
     implementation(libs.room.ktx)

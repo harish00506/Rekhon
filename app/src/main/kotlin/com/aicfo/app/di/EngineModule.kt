@@ -14,6 +14,8 @@ import com.aicfo.domain.engines.receipt.ReceiptEngine
 import com.aicfo.domain.engines.receipt.ReceiptEngineFactory
 import com.aicfo.domain.engines.recurring.RecurringEngine
 import com.aicfo.domain.engines.recurring.RecurringEngineFactory
+import com.aicfo.domain.engines.safetospend.SafeToSpendEngine
+import com.aicfo.domain.engines.safetospend.SafeToSpendEngineFactory
 import com.aicfo.domain.engines.sms.SmsEngine
 import com.aicfo.domain.engines.sms.SmsEngineFactory
 import dagger.Module
@@ -155,4 +157,22 @@ object EngineModule {
     @Provides
     @Singleton
     fun provideBudgetEngine(): BudgetEngine = BudgetEngineFactory.create()
+
+    /**
+     * What is left to spend this month, and why (issue 5.2; §5.2, §14, AI-STS, P-02/P-03).
+     * Why:    the engine that finally makes the app's headline figure a computed one — it replaced a
+     *         literal that had been on the home screen since issue 1.10. Provided through its factory
+     *         like every engine here, because the implementation is `internal` to its module and
+     *         `:app` cannot name it (ARC-003). Pure Kotlin, so it holds no database and reads no
+     *         clock — `SafeToSpendRepository` resolves the month in the profile zone and hands the
+     *         engine six already-summed amounts (ARC-005, TIM-001).
+     *
+     *         **A singleton because the rule set is validated once.** `SafeToSpendRules` checks its
+     *         buffer at construction, and the dashboard recomputes the figure on every ledger change.
+     * Result: a [SafeToSpendEngine]. Input: none. Output: the engine.
+     * Changelog: 2026-08-16 — Created for issue 5.2.
+     */
+    @Provides
+    @Singleton
+    fun provideSafeToSpendEngine(): SafeToSpendEngine = SafeToSpendEngineFactory.create()
 }
