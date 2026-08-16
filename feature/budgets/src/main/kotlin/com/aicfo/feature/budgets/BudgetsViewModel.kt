@@ -114,6 +114,12 @@ class BudgetsViewModel
          *         same read the budget list uses, so a failure that matters has already reached the
          *         banner through [observeBudgets]. Reporting it twice would put two errors on screen
          *         for one broken read.
+         *
+         *         **That covers a broken *read*, not a broken *band*** (corrected for issue 4.7). A
+         *         failure of the alert engine alone never reaches this `.catch` at all: since 4.7 the
+         *         repository drops an undecidable band the same way it drops one below the threshold,
+         *         so this collector simply receives a shorter list. The `.catch` remains the safety
+         *         net for the underlying budgets read, which does still fail loudly.
          * Input:  none. Output: none (launches a collector).
          * Changelog: 2026-08-13 — Created for issue 4.5.
          */

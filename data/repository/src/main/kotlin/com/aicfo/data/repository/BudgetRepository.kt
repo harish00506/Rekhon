@@ -7,6 +7,8 @@ import com.aicfo.core.common.DispatcherProvider
 import com.aicfo.core.common.Err
 import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
+import com.aicfo.core.common.getOrElse
+import com.aicfo.core.common.getOrNull
 import com.aicfo.core.common.runCatchingToResult
 import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.database.entity.BudgetAlertEntity
@@ -116,6 +118,23 @@ data class CategoryBudgetAlert(
  * **Eleven operations across three features** (budgets, alerts, review) that all read and write the
  * same `budget`-family tables — the count below is the interface's, not a design choice, and
  * splitting it would scatter one repository's responsibility across several to satisfy a counter.
+ *
+ * **What happens when the engine fails — one rule, inherited rather than invented** (issue 4.7).
+ * `BudgetEngine` already draws the line: `suggest`, `alert` and `review` each document `Ok(null)`
+ * as a legitimate answer, and `status` has no such slot because there is no such thing as "no
+ * status". So:
+ *
+ * > **Where the engine documents `Ok(null)` as a legitimate answer, a failure collapses into that
+ * > same absence. Where it does not — `status` — the failure terminates the stream, carrying the
+ * > engine's own `AppError`.**
+ *
+ * In practice that means a failed suggestion, alert or review is silently absent (no offer, no
+ * band, no card) while the figures beside it survive, and a failed status surfaces through the
+ * `.catch {}` every consumer of [observeBudgets] already has. The suspend readers below
+ * ([pendingAlerts], [acceptSuggestion], [acceptReviewProposal]) convert that throw back into `Err`,
+ * so no exception crosses a layer boundary (§21.6). Each method's own doc comment says which case
+ * it is; the cost — that "no answer" and "could not answer" are indistinguishable on three of the
+ * four — is real, and unrecorded until this app has a structured logger.
  */
 @Suppress("TooManyFunctions")
 interface BudgetRepository {
@@ -127,6 +146,11 @@ interface BudgetRepository {
      * Result: one row per category, re-emitted whenever a transaction or a budget changes.
      * Input:  none — the active profile and the current month are resolved internally.
      * Output: `Flow<List<CategoryBudget>>`.
+     *
+     * **If the status engine fails, this stream fails** (issue 4.7) — the one read here that does.
+     * The collector's `.catch {}` sees a `BudgetEngineFailure` carrying the engine's `AppError`;
+     * both ViewModels already turn that into an error banner. It fails whole rather than dropping
+     * the row, because these rows are folded into a headline total downstream.
      */
     fun observeBudgets(): Flow<List<CategoryBudget>>
 
@@ -134,7 +158,10 @@ interface BudgetRepository {
      * Proposals for categories that have enough history and no budget yet (FR-BUD-002).
      * Why:    a category the user has already budgeted is a decision already made; re-suggesting
      *         over it would be the app arguing with them (P-07).
-     * Result: one row per suggestible category, empty when history is too thin.
+     * Result: one row per suggestible category, empty when history is too thin — **or when the
+     *         engine failed** (issue 4.7), which is indistinguishable here and deliberately so: the
+     *         engine already documents "no opinion" as a legitimate answer, and a failure lands in
+     *         that lane rather than blanking the budgets the user came to read.
      * Input:  none. Output: `Flow<List<CategoryBudgetSuggestion>>`.
      */
     fun observeSuggestions(): Flow<List<CategoryBudgetSuggestion>>
@@ -177,6 +204,10 @@ interface BudgetRepository {
      *         already been sent would hide the very state it exists to show (P-02). It is also what
      *         a user who denied notification permission sees instead of nothing.
      * Result: one row per budget in a band, re-emitted whenever a transaction or a budget changes.
+     *         **A band the engine could not decide is simply absent** (issue 4.7) — the row it would
+     *         have highlighted is still in [observeBudgets] with its real figures. A failure of the
+     *         *status* engine is different and does fail this stream, since these rows derive from
+     *         that read.
      * Input:  none. Output: `Flow<List<CategoryBudgetAlert>>`.
      */
     fun observeAlerts(): Flow<List<CategoryBudgetAlert>>
@@ -192,7 +223,9 @@ interface BudgetRepository {
      *         whole budget read independently, doubling the query cost on the app's landing screen.
      *         No I/O and no clock read happen here — this is the same engine call [observeAlerts]
      *         already makes internally, exposed so a second read is never needed to reach it.
-     * Result: the alert, or `null` when the row is below the warn band or has no budget.
+     * Result: the alert, or `null` when the row is below the warn band, has no budget, **or the
+     *         engine could not decide** (issue 4.7) — a caller meets the degradation directly here,
+     *         with no Flow between them, so there is nowhere else for it to be reported.
      * Input:  [row] — a row already read from [observeBudgets]. Output: `CategoryBudgetAlert?`.
      */
     fun alertFor(row: CategoryBudget): CategoryBudgetAlert?
@@ -202,7 +235,12 @@ interface BudgetRepository {
      * Why:    the worker's input. Separate from [observeAlerts] because the two answer different
      *         questions — "what is true?" and "what is new?" — and only the second may interrupt
      *         someone.
-     * Result: `Ok` with the unnotified alerts, empty when everything current has been sent.
+     * Result: `Ok` with the unnotified alerts, empty when everything current has been sent **or when
+     *         the alert engine failed** (issue 4.7). That second meaning is a deliberate contract
+     *         change: it used to be `Err`, which made `BudgetAlertWorker` retry — daily, forever,
+     *         silently — a failure that is deterministic given the same rows. An empty list lets the
+     *         worker report success and stop burning a wakeup on it. A failure of the *status*
+     *         engine still arrives as `Err`, because that one throws rather than emptying.
      * Input:  none. Output: `Result<List<CategoryBudgetAlert>, AppError>`.
      */
     suspend fun pendingAlerts(): Result<List<CategoryBudgetAlert>, AppError>
@@ -224,9 +262,10 @@ interface BudgetRepository {
 
     /**
      * The last closed month's budget review, for the card on the budgets screen (issue 4.6; §5.5).
-     * Why:    `null` covers two different truths at once, deliberately: nothing was budgeted last
-     *         month, or the review has already been dismissed (`RULE-BUD-REVIEW.review_once_per_month`,
-     *         [dismissReview]'s claim). Unlike [observeAlerts], **this one does deduplicate** — a
+     * Why:    `null` covers three different truths at once, deliberately: nothing was budgeted last
+     *         month, the review has already been dismissed (`RULE-BUD-REVIEW.review_once_per_month`,
+     *         [dismissReview]'s claim), or the engine could not compute one (issue 4.7). All three
+     *         render as no card. Unlike [observeAlerts], **this one does deduplicate** — a
      *         review is a one-time task to act on or dismiss, not an ongoing status like a crossed
      *         band, so the same card returning every time the screen reopens would be exactly the
      *         nagging the rule exists to prevent.
@@ -285,6 +324,8 @@ interface BudgetRepository {
  * Changelog: 2026-08-11 — Created for issue 4.4.
  *            2026-08-15 — Issue 4.6: added the monthly review (`observeReview`,
  *            `acceptReviewProposal`, `dismissReview`).
+ *            2026-08-16 — Issue 4.7: removed the four unchecked `as Ok` engine casts; each site now
+ *            follows the rule in the interface's doc comment above.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 // Eleven of these are [BudgetRepository]'s own operations and the rest assemble engine inputs from
@@ -560,6 +601,33 @@ internal class RoomBudgetRepository(
      *         the UI branches on, not a null status it would have to guard everywhere.
      * Result: the row. Input: [category]; [entity] — the stored budget or `null`; [spent];
      *         [carriedOver]; [month]. Output: [CategoryBudget].
+     * Changelog: 2026-08-11 — Created for issue 4.4.
+     *            2026-08-16 — Issue 4.7: the unchecked `as Ok` became an explicit failure.
+     *
+     * **The one engine call in this class that fails the stream instead of vanishing.**
+     * [BudgetEngine.status] is the only one of the four with no `Ok(null)` in its contract:
+     * `suggest`, `alert` and `review` each document "nothing to say" as a legitimate answer and so
+     * have a lane a failure can land in, and this one does not. All three ways of inventing a lane
+     * are worse than throwing:
+     *
+     * - a zeroed [BudgetStatus] would be a figure the app made up (P-03), and indistinguishable
+     *   from a real budget of nothing;
+     * - dropping the row would delete a category from the screen whose whole job is to list every
+     *   category — and worse, `DashboardUiState.budgetTotals` folds these rows into one headline,
+     *   so a list quietly one category short is a **wrong total**, not a shorter list;
+     * - widening the return to `Flow<Result<…>>` would be the honest shape, but no repository in
+     *   this module carries an error inside a stream, and changing that here would rewrite the
+     *   contract every `.catch {}` consumer is written against. Issue 4.7 records it as the option
+     *   not taken.
+     *
+     * So it throws, and it throws away the **whole list** rather than the row, for the totals reason
+     * above. [BudgetEngineFailure] rather than `error(...)` — which is what
+     * `NetWorthRepository.computeFrom` does for a structurally identical call — because
+     * `runCatchingToResult` **rethrows** `IllegalStateException`, so an `error()` here would escape
+     * [pendingAlerts], [acceptSuggestion] and [acceptReviewProposal] into `viewModelScope` and
+     * `CoroutineWorker` as a crash: precisely the §21.6 hole closed on 2026-08-16, reopened. A plain
+     * `Exception` is caught there and becomes `Err`, and on the Flow paths it reaches the `.catch`
+     * both ViewModels already have.
      */
     private fun categoryBudget(
         category: Category,
@@ -579,11 +647,11 @@ internal class RoomBudgetRepository(
                     daysElapsed = month.daysElapsed,
                     nowUtcMillis = clock.nowUtcMillis(),
                 ),
-            )
+            ).getOrElse { failure -> throw BudgetEngineFailure(failure) }
         return CategoryBudget(
             id = entity?.id,
             category = category,
-            status = (status as Ok).value,
+            status = status,
             rolloverEnabled = entity?.rolloverEnabled ?: false,
             source = entity?.source ?: BudgetRepository.SOURCE_MANUAL,
         )
@@ -600,8 +668,23 @@ internal class RoomBudgetRepository(
      *         **Public** (issue 5.1) — see the interface doc comment for why: a caller that already
      *         holds a row from [observeBudgets] can reach the same answer [observeAlerts] would give
      *         it without opening a second subscription to get there.
-     * Result: the alert, or `null` when this row is below the warn band or has no budget.
+     * Result: the alert, or `null` when this row is below the warn band, has no budget, **or the
+     *         engine failed** (issue 4.7).
      * Input:  [row]. Output: [CategoryBudgetAlert]?.
+     * Changelog: 2026-08-13 — Created for issue 4.5.
+     *            2026-08-16 — Issue 4.7: the unchecked `as Ok` became `getOrNull`.
+     *
+     * **A failed `alert` becomes `null`, like a row below the warn band.** The band is a *highlight
+     * over two numbers this row already carries* — `row.status.budgeted` and `row.status.spent` are
+     * this function's only inputs, and the card renders both either way. Losing the highlight leaves
+     * the figures; it cannot leave the user unaware of what they have spent. Nor can it hide a
+     * broken read: this row came from [observeBudgets], whose own engine call fails the stream
+     * loudly (see `categoryBudget`).
+     *
+     * What it does hide is the difference between "no band crossed" and "could not decide", which is
+     * real and, with no structured logger in this app, unrecorded. That is the stated cost of
+     * following [BudgetEngine.alert]'s own contract, which already documents `Ok(null)` as a
+     * legitimate answer — a failure lands in the lane the engine had already opened.
      */
     override fun alertFor(row: CategoryBudget): CategoryBudgetAlert? {
         val budgetId = row.id ?: return null
@@ -615,7 +698,7 @@ internal class RoomBudgetRepository(
                     nowUtcMillis = clock.nowUtcMillis(),
                 ),
             )
-        return ((alert as Ok).value)?.let { CategoryBudgetAlert(budgetId, row.category, it) }
+        return alert.getOrNull()?.let { CategoryBudgetAlert(budgetId, row.category, it) }
     }
 
     /**
@@ -672,7 +755,13 @@ internal class RoomBudgetRepository(
      *         here too. The per-category monthly-spend history is grouped the same way
      *         [suggestionFor] groups it, because it feeds the same [BudgetEngine.suggest] call by way
      *         of `DefaultBudgetEngine.proposalFor` — one history shape, read twice.
-     * Result: the review, or `null` when no category had a budget (a legitimate state, not an error).
+     * Result: the review, or `null` when no category had a budget (a legitimate state, not an error)
+     *         **or the engine failed** (issue 4.7) — a third meaning for this `null`, on top of the
+     *         two [observeReview] already conflates deliberately. A review the engine could not
+     *         compute renders as no card, which is exactly what a dismissed review and an unbudgeted
+     *         month already render as. [dismissReview] is unaffected: it reads [rawReview] precisely
+     *         so it can tell "already claimed" from "nothing to claim", and a failed engine simply
+     *         joins the second.
      * Input:  [categories]; [budgets] — last month's plans; [actuals] — last month's spend;
      *         [monthlySpend] — the same history window `observeSuggestions` reads (the closed months
      *         up to and **including** the reviewed one), so the proposal is the number a plain
@@ -712,7 +801,7 @@ internal class RoomBudgetRepository(
                     nowUtcMillis = clock.nowUtcMillis(),
                 ),
             )
-        return (review as Ok).value
+        return review.getOrNull()
     }
 
     /**
@@ -761,10 +850,22 @@ internal class RoomBudgetRepository(
      *         must see that as two months of history, which is exactly what it does. Inventing zero
      *         rows for the missing months would drag the median toward zero and suggest a budget
      *         nobody could live on.
-     * Result: the suggestion, or `null` when the engine declines for want of history.
+     * Result: the suggestion, or `null` when the engine declines for want of history **or fails
+     *         outright** (issue 4.7).
      * Input:  [category]; [rows] — this category's months, oldest first; [monthsObserved] — how many
      *         distinct months the *profile* has, which shrinks the seasonal prior.
      * Output: [CategoryBudgetSuggestion]?.
+     * Changelog: 2026-08-11 — Created for issue 4.4.
+     *            2026-08-16 — Issue 4.7: the unchecked `as Ok` became `getOrNull`.
+     *
+     * **A failed `suggest` becomes the same `null` as a declined one, deliberately.**
+     * [BudgetEngine.suggest] already documents `Ok(null)` as a legitimate answer, so this call site
+     * has a lane for "no proposal" and a failure lands in it — the same shape `RecurringRepository`
+     * gives its own detector and `TransactionRepository` gives the nature engine. The cost is stated
+     * rather than hidden: a suggestion the engine could not compute is indistinguishable here from
+     * one it chose not to make, and with no structured logger in this app nothing records which it
+     * was. That is the right trade for an offer nobody asked for — losing the budgets list to it
+     * would not be.
      */
     private fun suggestionFor(
         category: Category,
@@ -783,7 +884,7 @@ internal class RoomBudgetRepository(
                     nowUtcMillis = clock.nowUtcMillis(),
                 ),
             )
-        return ((suggestion as Ok).value)?.let { CategoryBudgetSuggestion(category, it) }
+        return suggestion.getOrNull()?.let { CategoryBudgetSuggestion(category, it) }
     }
 
     /**
@@ -879,3 +980,40 @@ private fun <T> Result<Result<T, AppError>, AppError>.flatten(): Result<T, AppEr
         is Ok -> value
         is Err -> this
     }
+
+/**
+ * The one engine failure this module reports by throwing (issue 4.7).
+ *
+ * Why:  `categoryBudget` computes a [com.aicfo.domain.engines.budget.BudgetStatus] that has nowhere
+ *       to be absent — see its doc comment for why every alternative to throwing is worse. A
+ *       `Flow<List<T>>` has exactly one failure channel and it is the exception channel, which
+ *       `.catch {}` exists to turn back into state; §21.6's rule is about *signatures* that promise
+ *       a `Result` and then also throw, and `observeBudgets(): Flow<List<CategoryBudget>>` promises
+ *       no such thing. This type is what makes that throw a considered one rather than a stray cast.
+ *
+ *       **It extends `Exception`, not `IllegalStateException`, and that is the whole point.**
+ *       `runCatchingToResult` deliberately rethrows `IllegalStateException`/`IllegalArgumentException`
+ *       as programmer errors, so `error(...)` here — the shape `NetWorthRepository.computeFrom` uses
+ *       for a structurally identical call — would sail straight through [BudgetRepository.pendingAlerts],
+ *       [BudgetRepository.acceptSuggestion] and [BudgetRepository.acceptReviewProposal] into
+ *       `viewModelScope` and `CoroutineWorker`. A plain `Exception` is caught there and becomes the
+ *       `Err` those signatures promise.
+ *
+ *       **`internal`, so it cannot become an app-wide hatch.** `:core:common`'s `Result` exists to
+ *       stop exceptions crossing layers; a public "throw an `AppError` instead of returning one"
+ *       type living beside it would be an invitation the next contributor could cite. Scoped here,
+ *       it is one module's answer to one non-nullable engine call.
+ * What: a carrier for the engine's own [AppError], thrown from a `Flow` transform.
+ * Result: both ViewModels' existing `.catch { failure.toAppError().code }` report an error rather
+ *       than the app dying, and the suspend readers get `Err` — with a class name that points at
+ *       the budget engine instead of at a bad cast.
+ * Changelog: 2026-08-16 — Created for issue 4.7.
+ *
+ * **[appError] is carried although nothing reads it yet.** There is no structured logger in this
+ * app and `audit_log` is closed to non-security events, so today it is only visible in a stack
+ * trace and in this module's tests. Keeping it typed means the day a logger exists, promoting this
+ * to `:core:common` with a `Throwable.toAppError()` branch is one commit made for a reason that
+ * exists — rather than a shape invented ahead of its use. It is safe to carry and safe to name:
+ * `AppError` holds a code and a fixed message, never PII or an amount (P-01, §21.6).
+ */
+internal class BudgetEngineFailure(val appError: AppError) : Exception()

@@ -11,6 +11,40 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The user's daily surfaces: the home dashboard, Safe-to-Spend, privacy blur, local JSON
 > export/import, and the home-screen widget.
 
+### [0.5.1] — The budget engine is allowed to fail  (2026-08-16)
+
+- **Implemented:** issue 4.7 — removed the four unchecked `(x as Ok).value` engine casts in
+  `RoomBudgetRepository` (**FR-BUD-003/004**, §21.6). Every `BudgetEngine` method is
+  `runCatchingToResult`, so every one can return `Err`; each cast turned that into a
+  `ClassCastException` thrown from inside a `combine` transform — precisely what the `Result` return
+  type exists to prevent. Found by the 2026-08-16 review of issue 5.1, filed rather than fixed in
+  passing because the pattern was established by 4.4 and copied by 4.5 and 4.6.
+- **One rule, inherited from the engine's own interface rather than invented.** `suggest`, `alert`
+  and `review` each document `Ok(null)` as a legitimate answer and `status` does not, because there
+  is no such thing as "no status". So a failure collapses into that same absence at the first three —
+  no offer, no band, no card, with the figures beside them untouched — and terminates the stream at
+  the fourth, carrying the engine's own `AppError` to the `.catch {}` both ViewModels already have.
+  A first framing ("advisory vs load-bearing") produced the same four edits but was a judgement a
+  reviewer could not check; this one is findable in `BudgetEngine.kt`.
+- **`BudgetEngineFailure` is `internal` and extends plain `Exception`, and both halves matter.**
+  `runCatchingToResult` rethrows `IllegalStateException`, so `error(...)` — which is what
+  `NetWorthRepository.computeFrom` does for a structurally identical call — would have escaped
+  `pendingAlerts`, `acceptSuggestion` and `acceptReviewProposal` into `viewModelScope` and
+  `CoroutineWorker`, reopening the §21.6 hole closed the day before. `internal` keeps it from
+  becoming an app-wide "throw an `AppError` instead of returning one" hatch beside the `Result` type
+  that exists to prevent one.
+- **A silent forever-retry is fixed as a side effect, and it is a contract change.**
+  `pendingAlerts()` used to return `Err` when the alert engine failed, which `BudgetAlertWorker` maps
+  to `Result.retry()` — so it retried a deterministic failure daily for the rest of the month,
+  notifying nothing. It now returns an empty list and the worker reports success.
+- **The tests were proven to catch the bug, not merely to pass beside it**: all four casts were
+  reverted and the new `BudgetEngineFailureTest` went 8 of 9 red, each with a real
+  `ClassCastException` at the reverted site.
+- **The issue's own acceptance criteria were rewritten, not stretched.** As first written they were
+  unsatisfiable — AC1 demanded the sites propagate the error "instead of throwing" when three have
+  nowhere to propagate it to and the fourth has nothing to do but throw. The Description's claim that
+  an engine `require` can produce `Err` was also wrong, and is corrected in place.
+
 ### [0.5.0] — The landing screen stops being four placeholders and a promise  (2026-08-15)
 
 - **Implemented:** issue 5.1 — home dashboard v1 (**FR-DASH-\***, §5.2, P-02/P-03/P-04). The

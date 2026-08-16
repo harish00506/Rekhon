@@ -162,6 +162,9 @@ DashboardViewModel.observeBudgetStatus()                 ONE collector, not two
 └─ BudgetRepository.observeBudgets()                     the combine() above, subscribed once
     └─ rows.mapNotNull(budgetRepository::alertFor)       synchronous, same engine.alert call
         └─ _uiState.update { copy(budgets, budgetAlerts) }   both figures, one emission, one catch
+                                                             (4.7: an undecidable band is simply
+                                                              absent here; only a failed *status*
+                                                              reaches that catch)
 ```
 
 `observeAlerts()` is literally `observeBudgets().map { mapNotNull(::alertFor) }`, so calling it
@@ -246,6 +249,27 @@ repository (owns the Clock, the DAO and the profile)
                     └─ provenance.evidence = [ RuleCitation("RULE-BUD-ALERT", "1.0") ]
                         └─ init { require(evidence.isNotEmpty()) }   ← P-02, enforced in the type
 ```
+
+**What happens when an engine returns `Err`** (issue 4.7). Every `BudgetEngine` method is
+`runCatchingToResult`, so every one can. `RoomBudgetRepository` follows the line the engine's own
+interface already draws — three of the four document `Ok(null)` as a legitimate answer, and `status`
+does not:
+
+```
+engine.suggest / .alert / .review  → Err ──→ getOrNull() ──→ null
+                                                             └─ no offer / no band / no card;
+                                                                the figures beside them survive
+engine.status                      → Err ──→ throw BudgetEngineFailure(appError)
+                                              ├─ on a Flow path  → consumer's .catch{} → error banner
+                                              └─ inside a suspend read (pendingAlerts,
+                                                 acceptSuggestion, acceptReviewProposal)
+                                                 → runCatchingToResult catches → Err   ← §21.6 holds
+```
+
+`BudgetEngineFailure` extends plain `Exception`, **not** `IllegalStateException`, precisely so the
+second arm works: `runCatchingToResult` rethrows `ISE`/`IAE` as programmer errors, so `error(...)`
+there — the shape `NetWorthRepository.computeFrom` uses — would escape into `viewModelScope` and
+`CoroutineWorker` as a crash.
 
 **Thresholds come from data, not code.** `BudgetRules` is a typed mirror of the row in
 `ai/rules/rules-kb.json`; `RulebookDriftTest` reads the real JSON and fails the build when the two
