@@ -425,6 +425,37 @@ class NatureRepositoryTest {
         }
 
     /**
+     * Input:  ₹4,500 spent today and ₹18,000 scheduled for later this month.
+     * Output: only today's spend. The scheduled row is inside the calendar month and must still be
+     *         excluded.
+     *
+     * Why:    FR-TXN-010 — future-dated rows are "excluded from actuals but included in forecasts",
+     *         and this feeds a card captioned "This month, **actually**". Until issue 5.2 the window
+     *         ran to the month's last day, so a rent payment scheduled for the 28th was reported on
+     *         the 15th as money already spent. It also made Safe-to-Spend deduct that payment twice —
+     *         once here and once as its own scheduled-payments term — which is what turned a
+     *         cosmetic wrongness into a wrong headline figure.
+     * Changelog: 2026-08-16 — Created for issue 5.2, with the bound it asserts.
+     */
+    @Test
+    fun `a payment scheduled for later this month is not yet actual spend`() =
+        runTest {
+            val bank = newAccount(AccountType.BANK)
+            expense(bank.id, Money(-4_500_00L), categoryId = idOf("Groceries"))
+            repository.create(
+                TransactionDraft(
+                    accountId = bank.id,
+                    amount = Money(-18_000_00L),
+                    categoryId = idOf("Rent"),
+                    // Inside this month, after the clock's day — the case the old bound let through.
+                    bookedOn = clock.today().withDayOfMonth(clock.today().lengthOfMonth()),
+                ),
+            ).expectOk()
+
+            assertEquals(Money(4_500_00L), repository.observeNatureBreakdown().first().trueSpend)
+        }
+
+    /**
      * Input:  the same spend under the demo profile, read from the real one.
      * Output: nothing. Exploring the sample data must not move the user's own figures (ADR-0006),
      *         and profile scoping is a clause that is easy to omit and impossible to notice.
