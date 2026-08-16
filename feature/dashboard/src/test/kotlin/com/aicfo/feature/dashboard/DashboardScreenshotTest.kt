@@ -21,6 +21,9 @@ import com.aicfo.data.repository.FilteredTransaction
 import com.aicfo.domain.engines.budget.BudgetAlert
 import com.aicfo.domain.engines.budget.BudgetAlertBand
 import com.aicfo.domain.engines.budget.BudgetStatus
+import com.aicfo.domain.engines.safetospend.SafeToSpend
+import com.aicfo.domain.engines.safetospend.SafeToSpendComponent
+import com.aicfo.domain.engines.safetospend.SafeToSpendLine
 import org.junit.Rule
 import org.junit.Test
 
@@ -116,7 +119,7 @@ class DashboardScreenshotTest {
     private fun loadedState(): DashboardUiState =
         DashboardUiState(
             isLoading = false,
-            safeToSpend = Money(12_500_00L),
+            safeToSpend = safeToSpendFigure(),
             netWorth = Money(2_92_000_00L),
             spendSplit = SpendSplit(needsMinor = 42_500_00L, wantsMinor = 25_500_00L, savingsMinor = 17_000_00L),
             cashFlow =
@@ -124,6 +127,39 @@ class DashboardScreenshotTest {
             budgets = listOf(budgetRow()),
             budgetAlerts = listOf(alertRow()),
             recentActivity = listOf(transactionRow()),
+        )
+
+    /**
+     * Result: a Safe-to-Spend figure with a full six-line breakdown (issue 5.2).
+     *
+     * Why:    **every** deduction is present, unlike the ordinary month a user would see. The
+     *         breakdown is the part of this card that can regress silently — a label that clips at
+     *         200% font or a row that loses its contrast in dark mode is invisible to a unit test —
+     *         and a fixture with two lines would only ever prove that two lines fit. The lines sum
+     *         to the headline because `SafeToSpend`'s constructor requires it: a fixture that did
+     *         not add up could not be built at all.
+     */
+    private fun safeToSpendFigure(): SafeToSpend =
+        SafeToSpend(
+            // 80 000 − 4 000 − 12 400 − 18 000 − 2 000 − 9 000 = 34 600
+            amount = Money(34_600_00L),
+            lines =
+                listOf(
+                    SafeToSpendLine(SafeToSpendComponent.INCOME, Money(80_000_00L)),
+                    SafeToSpendLine(SafeToSpendComponent.BUFFER, Money(4_000_00L)),
+                    SafeToSpendLine(SafeToSpendComponent.SPENT, Money(12_400_00L)),
+                    SafeToSpendLine(SafeToSpendComponent.SCHEDULED, Money(18_000_00L)),
+                    SafeToSpendLine(SafeToSpendComponent.RECURRING, Money(2_000_00L)),
+                    SafeToSpendLine(SafeToSpendComponent.GOALS, Money(9_000_00L)),
+                ),
+            provenance =
+                EngineProvenance(
+                    engineId = "safe-to-spend",
+                    engineVersion = "1.0",
+                    computedAtUtcMillis = 1_786_000_000_000L,
+                    evidence = listOf(RuleCitation("RULE-STS", "1.0")),
+                    inputWindow = "2026-08-01..2026-08-31",
+                ),
         )
 
     private fun budgetRow(): CategoryBudget =

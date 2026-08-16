@@ -7,6 +7,7 @@ import com.aicfo.data.repository.CategoryBudget
 import com.aicfo.data.repository.CategoryBudgetAlert
 import com.aicfo.data.repository.FilteredTransaction
 import com.aicfo.domain.engines.nature.NatureBreakdown
+import com.aicfo.domain.engines.safetospend.SafeToSpend
 
 /**
  * Everything the dashboard renders, as one value (ARC-004).
@@ -20,24 +21,39 @@ import com.aicfo.domain.engines.nature.NatureBreakdown
  * Result: the reference shape every other screen in this app copies.
  * Changelog: 2026-07-25 — Created for issue 1.10 as the ARC-004 reference implementation.
  *
- * **What is real and what is not, as of issue 2.6.** [spendSplit] comes from the budget envelopes
- * quick setup persisted (FR-ONB-002), and [netWorth] from the daily snapshot (FR-ACC-005) — both
- * derived by engines from the user's own data. [safeToSpend] is **the last placeholder**: it needs
- * the engine issue 5.2 owns, and no amount of wiring here can conjure it. Amounts are [Money]
- * (`Long` paise, MNY-001) either way, because a screen that starts out rendering a `Double` teaches
- * the wrong pattern to everything that copies it.
+ * **Every figure here is now engine-derived (issue 5.2).** [spendSplit] comes from the budget
+ * envelopes quick setup persisted (FR-ONB-002), [netWorth] from the daily snapshot (FR-ACC-005), and
+ * [safeToSpend] — the last literal on this screen, a hardcoded ₹12,500 from issue 1.10 until now —
+ * from `SafeToSpendEngine` (§5.2, AI-STS). Amounts are [Money] (`Long` paise, MNY-001) throughout,
+ * because a screen that renders a `Double` teaches the wrong pattern to everything that copies it.
  *
- * Input:  [isLoading], [safeToSpend], [netWorth]; [spendSplit] — **`null` when the user skipped
- *         quick setup**, which the screen renders as an empty state. Deliberately not a zeroed
- *         `SpendSplit`: a bar of three zeroes is indistinguishable from a real budget of nothing,
- *         and showing one to a user who has no budget is a number the app made up (P-03).
+ * Input:  [isLoading]; [safeToSpend] — **`null` until the first emission, and for a profile with no
+ *         income basis at all** (see `SafeToSpendRepository.observeSafeToSpend`), which the screen
+ *         renders as an absence rather than ₹0; [netWorth]; [spendSplit] — **`null` when the user
+ *         skipped quick setup**, which the screen renders as an empty state. Deliberately not a
+ *         zeroed `SpendSplit`: a bar of three zeroes is indistinguishable from a real budget of
+ *         nothing, and showing one to a user who has no budget is a number the app made up (P-03).
  *         [errorCode].
  * Output: an immutable snapshot for the composable.
  */
 @Immutable
 data class DashboardUiState(
     val isLoading: Boolean = true,
-    val safeToSpend: Money = Money.ZERO,
+    /**
+     * What is still safe to spend this month, with the breakdown that explains it (issue 5.2;
+     * §5.2, AI-STS).
+     *
+     * Carried whole rather than as a bare [Money], because §5.2's acceptance criterion is that the
+     * card shows "the breakdown/rule that produced it; never a black-box number" — and the only way
+     * the lines can be guaranteed to add up to the headline is for both to arrive from the engine
+     * together. A state holding only the amount would force the screen to re-derive the terms, and
+     * the two could then disagree.
+     *
+     * `null` before the first emission **and** for a profile with no income basis, which are
+     * rendered identically and deliberately: neither is a ₹0 anyone told this app about (P-03), the
+     * same rule [netWorth] follows.
+     */
+    val safeToSpend: SafeToSpend? = null,
     /**
      * The latest stored snapshot's net worth, or **`null` before the first one is taken** (2.6).
      *

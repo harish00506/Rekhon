@@ -2,7 +2,6 @@ package com.aicfo.feature.dashboard
 
 import app.cash.turbine.test
 import com.aicfo.core.common.AppError
-import com.aicfo.core.common.FakeClock
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.Transaction
 import com.aicfo.core.model.TransactionSource
@@ -32,19 +31,23 @@ import org.junit.Test
  *       state at all, is a real defect that a "check the end result" test cannot see. Turbine makes
  *       the sequence itself the thing under test. Since every screen in this app will copy this
  *       ViewModel's shape, its tests are the template too.
- * What: the emitted sequence on load, event handling, and that time comes from the injected clock.
+ * What: the emitted sequence on load, event handling, and every figure's absent/present/failed case.
  * Result: the pattern Epic 2+ follows.
  * Changelog: 2026-07-25 — Created for issue 1.10.
+ *            2026-08-16 — Issue 5.2: Safe-to-Spend became a real figure, so the injected-clock test
+ *            went with the placeholder that motivated it. The ViewModel no longer takes a `Clock`:
+ *            every window is now resolved inside the repository that owns the query (TIM-001), which
+ *            is where `CfoWallClockInDomain` expects to find it.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class DashboardViewModelTest {
-    private val clock = FakeClock()
     private val budget = FakeQuickSetupRepository()
     private val netWorth = FakeNetWorthRepository()
     private val transactions = FakeTransactionRepository()
     private val budgets = FakeBudgetRepository()
+    private val safeToSpend = FakeSafeToSpendRepository()
 
-    private fun viewModel() = DashboardViewModel(clock, budget, netWorth, transactions, budgets)
+    private fun viewModel() = DashboardViewModel(budget, netWorth, transactions, budgets, safeToSpend)
 
     /** `viewModelScope` runs on `Dispatchers.Main`, which has no factory on a plain JVM. */
     @Before
@@ -59,21 +62,30 @@ class DashboardViewModelTest {
     }
 
     /**
-     * Input:  a freshly constructed ViewModel.
-     * Output: asserts the state settles with `isLoading = false` and real figures. The loading
-     *         state is emitted first; with an unconfined dispatcher the load completes before the
-     *         test can observe it, which is asserted separately below.
+     * Input:  a freshly constructed ViewModel, then the headline figure arriving.
+     * Output: asserts the screen opens immediately and the figure fills in behind it.
+     *
+     * Why:    the screen is **not** gated on the Safe-to-Spend stream, and that is deliberate — see
+     *         `DashboardViewModel.load()`. Every section renders its own absence, so holding the
+     *         whole screen (including its navigation buttons) until five Room flows have emitted
+     *         buys nothing and hides everything.
      */
     @Test
-    fun `settles into a loaded state`() =
+    fun `settles into a loaded state and fills the figure in behind it`() =
         runTest {
-            viewModel().uiState.test {
-                val state = awaitItem()
-                assertFalse("loading must finish", state.isLoading)
-                assertTrue("safe-to-spend must be populated", state.safeToSpend.minor > 0L)
+            val viewModel = viewModel()
+            viewModel.uiState.test {
+                val opened = awaitItem()
+                assertFalse("the screen must not wait on any one stream", opened.isLoading)
+                assertNull("no figure has arrived yet, and that is not an error", opened.safeToSpend)
+
+                safeToSpend.emit(amountMinor = 34_600_00L)
+
+                val loaded = awaitItem()
+                assertEquals(Money(34_600_00L), loaded.safeToSpend?.amount)
                 // Net worth is absent until a snapshot exists — see the two tests for it below.
-                assertNull("no snapshot has been taken yet", state.netWorth)
-                assertNull(state.errorCode)
+                assertNull("no snapshot has been taken yet", loaded.netWorth)
+                assertNull(loaded.errorCode)
                 cancelAndIgnoreRemainingEvents()
             }
         }
@@ -89,22 +101,25 @@ class DashboardViewModelTest {
     }
 
     /**
-     * Input:  a `Refresh` event.
-     * Output: asserts the state is recomputed and stays consistent — the event path works end to
-     *         end rather than the ViewModel merely compiling.
+     * Input:  a stale error, then a `Refresh` event.
+     * Output: asserts the error clears and the figures already on screen stay.
+     *
+     * Why:    the collectors are live, so `Refresh` has nothing to re-fetch — what it genuinely does
+     *         is dismiss a stale banner. A refresh that blanked the figures it already had would be
+     *         a worse screen than one with a stale banner on it.
      */
     @Test
-    fun `refresh recomputes the state`() =
+    fun `refresh clears a stale error without hiding the figures already on screen`() =
         runTest {
             val viewModel = viewModel()
-            viewModel.uiState.test {
-                val before = awaitItem()
-                viewModel.onEvent(DashboardEvent.Refresh)
-                // Unconfined: the reload completes synchronously, so the settled state is current.
-                assertFalse(viewModel.uiState.value.isLoading)
-                assertEquals(before.netWorth, viewModel.uiState.value.netWorth)
-                cancelAndIgnoreRemainingEvents()
-            }
+            safeToSpend.emit(amountMinor = 34_600_00L)
+            budgets.failOnBudgets = AppError.Storage("disk")
+
+            viewModel.onEvent(DashboardEvent.Refresh)
+
+            assertNull(viewModel.uiState.value.errorCode)
+            assertFalse("refresh must not hide a figure the screen already has", viewModel.uiState.value.isLoading)
+            assertEquals(Money(34_600_00L), viewModel.uiState.value.safeToSpend?.amount)
         }
 
     /**
@@ -120,28 +135,89 @@ class DashboardViewModelTest {
             assertNull(viewModel.uiState.value.errorCode)
         }
 
+    // --- Safe-to-Spend (issue 5.2; §5.2, §14, AI-STS) --------------------------------------------
+
     /**
-     * Input:  a `FakeClock` fixed to a known date.
-     * Output: asserts the state depends on the **injected** clock, not the wall clock (TIM-001).
-     *         The remaining placeholder — Safe-to-Spend — varies with the day of the month, so a
-     *         fixed clock gives a fixed result, which is what P-08 determinism means in practice.
+     * The assertion this issue exists for.
+     * Input:  a figure from the repository.
+     * Output: asserts it reaches the state **with its breakdown**.
      *
-     * Changelog: 2026-07-27 — Issue 2.3 moved the day-of-month wobble from the spending split
-     * (now real, and read from the budget) onto Safe-to-Spend, which is still a placeholder.
+     * Why:    until issue 5.2 this ViewModel minted the number itself —
+     *         `Money(12_500_00L + today.dayOfMonth)`, a literal that had been on the app's home
+     *         screen since 1.10 in plain breach of P-03. The breakdown is asserted alongside the
+     *         amount because §5.2 requires the card to show what produced the figure; a state
+     *         carrying the headline alone would satisfy every amount assertion and fail the
+     *         requirement.
      */
     @Test
-    fun `reads time from the injected clock`() =
+    fun `the engine's figure and its breakdown reach the state`() =
         runTest {
-            val first = viewModel().uiState.value.safeToSpend.minor
+            val viewModel = viewModel()
 
-            clock.setTo(java.time.Instant.parse("2026-03-17T00:00:00Z").toEpochMilli())
-            val second = viewModel().uiState.value.safeToSpend.minor
+            safeToSpend.emit(amountMinor = 34_600_00L, spentMinor = 12_400_00L)
 
-            assertEquals(
-                "the day-of-month contribution must come from the fake clock",
-                second - first,
-                (clock.today().dayOfMonth - 1).toLong(),
-            )
+            val figure = viewModel.uiState.value.safeToSpend
+            assertEquals(Money(34_600_00L), figure?.amount)
+            assertEquals("RULE-STS", figure?.provenance?.evidence?.first()?.ruleId)
+            assertTrue("the breakdown must reach the screen (P-02)", (figure?.lines?.size ?: 0) > 1)
+        }
+
+    /**
+     * Input:  a profile with no income basis — the repository emits `null`.
+     * Output: asserts the state carries the **absence**, not a zero.
+     *
+     * Why:    the same rule net worth follows, and the reason the state holds a nullable rather than
+     *         a defaulted `Money.ZERO`: a confident ₹0 is indistinguishable from a real month with
+     *         nothing left, and the app was told nothing to compute from (P-03).
+     */
+    @Test
+    fun `no income basis is an absence, not a zero`() =
+        runTest {
+            val viewModel = viewModel()
+
+            safeToSpend.emitNoBasis()
+
+            assertNull(viewModel.uiState.value.safeToSpend)
+            assertNull("the absence is not an error", viewModel.uiState.value.errorCode)
+        }
+
+    /**
+     * Input:  a figure, then a lower one — an expense added while the screen is open.
+     * Output: asserts the card follows.
+     *
+     * Why:    a one-off read would leave the app's headline figure stale until the user navigated
+     *         away and back, which is exactly what happened to net worth in issue 2.6 and was only
+     *         caught by running it on a device.
+     */
+    @Test
+    fun `the figure follows the ledger while the screen is open`() =
+        runTest {
+            val viewModel = viewModel()
+            safeToSpend.emit(amountMinor = 34_600_00L)
+
+            safeToSpend.emit(amountMinor = 31_600_00L)
+
+            assertEquals(Money(31_600_00L), viewModel.uiState.value.safeToSpend?.amount)
+        }
+
+    /**
+     * Input:  a repository whose Safe-to-Spend read fails.
+     * Output: asserts an error banner.
+     *
+     * Why:    this is the screen's headline figure, so unlike the cash-flow and recent-activity
+     *         sections a failure is surfaced rather than silently blanked — a user must not be shown
+     *         an empty space where the most important number on the app used to be. It follows
+     *         [observeNetWorth]'s rule, not [observeCashFlow]'s.
+     */
+    @Test
+    fun `a failed Safe-to-Spend read surfaces an error`() =
+        runTest {
+            val viewModel = viewModel()
+
+            safeToSpend.fail()
+
+            assertTrue("the headline figure failing must be visible", viewModel.uiState.value.errorCode != null)
+            assertNull("a failed read must not leave a stale figure on screen", viewModel.uiState.value.safeToSpend)
         }
 
     // --- issue 2.3: the spending split is the persisted budget (FR-ONB-002) ---------------------
