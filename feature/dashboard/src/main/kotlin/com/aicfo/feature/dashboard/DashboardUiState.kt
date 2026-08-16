@@ -111,6 +111,15 @@ data class DashboardUiState(
      */
     val recentActivity: List<FilteredTransaction>? = null,
     /**
+     * Where the export/import feature is right now (issue 5.4; §5.10).
+     *
+     * One field rather than four booleans, because the states are mutually exclusive and a screen
+     * showing a confirmation dialog *and* a success message at once would be a bug the type system
+     * should refuse. Absent by default — this is a thing the user does occasionally, not a
+     * permanent section of the dashboard.
+     */
+    val archive: ArchiveUiState = ArchiveUiState.Idle,
+    /**
      * An `AppError.code` when something failed, else `null`.
      * The **code**, not a message: the wording belongs in this feature's `strings.xml` (§21.6), so
      * the state stays free of user-visible copy and the screen can localise it.
@@ -139,6 +148,54 @@ data class DashboardUiState(
                 spent = planned.fold(Money.ZERO) { running, row -> running + row.status.spent },
             )
         }
+}
+
+/**
+ * Where the export/import archive feature is (issue 5.4; §5.10, §34).
+ *
+ * Why:  a sealed hierarchy rather than flags, because the interesting state — "an archive is
+ *       waiting to be applied and will destroy what is on this device" — carries data and must not
+ *       coexist with any other. [PendingImport] holding the JSON is what makes the confirmation
+ *       real: the file has been read and parsed nowhere yet, so backing out costs nothing and
+ *       confirming needs no second trip to the picker.
+ * Result: what the dashboard renders below the actions.
+ * Changelog: 2026-08-16 — Created for issue 5.4.
+ */
+@Immutable
+sealed interface ArchiveUiState {
+    /** Nothing to say — the ordinary state. */
+    data object Idle : ArchiveUiState
+
+    /** An export or import is in flight. Both can take a moment on a large ledger. */
+    data object Working : ArchiveUiState
+
+    /**
+     * The archive is ready and the screen must write it to the picked destination.
+     *
+     * Why: the ViewModel cannot write a file — that needs a `Uri` and a `ContentResolver`, which are
+     *      Android types the screen owns (ARC-004). So the text comes back up as state and the
+     *      screen does the writing, mirroring how `ReceiptCapture` hands bytes *down*.
+     */
+    data class ReadyToWrite(val json: String) : ArchiveUiState
+
+    /**
+     * A file has been picked and **nothing has been changed yet**.
+     * The screen shows the confirmation; only `ImportConfirmed` applies it.
+     */
+    data class PendingImport(val json: String) : ArchiveUiState
+
+    /** The export was written to the file the user named. */
+    data object Exported : ArchiveUiState
+
+    /** The import finished. [rows] and [exportedAtUtcMillis] say *what* was restored. */
+    data class Imported(val rows: Int, val exportedAtUtcMillis: Long) : ArchiveUiState
+
+    /**
+     * The archive was refused, or a read or write failed.
+     * [code] is an `AppError.code` or one of `ArchiveRepository`'s field codes — never a message,
+     * because the wording belongs in `strings.xml` (§21.6).
+     */
+    data class Failed(val code: String) : ArchiveUiState
 }
 
 /**
@@ -185,4 +242,37 @@ sealed interface DashboardEvent {
 
     /** The user dismissed the error banner. */
     data object DismissError : DashboardEvent
+
+    /**
+     * The user picked where to write their archive (issue 5.4; §5.10).
+     *
+     * The screen has already resolved the system file picker's `Uri`; this carries only the fact
+     * that a destination exists, and the ViewModel answers with the text to write. A `Uri` would be
+     * an Android type in a ViewModel event, and its grant does not survive process death — the
+     * argument `ReceiptCapture.readBytes` already records for photos.
+     */
+    data object ExportRequested : DashboardEvent
+
+    /**
+     * The user picked an archive to restore (issue 5.4).
+     * [json] — the file's text, read by the screen. **Not applied yet**: this opens the confirmation,
+     * because the import replaces everything on the device.
+     */
+    data class ImportPicked(val json: String) : DashboardEvent
+
+    /** The user confirmed the replace, having been told what it does. */
+    data object ImportConfirmed : DashboardEvent
+
+    /** The user backed out of the import. */
+    data object ImportCancelled : DashboardEvent
+
+    /**
+     * The screen finished writing the archive to the destination the user picked.
+     * [written] — false when the write failed or the user backed out of the picker. The screen
+     * reports this because it, not the ViewModel, owns the `Uri` and the `ContentResolver`.
+     */
+    data class ExportWritten(val written: Boolean) : DashboardEvent
+
+    /** The user dismissed the "exported"/"imported" confirmation. */
+    data object ArchiveMessageDismissed : DashboardEvent
 }

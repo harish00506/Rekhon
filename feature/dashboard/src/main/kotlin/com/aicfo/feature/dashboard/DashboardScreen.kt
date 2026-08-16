@@ -59,12 +59,17 @@ fun DashboardScreen(
     // collectAsStateWithLifecycle, not collectAsState: the screen must stop collecting when it is
     // not visible, or a backgrounded app keeps doing work the user cannot see.
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    DashboardContent(
-        uiState = uiState,
-        onEvent = viewModel::onEvent,
-        actions = actions,
-        modifier = modifier,
-    )
+    // Issue 5.4: the file pickers need an Activity, so they are owned here — in the stateful half
+    // — and the body below receives one plain lambda. See ArchiveHost for what a test found.
+    ArchiveHost(state = uiState.archive, onEvent = viewModel::onEvent) { onPickArchive ->
+        DashboardContent(
+            uiState = uiState,
+            onEvent = viewModel::onEvent,
+            actions = actions,
+            modifier = modifier,
+            onPickArchive = onPickArchive,
+        )
+    }
 }
 
 /**
@@ -84,6 +89,9 @@ fun DashboardContent(
     onEvent: (DashboardEvent) -> Unit,
     actions: DashboardActions,
     modifier: Modifier = Modifier,
+    // Defaulted so a preview or a screenshot test can render the whole screen without an Activity,
+    // which is a property this composable is documented to have (issue 5.4).
+    onPickArchive: () -> Unit = {},
 ) {
     Column(
         // Issue 5.1: the reference implementation (1.10) never scrolled — it had four rows. This
@@ -130,6 +138,9 @@ fun DashboardContent(
             text = stringResource(R.string.dashboard_transactions_action),
             onClick = actions.onNavigateToTransactions,
         )
+        // Issue 5.4: §5.10's portability, below the navigation actions — a thing the user does
+        // occasionally, not a destination. Owns the file pickers, so the Uris stay in one file.
+        ArchiveSection(state = uiState.archive, onEvent = onEvent, onPickArchive = onPickArchive)
         CfoSecondaryButton(
             text = stringResource(R.string.dashboard_refresh_action),
             onClick = { onEvent(DashboardEvent.Refresh) },

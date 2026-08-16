@@ -2,7 +2,10 @@ package com.aicfo.feature.dashboard
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.aicfo.core.common.AppError
+import com.aicfo.core.common.fold
 import com.aicfo.core.common.toAppError
+import com.aicfo.data.repository.ArchiveRepository
 import com.aicfo.data.repository.BudgetRepository
 import com.aicfo.data.repository.NetWorthRepository
 import com.aicfo.data.repository.QuickSetupRepository
@@ -18,6 +21,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
@@ -55,6 +59,10 @@ import javax.inject.Inject
  * belonged.
  */
 @HiltViewModel
+// One private collector per figure the dashboard shows, plus issue 5.4's two archive actions. The
+// count is the number of things on the screen, not a design choice — splitting it would mean two
+// ViewModels for one screen and two StateFlows for one UiState, which ARC-004 exists to prevent.
+@Suppress("TooManyFunctions")
 class DashboardViewModel
     @Inject
     constructor(
@@ -63,6 +71,7 @@ class DashboardViewModel
         private val transactionRepository: TransactionRepository,
         private val budgetRepository: BudgetRepository,
         private val safeToSpendRepository: SafeToSpendRepository,
+        private val archiveRepository: ArchiveRepository,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(DashboardUiState())
 
@@ -257,7 +266,75 @@ class DashboardViewModel
             when (event) {
                 DashboardEvent.Refresh -> load()
                 DashboardEvent.DismissError -> _uiState.update { it.copy(errorCode = null) }
+                DashboardEvent.ExportRequested -> export()
+                // Deliberately does NOT import — it only opens the confirmation. The file has been
+                // read and nothing has been touched, so backing out here costs the user nothing.
+                is DashboardEvent.ImportPicked -> setArchive(ArchiveUiState.PendingImport(event.json))
+                DashboardEvent.ImportConfirmed -> confirmImport()
+                DashboardEvent.ImportCancelled -> setArchive(ArchiveUiState.Idle)
+                // The write happened in the screen, which owns the Uri; this only records how it
+                // went, so the user is told rather than left looking at a picker that closed.
+                is DashboardEvent.ExportWritten ->
+                    setArchive(
+                        if (event.written) ArchiveUiState.Exported else ArchiveUiState.Failed(EXPORT_WRITE_FAILED),
+                    )
+                DashboardEvent.ArchiveMessageDismissed -> setArchive(ArchiveUiState.Idle)
             }
+        }
+
+        /**
+         * Serialises the profile so the screen can write it (issue 5.4; §5.10).
+         *
+         * Why:    the text comes back as **state** rather than being written here, because writing
+         *         needs the `Uri` the system picker returned and a `ContentResolver` — Android types
+         *         a ViewModel must not hold (ARC-004). The screen owns the file; this owns the data.
+         * Result: [ArchiveUiState.ReadyToWrite] with the JSON, or [ArchiveUiState.Failed].
+         * Input:  none. Output: none (launches on `viewModelScope`).
+         * Changelog: 2026-08-16 — Created for issue 5.4.
+         */
+        private fun export() {
+            setArchive(ArchiveUiState.Working)
+            viewModelScope.launch {
+                setArchive(
+                    archiveRepository.export().fold(
+                        onOk = { ArchiveUiState.ReadyToWrite(it) },
+                        onErr = { ArchiveUiState.Failed(it.archiveCode()) },
+                    ),
+                )
+            }
+        }
+
+        /**
+         * Applies the archive the user confirmed (issue 5.4).
+         *
+         * Why:    reached only from [DashboardEvent.ImportConfirmed], never from picking a file —
+         *         this replaces every row on the device, and a one-tap path to that would be
+         *         indefensible however clearly the button was labelled.
+         * Result: [ArchiveUiState.Imported] with what was restored, or [ArchiveUiState.Failed]. The
+         *         dashboard's own figures need no refresh: every section observes the database, so
+         *         they re-emit as the import commits.
+         * Input:  none — the pending archive. Output: none (launches on `viewModelScope`).
+         * Changelog: 2026-08-16 — Created for issue 5.4.
+         */
+        private fun confirmImport() {
+            val pending = _uiState.value.archive as? ArchiveUiState.PendingImport ?: return
+            setArchive(ArchiveUiState.Working)
+            viewModelScope.launch {
+                setArchive(
+                    archiveRepository.import(pending.json).fold(
+                        onOk = { ArchiveUiState.Imported(it.rowsImported, it.exportedAtUtcMillis) },
+                        onErr = { ArchiveUiState.Failed(it.archiveCode()) },
+                    ),
+                )
+            }
+        }
+
+        /**
+         * Result: [uiState] carries [state]. Input: [state]. Output: none.
+         * Why: one writer, so no path can leave two archive states visible at once.
+         */
+        private fun setArchive(state: ArchiveUiState) {
+            _uiState.update { it.copy(archive = state) }
         }
 
         /**
@@ -285,7 +362,29 @@ class DashboardViewModel
             _uiState.update { it.copy(isLoading = false, errorCode = null) }
         }
 
+        /**
+         * The code the screen looks a message up by (issue 5.4).
+         *
+         * Why:    `AppError.Validation`'s own `code` is the constant `"validation"`, the same for
+         *         every rejected field in the app — so mapping it straight through meant the two
+         *         archive-specific messages ("that isn't a backup", "that backup is from another
+         *         version") could never be reached, and every refusal showed the generic line.
+         *         **Found by running it, not by a test**: the test asserted only that a failure
+         *         surfaced, which it did, wearing the wrong words.
+         * Result: the field for a validation failure, the error's code otherwise.
+         * Input:  the receiver. Output: [String].
+         * Changelog: 2026-08-16 — Created for issue 5.4.
+         */
+        private fun AppError.archiveCode(): String = if (this is AppError.Validation) field else code
+
         private companion object {
+            /**
+             * The file could not be written where the user pointed.
+             * Not an `AppError`: nothing failed inside the app — the destination did, which is a
+             * different thing to tell someone and a different thing for them to do about it.
+             */
+            const val EXPORT_WRITE_FAILED = "archive.writeFailed"
+
             /**
              * How many rows [observeRecentActivity] shows (issue 5.1).
              *
