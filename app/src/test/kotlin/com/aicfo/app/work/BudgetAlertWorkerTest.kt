@@ -56,6 +56,7 @@ class BudgetAlertWorkerTest {
     private val sessionLock = SessionLock()
     private val repository = RecordingBudgetRepository()
     private val notifier = CountingNotifier()
+    private val settings = com.aicfo.app.FakeAppSettingsStore()
 
     @Test
     fun `a locked app defers without touching the repository`() =
@@ -150,6 +151,46 @@ class BudgetAlertWorkerTest {
             assertEquals(listOf("Groceries", "Dining"), notifier.posted)
         }
 
+    /**
+     * Input:  the privacy blur switched on in settings.
+     * Output: asserts the worker tells the notifier to hide its figures (issue 5.3; §23).
+     *
+     * Why:    a lock-screen notification renders **without** the app lock, to anyone who glances at
+     *         a phone face-up on a table — which is exactly the shoulder-surfing case the blur
+     *         exists for. Masking the figures on screen while a notification announced them would
+     *         leave the biggest hole open, so the flag has to reach this path too.
+     */
+    @Test
+    fun `the privacy blur reaches the notification`() =
+        runTest {
+            sessionLock.unlock()
+            settings.setPrivacyBlurEnabled(true)
+            repository.pending = listOf(alert())
+
+            worker().doWork()
+
+            assertEquals(true, notifier.lastBlurAmounts)
+        }
+
+    /**
+     * Input:  the blur off, which is the default.
+     * Output: asserts the figures are sent as before.
+     *
+     * Why:    the control. Without it a worker that passed `true` unconditionally — or a settings
+     *         read that always failed — would satisfy the test above while silently stripping the
+     *         amounts from every notification the app has ever sent.
+     */
+    @Test
+    fun `the notification keeps its figures when the blur is off`() =
+        runTest {
+            sessionLock.unlock()
+            repository.pending = listOf(alert())
+
+            worker().doWork()
+
+            assertEquals(false, notifier.lastBlurAmounts)
+        }
+
     @Test
     fun `the work is scheduled under a stable unique name`() {
         // `KEEP` on a unique name is what stops rescheduling on every launch from resetting the
@@ -172,6 +213,7 @@ class BudgetAlertWorkerTest {
                         sessionLock,
                         Provider { repository },
                         notifier,
+                        settings,
                     )
                 },
             )
@@ -281,9 +323,16 @@ private class CountingNotifier : BudgetAlertNotifier {
     /** `false` stands for permission denied or a guardrail refusal — the caller cannot tell them apart. */
     var accepts: Boolean = true
 
-    override fun notify(alert: CategoryBudgetAlert): Boolean {
+    /** Whether the last accepted post was asked to hide its figures (issue 5.3). */
+    var lastBlurAmounts: Boolean? = null
+
+    override fun notify(
+        alert: CategoryBudgetAlert,
+        blurAmounts: Boolean,
+    ): Boolean {
         if (!accepts) return false
         posted += alert.category.name
+        lastBlurAmounts = blurAmounts
         return true
     }
 }

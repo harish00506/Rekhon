@@ -21,6 +21,17 @@
     -->
     <string name="add_transaction">Add transaction</string>
 
+    <!--
+      Issue 5.3 — the one-tap privacy blur (§23, FR-PRIV-*).
+
+      The button is named for what it *does*, and its state is announced separately through
+      `stateDescription` — so TalkBack says "Hide amounts, on" rather than leaving a blind user to
+      infer from a changed icon whether their figures are currently covered.
+    -->
+    <string name="privacy_blur_toggle">Hide amounts</string>
+    <string name="privacy_blur_state_on">on</string>
+    <string name="privacy_blur_state_off">off</string>
+
     <!-- App lock (issue 2.2, SEC-002) -->
     <string name="lock_title">Locked</string>
     <string name="lock_body">Enter your PIN to open your finances.</string>
@@ -51,6 +62,17 @@
     <string name="budget_alert_warn_body">You have spent %1$s of %2$s this month.</string>
     <string name="budget_alert_exceeded_title">%1$s is over budget</string>
     <string name="budget_alert_exceeded_body">You have spent %1$s of %2$s this month — %3$s over.</string>
+    <!--
+      Issue 5.3 — the figure-free variants, used while the privacy blur is on (§23, FR-PRIV-*).
+
+      A lock-screen notification renders without the app lock, to anyone who glances at a phone
+      face-up on a table. So these carry no digits at all — not the amounts and not the percentage,
+      which would still say how deep into the budget the user is. The category and the band survive,
+      because a warning nobody can act on is not worth sending. The exceeded *title* needs no blurred
+      twin: it never carried a figure.
+    -->
+    <string name="budget_alert_warn_title_blurred">%1$s is near its budget</string>
+    <string name="budget_alert_body_blurred">Open the app to see where you stand.</string>
 
     <!-- ICU plurals: "1 attempt" must not read as "1 attempts" (§21.6). -->
     <plurals name="lock_attempts_remaining">

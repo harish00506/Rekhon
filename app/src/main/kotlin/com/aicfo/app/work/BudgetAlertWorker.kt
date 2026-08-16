@@ -10,10 +10,13 @@ import androidx.work.WorkerParameters
 import com.aicfo.app.notification.BudgetAlertNotifier
 import com.aicfo.core.common.Err
 import com.aicfo.core.common.Ok
+import com.aicfo.core.common.getOrNull
 import com.aicfo.core.crypto.SessionLock
+import com.aicfo.core.datastore.SettingsStore
 import com.aicfo.data.repository.BudgetRepository
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.flow.first
 import java.util.concurrent.TimeUnit
 import javax.inject.Provider
 
@@ -54,6 +57,7 @@ class BudgetAlertWorker
         private val sessionLock: SessionLock,
         private val repository: Provider<BudgetRepository>,
         private val notifier: BudgetAlertNotifier,
+        private val settingsStore: SettingsStore,
     ) : CoroutineWorker(context, params) {
         /**
          * Claims each pending alert and notifies the ones this run won.
@@ -81,11 +85,19 @@ class BudgetAlertWorker
                     is Err -> return Result.retry()
                 }
 
+            // Issue 5.3: read once for the whole batch, not per alert — the setting cannot
+            // meaningfully change between two notifications posted in the same millisecond, and a
+            // read per alert would be a DataStore round trip per notification. A read failure falls
+            // back to `false`, matching `MainViewModel.isPrivacyBlurred`: the blur is a display
+            // preference, and suppressing every figure because a settings read hiccuped would make
+            // the alerts useless for a reason the user could never diagnose.
+            val blurAmounts = settingsStore.observe().first().getOrNull()?.privacyBlurEnabled == true
+
             // Amounts and category names are deliberately not logged (§21.6, CfoPiiInLogs);
             // `budget_alert` is the record of what was sent.
             pending.forEach { alert ->
                 val claimed = repository.get().markNotified(alert)
-                if (claimed is Ok && claimed.value) notifier.notify(alert)
+                if (claimed is Ok && claimed.value) notifier.notify(alert, blurAmounts)
             }
             return Result.success()
         }

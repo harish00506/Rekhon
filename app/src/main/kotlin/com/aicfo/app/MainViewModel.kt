@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -59,7 +60,7 @@ import javax.inject.Inject
 class MainViewModel
     @Inject
     constructor(
-        settingsStore: SettingsStore,
+        private val settingsStore: SettingsStore,
         private val demoMode: DemoModeRepository,
         private val categories: CategoryRepository,
     ) : ViewModel() {
@@ -83,6 +84,32 @@ class MainViewModel
          */
         val isDemoActive: StateFlow<Boolean> =
             demoMode.isActive.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), false)
+
+        /**
+         * Whether every amount on screen is hidden (issue 5.3; §23, FR-PRIV-*, P-01).
+         *
+         * Why:    collected rather than read once, like [isDemoActive] and unlike
+         *         [startDestination]: the whole feature is a toggle the user flips while the app is
+         *         open, so a value read at construction would be the one thing that never changed.
+         *
+         *         **It lives here, above the graph**, because the blur is a property of the app and
+         *         not of a screen. A per-screen flag is one forgotten screen away from showing a
+         *         balance in a meeting — the same argument `CfoDemoBanner` already makes one level
+         *         down for the same reason.
+         *
+         *         A read failure falls back to `false`, which deserves stating: the alternative
+         *         (fail closed, hide everything) turns a DataStore hiccup into an app that looks
+         *         broken and offers no way out, since the toggle itself would still be reachable but
+         *         the user would have no idea why every figure had vanished. The blur is a display
+         *         preference, not a security boundary — the security boundary is the app lock
+         *         (SEC-002), which does fail closed.
+         * Result: `true` for exactly as long as the stored flag says so; survives process death,
+         *         because it is read back from DataStore rather than held in memory.
+         */
+        val isPrivacyBlurred: StateFlow<Boolean> =
+            settingsStore.observe()
+                .map { it.getOrNull()?.privacyBlurEnabled == true }
+                .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), false)
 
         init {
             viewModelScope.launch {
@@ -114,6 +141,27 @@ class MainViewModel
          */
         fun exitDemo() {
             viewModelScope.launch { demoMode.exit() }
+        }
+
+        /**
+         * Turns the privacy blur on or off (issue 5.3; §23, FR-PRIV-*).
+         *
+         * Why:    writes to DataStore rather than to an in-memory flag, and [isPrivacyBlurred] reads
+         *         it back — so the toggle survives process death. That matters more here than it
+         *         looks: someone who hides their figures before handing the phone over would
+         *         otherwise have them reappear the moment Android killed the app in the background,
+         *         which is exactly when they are not watching.
+         *
+         *         The result is deliberately **not** surfaced, matching [exitDemo]: the only failure
+         *         is a DataStore write, the user can see immediately whether the amounts hid, and
+         *         tapping again is a better remedy than an error banner over the figures they were
+         *         trying to cover.
+         * Result: every amount on screen masks or unmasks, and `FLAG_SECURE` follows it.
+         * Input:  [enabled] — whether to hide amounts. Output: none (launches on `viewModelScope`).
+         * Changelog: 2026-08-16 — Created for issue 5.3.
+         */
+        fun setPrivacyBlur(enabled: Boolean) {
+            viewModelScope.launch { settingsStore.setPrivacyBlurEnabled(enabled) }
         }
 
         private companion object {
