@@ -109,8 +109,15 @@ data class BudgetRules(
          */
         val REVIEW = RuleCitation("RULE-BUD-REVIEW", "1.0")
 
-        /** The rulebook file these thresholds were copied from, as `_meta.version`. */
-        const val RULEBOOK_VERSION = "1.11.0"
+        /**
+         * The rulebook file these thresholds were copied from, as `_meta.version`.
+         *
+         * Bumped to 1.12.0 by issue 5.2, which added `RULE-STS` — **none of the four `RULE-BUD-*`
+         * rows changed**, and none of their own versions moved. `_meta.version` describes the file,
+         * so every typed mirror in the repo restates it whenever any rule is added; this constant
+         * says "copied from that revision", not "these thresholds changed then".
+         */
+        const val RULEBOOK_VERSION = "1.12.0"
     }
 }
 

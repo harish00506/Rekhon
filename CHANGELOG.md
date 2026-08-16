@@ -11,6 +11,60 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The user's daily surfaces: the home dashboard, Safe-to-Spend, privacy blur, local JSON
 > export/import, and the home-screen widget.
 
+### [0.5.2] — Issue 5.2: Safe-to-Spend card  (2026-08-16)
+
+- **Implemented:** the Safe-to-Spend engine and card (**§5.2**, **§14**, **AI-STS**, **P-02/P-03**).
+  New `:domain:engines:safetospend` (AI-STS, L5), a `SafeToSpendRepository` that assembles its five
+  terms, and a dashboard card that renders the figure **with the breakdown that produced it**.
+- **The app's home screen no longer shows a number it made up.** `DashboardViewModel` had been
+  minting the headline figure as `Money(12_500_00L + today.dayOfMonth)` since issue 1.10 — a literal
+  in plain breach of P-03, shipped in every build for three epics. It was the last placeholder on
+  the dashboard; nothing on that screen is invented now.
+- **`RULE-STS`** (rules-kb.json → **v1.12.0**): `income_basis = budget_envelopes_then_actual`,
+  `horizon = month_end`, `buffer_pct = 5`, `include_goal_contributions`, `floor_at_zero = false`.
+  The income basis is the declared budget rather than month-to-date actuals because a figure driven
+  by the ledger reads deeply negative for twenty-seven days and jumps on payday — it measures the
+  salary calendar, not the user's position. `RULE-IDLE-CASH` has named a "Safe-to-Spend needs +
+  buffer" since this file was created, so `buffer_pct` gives an existing concept a value rather than
+  inventing a term.
+- **The breakdown is the result, not decoration.** `SafeToSpend` carries its ordered lines and
+  asserts in its constructor that they sum to the headline — so the card cannot show a plausible
+  fiction beside a correct number, which is the failure P-02 exists to prevent. The engine builds
+  the lines first and folds the figure from them, so both are the same arithmetic. Deductions render
+  signed; as magnitudes the column read as six additions that plainly did not add up.
+- **The absence is computed, not defaulted.** A profile with no envelopes and no posted income has
+  no income basis, so the repository emits `null` and the card says so — a confident ₹0 would be a
+  figure the app made up and is indistinguishable from a real month with nothing left (P-03).
+- **Four ways the figure could have been quietly wrong, each with a test:** a scheduled bill outside
+  the month (`observeUpcoming` reaches 90 days) reducing today's figure; a scheduled *income*
+  counted as a commitment; the quick-setup **salary** rule — a recurring rule with a positive
+  amount — counted as a bill, which would have subtracted the user's income from their spending
+  money; and a bill the user also scheduled counted twice (deduplicated on merchant **and** date, so
+  a merchant billed twice in one month still counts twice).
+- **"Goal contributions" is a stated stand-in until issue 7.1.** With no goals engine, the term is
+  the quick-setup INVEST envelope **in full** — recorded in `ENGINE.md`, not left for a reader to
+  discover. Netting it against what has already been saved looks right and is wrong: §8.3's
+  `trueSpend` is `NEED + WANT` and already excludes every conversion, so a rupee already in an SIP is
+  in no other term and netting would leave it deducted from nothing — the figure would *rise* by the
+  amount the user had just saved.
+- **Fixed in `:data:repository` as a prerequisite (FR-TXN-010):** `observeNatureBreakdown` ran to the
+  month's **last day**, so a payment scheduled for the 28th was reported on the 3rd as money already
+  spent — on a card captioned "This month, *actually*" — and was then subtracted a second time by
+  Safe-to-Spend's own scheduled-payments term. It is now bounded at `MonthWindow.actualsEndIsoDate`,
+  the bound `observeMonthCashFlow` three methods below has always used. This changes the
+  "This month, actually" figures for any user with a future-dated row in the current month.
+- **Tests:** full `unitTests` green — 30 engine (12-record golden file fixing the breakdown as well as
+  the figure, 500 seeded property months, drift), 17 repository (Room in-memory), dashboard ViewModel
+  + 4 Paparazzi baselines re-recorded (light/dark/200%), and `connectedDebugAndroidTest` 7/7 on the
+  emulator. Both new gates were **watched go red** before being trusted: a mis-labelled golden record
+  and an edited `buffer_pct` each fail the build. Verified on the `CfoTest` emulator **in airplane
+  mode** (P-04): pending state on a profile with no income; ₹56,421 on adding ₹60,000; ₹55,421 after
+  a ₹1,000 expense; and on the demo profile 95,000 − 4,750 buffer − 49,552 spent − 19,000 planned
+  savings = **₹21,698**, with the ₹10,000 already invested correctly counted once.
+- **Also:** `BudgetRules.RULEBOOK_VERSION` restated to 1.12.0 (the file's `_meta` moved; no
+  `RULE-BUD-*` threshold changed), and `RepositoryModule` suppressed `TooManyFunctions` — the count
+  there is simply the number of repositories the app has.
+
 ### [0.5.1] — The budget engine is allowed to fail  (2026-08-16)
 
 - **Implemented:** issue 4.7 — removed the four unchecked `(x as Ok).value` engine casts in

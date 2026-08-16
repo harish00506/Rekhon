@@ -16,6 +16,7 @@
 > **Binding rule:** [`CLAUDE.md` §10](CLAUDE.md). Static structure: [`docs/Architecture.md`](docs/Architecture.md).
 > Why any of it is this way: [`DECISIONS.md`](DECISIONS.md). What changed in a given session:
 > [`docs/sessions/`](docs/sessions/).
+> Companion diagram: [FLOW.drawio](FLOW.drawio).
 
 **How to read this.** `→` is a call. Indentation is nesting. Names are real and greppable; if an
 arrow here does not match the code, the code is right and this file is stale — fix it in the same
@@ -172,6 +173,55 @@ beside `observeBudgets()` opened that three-query `combine()` a second time for 
 subscription already had — and let one read failure show two different faces (a banner from one
 collector, a silently-emptied line from the other). `alertFor` is the same engine call reached
 without the second subscription. `:feature:budgets` still calls `observeAlerts()` and is unchanged.
+
+### 2.1 · The dashboard's headline figure (issue 5.2)
+
+Shape C again, but it is the **first read in the app assembled from other repositories** rather than
+straight from DAOs — and the first that can answer "there is no figure":
+
+```
+DashboardViewModel.observeSafeToSpend()             the collector that ended the last placeholder
+└─ SafeToSpendRepository.observeSafeToSpend()       data/repository — ARC-005
+    └─ activeProfileId.flatMapLatest { profileId ->
+        ├─ MonthWindow.current(clock.today())        injected Clock (TIM-001), inside the lambda
+        └─ combine(
+             QuickSetupRepository.observeLatestEnvelopes(profileId)   income basis + savings target
+             TransactionRepository.observeMonthCashFlow()             income fallback
+             TransactionRepository.observeNatureBreakdown()           §8.3 trueSpend + invested (4.3)
+             TransactionRepository.observeUpcoming()                  → scheduledCommitments(monthEnd)
+             recurringRuleDao().observeForProfile(profileId)          → billsDue(today, monthEnd)
+           ) { … }
+             ├─ incomeBasis(envelopes, cashFlow.income)  ?: → emits null   ← no basis, no figure
+             ├─ billsDue(...).deduplicatedAgainst(scheduled)   name+date, so rent is not counted twice
+             └─ engine.compute(SafeToSpendInput(...))          → shape C
+                 └─ SafeToSpend(amount, lines, provenance[RULE-STS v1.0])
+       }.flowOn(dispatchers.io)
+    ⇣
+_uiState.update { copy(safeToSpend = figure, isLoading = false) }
+    ⇣
+DashboardScreen.SafeToSpendSection(figure)
+    ├─ CfoAmountText(figure.amount, showSign = true)     negative is a real answer
+    ├─ figure.lines.forEach { … line.signedAmount }      the breakdown IS the result (P-02)
+    └─ dashboard_reason_rule(RULE-STS, 1.0)
+```
+
+**Three things this path does that no earlier one did.**
+
+*A repository reads other repositories.* `observeNatureBreakdown()` is a five-way join plus a
+per-transaction engine call; re-deriving it here would be a second definition of "what this month's
+money became". The seam is not new — `RoomReceiptRepository` (3.8) and `RoomSmsRepository` (3.9) both
+take a `TransactionRepository` — and ARC-005 holds either way: every DAO touch is still in a
+repository.
+
+*The absence is computed, not defaulted.* `incomeBasis` returns `null` when the profile has neither
+envelopes nor posted income, and the flow emits `null` rather than calling the engine with a zero.
+`SafeToSpendInput` would happily accept `Money.ZERO`, so this rule lives in the repository and its
+test, not in a `require`.
+
+*`isLoading` is turned off by this stream and no other.* It clears in the same `update` as the figure,
+and in the `.catch` too — `DashboardContent` returns early while loading, so an error behind a raised
+flag renders as a permanent "Working out your position…" with no banner underneath it. `Refresh` no
+longer re-raises the flag: the collectors are live, and a cold Flow does not re-emit for a button.
 
 ---
 

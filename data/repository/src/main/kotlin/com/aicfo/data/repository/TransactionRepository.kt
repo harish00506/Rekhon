@@ -397,10 +397,24 @@ interface TransactionRepository {
      *         `observeAccounts` chooses the profile: "which month is now" is a profile-zone question
      *         whose only sanctioned answer is the injected `Clock` (TIM-001), and a screen that
      *         passed a range would have had to read a clock to build one.
+     *
+     *         **Bounded at today, not at month end** — the window is `MonthWindow.actualsEndIsoDate`,
+     *         the same bound [observeMonthCashFlow] three methods below has always used. Until issue
+     *         5.2 this ran to `lengthOfMonth()`, so a rent payment the user had scheduled for the
+     *         28th was reported on the 3rd as money already spent (FR-TXN-010: future-dated rows are
+     *         "excluded from actuals but included in forecasts", and this is an actuals read). The
+     *         card it feeds is captioned "This month, **actually**".
+     *
+     *         It also made the two figures overlap: `SafeToSpendRepository` subtracts scheduled
+     *         payments as their own term, so every scheduled row inside the month was deducted twice
+     *         — once here and once there. Bounding it at today makes the two sets disjoint by
+     *         construction rather than by anyone remembering.
      * Result: emits on every change. An all-zero breakdown on a month with no transactions, which
      *         `NatureBreakdown.isEmpty` reports so the screen renders an empty state rather than a
      *         bar of zeroes the app made up (P-03).
      * Input:  none — the active profile. Output: `Flow<NatureBreakdown>`.
+     * Changelog: 2026-08-10 — Created for issue 4.3.
+     *            2026-08-16 — Issue 5.2: bounded at today (FR-TXN-010), see above.
      */
     fun observeNatureBreakdown(): Flow<NatureBreakdown>
 
@@ -899,10 +913,13 @@ internal class RoomTransactionRepository(
             // The month in the profile zone, resolved once per subscription rather than per row
             // (TIM-001/TIM-002). A form left open across a month boundary re-resolves when the
             // profile or the data changes, which is the same freshness every other query here has.
-            val today = clock.today()
-            val from = today.withDayOfMonth(1).toString()
-            val to = today.withDayOfMonth(today.lengthOfMonth()).toString()
-            database.transactionDao().observeNatureCandidates(profileId, from, to)
+            //
+            // `actualsEndIsoDate`, not the month's last day: this is an actuals read, and a payment
+            // scheduled for the 28th is not money spent on the 3rd (FR-TXN-010). See the interface's
+            // doc comment for the double-count this also removes (issue 5.2).
+            val month = MonthWindow.current(clock.today())
+            database.transactionDao()
+                .observeNatureCandidates(profileId, month.startIsoDate, month.actualsEndIsoDate)
                 .map { rows -> breakdownOf(profileId, rows) }
                 .flowOn(dispatchers.io)
         }

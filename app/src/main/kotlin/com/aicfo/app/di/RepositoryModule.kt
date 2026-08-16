@@ -16,6 +16,7 @@ import com.aicfo.data.repository.QuickSetupRepository
 import com.aicfo.data.repository.ReceiptRepository
 import com.aicfo.data.repository.RecurringRepository
 import com.aicfo.data.repository.RepositoryFactory
+import com.aicfo.data.repository.SafeToSpendRepository
 import com.aicfo.data.repository.SmsRepository
 import com.aicfo.data.repository.TransactionRepository
 import com.aicfo.data.sms.SmsInboxReader
@@ -25,6 +26,7 @@ import com.aicfo.domain.engines.nature.NatureEngine
 import com.aicfo.domain.engines.networth.NetWorthEngine
 import com.aicfo.domain.engines.receipt.ReceiptEngine
 import com.aicfo.domain.engines.recurring.RecurringEngine
+import com.aicfo.domain.engines.safetospend.SafeToSpendEngine
 import com.aicfo.domain.engines.sms.SmsEngine
 import com.aicfo.ml.ocr.ReceiptTextRecognizer
 import dagger.Module
@@ -45,13 +47,22 @@ import javax.inject.Singleton
  *       implementations are `internal` to their module (ARC-003).
  * Result: features inject an interface and never name an implementation.
  * Changelog: 2026-07-28 — Created for issue 2.4.
+ *            2026-08-16 — Issue 5.2's binding took this object past detekt's `TooManyFunctions`
+ *            ceiling; suppressed rather than split, for the reason below.
  *
  * **Every binding here takes the gated [CfoDatabase], never `@AuditDatabase`.** These hold the
  * user's financial data, which is exactly what the app lock exists to gate; the audit log's
  * exemption is for security events written *while* locked, and nothing here has that excuse.
+ *
+ * **Past `TooManyFunctions`, deliberately.** The count here is simply the number of repositories the
+ * app has, and splitting the object would put half of them behind one name and half behind another
+ * with no rule for which goes where — the argument `RepositoryFactory` and [CfoDatabase] already
+ * make for the same suppression. The seam that *would* be real, [CoreModule]'s platform primitives
+ * versus these data readers, has already been cut.
  */
 @Module
 @InstallIn(SingletonComponent::class)
+@Suppress("TooManyFunctions") // One binding per repository (ARC-003) — see the note above.
 object RepositoryModule {
     /**
      * The quick-setup store (issue 2.3; FR-ONB-002).
@@ -202,6 +213,40 @@ object RepositoryModule {
         dispatchers: DispatcherProvider,
         demoMode: DemoModeRepository,
     ): BudgetRepository = RepositoryFactory.budgets(database, engine, clock, dispatchers, demoMode.activeProfileId)
+
+    /**
+     * The Safe-to-Spend store (issue 5.2; §5.2, §14, AI-STS).
+     * Why:    takes the engine rather than building one, for the same reason every binding above it
+     *         does (ARC-003, P-03). It also takes two **repositories** — the seam the receipt and
+     *         SMS bindings already use — because three of `RULE-STS`'s five terms are reads those
+     *         repositories already own, and a second definition of "what this month's money became"
+     *         is the one thing that would make the headline figure disagree with the section under
+     *         it. Follows the demo like every binding above it (ADR-0006).
+     * Result: a [SafeToSpendRepository]. Input: [database], [transactions], [quickSetup], [engine],
+     *         [clock], [dispatchers], [demoMode]. Output: the repository.
+     * Changelog: 2026-08-16 — Created for issue 5.2.
+     */
+    @Provides
+    @Singleton
+    @Suppress("LongParameterList") // One argument per collaborator; see RepositoryFactory.safeToSpend.
+    fun provideSafeToSpendRepository(
+        database: CfoDatabase,
+        transactions: TransactionRepository,
+        quickSetup: QuickSetupRepository,
+        engine: SafeToSpendEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        demoMode: DemoModeRepository,
+    ): SafeToSpendRepository =
+        RepositoryFactory.safeToSpend(
+            database = database,
+            transactions = transactions,
+            quickSetup = quickSetup,
+            engine = engine,
+            clock = clock,
+            dispatchers = dispatchers,
+            activeProfileId = demoMode.activeProfileId,
+        )
 
     /**
      * The recurring-series store (issue 3.7; FR-TXN-006).

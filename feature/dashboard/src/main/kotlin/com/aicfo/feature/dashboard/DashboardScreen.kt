@@ -28,6 +28,8 @@ import com.aicfo.core.model.DateFormatter
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.MoneyFormatter
 import com.aicfo.data.repository.CategoryBudgetAlert
+import com.aicfo.domain.engines.safetospend.SafeToSpend
+import com.aicfo.domain.engines.safetospend.SafeToSpendComponent
 
 /**
  * The dashboard (ARC-004) — the app's home screen.
@@ -137,20 +139,16 @@ fun DashboardContent(
 
 /**
  * The two headline figures.
- * Why:    split out of [DashboardContent] to stay within the 40-line function limit (§21.6), and
- *         because the summary is the part a future issue (5.2) will replace wholesale.
+ * Why:    split out of [DashboardContent] to stay within the 40-line function limit (§21.6).
  * Result: the summary cards. Input: [uiState]. Output: the composition.
  * Changelog: 2026-07-25 — Created for issue 1.10.
+ *            2026-08-16 — Issue 5.2: Safe-to-Spend became a real figure with a breakdown.
  */
 @Composable
 private fun MoneySummary(uiState: DashboardUiState) {
     CfoCard {
         Text(text = stringResource(R.string.dashboard_safe_to_spend_label))
-        CfoAmountText(
-            amount = uiState.safeToSpend,
-            contentDescription = stringResource(R.string.dashboard_safe_to_spend_description),
-            showSign = false,
-        )
+        SafeToSpendSection(uiState.safeToSpend)
     }
     CfoCard {
         Text(text = stringResource(R.string.dashboard_net_worth_label))
@@ -170,6 +168,82 @@ private fun MoneySummary(uiState: DashboardUiState) {
         }
     }
 }
+
+/**
+ * The Safe-to-Spend figure with the breakdown that produced it (issue 5.2; §5.2, AI-STS, P-02).
+ *
+ * Why:    **the breakdown is not optional decoration.** §5.2's acceptance criterion is that the card
+ *         shows "the breakdown/rule that produced it; never a black-box number", and a headline of
+ *         ₹34,600 with nothing under it is exactly the black box it forbids — the user has no way to
+ *         tell an unusually good month from a bill the app has not noticed. Every line comes
+ *         straight off [SafeToSpend.lines]; this composable re-derives nothing, so the lines and the
+ *         figure above them cannot disagree (P-03).
+ *
+ *         **Signed**, unlike the ₹-only rendering it replaces. A month that is already overcommitted
+ *         reports its shortfall, and hiding the minus would turn "you are ₹8,000 past the plan" into
+ *         "you have ₹8,000 to spend" — the single most expensive thing this screen could get wrong.
+ * Result: the figure, its lines, and the `RULE-STS` citation — or the pending line when there is no
+ *         income basis to work from, which is never rendered as ₹0 (P-03).
+ * Input:  [safeToSpend] — the engine's result, `null` before the first emission or when the profile
+ *         has declared no income. Output: the composition.
+ * Changelog: 2026-08-16 — Created for issue 5.2.
+ */
+@Composable
+private fun SafeToSpendSection(safeToSpend: SafeToSpend?) {
+    if (safeToSpend == null) {
+        Text(text = stringResource(R.string.dashboard_safe_to_spend_pending))
+        return
+    }
+    CfoAmountText(
+        amount = safeToSpend.amount,
+        contentDescription = stringResource(R.string.dashboard_safe_to_spend_description),
+        showSign = true,
+    )
+    safeToSpend.lines.forEach { line ->
+        Text(
+            text =
+                stringResource(
+                    R.string.dashboard_safe_to_spend_line,
+                    stringResource(line.component.labelRes),
+                    // signedAmount, not amount: rendered as magnitudes the column reads as six
+                    // additions that plainly do not sum to the headline, so a user cannot check the
+                    // figure — which is the entire point of showing it (P-02). The minus is what
+                    // makes the arithmetic verifiable at a glance.
+                    MoneyFormatter.format(line.signedAmount),
+                ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    val citation = safeToSpend.provenance.evidence.firstOrNull() ?: return
+    Text(
+        text = stringResource(R.string.dashboard_reason_rule, citation.ruleId, citation.ruleVersion),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+/**
+ * The `strings.xml` label for one breakdown term (issue 5.2; §21.6).
+ * Why:    the mapping lives here, in the feature module, because `:domain:engines:safetospend` is
+ *         pure Kotlin and must hold no user-visible copy (ARC-002) — the engine names a term and
+ *         this names it in the user's language. An exhaustive `when` so a component added later
+ *         fails to compile rather than rendering as a blank line on the card that exists to explain
+ *         the figure.
+ * Result: the string resource. Input: the receiver. Output: a resource id.
+ * Changelog: 2026-08-16 — Created for issue 5.2.
+ */
+private val SafeToSpendComponent.labelRes: Int
+    get() =
+        when (this) {
+            SafeToSpendComponent.INCOME -> R.string.dashboard_sts_income
+            SafeToSpendComponent.BUFFER -> R.string.dashboard_sts_buffer
+            SafeToSpendComponent.SPENT -> R.string.dashboard_sts_spent
+            SafeToSpendComponent.SCHEDULED -> R.string.dashboard_sts_scheduled
+            SafeToSpendComponent.RECURRING -> R.string.dashboard_sts_recurring
+            SafeToSpendComponent.GOALS -> R.string.dashboard_sts_goals
+            SafeToSpendComponent.SHORTFALL -> R.string.dashboard_sts_shortfall
+        }
 
 /**
  * The needs/wants/savings bar, or the empty state when there is no budget.

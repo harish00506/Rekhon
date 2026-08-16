@@ -55,6 +55,7 @@ Newest last. "Why" is one line; the ADR holds the argument.
 | [0018](docs/adr/0018-split-aware-category-spend.md) | 2026-08-11 | Category spend is a `UNION ALL` of unsplit transactions and live split lines | A payment must be counted exactly once — by its lines where it has them — or a split silently double-counts |
 | [0019](docs/adr/0019-budget-alert-bands-mint-a-new-rule-row.md) | 2026-08-13 | FR-BUD-004's bands mint `RULE-BUD-ALERT` v1.0 rather than bump `RULE-BUD-PACE` | Bumping a shipped row fires ADR-0017's trigger 3 and forces the whole runtime loader; the split is also right on the merits — pace is arithmetic, alerts are attention |
 | [0020](docs/adr/0020-budget-review-keyed-by-month-not-category.md) | 2026-08-15 | `budget_review`'s claim is keyed `(profile, month)`, not `(profile, month, category)` | A review is one card for the whole closed month, not one status per finding — keying it finer would imply a per-finding-acknowledged screen this issue does not build |
+| [0021](docs/adr/0021-safe-to-spend-buffer-and-goal-stand-in.md) | 2026-08-16 | Safe-to-Spend takes income from the declared budget, withholds a 5% buffer §5.2 does not name, and stands in for goal contributions until 7.1 | A ledger-driven figure measures the salary calendar rather than the user; the buffer covers the commitments the app was never told about, and it is a labelled line on the card rather than a silent haircut |
 
 ---
 

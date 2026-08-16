@@ -14,6 +14,7 @@ import com.aicfo.domain.engines.nature.NatureEngine
 import com.aicfo.domain.engines.networth.NetWorthEngine
 import com.aicfo.domain.engines.receipt.ReceiptEngine
 import com.aicfo.domain.engines.recurring.RecurringEngine
+import com.aicfo.domain.engines.safetospend.SafeToSpendEngine
 import com.aicfo.domain.engines.sms.SmsEngine
 import com.aicfo.ml.ocr.ReceiptTextRecognizer
 import kotlinx.coroutines.flow.Flow
@@ -288,6 +289,41 @@ object RepositoryFactory {
             settings = settings,
             clock = clock,
             ids = ids,
+            dispatchers = dispatchers,
+            activeProfileId = activeProfileId,
+        )
+
+    /**
+     * Builds the Safe-to-Spend store (issue 5.2; §5.2, §14, AI-STS).
+     * Why:    takes two repositories rather than more DAOs — the precedent [receipts] and [sms] set,
+     *         and here it is what stops "what this month's money became" from having a second
+     *         definition (see `RoomSafeToSpendRepository`).
+     * Result: a [SafeToSpendRepository] over the budget, the ledger and the user's recurring rules.
+     * Input:  [database] — for the recurring rules, the one term nothing else exposes;
+     *         [transactions] — cash flow, the nature breakdown and the scheduled rows;
+     *         [quickSetup] — the persisted envelopes, which are `RULE-STS`'s income basis;
+     *         [engine] — computes the figure (P-03); [clock] — TIM-001, supplies the month;
+     *         [dispatchers]; [activeProfileId] — so the demo gets its own figure (ADR-0006).
+     * Output: [SafeToSpendRepository].
+     *
+     * `@Suppress("LongParameterList")`: one argument per collaborator, as [sms] above.
+     */
+    @Suppress("LongParameterList")
+    fun safeToSpend(
+        database: CfoDatabase,
+        transactions: TransactionRepository,
+        quickSetup: QuickSetupRepository,
+        engine: SafeToSpendEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        activeProfileId: Flow<String>,
+    ): SafeToSpendRepository =
+        RoomSafeToSpendRepository(
+            database = database,
+            transactions = transactions,
+            quickSetup = quickSetup,
+            engine = engine,
+            clock = clock,
             dispatchers = dispatchers,
             activeProfileId = activeProfileId,
         )

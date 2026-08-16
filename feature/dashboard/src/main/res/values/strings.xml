@@ -29,6 +29,33 @@
     <string name="dashboard_spend_split_empty">No budget yet. Add your monthly income in Settings and we\'ll suggest one.</string>
 
     <!--
+      Issue 5.2 — the Safe-to-Spend breakdown (§5.2, AI-STS).
+
+      One label per SafeToSpendComponent. They live here rather than in the engine because
+      :domain:* is pure Kotlin and must hold no user-visible copy (§21.6, ARC-002) — the engine
+      returns a component and an amount, and this file is where it becomes a sentence.
+
+      The labels are written from the user's side of the figure ("Already spent", not "SPENT"), and
+      each names the *reason* money is unavailable rather than the mechanism, because the whole
+      point of the breakdown is that someone can check it against their own memory (P-02).
+    -->
+    <string name="dashboard_safe_to_spend_pending">Not worked out yet — add your monthly income in Settings and we\'ll work it out.</string>
+    <string name="dashboard_safe_to_spend_line">%1$s %2$s</string>
+    <string name="dashboard_sts_income">Income</string>
+    <string name="dashboard_sts_buffer">Held back as a buffer</string>
+    <string name="dashboard_sts_spent">Already spent</string>
+    <string name="dashboard_sts_scheduled">Scheduled payments</string>
+    <string name="dashboard_sts_recurring">Bills still due</string>
+    <!--
+      "Planned", not "still to make": the term is the whole savings envelope every month, not the
+      part not yet transferred. §8.3's true spend excludes conversions, so a rupee already saved is
+      in no other line — netting it off here would leave it deducted from nothing at all. See
+      `savingsPlanned` in SafeToSpendRepository.
+    -->
+    <string name="dashboard_sts_goals">Planned savings</string>
+    <string name="dashboard_sts_shortfall">Beyond the plan</string>
+
+    <!--
       Issue 4.3 — §8.3's true-spend split, beside the budget above it.
 
       The debt note is not boilerplate: §8.3's formula is NEED + WANT + interest/fees, and this build
