@@ -138,10 +138,19 @@ note that only a failed *status* now reaches its `.catch`.
 
 ## 4 · Left for later, deliberately
 
-- **`NetWorthRepository.computeFrom:354`** — its `error(...)` appears to escape `computeAsOf`'s
-  `Result` contract, since `flatMapToResult` calls it outside that method's `runCatchingToResult`.
-  Same §21.6 defect class, different file. **Not yet verified end to end**; confirm the escape path,
-  then file it. Not widened into this diff.
+- **`NetWorthRepository.computeFrom:354`** — filed as
+  [issue 2.9](../issues/2.9-networth-repository-error-escapes-result.md) after being verified end to
+  end. It is worse than first suspected: the `error(...)` escapes **three** `Result`-returning APIs,
+  not one. `computeAsOf`'s `runCatchingToResult` wraps only the DB read and `computeFrom` runs after
+  it; `snapshotUpToToday` and `repairStaleHistory` *do* wrap it and it escapes anyway, because
+  `runCatchingToResult` rethrows `IllegalStateException` by design. `NetWorthSnapshotWorker` maps only
+  `Err` to a retry, so the throw would fail the nightly job outright and stop the net-worth series
+  silently. Not widened into 4.7's diff: different file, different feature, different consumers.
+
+  **This was initially left as a note rather than a ticket, which was wrong.** "Verify before
+  fixing" is right; "verify before *filing*" is not — an issue can record a suspicion, and the
+  review standard this repo follows says surrounding problems get filed, not mentioned. Corrected
+  the same day, once the user pushed on it.
 - **A structured logger.** CLAUDE.md §5 names one; none exists, `:data:repository` depends on no
   logging library, and `audit_log` is closed to non-security events by construction. So the three
   degradation sites are genuinely silent, which is stated in their doc comments rather than papered
