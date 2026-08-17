@@ -11,6 +11,46 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The user's daily surfaces: the home dashboard, Safe-to-Spend, privacy blur, local JSON
 > export/import, and the home-screen widget.
 
+### [0.5.5] — Issue 5.5: Home-screen widget (Glance)  (2026-08-17)
+
+- **Implemented:** the Glance home-screen widget — Safe-to-Spend and net worth, read from a cache,
+  refreshed by WorkManager, honouring the privacy blur, working with no network (§5.2, §35, P-01,
+  P-03, P-04). `:widget` was a `ModulePlaceholder` and Glance had been pinned but unused since
+  issue 1.1; both are now real.
+- **The widget never touches the database, and that is the design, not an optimisation.**
+  `CoreModule.provideDatabase` throws while the app is locked (SEC-002), and a home screen is read
+  locked far more often than unlocked — so a widget that fetched a figure at draw time would blank
+  out or crash exactly when it is most visible. Glance's own preference state is the cache;
+  `provideGlance` reads it and nothing else, with no dependency injection in the module at all
+  ([ADR-0024](docs/adr/0024-the-widget-renders-from-glance-state-not-the-database.md)).
+- **Closes a criterion issue 5.3 left open and said so.** The privacy blur now reaches the launcher.
+  It is written by its own watcher, separate from the refresh worker, because hiding amounts must
+  work while the app is locked — folding the flag into the refresh would have made it depend on the
+  database, and the amounts would have stayed on screen at the moment they were asked to go.
+- **Not screenshot-tested, deliberately and on the record.** Paparazzi cannot render Glance — it
+  emits `RemoteViews` for an `AppWidgetHost`, not a tree LayoutLib can inflate. A Paparazzi test
+  over a plain-Compose mirror would be green against a tree that is not the one shipped, which
+  reads as coverage and is worse than none. Instead: `runGlanceAppWidgetUnitTest` on the JVM, and
+  `WidgetDeviceTest`, which binds a real widget and inflates its actual RemoteViews on a device.
+- **`maskOf` moved from `:core:designsystem` to `MoneyFormatter.mask` in `:core:model`**, so the app
+  and the widget mask to one width by construction rather than by inspection (ADR-0022). The
+  design-system function delegates; its own tests are unchanged, which is the proof the move was
+  behaviour-neutral.
+- **Lint gap closed:** `CfoHardcodedUiString` covered `/feature/` and `/designsystem/` but not
+  `/widget/`, so the app's most-read surface was outside the strings rule. Two entries fixed it, and
+  a seeded literal was confirmed to turn `:widget:lintDebug` red before the fix was kept.
+- **Found by running it:** `compose()` without a `GlanceId` composes against *empty* state, so the
+  first draft of `WidgetDeviceTest` rendered "Not yet worked out" no matter what had been written —
+  and its blur test passed on that, because a widget with no amounts has no digits to leak. The test
+  now passes the bound id and asserts both masks are present before sweeping for digits.
+- **Tests:** full `unitTests` green (12 new in `:widget`, 10 in `:app`, 4 in `:core:model`, 1 in
+  `:lint`); `koverVerify` and `verifyPaparazziDebug` green; `:app:connectedDebugAndroidTest` **9/9**
+  on an emulator **in airplane mode** (P-04), including the two new widget device tests. Verified by
+  hand on the real launcher in airplane mode: pending state (not ₹0.00) on a fresh profile, figures
+  matching the dashboard exactly, blur masking and unmasking, light and dark, and tap-to-open. The
+  SEC-002 guard was observed doing its job — the refresh returned `retry` while the session was
+  locked at cold start and succeeded on the retry 30 s later.
+
 ### [0.5.4] — Issue 5.4: Export/import JSON archive  (2026-08-16)
 
 - **Implemented:** §5.10's local JSON archive — a full export of the user's data and a lossless

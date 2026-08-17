@@ -3,12 +3,15 @@
         documented how execution actually travels: where the process starts, what runs before the
         first pixel, and what calls what once it does. 198 Kotlin files across 33 modules with no
         runtime map means every reader re-derives the same three paths by grep.
-  What: FLOW — entry points, the cold-start spine, and one worked path for each of the three shapes
-        the codebase repeats (screen, background worker, engine).
+  What: FLOW — entry points, the cold-start spine, and one worked path for each of the four shapes
+        the codebase repeats (screen, background worker, engine, home-screen widget).
   Result: A reader can follow a real call chain end to end without opening a file, and knows which
         shape any unfamiliar code belongs to.
   Changelog:
     2026-08-14 — Created. Traced against the code at commit 6ffccc5.
+    2026-08-17 — Issue 5.5 added §4.5, Shape D: the widget. The first surface that renders outside
+        the app's process and must work while the app is locked, which is why it earned a section
+        rather than being a fourth screen.
 -->
 
 # Flow — how execution travels
@@ -22,10 +25,12 @@
 arrow here does not match the code, the code is right and this file is stale — fix it in the same
 commit that made it stale.
 
-> `ponytail:` this maps the **spine and three shapes**, not all 198 files. Everything else in the
-> app is one of these three shapes with different nouns, so a per-file call graph would add pages
-> and no understanding, and would be stale within a week. **Ceiling:** a fourth shape gets its own
-> section when one is actually built — `:sync:backup`, `:widget` and `:ml:llm` do not exist yet.
+> `ponytail:` this maps the **spine and four shapes**, not all 198 files. Everything else in the
+> app is one of these shapes with different nouns, so a per-file call graph would add pages
+> and no understanding, and would be stale within a week. **Ceiling:** issue 5.5 built `:widget`,
+> which earned §4.5 by being the first surface that renders outside the app's process and must work
+> while it is locked. `:sync:backup` and `:ml:llm` still do not exist; a fifth section waits for
+> one of them to be a genuinely different shape rather than another worker.
 
 ---
 
@@ -39,7 +44,7 @@ There are exactly three ways into this app. Every stack trace starts at one of t
 | 2 | `MainActivity.onCreate()` | `app/.../MainActivity.kt` | Launcher icon, or a notification/widget tap |
 | 3 | `<Worker>.doWork()` | `app/.../work/*.kt` | WorkManager, on its own schedule — **the app need not be open** |
 
-Entry point 3 is the one that surprises people: five workers can run with no Activity alive.
+Entry point 3 is the one that surprises people: six workers can run with no Activity alive.
 
 ---
 
@@ -53,8 +58,10 @@ process start
 │   ├─ profileZoneProvider.start()           profile time zone → every Clock read (TIM-001)
 │   ├─ smsConsentWatcher.start()             erases drafts when consent is revoked (P-01)
 │   ├─ CfoNotifications.createChannels()     before anything can post into them
-│   └─ schedule() × 5 workers                NetWorthSnapshot · BalanceIntegrity ·
-│                                            ScheduledTransaction · SmsScan · BudgetAlert
+│   ├─ widgetBlurWatcher.start()            masks the home-screen widget with the app (5.5)
+│   └─ schedule() × 6 workers                NetWorthSnapshot · BalanceIntegrity ·
+│                                            ScheduledTransaction · SmsScan · BudgetAlert ·
+│                                            WidgetRefresh (6-hourly, + one refreshNow now)
 │                                            all KEEP, so an existing job survives relaunch
 │
 └─ MainActivity.onCreate()                                    app/MainActivity.kt
@@ -368,7 +375,7 @@ HiltWorkerFactory → BudgetAlertWorker.doWork()
 the `notify_once_per_band_per_month` flag in the rule row only documents the intent. A crash between
 the two steps costs one notification, never a duplicate.
 
-The other four workers are this same shape: lock check → read → act → `success`/`retry`.
+The other five workers are this same shape: lock check → read → act → `success`/`retry`.
 
 ---
 
@@ -433,6 +440,64 @@ it is not re-drawn here because it is the alert diagram above with one more inte
 
 ---
 
+## 4.5 · Shape D — the home-screen widget (issue 5.5)
+
+The fourth shape this file reserved a slot for. It is the only surface that renders **outside the
+app's process**, and the only one that must work while the app is **locked** — which is what makes
+it a shape rather than another screen.
+
+```
+WRITE — two paths, deliberately separate                     :app is the only writer
+│
+├─ CfoApplication.onCreate()
+│   ├─ WidgetRefreshWorker.schedule(this)      periodic 6h, KEEP, NO Constraints (P-04)
+│   ├─ WidgetRefreshWorker.refreshNow(this)    one-shot REPLACE — this launch's figures
+│   └─ widgetBlurWatcher.start()               beside smsConsentWatcher, same seam
+│
+├─ WidgetRefreshWorker.doWork()                            shape B — the FIGURES path
+│   ├─ !sessionLock.isUnlocked.value → Result.retry()      BEFORE Provider<T>.get() (SEC-002)
+│   ├─ settingsStore.observe().first()                     blur, same read BudgetAlertWorker does
+│   ├─ safeToSpend.get().observeSafeToSpend().first()      null is an answer, never ₹0 (P-03)
+│   ├─ netWorth.get().observeCurrent().first()
+│   └─ CfoWidget.writeFigures(...)   →  null figure REMOVES its key, never writes 0
+│
+└─ WidgetBlurWatcher.start()                               the BLUR path — no database at all
+    └─ settingsStore.observe().map{ blurEnabled }.distinctUntilChanged()
+        └─ CfoWidget.writeBlurred(context, blurred)
+                                       ⇣
+                    files/datastore/appWidget-<id>.preferences_pb
+                    safe_to_spend_minor · net_worth_minor · blurred     ← THE CACHE
+                                       ⇣
+READ — in the launcher's process, and it may not fail
+CfoWidgetReceiver (plain, no Hilt)  →  CfoWidget.provideGlance()
+└─ currentState<Preferences>().toWidgetSnapshot()      no DI, no DAO, no suspend that can throw
+    └─ GlanceTheme { CfoWidgetContent(snapshot) }      light/dark from the system, not CfoTheme
+        ├─ amountText(amount, blurred, pending)        THE only place a digit can reach a launcher
+        │   ├─ amount == null → "Not yet worked out"   absence is not zero
+        │   ├─ blurred        → MoneyFormatter.mask()  "₹•••••••", fixed width (ADR-0022)
+        │   └─ else           → MoneyFormatter.format()
+        └─ clickable(actionStartActivity(launchIntent))   resolved from the package manager,
+                                                          so :widget never depends on :app
+```
+
+**Why the two writers are split, and it is the whole design.** `writeFigures` needs the database
+and therefore cannot run while the app is locked. `writeBlurred` needs nothing but a preference
+file. A user taps the blur toggle because someone is looking *now* — often having just locked the
+phone. Folding the flag into the refresh would make hiding depend on the database, and the amounts
+would stay on the home screen at the exact moment they were asked to go.
+[ADR-0024](docs/adr/0024-the-widget-renders-from-glance-state-not-the-database.md).
+
+**Glance's state is the cache, not a copy of one.** Net worth had a snapshot table already;
+Safe-to-Spend had none — `SafeToSpendRepository` recomputes it live from five Room reads. Either
+way a cache had to exist outside SQLCipher, and putting it in Glance's own store means the value
+read is the value the redraw was triggered for. There is no second store to drift.
+
+**Nothing here is derived from the clock**, which is what makes the refresh idempotent by
+construction: two runs with unchanged data write identical bytes. That is also why the widget shows
+no "last updated" line — it would need the profile zone (TIM-001) on the render path.
+
+---
+
 ## 5 · Where the layers are enforced
 
 Not by review — by the build. Each of these fails compilation or the `:lint` task.
@@ -446,7 +511,7 @@ Not by review — by the build. Each of these fails compilation or the `:lint` t
 | TIM-001 | `System.currentTimeMillis()` in domain code | `CfoWallClockInDomain` (`:lint`) |
 | ARC-006 | `GlobalScope.launch` | `CfoGlobalScope` (`:lint`) |
 | §21.6 | An amount or a name in a log line | `CfoPiiInLogs` (`:lint`) |
-| §21.6 | A hardcoded user-facing string in `:feature:*` | `CfoHardcodedUiString` (`:lint`) |
+| §21.6 | A hardcoded user-facing string in `:feature:*`, `:core:designsystem` or `:widget` | `CfoHardcodedUiString` (`:lint`) |
 
 ---
 

@@ -60,36 +60,19 @@ fun maskedAmount(amount: Money): String =
 /**
  * The masked form of an amount (issue 5.3; §23).
  *
- * Why:  two decisions, and both are the difference between a blur that works and one that looks
- *       like it does.
+ * Why:  kept as a name in this file — the fourteen `CfoAmountText` call sites and this module's own
+ *       tests read as blur code, not as currency formatting, and renaming them at every site would
+ *       be a large diff for no behaviour. What it no longer does is *define* the mask.
  *
- *       **The run of dots is a fixed length, never the number's own.** Masking ₹450 as `₹•••` and
- *       ₹4,50,000 as `₹•,••,•••` would hide the digits and leak the order of magnitude — which is
- *       most of what someone reading over a shoulder wants, and all of what makes a salary or a
- *       balance sensitive. Every amount masks to the same width, so a column of them says nothing
- *       about any of them.
- *
- *       **The sign survives.** Direction is not the secret — nobody is embarrassed that a
- *       transaction was an outflow — and [CfoAmountText] colours by sign, so dropping it would
- *       leave colour as the only signal of direction, which its own doc comment records as the
- *       thing this component exists to prevent (P-02, and greyscale/colour-blind users). The
- *       currency symbol stays for the same reason: it keeps the masked value legible *as an
- *       amount* rather than as an error.
- * Result: `₹•••••••` or `-₹•••••••` — identical for every magnitude.
+ *       **The definition moved to [MoneyFormatter.mask] (issue 5.5).** The home-screen widget masks
+ *       the same two amounts from a Glance module that cannot see [LocalPrivacyBlur] and has no
+ *       business depending on Material3. Two definitions of "how wide is the mask" would be two
+ *       definitions of how much the blur leaks — and the fixed width is the entire point (ADR-0022).
+ * Result: `₹•••••••` or `-₹•••••••` — identical for every magnitude, and now identical to what the
+ *       widget renders, by construction rather than by inspection.
  * Input:  [amount] — read only for its sign, never its digits.
  * Output: the mask.
  * Changelog: 2026-08-16 — Created for issue 5.3.
+ *            2026-08-17 — Issue 5.5: delegates to [MoneyFormatter.mask]; behaviour unchanged.
  */
-internal fun maskOf(amount: Money): String {
-    val sign = if (amount.minor < 0L) "-" else ""
-    return "$sign$RUPEE_SIGN$MASK_DOTS"
-}
-
-/** Matches `MoneyFormatter`'s symbol, so a masked column and a real one line up. */
-private const val RUPEE_SIGN = "₹"
-
-/**
- * The mask body. Seven dots: wide enough that a masked ₹1,23,456.78 does not read as a short number,
- * narrow enough not to wrap at 200% font, where [CfoAmountText] renders with `softWrap = false`.
- */
-private const val MASK_DOTS = "•••••••"
+internal fun maskOf(amount: Money): String = MoneyFormatter.mask(amount)

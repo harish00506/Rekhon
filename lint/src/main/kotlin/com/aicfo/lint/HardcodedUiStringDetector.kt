@@ -74,9 +74,17 @@ class HardcodedUiStringDetector :
         /** Composables whose argument is read out to the user. */
         private val TEXT_CALLS = setOf("Text")
 
-        /** UI modules in scope: feature screens and the design system (joined at issue 1.8). */
-        private val UI_PATHS = listOf("/feature/", "/designsystem/")
-        private val UI_PACKAGES = listOf("com.aicfo.feature", "com.aicfo.core.designsystem")
+        /**
+         * UI modules in scope: feature screens, the design system (joined at issue 1.8), and the
+         * home-screen widget (joined at issue 5.5).
+         *
+         * `:widget` is not a `:feature:*` module — it has no ViewModel and no nav graph — so it was
+         * silently outside this rule while it was a placeholder, and would have stayed outside it
+         * the moment it grew real text. Its Glance `Text(...)` matches [TEXT_CALLS] by name already,
+         * so covering the module was two entries. Nothing else needed to change.
+         */
+        private val UI_PATHS = listOf("/feature/", "/designsystem/", "/widget/")
+        private val UI_PACKAGES = listOf("com.aicfo.feature", "com.aicfo.core.designsystem", "com.aicfo.widget")
 
         /**
          * Whether the file belongs to a feature module.

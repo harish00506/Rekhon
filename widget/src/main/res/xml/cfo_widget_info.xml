@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The widget's metadata (issue 5.5; §35).
+
+  Why:  `updatePeriodMillis="0"` is the load-bearing line. The system's own update alarm is capped
+        at 30 minutes, cannot be tightened, wakes the device on its own schedule, and would race
+        the refresh path this feature actually uses. WorkManager drives every update instead
+        (`WidgetRefreshWorker`, 6-hourly plus one on each app launch), which is idempotent, honours
+        the app lock, and needs no network (P-04). Zero here means "never ask me on a timer".
+
+        `configure` is deliberately absent: there is nothing to configure. One profile, two figures.
+        `initialLayout` is Glance's own placeholder — the frame the launcher shows for the moment
+        between the widget being dropped and the first compose. Hand-writing one would be a second
+        layout to keep in step with the real content for no visible gain.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/widget_description"
+    android:initialLayout="@layout/glance_default_loading_layout"
+    android:minWidth="180dp"
+    android:minHeight="70dp"
+    android:targetCellWidth="3"
+    android:targetCellHeight="1"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen" />

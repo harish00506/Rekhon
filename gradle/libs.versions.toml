@@ -184,6 +184,11 @@ androidx-biometric = { module = "androidx.biometric:biometric-ktx", version.ref 
 # --- Home-screen widget (Glance) ---
 glance-appwidget = { module = "androidx.glance:glance-appwidget", version.ref = "glance" }
 glance-material3 = { module = "androidx.glance:glance-material3", version.ref = "glance" }
+# Issue 5.5: `runGlanceAppWidgetUnitTest` composes a GlanceAppWidget on the JVM and lets a test
+# assert the emitted tree. Paparazzi cannot do this — Glance emits RemoteViews for an AppWidgetHost,
+# not a view tree LayoutLib can inflate — so this is what makes "no digit is on the widget when the
+# blur is on" a machine-checked claim rather than a manual one. See ADR-0024.
+glance-appwidget-testing = { module = "androidx.glance:glance-appwidget-testing", version.ref = "glance" }
 
 # --- Testing ---
 junit4 = { module = "junit:junit", version.ref = "junit4" }

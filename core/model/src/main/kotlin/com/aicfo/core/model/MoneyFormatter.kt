@@ -27,6 +27,13 @@ object MoneyFormatter {
     private const val FIRST_GROUP = 3
     private const val LATER_GROUPS = 2
 
+    /**
+     * The mask body. Seven dots: wide enough that a masked ₹1,23,456.78 does not read as a short
+     * number, narrow enough not to wrap at 200% font, where `CfoAmountText` renders with
+     * `softWrap = false`.
+     */
+    private const val MASK_DOTS = "•••••••"
+
     private const val PAISE_IN_A_RUPEE = 100L
 
     /** Only `0`–`9`. `Char.isDigit()` is deliberately not used — see [parse]. */
@@ -51,6 +58,41 @@ object MoneyFormatter {
         val paise = digits.takeLast(PAISE_DIGITS)
         val sign = if (amount.minor < 0L) "-" else ""
         return "$sign$RUPEE_SIGN$rupees.$paise"
+    }
+
+    /**
+     * The masked form of an amount, for the privacy blur (issue 5.3; §23, P-01).
+     *
+     * Why:  two decisions, and both are the difference between a blur that works and one that looks
+     *       like it does.
+     *
+     *       **The run of dots is a fixed length, never the number's own.** Masking ₹450 as `₹•••`
+     *       and ₹4,50,000 as `₹•,••,•••` would hide the digits and leak the order of magnitude —
+     *       which is most of what someone reading over a shoulder wants, and all of what makes a
+     *       salary or a balance sensitive. Every amount masks to the same width, so a column of
+     *       them says nothing about any of them.
+     *
+     *       **The sign survives.** Direction is not the secret — nobody is embarrassed that a
+     *       transaction was an outflow — and `CfoAmountText` colours by sign, so dropping it would
+     *       leave colour as the only signal of direction (P-02, and greyscale/colour-blind users).
+     *       The currency symbol stays for the same reason: it keeps the masked value legible *as an
+     *       amount* rather than as an error.
+     *
+     *       **Here rather than in `:core:designsystem`, where issue 5.3 first wrote it.** The
+     *       home-screen widget (issue 5.5) masks the same two amounts and is a Glance module: it
+     *       cannot see a Compose `CompositionLocal`, and making it depend on the whole Material3
+     *       design system for three lines would buy nothing. This is text formatting with no
+     *       Android in it — the same argument [format] gives for living here — so both callers now
+     *       read one definition and the mask cannot drift to two widths.
+     * Result: `₹•••••••` or `-₹•••••••` — identical for every magnitude.
+     * Input:  [amount] — read only for its sign, never its digits.
+     * Output: the mask.
+     * Changelog: 2026-08-16 — Created for issue 5.3 as `maskOf` in `:core:designsystem`.
+     *            2026-08-17 — Issue 5.5: moved here so `:widget` can mask without Compose.
+     */
+    fun mask(amount: Money): String {
+        val sign = if (amount.minor < 0L) "-" else ""
+        return "$sign$RUPEE_SIGN$MASK_DOTS"
     }
 
     /**
