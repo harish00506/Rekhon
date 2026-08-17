@@ -6,11 +6,13 @@ import androidx.work.Configuration
 import com.aicfo.app.di.ProfileZoneProvider
 import com.aicfo.app.notification.CfoNotifications
 import com.aicfo.app.sms.SmsConsentWatcher
+import com.aicfo.app.widget.WidgetBlurWatcher
 import com.aicfo.app.work.BalanceIntegrityWorker
 import com.aicfo.app.work.BudgetAlertWorker
 import com.aicfo.app.work.NetWorthSnapshotWorker
 import com.aicfo.app.work.ScheduledTransactionWorker
 import com.aicfo.app.work.SmsScanWorker
+import com.aicfo.app.work.WidgetRefreshWorker
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 
@@ -45,6 +47,16 @@ class CfoApplication : Application(), Configuration.Provider {
     @Inject
     lateinit var smsConsentWatcher: SmsConsentWatcher
 
+    /**
+     * Masks the home-screen widget when the privacy blur goes on (issue 5.5; P-01).
+     *
+     * Started here for the same reason [smsConsentWatcher] is: the widget must hide whichever
+     * screen turned the flag on, including screens not written yet — and it must hide while the
+     * app is locked, which is why it is a watcher of its own and not part of the refresh worker.
+     */
+    @Inject
+    lateinit var widgetBlurWatcher: WidgetBlurWatcher
+
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
 
@@ -73,11 +85,17 @@ class CfoApplication : Application(), Configuration.Provider {
      *            2026-08-13 — Issue 4.5 added the budget-alert job (FR-BUD-004), and the notification
      *            channel it posts into. Also not load-bearing: the band shows in-app regardless, so a
      *            job that never ran would cost the interruption, not the information.
+     *            2026-08-17 — Issue 5.5 added the widget refresh, and it is the *least* load-bearing
+     *            of the six: it writes no fact, only a display cache, so a run that never happened
+     *            leaves a stale widget and nothing else. It is also the only one enqueued twice —
+     *            `schedule` for the six-hourly cadence and `refreshNow` for this launch, because a
+     *            widget six hours behind the app the user just closed is the case worth fixing.
      */
     override fun onCreate() {
         super.onCreate()
         profileZoneProvider.start()
         smsConsentWatcher.start()
+        widgetBlurWatcher.start()
         // Before any notification is sent, so the channel is in system settings for a user who wants
         // to turn it down in advance. Re-creating an existing channel is a no-op (issue 4.5).
         CfoNotifications.createChannels(this)
@@ -86,5 +104,7 @@ class CfoApplication : Application(), Configuration.Provider {
         ScheduledTransactionWorker.schedule(this)
         SmsScanWorker.schedule(this)
         BudgetAlertWorker.schedule(this)
+        WidgetRefreshWorker.schedule(this)
+        WidgetRefreshWorker.refreshNow(this)
     }
 }
