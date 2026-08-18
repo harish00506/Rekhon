@@ -44,7 +44,7 @@ There are exactly three ways into this app. Every stack trace starts at one of t
 | 2 | `MainActivity.onCreate()` | `app/.../MainActivity.kt` | Launcher icon, or a notification/widget tap |
 | 3 | `<Worker>.doWork()` | `app/.../work/*.kt` | WorkManager, on its own schedule — **the app need not be open** |
 
-Entry point 3 is the one that surprises people: six workers can run with no Activity alive.
+Entry point 3 is the one that surprises people: seven workers can run with no Activity alive.
 
 ---
 
@@ -59,8 +59,9 @@ process start
 │   ├─ smsConsentWatcher.start()             erases drafts when consent is revoked (P-01)
 │   ├─ CfoNotifications.createChannels()     before anything can post into them
 │   ├─ widgetBlurWatcher.start()            masks the home-screen widget with the app (5.5)
-│   └─ schedule() × 6 workers                NetWorthSnapshot · BalanceIntegrity ·
+│   └─ schedule() × 7 workers                NetWorthSnapshot · BalanceIntegrity ·
 │                                            ScheduledTransaction · SmsScan · BudgetAlert ·
+│                                            CardAlert (daily, 6.1) ·
 │                                            WidgetRefresh (6-hourly, + one refreshNow now)
 │                                            all KEEP, so an existing job survives relaunch
 │
@@ -375,7 +376,38 @@ HiltWorkerFactory → BudgetAlertWorker.doWork()
 the `notify_once_per_band_per_month` flag in the rule row only documents the intent. A crash between
 the two steps costs one notification, never a duplicate.
 
-The other five workers are this same shape: lock check → read → act → `success`/`retry`.
+The other six workers are this same shape: lock check → read → act → `success`/`retry`.
+
+### 3.1 · The card-payment reminder — the same shape, three differences (issue 6.1)
+
+```
+CfoApplication.onCreate()
+└─ CardAlertWorker.schedule(context)                           app/work/CardAlertWorker.kt
+    └─ enqueueUniquePeriodicWork("card-payment-alerts", KEEP, every 1 day)
+           ▼
+CardAlertWorker.doWork()
+├─ sessionLock.isUnlocked.value == false  →  Result.retry()    same SEC-002 guard
+├─ repository.get().pendingAlerts()                            CreditCardRepository
+│   ├─ creditCardDao().forProfile(profile) + accountDao().findWithBalance(...)
+│   ├─ balance is a liability → negated once here, so the engine sees a magnitude
+│   ├─ engine.alert(CardAlertInput(card, today = clock.today(), outstanding, rules))   → shape C
+│   └─ minus rows already in card_alert for this cycle
+├─ settingsStore.observe().first()  →  privacyBlurEnabled      read ONCE per batch (ADR-0022)
+└─ for each pending alert:
+    ├─ repository.get().markNotified(alert)      CLAIM FIRST
+    │   └─ UNIQUE(profile_id, account_id, cycle_start_iso_date, kind)
+    └─ notifier.notify(alert, blurAmounts)       ONLY IF THIS RUN CLAIMED IT
+        └─ NumericGuardrail.verify(...)          AI-ARC-004, on alert.usedPercent as posted
+```
+
+1. **The claim key is the statement date, not a month.** A card billing on the 25th has a cycle
+   straddling two calendar months, so a month-keyed claim would let one statement's reminder fire
+   twice — the one place this differs structurally from `budget_alert`.
+2. **Two kinds can fire on the same day** (`DUE_SOON` and `UTILISATION`), so `pendingAlerts()`
+   returns a list per card and the unique index carries `kind`.
+3. **The blur flag is read here, not in the notifier**, once per batch: a DataStore read per
+   notification would be work for nothing, and a failed read means "not blurred" exactly as it does
+   in `MainViewModel`.
 
 ---
 
