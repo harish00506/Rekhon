@@ -5,14 +5,15 @@
     "what": "Seed rows for the rules_knowledge_base table (§29.1). RuleEngine.evaluate(ruleId, FeatureSnapshot) -> RuleResult{pass|warn|fail, measuredValue, threshold, evidence, ruleId, version}.",
     "result": "Changing a number here changes the app's advice everywhere that rule is cited, reproducibly and with an audit trail.",
     "source_section": "§29",
-    "version": "1.12.0",
+    "version": "1.13.0",
     "changelog": [
       "2026-07-17 — Created from SRS v1.7 §29.2–§29.5; defaults are the floor, refined by user overrides at runtime.",
       "2026-08-07 — Added RULE-SMS-PARSE for issue 3.9's opt-in, on-device bank-alert parser (§18, §23).",
       "2026-08-11 — Added RULE-BUD-SUGGEST and RULE-BUD-PACE for issue 4.4's per-category budgets (§5.5, FR-BUD-002, FR-BUD-003).",
       "2026-08-13 — Added RULE-BUD-ALERT for issue 4.5's 80%/100% budget alerts (§5.5, FR-BUD-004). Minted as a NEW row at v1.0 rather than added to RULE-BUD-PACE's params: bumping a shipped row's version is ADR-0017's trigger 3, which would force the runtime rules loader before this issue could compile.",
       "2026-08-14 — Added RULE-BUD-REVIEW for issue 4.6's monthly budget review (§5.5, FR-BUD-*). A new row again, for the same trigger-3 reason and on the same merits: materiality ('is this gap worth mentioning?') is a different question from the median ('what should this cost?'), and a review result cites both rows.",
-      "2026-08-16 — Added RULE-STS for issue 5.2's Safe-to-Spend card (§5.2, §14, AI-STS). The first row in this file that defines a headline figure rather than a threshold to compare one against: its params fix the income basis, the horizon and the buffer, and the engine's arithmetic is fully determined by them. `buffer_pct` is the only genuinely new number here — RULE-IDLE-CASH has named a 'Safe-to-Spend needs + buffer' since this file was created, so the term was already the rulebook's, without a value."
+      "2026-08-16 — Added RULE-STS for issue 5.2's Safe-to-Spend card (§5.2, §14, AI-STS). The first row in this file that defines a headline figure rather than a threshold to compare one against: its params fix the income basis, the horizon and the buffer, and the engine's arithmetic is fully determined by them. `buffer_pct` is the only genuinely new number here — RULE-IDLE-CASH has named a 'Safe-to-Spend needs + buffer' since this file was created, so the term was already the rulebook's, without a value.",
+      "2026-08-17 — Added RULE-CC-DUE for issue 6.1's credit-card payment reminder (FR-ACC-002, §17.1). RULE-CC-UTIL was deliberately NOT touched: it already named `card_alerts` in consumed_by, so the utilisation alert reads its shipped 30% threshold exactly as it stands, and only the date question needed a row. A new row again for ADR-0017's trigger 3, and on the merits too - scoring how much of a limit is used and deciding when to wake someone about a date are different jobs with different severities and, per §17.1, different notification channels."
     ],
     "schema": {
       "rule_id": "stable public ID cited in evidence — never rename, deprecate instead",
@@ -374,6 +375,23 @@
       "rationale": "Revolving card debt (36-42% APR) is the most expensive money in the system.",
       "source_note": "Credit discipline.",
       "consumed_by": ["AI-FHS.debt_pillar", "card_alerts"],
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "rule_id": "RULE-CC-DUE",
+      "domain": "debt",
+      "name": "Remind about a credit-card payment 3 days before the due date, and again on the due day; only when something is actually owed, and at most once per reminder per billing cycle.",
+      "formula_id": "cc_due_reminder",
+      "params_json": {
+        "remind_days_before": 3,
+        "remind_on_due_day": true,
+        "skip_when_nothing_due": true
+      },
+      "severity": "warn",
+      "rationale": "A missed card payment is the most expensive ordinary mistake a person can make with this app open: a late fee, interest on the whole statement at 36-42% APR, and a credit-report mark that outlasts the debt. Three days is the smallest window that still leaves time to move money on a working day; the due-day reminder exists because the three-day one can be dismissed on a Friday and forgotten by Monday. Both are suppressed when nothing is owed, because a reminder to pay a zero balance is exactly the notification that teaches a user to swipe this channel away - and this is the channel that must still work in eleven months.",
+      "source_note": "FR-ACC-002 (statement day, due day) and SRS 17.1, which classes 'card due with amount' as a Critical money event: exempt from NTF-001's daily budget and allowed to bypass quiet hours. Minted as a NEW row rather than added to RULE-CC-UTIL's params, for the reason RULE-BUD-ALERT records: bumping a shipped row's version is ADR-0017's trigger 3. It is also the honest split - RULE-CC-UTIL scores how much of a limit is used (AI-FHS), while this row decides when to interrupt someone about a date. The once-per-cycle guarantee is enforced structurally by a UNIQUE(profile_id, account_id, cycle_start_iso_date, kind) index on card_alert, not by these params.",
+      "consumed_by": ["card_alerts", "AI-NTF"],
       "enabled": true,
       "version": "1.0"
     },

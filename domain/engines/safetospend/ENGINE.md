@@ -127,7 +127,7 @@ construction rather than by anyone remembering.
 
 | ID / file | What it provides |
 |-----------|------------------|
-| `RULE-STS` (`ai/rules/rules-kb.json` v1.12.0) | `income_basis`, `horizon`, `buffer_pct`, `include_goal_contributions`, `floor_at_zero` |
+| `RULE-STS` (`ai/rules/rules-kb.json` v1.13.0) | `income_basis`, `horizon`, `buffer_pct`, `include_goal_contributions`, `floor_at_zero` |
 
 Mirrored as `SafeToSpendRules` — a typed copy, not a runtime read, for the reason ADR-0017 records
 (nothing in the app loads `ai/` yet). `RulebookDriftTest` is the mechanism that keeps the copy

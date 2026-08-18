@@ -56,8 +56,14 @@ data class SafeToSpendRules(
         /** §5.2 / §14 — the whole formula, income basis to buffer. One row, one citation. */
         val SAFE_TO_SPEND = RuleCitation("RULE-STS", "1.0")
 
-        /** The rulebook file these thresholds were copied from, as `_meta.version`. */
-        const val RULEBOOK_VERSION = "1.12.0"
+        /**
+         * The rulebook file these thresholds were copied from, as `_meta.version`.
+         *
+         * Restated to 1.13.0 by issue 6.1, which added `RULE-CC-DUE` — **`RULE-STS` itself did not
+         * change** and its own version stayed at 1.0. `_meta.version` describes the file, not this
+         * row, so every typed mirror restates it whenever any rule is added.
+         */
+        const val RULEBOOK_VERSION = "1.13.0"
 
         /**
          * `RULE-STS.income_basis` — the envelope total, falling back to the ledger's actual income.
