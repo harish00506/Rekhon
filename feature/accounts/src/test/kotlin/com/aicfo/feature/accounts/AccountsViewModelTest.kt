@@ -63,7 +63,7 @@ class AccountsViewModelTest {
         runTest {
             repository.setAccounts(account { copy(id = "account:1", name = "HDFC Savings") })
 
-            AccountsViewModel(repository).uiState.test {
+            AccountsViewModel(repository, FakeCreditCardRepository()).uiState.test {
                 val loaded = awaitItem()
                 assertFalse(loaded.isLoading)
                 assertEquals(listOf("HDFC Savings"), loaded.accounts.map { it.name })
@@ -78,7 +78,7 @@ class AccountsViewModelTest {
             // empty invitation are both wrong answers to "the database would not open".
             repository.failOnObserve = AppError.Storage("disk")
 
-            val state = AccountsViewModel(repository).uiState.value
+            val state = AccountsViewModel(repository, FakeCreditCardRepository()).uiState.value
 
             assertFalse("must not spin forever", state.isLoading)
             // The code, not which code: a Flow carries a raw `Throwable`, so the mapping is
@@ -91,7 +91,7 @@ class AccountsViewModelTest {
     @Test
     fun `an empty store is empty, not loading`() =
         runTest {
-            val viewModel = AccountsViewModel(repository)
+            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository())
 
             val state = viewModel.uiState.value
             assertFalse(state.isLoading)
@@ -105,7 +105,7 @@ class AccountsViewModelTest {
                 account { copy(id = "account:1", name = "Active") },
                 account { copy(id = "account:2", name = "Closed", isArchived = true) },
             )
-            val viewModel = AccountsViewModel(repository)
+            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository())
 
             assertEquals(listOf("Active"), viewModel.uiState.value.accounts.map { it.name })
 
@@ -119,7 +119,7 @@ class AccountsViewModelTest {
     fun `turning the toggle back off hides them again`() =
         runTest {
             repository.setAccounts(account { copy(id = "account:2", name = "Closed", isArchived = true) })
-            val viewModel = AccountsViewModel(repository)
+            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository())
             viewModel.onEvent(AccountsEvent.ToggleArchived(show = true))
 
             viewModel.onEvent(AccountsEvent.ToggleArchived(show = false))
@@ -131,7 +131,7 @@ class AccountsViewModelTest {
     fun `archiving an account calls the repository and the list follows`() =
         runTest {
             repository.setAccounts(account { copy(id = "account:1", name = "Old Card") })
-            val viewModel = AccountsViewModel(repository)
+            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository())
 
             viewModel.onEvent(AccountsEvent.SetArchived("account:1", archived = true))
 
@@ -144,7 +144,7 @@ class AccountsViewModelTest {
     fun `deleting an account calls the repository and the list follows`() =
         runTest {
             repository.setAccounts(account { copy(id = "account:1") })
-            val viewModel = AccountsViewModel(repository)
+            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository())
 
             viewModel.onEvent(AccountsEvent.Delete("account:1"))
 
@@ -156,7 +156,7 @@ class AccountsViewModelTest {
     fun `a failed delete is reported rather than swallowed`() =
         runTest {
             repository.setAccounts(account { copy(id = "account:1") })
-            val viewModel = AccountsViewModel(repository)
+            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository())
             repository.failWith = AppError.Storage("disk")
 
             viewModel.onEvent(AccountsEvent.Delete("account:1"))
@@ -169,7 +169,7 @@ class AccountsViewModelTest {
     fun `a failed archive is reported rather than swallowed`() =
         runTest {
             repository.setAccounts(account { copy(id = "account:1") })
-            val viewModel = AccountsViewModel(repository)
+            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository())
             repository.failWith = AppError.NotFound
 
             viewModel.onEvent(AccountsEvent.SetArchived("account:1", archived = true))
@@ -180,7 +180,7 @@ class AccountsViewModelTest {
     @Test
     fun `dismissing the error clears it`() =
         runTest {
-            val viewModel = AccountsViewModel(repository)
+            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository())
             repository.failWith = AppError.Storage("disk")
             viewModel.onEvent(AccountsEvent.Delete("account:1"))
 
@@ -193,7 +193,7 @@ class AccountsViewModelTest {
     fun `restoring an archived account brings it back to the active list`() =
         runTest {
             repository.setAccounts(account { copy(id = "account:1", name = "Reopened", isArchived = true) })
-            val viewModel = AccountsViewModel(repository)
+            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository())
 
             viewModel.onEvent(AccountsEvent.SetArchived("account:1", archived = false))
 
@@ -214,7 +214,7 @@ class AccountsViewModelTest {
                 },
             )
 
-            val account = AccountsViewModel(repository).uiState.value.accounts.single()
+            val account = AccountsViewModel(repository, FakeCreditCardRepository()).uiState.value.accounts.single()
 
             assertEquals(com.aicfo.core.model.Money(75_000_00L), account.balance)
             assertEquals(com.aicfo.core.model.Money(1_00_000_00L), account.openingBalance)

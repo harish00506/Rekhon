@@ -1,6 +1,8 @@
 package com.aicfo.feature.accounts
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
@@ -163,8 +165,29 @@ private fun EditorFields(
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
     )
-    // P-02: the user must be able to see *why* the current balance is not theirs to type here, not
-    // merely discover that it is missing.
+    BalanceHelp()
+    NetWorthToggle(
+        checked = uiState.includeInNetWorth,
+        onCheckedChange = { onEvent(AccountEditorEvent.IncludeInNetWorthChanged(it)) },
+    )
+    // Issue 6.1: the module's first type branch. Everything above is true of all eleven types;
+    // a limit and a statement day are true of exactly one.
+    if (uiState.showsCardFields) {
+        CardFields(uiState = uiState, onEvent = onEvent)
+    }
+}
+
+/**
+ * The two sentences under the opening-balance field.
+ * Why:    P-02 — the user must be able to see *why* the current balance is not theirs to type here,
+ *         not merely discover that it is missing. Extracted from [EditorFields] when issue 6.1's
+ *         card branch pushed that function past the 40-line limit (§21.6); the seam is the fields
+ *         themselves against the prose explaining them.
+ * Result: the composition. Input: none. Output: none.
+ * Changelog: 2026-08-17 — Extracted for issue 6.1.
+ */
+@Composable
+private fun BalanceHelp() {
     Text(
         text = stringResource(R.string.account_editor_opening_balance_help),
         style = MaterialTheme.typography.bodySmall,
@@ -173,9 +196,90 @@ private fun EditorFields(
         text = stringResource(R.string.account_editor_liability_help),
         style = MaterialTheme.typography.bodySmall,
     )
-    NetWorthToggle(
-        checked = uiState.includeInNetWorth,
-        onCheckedChange = { onEvent(AccountEditorEvent.IncludeInNetWorthChanged(it)) },
+}
+
+/**
+ * The credit-card terms (issue 6.1; FR-ACC-002).
+ *
+ * Why:    shown only for `CREDIT_CARD`, because a limit and a statement day mean nothing on a
+ *         savings account and offering them would invite a user to fill in fields the app ignores.
+ *         Split into its own composable to stay inside the 40-line function limit (§21.6), and
+ *         because 6.2's loan terms will sit beside it as a sibling rather than inside `EditorFields`.
+ *
+ *         **The two days are separate fields rather than a date picker.** FR-ACC-002 stores days,
+ *         not dates: a card bills on the 5th every month, and asking for a date would make the user
+ *         answer a question about one particular month.
+ * Result: the composition. Input: [uiState], [onEvent]. Output: none.
+ * Changelog: 2026-08-17 — Created for issue 6.1.
+ */
+@Composable
+private fun CardFields(
+    uiState: AccountEditorUiState,
+    onEvent: (AccountEditorEvent) -> Unit,
+) {
+    Text(
+        text = stringResource(R.string.account_editor_card_section),
+        style = MaterialTheme.typography.titleSmall,
+    )
+    CardField(R.string.account_editor_card_limit, uiState.creditLimitText, CardField.LIMIT, onEvent)
+    Row(horizontalArrangement = Arrangement.spacedBy(CfoDimens.spaceSm)) {
+        Box(Modifier.weight(1f)) {
+            CardField(
+                R.string.account_editor_card_statement_day,
+                uiState.statementDayText,
+                CardField.STATEMENT_DAY,
+                onEvent,
+                numeric = true,
+            )
+        }
+        Box(Modifier.weight(1f)) {
+            CardField(
+                R.string.account_editor_card_due_day,
+                uiState.dueDayText,
+                CardField.DUE_DAY,
+                onEvent,
+                numeric = true,
+            )
+        }
+    }
+    CardField(R.string.account_editor_card_last_statement, uiState.lastStatementText, CardField.LAST_STATEMENT, onEvent)
+    CardField(R.string.account_editor_card_minimum_due, uiState.minimumDueText, CardField.MINIMUM_DUE, onEvent)
+    // P-02: the user should know why three of these are asked for together and two are not.
+    Text(
+        text = stringResource(R.string.account_editor_card_help),
+        style = MaterialTheme.typography.bodySmall,
+    )
+}
+
+/**
+ * One card field.
+ * Why:    five near-identical text fields, differing in label, value, which [CardField] they emit
+ *         and whether the keypad shows a decimal point. Writing them out five times is how one of
+ *         them ends up wired to the wrong event.
+ * Result: the composition.
+ * Input:  [label] — a string resource; [value]; [field]; [onEvent]; [numeric] — `true` for the two
+ *         day fields, which are whole numbers and get a plain number pad.
+ * Output: none.
+ * Changelog: 2026-08-17 — Created for issue 6.1.
+ */
+@Composable
+private fun CardField(
+    @StringRes label: Int,
+    value: String,
+    field: CardField,
+    onEvent: (AccountEditorEvent) -> Unit,
+    numeric: Boolean = false,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = { onEvent(AccountEditorEvent.CardFieldChanged(field, it)) },
+        label = { Text(stringResource(label)) },
+        keyboardOptions =
+            KeyboardOptions(
+                keyboardType = if (numeric) KeyboardType.Number else KeyboardType.Decimal,
+            ),
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
     )
 }
 

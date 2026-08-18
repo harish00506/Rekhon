@@ -36,6 +36,7 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class AccountEditorViewModelTest {
     private val repository = FakeAccountRepository()
+    private val cards = FakeCreditCardRepository()
 
     /** Input: none. Output: pins `viewModelScope` to a test dispatcher so writes run inline. */
     @Before
@@ -56,6 +57,7 @@ class AccountEditorViewModelTest {
     private fun editor(accountId: String? = null) =
         AccountEditorViewModel(
             repository,
+            cards,
             SavedStateHandle(
                 accountId?.let { mapOf(AccountEditorViewModel.ACCOUNT_ID_KEY to it) } ?: emptyMap(),
             ),

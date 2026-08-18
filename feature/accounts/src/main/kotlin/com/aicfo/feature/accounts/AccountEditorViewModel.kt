@@ -3,13 +3,17 @@ package com.aicfo.feature.accounts
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.aicfo.core.common.AppError
 import com.aicfo.core.common.Err
 import com.aicfo.core.common.Ok
+import com.aicfo.core.common.Result
 import com.aicfo.core.model.Account
+import com.aicfo.core.model.CreditCard
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.MoneyFormatter
 import com.aicfo.data.repository.AccountDraft
 import com.aicfo.data.repository.AccountRepository
+import com.aicfo.data.repository.CreditCardRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,6 +44,7 @@ class AccountEditorViewModel
     @Inject
     constructor(
         private val repository: AccountRepository,
+        private val cards: CreditCardRepository,
         savedState: SavedStateHandle,
     ) : ViewModel() {
         private val accountId: String? = savedState.get<String>(ACCOUNT_ID_KEY)?.takeIf { it.isNotBlank() }
@@ -66,7 +71,13 @@ class AccountEditorViewModel
         private fun load(id: String) {
             viewModelScope.launch {
                 when (val outcome = repository.find(id)) {
-                    is Ok -> _uiState.update { outcome.value.toEditorState() }
+                    is Ok -> {
+                        // The card's terms are a second read, and only for a card. Folding them into
+                        // the same state update rather than emitting twice keeps the form from
+                        // flashing an empty card section before it fills (ARC-004).
+                        val card = (cards.find(id) as? Ok)?.value
+                        _uiState.update { outcome.value.toEditorState().withCard(card) }
+                    }
                     is Err -> _uiState.update { it.copy(isLoading = false, errorCode = outcome.error.code) }
                 }
             }
@@ -88,6 +99,8 @@ class AccountEditorViewModel
 
                 is AccountEditorEvent.IncludeInNetWorthChanged ->
                     _uiState.update { it.copy(includeInNetWorth = event.value) }
+
+                is AccountEditorEvent.CardFieldChanged -> _uiState.update { it.withCardField(event.field, event.value) }
 
                 AccountEditorEvent.Save -> save()
                 AccountEditorEvent.DismissError -> _uiState.update { it.copy(errorCode = null) }
@@ -128,13 +141,48 @@ class AccountEditorViewModel
             _uiState.update { it.copy(isSaving = true, errorCode = null) }
             viewModelScope.launch {
                 val outcome = accountId?.let { repository.update(it, draft) } ?: repository.create(draft)
+                if (outcome is Err) {
+                    _uiState.update { it.copy(isSaving = false, errorCode = outcome.error.code) }
+                    return@launch
+                }
+
+                // The card's terms are written **after** the account exists, because they are keyed
+                // by its id — and on create that id does not exist until the line above returns.
+                val savedId = (outcome as Ok).value.id
+                val cardOutcome = saveCardTerms(savedId, state)
                 _uiState.update {
-                    when (outcome) {
-                        is Ok -> it.copy(isSaving = false, isSaved = true)
-                        is Err -> it.copy(isSaving = false, errorCode = outcome.error.code)
+                    when (cardOutcome) {
+                        is Err -> it.copy(isSaving = false, errorCode = cardOutcome.error.code)
+                        else -> it.copy(isSaving = false, isSaved = true)
                     }
                 }
             }
+        }
+
+        /**
+         * Writes the card's terms, if this is a card and they are complete.
+         *
+         * Why:    separate from the account write and after it, because `credit_card` is keyed by
+         *         `account_id` — on a create, that id does not exist until the account is stored.
+         *
+         *         **Silence rather than an error when the fields are blank.** A credit-card account
+         *         with no terms yet is a supported state: the user made the account and will fill in
+         *         the limit later, and refusing the save would make three optional fields feel
+         *         mandatory. `hasCardTerms` is all-or-nothing precisely so a *partial* set cannot
+         *         reach here and produce a card that computes nothing.
+         * Result: `Ok(Unit)` when there was nothing to write or the write succeeded; the repository's
+         *         `Err` otherwise — including `account.notACreditCard`, which is a real answer if the
+         *         type was changed away between typing and saving.
+         * Input:  [id] — the saved account; [state] — the form. Output: `Result<Unit, AppError>`.
+         * Changelog: 2026-08-17 — Created for issue 6.1.
+         */
+        private suspend fun saveCardTerms(
+            id: String,
+            state: AccountEditorUiState,
+        ): Result<Unit, AppError> {
+            if (!state.showsCardFields || !state.hasCardTerms) return Ok(Unit)
+            val card = state.toCreditCard(id) ?: return Err(AppError.Validation(VALIDATION_ERROR_CODE))
+            return cards.save(card)
         }
 
         companion object {
@@ -187,3 +235,81 @@ internal fun Account.toEditorState(): AccountEditorUiState =
         includeInNetWorth = includeInNetWorth,
         isLoading = false,
     )
+
+/**
+ * Fills the card section from stored terms (issue 6.1; FR-ACC-002).
+ * Why:    the same argument [toEditorState] makes for the account: an editor that opens blank and
+ *         saves would silently clear the card's limit. `null` means the account has no terms yet,
+ *         which leaves the section empty rather than zeroed.
+ * Result: the state with the card fields filled, or unchanged.
+ * Input:  the receiver; [card] — the stored terms, or `null`. Output: [AccountEditorUiState].
+ * Changelog: 2026-08-17 — Created for issue 6.1.
+ */
+internal fun AccountEditorUiState.withCard(card: CreditCard?): AccountEditorUiState =
+    if (card == null) {
+        this
+    } else {
+        copy(
+            creditLimitText = MoneyFormatter.format(card.creditLimit),
+            statementDayText = card.statementDay.toString(),
+            dueDayText = card.dueDay.toString(),
+            lastStatementText = card.lastStatement?.let(MoneyFormatter::format).orEmpty(),
+            minimumDueText = card.minimumDue?.let(MoneyFormatter::format).orEmpty(),
+        )
+    }
+
+/**
+ * Applies one card-field edit (issue 6.1).
+ * Why:    the `when` is exhaustive over [CardField], so adding a term to that enum is a compile
+ *         error here rather than a field that silently never updates.
+ * Result: the state with that one field changed.
+ * Input:  the receiver; [field]; [value] — as typed. Output: [AccountEditorUiState].
+ * Changelog: 2026-08-17 — Created for issue 6.1.
+ */
+internal fun AccountEditorUiState.withCardField(
+    field: CardField,
+    value: String,
+): AccountEditorUiState =
+    when (field) {
+        CardField.LIMIT -> copy(creditLimitText = value)
+        CardField.STATEMENT_DAY -> copy(statementDayText = value)
+        CardField.DUE_DAY -> copy(dueDayText = value)
+        CardField.LAST_STATEMENT -> copy(lastStatementText = value)
+        CardField.MINIMUM_DUE -> copy(minimumDueText = value)
+    }
+
+/**
+ * Parses the card section (issue 6.1; FR-ACC-002, MNY-001).
+ *
+ * Why:    parsed once, at save, for the reason [parsedOpeningBalance] gives — `"2,00,0"` is a real
+ *         intermediate state and re-parsing on every keystroke would fight the user.
+ *
+ *         **Every failure returns `null` rather than a substituted value.** A limit that will not
+ *         parse, a statement day of 45, a negative minimum — each would otherwise become a plausible
+ *         card the app computes real advice from. `CreditCard`'s own `require`s would throw on some
+ *         of them, and a throw inside a ViewModel is a crash; catching them here turns the whole
+ *         section into one honest validation error.
+ * Result: the card, or `null` when anything in the section is not exactly representable.
+ * Input:  the receiver; [accountId] — the account these terms belong to. Output: `CreditCard?`.
+ * Changelog: 2026-08-17 — Created for issue 6.1.
+ */
+internal fun AccountEditorUiState.toCreditCard(accountId: String): CreditCard? {
+    val limit = MoneyFormatter.parse(creditLimitText) ?: return null
+    val statementDay = statementDayText.trim().toIntOrNull() ?: return null
+    val dueDay = dueDayText.trim().toIntOrNull() ?: return null
+    // Blank is "not entered", which is a real state for both. A typed value that will not parse is
+    // not — it is a mistake, and substituting null for it would silently discard what was typed.
+    val lastStatement = lastStatementText.takeIf { it.isNotBlank() }?.let { MoneyFormatter.parse(it) ?: return null }
+    val minimumDue = minimumDueText.takeIf { it.isNotBlank() }?.let { MoneyFormatter.parse(it) ?: return null }
+
+    return runCatching {
+        CreditCard(
+            accountId = accountId,
+            creditLimit = limit,
+            statementDay = statementDay,
+            dueDay = dueDay,
+            lastStatement = lastStatement,
+            minimumDue = minimumDue,
+        )
+    }.getOrNull()
+}
