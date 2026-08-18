@@ -17,7 +17,9 @@ import com.aicfo.core.database.entity.AuditLogEntity
 import com.aicfo.core.database.entity.BudgetAlertEntity
 import com.aicfo.core.database.entity.BudgetEntity
 import com.aicfo.core.database.entity.BudgetReviewEntity
+import com.aicfo.core.database.entity.CardAlertEntity
 import com.aicfo.core.database.entity.CategoryEntity
+import com.aicfo.core.database.entity.CreditCardEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
 import com.aicfo.core.database.entity.ProfileEntity
 import com.aicfo.core.database.entity.RecurringRuleEntity
@@ -2186,6 +2188,25 @@ interface DemoDao {
     suspend fun deleteBudgetAlerts(profileId: String): Int
 
     /**
+     * Result: rows removed from `card_alert`. Input: [profileId]. Output: the count.
+     *
+     * Cleared with the profile like every other claim table, and before `credit_card` for the
+     * ordering argument [deleteTransactionSplits] makes: a claim is a child of a card.
+     */
+    @Query("DELETE FROM card_alert WHERE profile_id = :profileId")
+    suspend fun deleteCardAlerts(profileId: String): Int
+
+    /**
+     * Result: rows removed from `credit_card`. Input: [profileId]. Output: the count.
+     *
+     * A card's terms are a child of an account, so this runs before the accounts are cleared —
+     * otherwise a failure in between would leave card rows pointing at nothing, which the demo
+     * residue count would then report for ever.
+     */
+    @Query("DELETE FROM credit_card WHERE profile_id = :profileId")
+    suspend fun deleteCreditCards(profileId: String): Int
+
+    /**
      * Result: rows removed from `budget_review`. Input: [profileId]. Output: the count.
      *
      * Added by issue 4.6, which introduced the table. Unlike [deleteBudgetAlerts] there is no
@@ -2302,7 +2323,7 @@ interface DemoDao {
      *         Deliberately **not** filtered by `deleted_at_utc_millis`: a soft-deleted row is
      *         precisely the residue being looked for, so it must count.
      * Result: `0` once the profile has been erased.
-     * Input:  [profileId]. Output: the total row count across all fourteen tables.
+     * Input:  [profileId]. Output: the total row count across all sixteen tables.
      */
     @Query(
         "SELECT (SELECT COUNT(*) FROM profile WHERE id = :profileId) + " +
@@ -2318,7 +2339,9 @@ interface DemoDao {
             "(SELECT COUNT(*) FROM budget_review WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM recurring_rule WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM net_worth_snapshot WHERE profile_id = :profileId) + " +
-            "(SELECT COUNT(*) FROM sms_draft WHERE profile_id = :profileId)",
+            "(SELECT COUNT(*) FROM sms_draft WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM credit_card WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM card_alert WHERE profile_id = :profileId)",
     )
     suspend fun countRowsFor(profileId: String): Int
 }
@@ -2398,6 +2421,14 @@ interface ArchiveDao {
     @Query("SELECT * FROM budget_review WHERE profile_id = :profileId ORDER BY id")
     suspend fun budgetReviews(profileId: String): List<BudgetReviewEntity>
 
+    /** Result: every card's terms, tombstones included (FR-ACC-002). Input: [profileId]. */
+    @Query("SELECT * FROM credit_card WHERE profile_id = :profileId ORDER BY account_id")
+    suspend fun creditCards(profileId: String): List<CreditCardEntity>
+
+    /** Result: every card alert already sent, so a restore does not re-notify. Input: [profileId]. */
+    @Query("SELECT * FROM card_alert WHERE profile_id = :profileId ORDER BY id")
+    suspend fun cardAlerts(profileId: String): List<CardAlertEntity>
+
     /** Result: every recurring rule, confirmed and dismissed alike (FR-TXN-006). Input: [profileId]. */
     @Query("SELECT * FROM recurring_rule WHERE profile_id = :profileId ORDER BY id")
     suspend fun recurringRules(profileId: String): List<RecurringRuleEntity>
@@ -2465,6 +2496,19 @@ interface ArchiveDao {
     /** Result: the month-end review claims are present. Input: [rows]. Output: none (suspends). */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertBudgetReviews(rows: List<BudgetReviewEntity>)
+
+    /** Result: the cards' terms are present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCreditCards(rows: List<CreditCardEntity>)
+
+    /**
+     * Result: the card alerts already sent are present. Input: [rows]. Output: none (suspends).
+     *
+     * REPLACE, unlike `CardAlertDao`'s IGNORE — a restore is not a claim, and going through the
+     * claim-shaped writer would silently drop every row whose key already existed.
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCardAlerts(rows: List<CardAlertEntity>)
 
     /** Result: the recurring rules are present. Input: [rows]. Output: none (suspends). */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -2812,4 +2856,110 @@ interface SmsDraftDao {
      */
     @Query("DELETE FROM sms_draft WHERE status = 'pending'")
     suspend fun deleteAllPending(): Int
+}
+
+/**
+ * Reads and writes a credit card's terms (issue 6.1; FR-ACC-002, §5.7).
+ *
+ * Why:  a card's limit and dates change rarely and are read on every card screen, which is the
+ *       opposite shape from the ledger's DAOs. So there is no paging and no window here — one
+ *       upsert, one live read per profile, one point read.
+ * What: the CRUD `credit_card` needs and nothing more.
+ * Result: the card detail the engine turns into ratios and dates.
+ * Changelog: 2026-08-17 — Created for issue 6.1.
+ */
+@Dao
+interface CreditCardDao {
+    /**
+     * Writes the card's terms, replacing any that were there.
+     * Why:    `REPLACE` is right here where it is wrong for a claim table: the row is keyed by
+     *         `account_id` and describes the *current* terms, so a second write is an edit rather
+     *         than a duplicate. There is no history to lose — a changed credit limit is a new fact,
+     *         not an event.
+     * Result: the row is present with these values.
+     * Input:  [card]. Output: none.
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(card: CreditCardEntity)
+
+    /**
+     * Observes every live card for a profile.
+     * Why:    the accounts list renders a utilisation bar per card, so it needs them all at once and
+     *         needs to re-render when one is edited.
+     * Result: the profile's undeleted cards, re-emitted on every write.
+     * Input:  [profileId]. Output: `Flow<List<CreditCardEntity>>`.
+     */
+    @Query(
+        "SELECT * FROM credit_card WHERE profile_id = :profileId " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY account_id",
+    )
+    fun observeForProfile(profileId: String): Flow<List<CreditCardEntity>>
+
+    /**
+     * Reads every live card once.
+     * Why:    the alert worker needs one reading, and collecting a Flow for one value would be a
+     *         subscription standing in for a lookup.
+     * Result: the profile's undeleted cards. Input: [profileId]. Output: the list.
+     */
+    @Query("SELECT * FROM credit_card WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL")
+    suspend fun forProfile(profileId: String): List<CreditCardEntity>
+
+    /**
+     * Reads one card.
+     * Result: the row, or `null` when the account has no card detail — which is the ordinary state
+     *         of a credit-card account the user has not filled in yet, not an error.
+     * Input:  [accountId]. Output: [CreditCardEntity]?.
+     */
+    @Query("SELECT * FROM credit_card WHERE account_id = :accountId AND deleted_at_utc_millis IS NULL")
+    suspend fun find(accountId: String): CreditCardEntity?
+
+    /**
+     * Soft-deletes a card's detail.
+     * Why:    tombstoned rather than removed, like every other profile-scoped row — DB-003 and the
+     *         export format both assume nothing vanishes.
+     * Result: the number of rows changed, 0 or 1.
+     * Input:  [accountId]; [deletedAtUtcMillis] — from the injected `Clock`. Output: [Int].
+     */
+    @Query(
+        "UPDATE credit_card SET deleted_at_utc_millis = :deletedAtUtcMillis, " +
+            "updated_at_utc_millis = :deletedAtUtcMillis WHERE account_id = :accountId",
+    )
+    suspend fun softDelete(
+        accountId: String,
+        deletedAtUtcMillis: Long,
+    ): Int
+}
+
+/**
+ * Records that the user has been told something about a card, at most once per cycle (issue 6.1).
+ *
+ * Why:  the same one-question shape as [BudgetAlertDao] — "has this been claimed?" — and the same
+ *       reason for [insertIfNew]: the unique index on (profile, account, cycle, kind) is what makes
+ *       "told once" true, not the caller checking first. A payment reminder that re-fires daily is
+ *       not three reminders, it is a muted channel.
+ * What: one guarded insert and one point read for the worker.
+ * Result: at most one notification per card, per cycle, per kind.
+ * Changelog: 2026-08-17 — Created for issue 6.1.
+ */
+@Dao
+interface CardAlertDao {
+    /**
+     * Records that the user was notified, unless they already had been.
+     * Why:    `IGNORE`, never `REPLACE` — see [BudgetAlertDao.insertIfNew]. The database refusing
+     *         the duplicate is what removes the read-then-write window a retrying worker sits in.
+     * Result: `-1` when the row already existed (send nothing); the new rowid otherwise.
+     * Input:  [alert]. Output: [Long] rowid, or `-1`.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfNew(alert: CardAlertEntity): Long
+
+    /**
+     * Reads what has already been claimed for a profile.
+     * Why:    the worker asks once per run and filters the engine's answer against it. Unbounded by
+     *         cycle deliberately: a profile has a handful of cards and a handful of cycles, so
+     *         narrowing the query would add a parameter and save nothing measurable.
+     * Result: every claim for the profile. Input: [profileId]. Output: the list.
+     */
+    @Query("SELECT * FROM card_alert WHERE profile_id = :profileId")
+    suspend fun forProfile(profileId: String): List<CardAlertEntity>
 }

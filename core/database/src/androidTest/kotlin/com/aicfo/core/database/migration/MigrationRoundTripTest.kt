@@ -850,6 +850,90 @@ class MigrationRoundTripTest {
     }
 
     /**
+     * 15 → 16 adds `credit_card` and `card_alert` (issue 6.1; FR-ACC-002, §17.1).
+     *
+     * Input:  a version-15 database holding an account with an exact paise balance.
+     * Output: asserts the account survives untouched, a card's terms round-trip, and the guarantee
+     *         `card_alert` was shaped around actually holds in SQL: **one cycle cannot be notified
+     *         about twice for the same kind, but the two kinds and the next cycle still get
+     *         through**.
+     *
+     * The unique index is exercised rather than assumed. It is the only thing standing between a
+     * worker that retries after a partial failure and a payment reminder that fires three days
+     * running — and an index present in `schemas/16.json` but never inserted against is a claim,
+     * not a guarantee. The key includes `kind` precisely so a card that is both due and over its
+     * limit produces two messages, so that is asserted too rather than left to the schema to imply.
+     *
+     * **Purely additive, so the failure this guards against is a migration that recreated an
+     * existing table on its way to adding new ones**: that would validate perfectly against
+     * `schemas/16.json` and lose the user's accounts. The balance is asserted byte for byte
+     * (MNY-001).
+     */
+    @Test
+    fun migrate15To16_preservesAccountsAndMakesASecondAlertForOneCycleImpossible() {
+        helper.createDatabase(TEST_DB, 15).use { db ->
+            db.execSQL(
+                "INSERT INTO account (id, profile_id, name, type, opening_balance_minor, " +
+                    "current_balance_minor, currency_code, include_in_networth, " +
+                    "created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('a1','p1','HDFC Card','credit_card',0,-7000000,'INR',1," +
+                    "1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 16, true, Migrations.MIGRATION_15_16)
+
+        migrated.query("SELECT current_balance_minor FROM account WHERE id = 'a1'").use { cursor ->
+            assertTrue("the pre-migration account must still be there", cursor.moveToFirst())
+            assertEquals("MNY-001: the balance must survive byte for byte", -7000000L, cursor.getLong(0))
+        }
+
+        migrated.execSQL(
+            "INSERT INTO credit_card (account_id, profile_id, credit_limit_minor, statement_day, " +
+                "due_day, last_statement_minor, last_statement_iso_date, minimum_due_minor, apr_bps, " +
+                "created_at_utc_millis, updated_at_utc_millis) " +
+                "VALUES ('a1','p1',20000000,5,25,7000000,'2026-03-05',350000,4200," +
+                "1767312000000,1767312000000)",
+        )
+        migrated.query("SELECT credit_limit_minor, apr_bps FROM credit_card WHERE account_id = 'a1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("MNY-001: the limit is paise", 20000000L, cursor.getLong(0))
+            assertEquals("MNY-002: the rate is integer basis points", 4200, cursor.getInt(1))
+        }
+
+        migrated.execSQL(insertCardClaim(id = "ca1", cycle = "2026-03-05", kind = "DUE_SOON"))
+
+        // The requirement, tested as a refusal rather than as a declaration.
+        assertThrows(SQLiteConstraintException::class.java) {
+            migrated.execSQL(insertCardClaim(id = "ca2", cycle = "2026-03-05", kind = "DUE_SOON"))
+        }
+
+        // ...but the other kind, and the next cycle, must still get through.
+        migrated.execSQL(insertCardClaim(id = "ca3", cycle = "2026-03-05", kind = "UTILISATION"))
+        migrated.execSQL(insertCardClaim(id = "ca4", cycle = "2026-04-05", kind = "DUE_SOON"))
+        migrated.query("SELECT COUNT(*) FROM card_alert WHERE profile_id = 'p1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("two kinds in one cycle and one in the next are three claims", 3, cursor.getInt(0))
+        }
+        migrated.close()
+    }
+
+    /**
+     * Builds one `card_alert` insert.
+     * Why:    the four inserts above differ in three values, and spelling the column list out four
+     *         times would hide that.
+     * Result: the SQL. Input: [id]; [cycle]; [kind]. Output: [String].
+     */
+    private fun insertCardClaim(
+        id: String,
+        cycle: String,
+        kind: String,
+    ): String =
+        "INSERT INTO card_alert (id, profile_id, account_id, cycle_start_iso_date, kind, rule_id, " +
+            "rule_version, notified_at_utc_millis) " +
+            "VALUES ('$id','p1','a1','$cycle','$kind','RULE-CC-DUE','1.0',1767312000000)"
+
+    /**
      * Builds one `budget_review` insert.
      * Why:    the three inserts above differ in exactly two values, and spelling the column list out
      *         three times would hide that.

@@ -1028,3 +1028,138 @@ data class SmsDraftEntity(
     @ColumnInfo(name = "updated_at_utc_millis")
     val updatedAtUtcMillis: Long,
 )
+
+/**
+ * What a credit card is, beyond an `account` row with a balance (issue 6.1; FR-ACC-002, §5.7).
+ *
+ * Why:    `AccountEntity` has carried eleven types and one balance since issue 1.6, and
+ *         `AccountType`'s own doc comment has been promising this table since 2.5: *"A credit
+ *         card's limit and statement day (FR-ACC-002) … live in their own tables."* Putting the six
+ *         fields on `account` instead would add six always-null columns to the ten types that can
+ *         never use them — and would do it again for every loan field 6.2 adds, and every holding
+ *         field 6.3 adds. One table per type-specific shape keeps `account` the thing every type
+ *         genuinely shares.
+ *
+ *         **Keyed by `account_id`, not by an id of its own.** A card *is* an account here; a second
+ *         identity would allow two card rows for one account, which nothing in the app could then
+ *         choose between.
+ * What:   the card's terms and the last statement cut against them.
+ * Result: a Room row in `credit_card`, added at schema version 16 by issue 6.1.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-08-17 — Created for issue 6.1 (FR-ACC-002).
+ *
+ * **"Current unbilled" is absent although FR-ACC-002 names it.** It is
+ * `outstanding − last_statement`, and the ledger already knows the first term — storing the
+ * difference would be a second version of a number the app can always re-derive, which is the
+ * argument [BudgetAlertEntity] makes for storing no amounts at all. The card engine derives it.
+ *
+ * **The days are days-of-month, not dates**, because that is what FR-ACC-002 says and what a card
+ * does: it bills on the 5th every month. Storing dates would mean rewriting this row twelve times a
+ * year and still having no answer for next February. The clamp to a short month is the engine's.
+ */
+@Serializable
+@Entity(
+    tableName = "credit_card",
+    indices = [
+        Index("profile_id"),
+        Index("profile_id", "deleted_at_utc_millis"),
+    ],
+)
+data class CreditCardEntity(
+    /** The `account` row this describes. One card per account, which is why it is the key. */
+    @PrimaryKey
+    @ColumnInfo(name = "account_id")
+    val accountId: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** MNY-001: paise. Positive — utilisation divides by it, and the model refuses zero. */
+    @ColumnInfo(name = "credit_limit_minor")
+    val creditLimitMinor: Long,
+    /** 1..31, clamped to the month's length when resolved into a date. */
+    @ColumnInfo(name = "statement_day")
+    val statementDay: Int,
+    /** 1..31. May precede [statementDay] — the payment then falls in the following month. */
+    @ColumnInfo(name = "due_day")
+    val dueDay: Int,
+    /** MNY-001: paise on the most recent statement. Null until one is recorded — not zero (P-03). */
+    @ColumnInfo(name = "last_statement_minor")
+    val lastStatementMinor: Long? = null,
+    /** TIM-002: when that statement was cut, ISO `yyyy-MM-dd`. */
+    @ColumnInfo(name = "last_statement_iso_date")
+    val lastStatementIsoDate: String? = null,
+    /** MNY-001: paise. The minimum payment on that statement, when the user has entered it. */
+    @ColumnInfo(name = "minimum_due_minor")
+    val minimumDueMinor: Long? = null,
+    /** MNY-002: the purchase APR in integer basis points. Never a `Double`. */
+    @ColumnInfo(name = "apr_bps")
+    val aprBps: Int? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+)
+
+/**
+ * A record that the user has already been told one thing about one card in one billing cycle
+ * (issue 6.1; FR-ACC-002, §17.1).
+ *
+ * Why:    the same problem [BudgetAlertEntity] solves, with a worse failure mode. A payment
+ *         reminder that re-fires every day for three days is not three reminders, it is a channel
+ *         the user mutes — and this is the channel §17.1 classes as a **Critical money event**,
+ *         the one that must still work in eleven months when it actually matters.
+ *
+ *         **The unique index is the memory**, not a flag: `UNIQUE(profile_id, account_id,
+ *         cycle_start_iso_date, kind)` makes a second identical notification structurally
+ *         impossible rather than conditionally avoided.
+ *
+ *         **`kind` is part of the key** for the reason `band` is part of the budget one: a card can
+ *         be both due and over its utilisation line in the same cycle, and those are two different
+ *         messages on two different Android channels (NTF-006). Collapsing them would drop one.
+ *
+ *         **The cycle start is the statement date, not the month**, which is the whole reason this
+ *         key is not `month_start_iso_date`. A card billing on the 25th has a cycle straddling two
+ *         calendar months; keyed by month, the reminder would fire twice for one statement.
+ * What:   one row per (card, cycle, kind) the app has notified.
+ * Result: a Room row in `card_alert`, added at schema version 16 by issue 6.1.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-08-17 — Created for issue 6.1.
+ *
+ * **No amounts and no tombstone.** The figures are re-derivable from the card and the ledger, so a
+ * copy here could disagree with the screen; and a claim that a person was interrupted is not
+ * something a soft delete could honestly undo. That makes this the fifth table exempt from the
+ * per-row invariants `MigrationSafetyTest` enforces, and the exemption is argued there by name.
+ */
+@Serializable
+@Entity(
+    tableName = "card_alert",
+    indices = [
+        Index("profile_id", "account_id", "cycle_start_iso_date", "kind", unique = true),
+        Index("profile_id", "cycle_start_iso_date"),
+    ],
+)
+data class CardAlertEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** The `credit_card` / `account` row this alert is about. Part of the unique key. */
+    @ColumnInfo(name = "account_id")
+    val accountId: String,
+    /** TIM-002: the statement date opening the cycle, ISO `yyyy-MM-dd`. Part of the unique key. */
+    @ColumnInfo(name = "cycle_start_iso_date")
+    val cycleStartIsoDate: String,
+    /** `DUE_SOON` | `UTILISATION` — `CardAlertKind.name`. Part of the key, so both can fire. */
+    @ColumnInfo(name = "kind")
+    val kind: String,
+    /** The rulebook row that fired this alert, and its version (AI-ARC-006, P-02). */
+    @ColumnInfo(name = "rule_id")
+    val ruleId: String,
+    @ColumnInfo(name = "rule_version")
+    val ruleVersion: String,
+    /** TIM-001: when the user was actually told, UTC epoch millis. */
+    @ColumnInfo(name = "notified_at_utc_millis")
+    val notifiedAtUtcMillis: Long,
+)
