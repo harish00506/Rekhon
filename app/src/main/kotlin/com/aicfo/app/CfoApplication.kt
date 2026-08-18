@@ -9,6 +9,7 @@ import com.aicfo.app.sms.SmsConsentWatcher
 import com.aicfo.app.widget.WidgetBlurWatcher
 import com.aicfo.app.work.BalanceIntegrityWorker
 import com.aicfo.app.work.BudgetAlertWorker
+import com.aicfo.app.work.CardAlertWorker
 import com.aicfo.app.work.NetWorthSnapshotWorker
 import com.aicfo.app.work.ScheduledTransactionWorker
 import com.aicfo.app.work.SmsScanWorker
@@ -85,6 +86,9 @@ class CfoApplication : Application(), Configuration.Provider {
      *            2026-08-13 — Issue 4.5 added the budget-alert job (FR-BUD-004), and the notification
      *            channel it posts into. Also not load-bearing: the band shows in-app regardless, so a
      *            job that never ran would cost the interruption, not the information.
+     *            2026-08-17 — Issue 6.1 added the card-payment alert job (FR-ACC-002). Load-bearing
+     *            in a way none of the others are: a run that never happens is a reminder the user
+     *            never got, and the cost of that is a late fee plus interest on a whole statement.
      *            2026-08-17 — Issue 5.5 added the widget refresh, and it is the *least* load-bearing
      *            of the six: it writes no fact, only a display cache, so a run that never happened
      *            leaves a stale widget and nothing else. It is also the only one enqueued twice —
@@ -104,6 +108,7 @@ class CfoApplication : Application(), Configuration.Provider {
         ScheduledTransactionWorker.schedule(this)
         SmsScanWorker.schedule(this)
         BudgetAlertWorker.schedule(this)
+        CardAlertWorker.schedule(this)
         WidgetRefreshWorker.schedule(this)
         WidgetRefreshWorker.refreshNow(this)
     }

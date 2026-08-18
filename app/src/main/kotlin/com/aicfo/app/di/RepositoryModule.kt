@@ -11,6 +11,7 @@ import com.aicfo.data.repository.AccountRepository
 import com.aicfo.data.repository.ArchiveRepository
 import com.aicfo.data.repository.BudgetRepository
 import com.aicfo.data.repository.CategoryRepository
+import com.aicfo.data.repository.CreditCardRepository
 import com.aicfo.data.repository.DemoModeRepository
 import com.aicfo.data.repository.NetWorthRepository
 import com.aicfo.data.repository.QuickSetupRepository
@@ -22,6 +23,7 @@ import com.aicfo.data.repository.SmsRepository
 import com.aicfo.data.repository.TransactionRepository
 import com.aicfo.data.sms.SmsInboxReader
 import com.aicfo.domain.engines.budget.BudgetEngine
+import com.aicfo.domain.engines.card.CardEngine
 import com.aicfo.domain.engines.classification.ClassificationEngine
 import com.aicfo.domain.engines.nature.NatureEngine
 import com.aicfo.domain.engines.networth.NetWorthEngine
@@ -214,6 +216,28 @@ object RepositoryModule {
         dispatchers: DispatcherProvider,
         demoMode: DemoModeRepository,
     ): BudgetRepository = RepositoryFactory.budgets(database, engine, clock, dispatchers, demoMode.activeProfileId)
+
+    /**
+     * The credit-card store (issue 6.1; §5.7, FR-ACC-002).
+     * Why:    takes the gated [CfoDatabase] like every binding here, so a card's limit is no more
+     *         readable before an unlock than a transaction is. Follows the demo (ADR-0006), so the
+     *         sample dataset can carry its own cards without touching the real profile's.
+     * Result: a [CreditCardRepository]. Input: the graph's shared dependencies.
+     * Output: the repository.
+     * Changelog: 2026-08-17 — Created for issue 6.1.
+     */
+    @Provides
+    @Singleton
+    @Suppress("LongParameterList") // Hilt reads the signature; each argument is one binding.
+    fun provideCreditCardRepository(
+        database: CfoDatabase,
+        engine: CardEngine,
+        clock: Clock,
+        ids: IdGenerator,
+        dispatchers: DispatcherProvider,
+        demoMode: DemoModeRepository,
+    ): CreditCardRepository =
+        RepositoryFactory.creditCards(database, engine, clock, ids, dispatchers, demoMode.activeProfileId)
 
     /**
      * The export/import archive store (issue 5.4; §5.10, §34, P-01).
