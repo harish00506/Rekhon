@@ -1,7 +1,9 @@
 package com.aicfo.app.di
 
 import com.aicfo.app.notification.AndroidBudgetAlertNotifier
+import com.aicfo.app.notification.AndroidCardAlertNotifier
 import com.aicfo.app.notification.BudgetAlertNotifier
+import com.aicfo.app.notification.CardAlertNotifier
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -26,4 +28,16 @@ internal interface NotificationModule {
     @Binds
     @Singleton
     fun budgetAlertNotifier(implementation: AndroidBudgetAlertNotifier): BudgetAlertNotifier
+
+    /**
+     * Result: the card notifier (issue 6.1). Input: [implementation]. Output: [CardAlertNotifier].
+     *
+     * A second binding rather than one notifier with a `when`: the two compose different sentences
+     * from different result types and post to different channels, and the only thing they share is
+     * the permission dance — which is nine lines that must stay inline anyway, or Android's
+     * `MissingPermission` lint stops seeing them.
+     */
+    @Binds
+    @Singleton
+    fun cardAlertNotifier(implementation: AndroidCardAlertNotifier): CardAlertNotifier
 }

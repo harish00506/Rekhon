@@ -9,7 +9,9 @@ import com.aicfo.core.database.dao.AuditLogDao
 import com.aicfo.core.database.dao.BudgetAlertDao
 import com.aicfo.core.database.dao.BudgetDao
 import com.aicfo.core.database.dao.BudgetReviewDao
+import com.aicfo.core.database.dao.CardAlertDao
 import com.aicfo.core.database.dao.CategoryDao
+import com.aicfo.core.database.dao.CreditCardDao
 import com.aicfo.core.database.dao.DemoDao
 import com.aicfo.core.database.dao.NetWorthSnapshotDao
 import com.aicfo.core.database.dao.ProfileDao
@@ -24,7 +26,9 @@ import com.aicfo.core.database.entity.AuditLogEntity
 import com.aicfo.core.database.entity.BudgetAlertEntity
 import com.aicfo.core.database.entity.BudgetEntity
 import com.aicfo.core.database.entity.BudgetReviewEntity
+import com.aicfo.core.database.entity.CardAlertEntity
 import com.aicfo.core.database.entity.CategoryEntity
+import com.aicfo.core.database.entity.CreditCardEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
 import com.aicfo.core.database.entity.ProfileEntity
 import com.aicfo.core.database.entity.RecurringRuleEntity
@@ -70,6 +74,8 @@ import com.aicfo.core.database.entity.TransactionTagEntity
         TransactionTagEntity::class,
         AttachmentEntity::class,
         SmsDraftEntity::class,
+        CreditCardEntity::class,
+        CardAlertEntity::class,
     ],
     version = CfoDatabase.VERSION,
     exportSchema = true,
@@ -118,6 +124,12 @@ abstract class CfoDatabase : RoomDatabase() {
     /** Input: none. Output: the SMS-draft DAO (issue 3.9, §18/§23). */
     abstract fun smsDraftDao(): SmsDraftDao
 
+    /** Input: none. Output: the credit-card DAO (issue 6.1, FR-ACC-002). */
+    abstract fun creditCardDao(): CreditCardDao
+
+    /** Input: none. Output: the card-alert claim DAO (issue 6.1, §17.1). */
+    abstract fun cardAlertDao(): CardAlertDao
+
     /**
      * Input:  none. Output: the demo wipe DAO (issue 2.4, FR-ONB-004).
      *
@@ -148,9 +160,11 @@ abstract class CfoDatabase : RoomDatabase() {
          * FR-OCR-005) · 12 — issue 3.9 (`sms_draft`; §18, §23) · 13 — issue 4.3
          * (`transactions.nature`, the user's nature override; §8.3) · 14 — issue 4.5
          * (`budget_alert`, the record of what the user has already been told; FR-BUD-004) · 15 —
-         * issue 4.6 (`budget_review`, the record that a closed month's review has been shown; §5.5).
+         * issue 4.6 (`budget_review`, the record that a closed month's review has been shown; §5.5)
+         * · 16 — issue 6.1 (`credit_card`, a card's limit and billing days; `card_alert`, the
+         * record of what the user has already been told about one; FR-ACC-002, §17.1).
          */
-        const val VERSION = 15
+        const val VERSION = 16
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"

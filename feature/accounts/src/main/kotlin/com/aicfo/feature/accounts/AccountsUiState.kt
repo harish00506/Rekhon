@@ -5,6 +5,7 @@ import com.aicfo.core.model.Account
 import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.MoneyFormatter
+import com.aicfo.domain.engines.card.CardStatus
 
 /**
  * Everything the accounts list renders, as one value (ARC-004).
@@ -39,6 +40,15 @@ data class AccountsUiState(
      * is open — the balance it shows is the one the delta is measured against.
      */
     val reconciling: ReconcileState? = null,
+    /**
+     * The computed figures for every credit card, keyed by account id (issue 6.1; FR-ACC-002).
+     *
+     * A map rather than a field on [Account], because a card's status is derived — it is the engine's
+     * answer about a row, not part of the row. An account of type `CREDIT_CARD` that is **absent**
+     * here is a card whose terms have not been entered, which the row renders as a prompt rather
+     * than as a 0% bar (P-03).
+     */
+    val cards: Map<String, CardStatus> = emptyMap(),
 ) {
     /**
      * Whether to show the "no accounts yet" invitation rather than a list.
@@ -167,9 +177,44 @@ data class AccountEditorUiState(
     val isSaving: Boolean = false,
     val isSaved: Boolean = false,
     val errorCode: String? = null,
+    // --- Issue 6.1: credit-card terms (FR-ACC-002) -------------------------------------------
+    //
+    // The first type-specific fields in this state, and the module's first type branch anywhere.
+    // Held as text like the opening balance is, for the same reason: a half-typed "2,00,0" is a
+    // real intermediate state and parsing on every keystroke would fight the user. They are parsed
+    // once, on Save.
+    //
+    // Nullable-by-blank rather than a nested `CardFields?`: the ten other types simply leave them
+    // empty, and a nested object would need creating the moment the user picked CREDIT_CARD and
+    // discarding the moment they changed their mind — state that exists only to be thrown away.
+    val creditLimitText: String = "",
+    val statementDayText: String = "",
+    val dueDayText: String = "",
+    val lastStatementText: String = "",
+    val minimumDueText: String = "",
 ) {
     /** Whether this is an edit of an existing account rather than a new one. */
     val isEditing: Boolean get() = id != null
+
+    /**
+     * Whether the card section is on screen (issue 6.1).
+     *
+     * A limit and a statement day mean nothing on a savings account, and showing them would invite
+     * a user to fill in fields the app would then ignore. Issue 6.2 adds the loan branch beside
+     * this one.
+     */
+    val showsCardFields: Boolean get() = type == AccountType.CREDIT_CARD
+
+    /**
+     * Whether the card's terms are complete enough to store (issue 6.1).
+     *
+     * All three or none. A card row with a limit and no statement day cannot produce a cycle, and
+     * one with days and no limit cannot produce a ratio — either way the screen would show a card
+     * that computes nothing, which is worse than a card that has not been set up. Leaving all three
+     * blank is the supported state: a credit-card account with no terms yet.
+     */
+    val hasCardTerms: Boolean
+        get() = creditLimitText.isNotBlank() && statementDayText.isNotBlank() && dueDayText.isNotBlank()
 
     /**
      * Whether Save may proceed.
@@ -202,9 +247,43 @@ sealed interface AccountEditorEvent {
     /** The user toggled whether this account counts towards net worth (issue 2.6, FR-ACC-005). */
     data class IncludeInNetWorthChanged(val value: Boolean) : AccountEditorEvent
 
+    /**
+     * The user typed in one of the credit-card fields (issue 6.1, FR-ACC-002).
+     *
+     * One event with a [field] rather than five events, unusually for this codebase — because the
+     * five are the same action on the same section and the ViewModel handles them identically. Five
+     * cases in the `when` would be five identical bodies differing only in which `copy` argument
+     * they name.
+     */
+    data class CardFieldChanged(val field: CardField, val value: String) : AccountEditorEvent
+
     /** The user tapped Save. */
     data object Save : AccountEditorEvent
 
     /** The user dismissed the error banner. */
     data object DismissError : AccountEditorEvent
+}
+
+/**
+ * Which credit-card field an edit was for (issue 6.1; FR-ACC-002).
+ *
+ * Why:  a closed set rather than a string key, so a typo is a compile error and the `when` that
+ *       applies the edit has to stay exhaustive when 6.2 or a later issue adds a term.
+ * Changelog: 2026-08-17 — Created for issue 6.1.
+ */
+enum class CardField {
+    /** The sanctioned limit, in rupees as typed. */
+    LIMIT,
+
+    /** Day of the month the statement is cut, 1..31. */
+    STATEMENT_DAY,
+
+    /** Day of the month the payment is due, 1..31. May precede the statement day. */
+    DUE_DAY,
+
+    /** The amount on the most recent statement. Optional — a new card has none. */
+    LAST_STATEMENT,
+
+    /** The minimum payment on that statement. Optional. */
+    MINIMUM_DUE,
 }

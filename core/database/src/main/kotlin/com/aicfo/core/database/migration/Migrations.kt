@@ -739,6 +739,103 @@ internal object Migrations {
             }
         }
 
+    /**
+     * 15 → 16: adds `credit_card` and `card_alert` — a card's terms, and the record of what the
+     * user has already been told about it (issue 6.1; FR-ACC-002, §17.1).
+     *
+     * Why:    two tables in one bump because they arrive together and neither is useful alone: the
+     *         terms are what the alerts are computed from, and the claims are what stop those alerts
+     *         repeating. Splitting them across 16 and 17 would ship a version nobody can be on.
+     *
+     *         `credit_card` is keyed by `account_id` rather than an id of its own — a card *is* an
+     *         account, and a second identity would allow two card rows for one account with nothing
+     *         in the app able to choose between them.
+     *
+     *         `card_alert`'s cycle key is the **statement date**, not a month start, which is the
+     *         one thing here that is easy to get wrong: a card billing on the 25th has a cycle
+     *         straddling two calendar months, so a month-keyed claim would let one statement's
+     *         reminder fire twice.
+     * What:   two `CREATE TABLE`s plus their indices. No backfill, and none is possible or wanted:
+     *         no card had terms before this version and nobody has been notified about one, so the
+     *         empty tables are the complete and correct history (DB-003 — nothing is destroyed).
+     */
+    val MIGRATION_15_16 =
+        object : Migration(VERSION_15, VERSION_16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                createCreditCard(db)
+                createCardAlert(db)
+            }
+        }
+
+    /**
+     * `credit_card` — a card's terms, one row per account (issue 6.1; FR-ACC-002).
+     * Why:    split from [MIGRATION_15_16]'s body so each table's DDL is readable on its own; two
+     *         `CREATE TABLE`s inline put the migration over the 40-line limit (§21.6) and, more to
+     *         the point, made the second one easy to skim past.
+     * Result: the table and its two indices exist.
+     * Input:  [db]. Output: none.
+     */
+    private fun createCreditCard(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `credit_card` (" +
+                "`account_id` TEXT NOT NULL, " +
+                "`profile_id` TEXT NOT NULL, " +
+                "`credit_limit_minor` INTEGER NOT NULL, " +
+                "`statement_day` INTEGER NOT NULL, " +
+                "`due_day` INTEGER NOT NULL, " +
+                "`last_statement_minor` INTEGER, " +
+                "`last_statement_iso_date` TEXT, " +
+                "`minimum_due_minor` INTEGER, " +
+                "`apr_bps` INTEGER, " +
+                "`created_at_utc_millis` INTEGER NOT NULL, " +
+                "`updated_at_utc_millis` INTEGER NOT NULL, " +
+                "`deleted_at_utc_millis` INTEGER, " +
+                "PRIMARY KEY(`account_id`))",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_credit_card_profile_id` " +
+                "ON `credit_card` (`profile_id`)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_credit_card_profile_id_deleted_at_utc_millis` " +
+                "ON `credit_card` (`profile_id`, `deleted_at_utc_millis`)",
+        )
+    }
+
+    /**
+     * `card_alert` — the record of what the user has been told about a card (issue 6.1; §17.1).
+     * Why:    the unique index is the point of the table, not decoration: it is what makes "at most
+     *         one reminder per cycle per kind" true when a worker retries. The cycle key is the
+     *         **statement date**, not a month, because a card billing on the 25th has a cycle
+     *         straddling two calendar months and a month-keyed claim would fire twice for one
+     *         statement.
+     * Result: the table and its indices exist.
+     * Input:  [db]. Output: none.
+     */
+    private fun createCardAlert(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `card_alert` (" +
+                "`id` TEXT NOT NULL, " +
+                "`profile_id` TEXT NOT NULL, " +
+                "`account_id` TEXT NOT NULL, " +
+                "`cycle_start_iso_date` TEXT NOT NULL, " +
+                "`kind` TEXT NOT NULL, " +
+                "`rule_id` TEXT NOT NULL, " +
+                "`rule_version` TEXT NOT NULL, " +
+                "`notified_at_utc_millis` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS " +
+                "`index_card_alert_profile_id_account_id_cycle_start_iso_date_kind` " +
+                "ON `card_alert` (`profile_id`, `account_id`, `cycle_start_iso_date`, `kind`)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_card_alert_profile_id_cycle_start_iso_date` " +
+                "ON `card_alert` (`profile_id`, `cycle_start_iso_date`)",
+        )
+    }
+
     /** Every migration, in order, for `CfoDatabaseFactory` to register. */
     val ALL: Array<Migration> =
         arrayOf(
@@ -756,6 +853,7 @@ internal object Migrations {
             MIGRATION_12_13,
             MIGRATION_13_14,
             MIGRATION_14_15,
+            MIGRATION_15_16,
         )
 
     /** Named so the version pair reads as a schema version rather than an unexplained literal. */
@@ -799,4 +897,5 @@ internal object Migrations {
 
     /** Matches `CfoDatabase.VERSION` at the time this migration was written (issue 4.6). */
     private const val VERSION_15 = 15
+    private const val VERSION_16 = 16
 }

@@ -110,6 +110,8 @@ internal class RoomArchiveRepository(
                         netWorthSnapshots = dao.netWorthSnapshots(profileId),
                         attachments = dao.attachments(profileId),
                         smsDrafts = dao.smsDrafts(profileId),
+                        creditCards = dao.creditCards(profileId),
+                        cardAlerts = dao.cardAlerts(profileId),
                     ),
                 )
             }
@@ -175,6 +177,7 @@ internal class RoomArchiveRepository(
         val demo = database.demoDao()
         // Children before parents, exactly as DemoModeRepository.exit() orders them.
         demo.deleteBudgetAlerts(profileId)
+        demo.deleteCardAlerts(profileId)
         demo.deleteBudgets(profileId)
         demo.deleteBudgetReviews(profileId)
         demo.deleteNetWorthSnapshots(profileId)
@@ -186,6 +189,7 @@ internal class RoomArchiveRepository(
         demo.deleteTags(profileId)
         demo.deleteTransactions(profileId)
         demo.deleteCategories(profileId)
+        demo.deleteCreditCards(profileId)
         demo.deleteAccounts(profileId)
         demo.deleteProfile(profileId)
     }
@@ -214,6 +218,8 @@ internal class RoomArchiveRepository(
         dao.insertNetWorthSnapshots(archive.netWorthSnapshots)
         dao.insertAttachments(archive.attachments)
         dao.insertSmsDrafts(archive.smsDrafts)
+        dao.insertCreditCards(archive.creditCards)
+        dao.insertCardAlerts(archive.cardAlerts)
     }
 
     private companion object {

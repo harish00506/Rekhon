@@ -227,11 +227,68 @@ class MigrationSafetyTest {
      *         it by adding a string — this test makes that a deliberate, reviewed edit.
      */
     @Test
-    fun `only the four argued-for tables are exempt from the per-row invariants`() {
+    fun `only the five argued-for tables are exempt from the per-row invariants`() {
         assertEquals(
-            setOf("audit_log", "sms_draft", "budget_alert", "budget_review"),
+            setOf("audit_log", "sms_draft", "budget_alert", "budget_review", "card_alert"),
             INVARIANT_EXEMPT_TABLES.keys,
         )
+    }
+
+    /**
+     * Input:  the `card_alert` table's columns.
+     * Output: asserts it keeps profile scoping and deliberately has no tombstone.
+     *
+     * The same argument `budget_alert` makes below, and it is repeated rather than shared because
+     * the exemption is a hole in an invariant that protects user data: each hole should have to be
+     * argued on its own table, in its own test, by whoever opened it. What differs here is the
+     * stake. §17.1 classes a card payment as a Critical money event — the notification that must
+     * still work in eleven months — so a claim that could be "deleted" and re-fire is the direct
+     * road to a user muting the channel that matters most.
+     */
+    @Test
+    fun `card_alert keeps profile scoping and deliberately has no tombstone`() {
+        val columns =
+            SchemaFixtures.load(CfoDatabase.VERSION)
+                .database
+                .entitiesByTableName()
+                .getValue("card_alert")
+                .fieldsByColumnName()
+                .keys
+
+        assertTrue("card_alert must carry profile_id so no query can span profiles", "profile_id" in columns)
+        assertTrue(
+            "card_alert must NOT have deleted_at_utc_millis — a row records that a person was " +
+                "notified, which cannot be undone, and the unique index counts tombstones anyway",
+            "deleted_at_utc_millis" !in columns,
+        )
+    }
+
+    /**
+     * Input:  the `credit_card` table's columns.
+     * Output: asserts it is NOT exempt — it carries both a tombstone and a profile id.
+     *
+     * The mirror of the exemption tests: `credit_card` arrived in the same migration as
+     * `card_alert` and it would have been easy to wave both through together. It is ordinary user
+     * data — terms the user typed and can delete — so it obeys the invariants in full, and this
+     * pins that rather than leaving it to the general sweep, which only proves the absence of a
+     * complaint.
+     */
+    @Test
+    fun `credit_card is ordinary user data and obeys both invariants`() {
+        val columns =
+            SchemaFixtures.load(CfoDatabase.VERSION)
+                .database
+                .entitiesByTableName()
+                .getValue("credit_card")
+                .fieldsByColumnName()
+                .keys
+
+        assertTrue("credit_card must carry profile_id", "profile_id" in columns)
+        assertTrue(
+            "credit_card must have deleted_at_utc_millis — a card's terms are user data (DB-003)",
+            "deleted_at_utc_millis" in columns,
+        )
+        assertTrue("credit_card must be exempt from nothing", "credit_card" !in INVARIANT_EXEMPT_TABLES)
     }
 
     /**
@@ -390,6 +447,16 @@ private val INVARIANT_EXEMPT_TABLES =
             "counts soft-deleted rows, so a 'deleted' alert would still not fire again. Deleting " +
             "and recreating a budget inside one month therefore does not re-notify, which is the " +
             "side of that trade this feature should err on. Rows leave with the profile.",
+        "card_alert" to
+            "the record that the app interrupted the user about a card (issue 6.1, FR-ACC-002, " +
+            "§17.1): the same argument as budget_alert, one domain over. A row is the fact that " +
+            "a payment reminder or a utilisation warning was sent, which is not something the user " +
+            "created and can lose. A tombstone would be worse than absent for the same mechanical " +
+            "reason — the unique index that guarantees one alert per cycle per kind counts " +
+            "soft-deleted rows, so a 'deleted' claim would not let the reminder fire again. It also " +
+            "matters more here than for a budget: this is the channel §17.1 classes as a " +
+            "Critical money event, and the failure a re-firing claim causes is a muted card " +
+            "reminder. Rows leave with the profile.",
         "budget_review" to
             "the record that a closed month's review card was shown (issue 4.6, §5.5): a row is " +
             "not something the user created and can lose, it is the fact that a review was " +

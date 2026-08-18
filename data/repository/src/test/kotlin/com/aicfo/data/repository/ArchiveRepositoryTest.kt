@@ -14,7 +14,9 @@ import com.aicfo.core.database.entity.AttachmentEntity
 import com.aicfo.core.database.entity.BudgetAlertEntity
 import com.aicfo.core.database.entity.BudgetEntity
 import com.aicfo.core.database.entity.BudgetReviewEntity
+import com.aicfo.core.database.entity.CardAlertEntity
 import com.aicfo.core.database.entity.CategoryEntity
+import com.aicfo.core.database.entity.CreditCardEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
 import com.aicfo.core.database.entity.ProfileEntity
 import com.aicfo.core.database.entity.RecurringRuleEntity
@@ -326,6 +328,8 @@ class ArchiveRepositoryTest {
             "net_worth_snapshot" to dao.netWorthSnapshots(REAL_PROFILE),
             "attachments" to dao.attachments(REAL_PROFILE),
             "sms_draft" to dao.smsDrafts(REAL_PROFILE),
+            "credit_card" to dao.creditCards(REAL_PROFILE),
+            "card_alert" to dao.cardAlerts(REAL_PROFILE),
         )
     }
 
@@ -447,6 +451,37 @@ class ArchiveRepositoryTest {
                     monthStartIsoDate = "2026-08-01",
                     band = "warn",
                     ruleId = "RULE-BUD-ALERT",
+                    ruleVersion = "1.0",
+                    notifiedAtUtcMillis = NOW,
+                ),
+            ),
+        )
+        dao.insertCreditCards(
+            listOf(
+                CreditCardEntity(
+                    accountId = ACCOUNT,
+                    profileId = REAL_PROFILE,
+                    creditLimitMinor = 20_000_000L,
+                    statementDay = 5,
+                    dueDay = 25,
+                    lastStatementMinor = 7_000_000L,
+                    lastStatementIsoDate = "2026-03-05",
+                    minimumDueMinor = 350_000L,
+                    aprBps = 4_200,
+                    createdAtUtcMillis = NOW,
+                    updatedAtUtcMillis = NOW,
+                ),
+            ),
+        )
+        dao.insertCardAlerts(
+            listOf(
+                CardAlertEntity(
+                    id = "card-alert:1",
+                    profileId = REAL_PROFILE,
+                    accountId = ACCOUNT,
+                    cycleStartIsoDate = "2026-03-05",
+                    kind = "DUE_SOON",
+                    ruleId = "RULE-CC-DUE",
                     ruleVersion = "1.0",
                     notifiedAtUtcMillis = NOW,
                 ),
@@ -587,6 +622,7 @@ class ArchiveRepositoryTest {
     private suspend fun wipeEverything() {
         val demo = database.demoDao()
         demo.deleteBudgetAlerts(REAL_PROFILE)
+        demo.deleteCardAlerts(REAL_PROFILE)
         demo.deleteBudgets(REAL_PROFILE)
         demo.deleteBudgetReviews(REAL_PROFILE)
         demo.deleteNetWorthSnapshots(REAL_PROFILE)
@@ -598,6 +634,7 @@ class ArchiveRepositoryTest {
         demo.deleteTags(REAL_PROFILE)
         demo.deleteTransactions(REAL_PROFILE)
         demo.deleteCategories(REAL_PROFILE)
+        demo.deleteCreditCards(REAL_PROFILE)
         demo.deleteAccounts(REAL_PROFILE)
         demo.deleteProfile(REAL_PROFILE)
     }

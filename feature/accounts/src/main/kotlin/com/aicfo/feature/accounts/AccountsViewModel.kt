@@ -8,6 +8,7 @@ import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
 import com.aicfo.core.common.toAppError
 import com.aicfo.data.repository.AccountRepository
+import com.aicfo.data.repository.CreditCardRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,6 +46,7 @@ class AccountsViewModel
     @Inject
     constructor(
         private val repository: AccountRepository,
+        private val cards: CreditCardRepository,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(AccountsUiState())
 
@@ -57,6 +59,30 @@ class AccountsViewModel
 
         init {
             observeAccounts()
+            observeCards()
+        }
+
+        /**
+         * Keeps each card's figures in step with its balance (issue 6.1; FR-ACC-002).
+         *
+         * Why:    a **separate collector** from [observeAccounts], not a `combine`. The two streams
+         *         answer different questions and fail differently: a card whose terms cannot be read
+         *         must not blank the accounts list, and a list that fails must not be silently
+         *         reported as "no cards". Combining them would tie both outcomes together.
+         *
+         *         It is also not gated on `showArchived` — an archived card is still on screen when
+         *         that toggle is on, and it still has a limit.
+         * Result: `cards` follows every transaction and every edit. A read failure leaves the map
+         *         as it was and the rows fall back to their prompt, rather than raising a banner
+         *         over a list that is otherwise fine.
+         * Input:  none. Output: none (collects on `viewModelScope`).
+         * Changelog: 2026-08-17 — Created for issue 6.1.
+         */
+        private fun observeCards() {
+            cards.observeCardStatuses()
+                .onEach { statuses -> _uiState.update { it.copy(cards = statuses) } }
+                .catch { _uiState.update { it.copy(cards = emptyMap()) } }
+                .launchIn(viewModelScope)
         }
 
         /**

@@ -6,6 +6,71 @@ Single source of truth for the version number is the repo-root [`VERSION`](VERSI
 `app/build.gradle.kts` `versionName` equal to it. Epics map to the SRS roadmap (§26); every
 entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`](docs/issues/00-issue-workflow.md).
 
+## [0.6.0] — Epic 6: Wealth — Loans & Investments
+
+> Credit cards, loans with amortisation, investment holdings with XIRR, allocation and net-worth
+> history — exact paise math throughout.
+
+### [0.6.1] — Issue 6.1: Credit card details + alerts  (2026-08-17)
+
+- **Implemented:** a credit card's terms and the two notifications that come out of them — limit,
+  statement day, due day, last statement, minimum due and APR; the billing cycle; both utilisation
+  figures; a payment reminder three days before the due date and again on the day; and a utilisation
+  alert at the rulebook's 30% line (**§5.7**, **§11**, **§17.1**, FR-ACC-002). New module
+  `:domain:engines:card`, new tables `credit_card` and `card_alert` (schema **15 → 16**), new daily
+  `CardAlertWorker` — the seventh.
+- **`RULE-CC-UTIL` was read, not written.** It shipped long before this issue already carrying
+  `max_utilisation_pct: 30` and already naming `card_alerts` in its `consumed_by` — the rulebook was
+  written expecting this engine. Only the date question needed a row, so `RULE-CC-DUE` v1.0 was
+  minted (`remind_days_before: 3`, `remind_on_due_day: true`, `skip_when_nothing_due: true`) rather
+  than the shipped row extended, which would have fired ADR-0017's trigger 3 and forced the runtime
+  rules loader before this issue could compile
+  ([ADR-0025](docs/adr/0025-card-alerts-mint-rule-cc-due-and-claim-per-statement-cycle.md)).
+  `_meta.version` → **1.13.0**, so `BudgetRules` and `SafeToSpendRules` restate their pins; neither
+  engine's own rows moved.
+- **The alert claim is keyed by the statement date, not the month** — the one place this differs
+  structurally from `budget_alert`. A card billing on the 25th has a cycle straddling two calendar
+  months, so a month-keyed claim would fire twice for one statement:
+  `UNIQUE(profile_id, account_id, cycle_start_iso_date, kind)`, claimed before the notification is
+  posted, so a retried worker run is silent.
+- **Two utilisations, both labelled, because they disagree by design.** The live figure moves with
+  every swipe and is what the user feels; the statement figure is what a bureau records and is what
+  the alert acts on — a figure that changed hourly would either nag or be claimed once and then be
+  wrong for the rest of the cycle. Each carries its `UtilisationBasis`, so neither reaches the user
+  as an unlabelled number (P-02).
+- **Absence is not zero.** A card with no statement recorded gets `null` utilisation, not 0%, and is
+  never alerted about — rendering it as 0% would claim the user owes nothing (P-03).
+- **The engine reads no clock and touches no database.** `today` is an argument (TIM-001), so the
+  golden file walks one card day by day across a whole billing cycle — statement day, mid-cycle, the
+  window opening, the due day, the day after — and a rule that fires a day early is a diff rather
+  than a passing test somewhere else. Money is paise and every ratio is integer bps throughout
+  (MNY-001/MNY-002).
+- **The reminder is guarded like every other LLM-adjacent surface** (AI-ARC-004): the composed text
+  is verified against exactly the figures the engine returned, with the card's own name declared as
+  text — "HDFC Regalia 4521" is an ordinary thing to call a card, and without that the digits in the
+  name would read as an unverifiable count and drop a correct reminder, the failure issue 4.6 hit
+  with category names. `usedPercent` lives on `CardAlert` so the message and its allow-list cannot
+  round differently. The privacy blur reaches the notification too: blurred, it names the card and
+  the fact, never an amount.
+- **Found by running it:** the notification quoted a credit limit of **₹2,00,034.82** for a
+  ₹2,00,000 card. `CardAlertNotifier` had been recovering the limit as `amount x 10 000 / ratioBps`,
+  and `ratioBps` is truncated to a whole basis point, so the inversion was wrong by ₹34.82 — and the
+  guardrail passed it, because it had been handed the same reconstruction. `CardAlert` now carries
+  `creditLimit` from the engine and the notifier formats it, which is what P-03 has always meant:
+  the engine emits every figure, and the words never re-derive one. Locked by
+  `the alert carries the real limit, not one recovered from the ratio`.
+- **Migration 15 → 16 adds two tables and destroys nothing** (DB-003). No backfill is possible or
+  wanted: no card had terms before this version and nobody has been notified about one, so the empty
+  tables are the complete and correct history. Both tables join the export archive.
+- **Tests:** full `unitTests`, `koverVerify`, `ktlintCheck`, `detekt`, `lintDebug` and
+  `verifyPaparazziDebug` green — 41 new cases in `:domain:engines:card` (a golden cycle walk, the
+  boundaries either side of every threshold, property tests over a thousand generated cards, a
+  rulebook drift test), 15 in `:core:model`, plus repository, worker and editor suites.
+  `connectedDebugAndroidTest`: **30 tests, 0 failures** on an emulator **in airplane mode** (P-04),
+  including the 15 → 16 migration round trip. Verified by hand on the device: terms entered on the
+  demo card, the labelled utilisation on the list, both notifications on their separate channels
+  with the right figures, and a second run inside the same cycle posting nothing.
+
 ## [0.5.0] — Epic 5: Dashboard, Export & Widget
 
 > The user's daily surfaces: the home dashboard, Safe-to-Spend, privacy blur, local JSON

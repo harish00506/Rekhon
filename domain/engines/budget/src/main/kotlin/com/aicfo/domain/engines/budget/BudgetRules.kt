@@ -112,12 +112,13 @@ data class BudgetRules(
         /**
          * The rulebook file these thresholds were copied from, as `_meta.version`.
          *
-         * Bumped to 1.12.0 by issue 5.2, which added `RULE-STS` — **none of the four `RULE-BUD-*`
-         * rows changed**, and none of their own versions moved. `_meta.version` describes the file,
-         * so every typed mirror in the repo restates it whenever any rule is added; this constant
-         * says "copied from that revision", not "these thresholds changed then".
+         * Restated to 1.13.0 by issue 6.1, which added `RULE-CC-DUE` — as issue 5.2 restated it to
+         * 1.12.0 for `RULE-STS`. **None of the four `RULE-BUD-*` rows changed** either time, and
+         * none of their own versions moved. `_meta.version` describes the file, so every typed
+         * mirror in the repo restates it whenever any rule is added; this constant says "copied from
+         * that revision", not "these thresholds changed then".
          */
-        const val RULEBOOK_VERSION = "1.12.0"
+        const val RULEBOOK_VERSION = "1.13.0"
     }
 }
 

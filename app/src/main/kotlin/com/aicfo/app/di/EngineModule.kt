@@ -2,6 +2,8 @@ package com.aicfo.app.di
 
 import com.aicfo.domain.engines.budget.BudgetEngine
 import com.aicfo.domain.engines.budget.BudgetEngineFactory
+import com.aicfo.domain.engines.card.CardEngine
+import com.aicfo.domain.engines.card.CardEngineFactory
 import com.aicfo.domain.engines.classification.ClassificationEngine
 import com.aicfo.domain.engines.classification.ClassificationEngineFactory
 import com.aicfo.domain.engines.nature.NatureEngine
@@ -157,6 +159,18 @@ object EngineModule {
     @Provides
     @Singleton
     fun provideBudgetEngine(): BudgetEngine = BudgetEngineFactory.create()
+
+    /**
+     * A credit card's billing cycle, utilisation and reminders (issue 6.1; §5.7, FR-ACC-002).
+     * Why:    stateless and pure like every engine here — it reads no clock, so the repository hands
+     *         it today's date (TIM-001) and two amounts, and every answer is reproducible from them.
+     *         `@Singleton` for the reason the others are: there is nothing to keep per caller.
+     * Result: a [CardEngine]. Input: none. Output: the engine.
+     * Changelog: 2026-08-17 — Created for issue 6.1.
+     */
+    @Provides
+    @Singleton
+    fun provideCardEngine(): CardEngine = CardEngineFactory.create()
 
     /**
      * What is left to spend this month, and why (issue 5.2; §5.2, §14, AI-STS, P-02/P-03).

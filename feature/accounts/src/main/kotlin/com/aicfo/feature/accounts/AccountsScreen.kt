@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -22,6 +23,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -34,6 +36,9 @@ import com.aicfo.core.designsystem.component.CfoSecondaryButton
 import com.aicfo.core.designsystem.component.maskedAmount
 import com.aicfo.core.designsystem.theme.CfoDimens
 import com.aicfo.core.model.Account
+import com.aicfo.core.model.AccountType
+import com.aicfo.core.model.Money
+import com.aicfo.domain.engines.card.CardStatus
 
 /**
  * The accounts list (issue 2.5; FR-ACC-001, FR-ACC-007, ARC-004).
@@ -117,12 +122,71 @@ fun AccountsContent(
                 items(uiState.accounts, key = { it.id }) { account ->
                     AccountRow(
                         account = account,
+                        card = uiState.cards[account.id],
                         onEdit = { onEditAccount(account.id) },
                         onEvent = onEvent,
                     )
                 }
             }
         }
+    }
+}
+
+/**
+ * How much of a card's limit is in use, on its row (issue 6.1; FR-ACC-002, P-02).
+ *
+ * Why:    the one figure a card owner checks without opening anything, and the app holds **two** of
+ *         them. This shows the **live** one — everything owed right now, which is what the user
+ *         feels — and says so in words, because the alert acts on the *statement* figure and the two
+ *         disagree by design (ADR-0025). An unlabelled percentage would be one of two true numbers
+ *         with no way to tell which.
+ *
+ *         Amounts go through `maskedAmount`, so the privacy blur reaches this row like every other
+ *         (issue 5.3). The bar itself is not masked: a proportion with no figures beside it says
+ *         nothing about how much money is involved.
+ * Result: a labelled bar, or a prompt when the card has no terms yet — never a 0% bar, which would
+ *         tell a user with a balance that they are using none of their limit (P-03).
+ * Input:  [card] — the computed status, or `null` when the terms have not been entered.
+ * Output: the composition.
+ * Changelog: 2026-08-17 — Created for issue 6.1.
+ */
+@Composable
+private fun CardUtilisation(card: CardStatus?) {
+    val ratioBps = card?.live?.ratioBps
+    if (card == null || ratioBps == null) {
+        Text(
+            text = stringResource(R.string.accounts_card_no_terms),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        return
+    }
+
+    val used = maskedAmount(card.live.used ?: Money.ZERO)
+    val limit = maskedAmount(card.creditLimit)
+    val percent = ratioBps / BPS_PER_PERCENT
+    // Resolved before the semantics block, which is not composable.
+    val spoken = stringResource(R.string.accounts_card_utilisation_description, percent, used, limit)
+    Column(
+        verticalArrangement = Arrangement.spacedBy(CfoDimens.spaceXs),
+        // One node for a screen reader, not three: a bar, a percentage and a caption announced
+        // separately are three fragments the user has to reassemble.
+        modifier =
+            Modifier.semantics(mergeDescendants = true) {
+                contentDescription = spoken
+            },
+    ) {
+        LinearProgressIndicator(
+            // Coerced for the *bar* only. An over-limit card is a real state and the figure below
+            // still says 110%; a progress bar simply has nowhere past its end to draw.
+            progress = { (ratioBps.toFloat() / BPS_FULL).coerceIn(0f, 1f) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            text =
+                stringResource(R.string.accounts_card_utilisation_percent, percent) + " · " +
+                    stringResource(R.string.accounts_card_utilisation, used, limit),
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 
@@ -139,6 +203,7 @@ fun AccountsContent(
 @Composable
 private fun AccountRow(
     account: Account,
+    card: CardStatus?,
     onEdit: () -> Unit,
     onEvent: (AccountsEvent) -> Unit,
 ) {
@@ -149,6 +214,10 @@ private fun AccountRow(
                 supporting = account.rowSupporting(),
                 trailing = { CfoAmountText(amount = account.balance) },
             )
+            // Issue 6.1: only a credit card has a limit to be a share of.
+            if (account.type == AccountType.CREDIT_CARD) {
+                CardUtilisation(card)
+            }
             // FlowRow, not Row: three buttons do not fit one line once the archive action reads
             // "Reopen account" rather than "Close account", and a plain Row pushes Delete off the
             // right edge with nothing to scroll. Found on a device, not in a test — at 200% font
@@ -287,3 +356,9 @@ private fun ErrorBanner(
         }
     }
 }
+
+/** 100 bps = 1%, so a ratio in basis points becomes the whole percent a sentence uses (MNY-002). */
+private const val BPS_PER_PERCENT = 100
+
+/** 10 000 bps = 100% — the full width of the utilisation bar (MNY-002). */
+private const val BPS_FULL = 10_000f

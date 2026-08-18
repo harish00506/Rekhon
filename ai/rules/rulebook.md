@@ -65,6 +65,7 @@ evaluate: RuleEngine.evaluate(ruleId, FeatureSnapshot)
 | RULE-20-4-10 | Vehicle: ≥ 20% down, loan ≤ 4y, transport cost ≤ 10% | Purchase Advisor (vehicle) |
 | RULE-HOME-EMI | Home: EMI ≤ 35%; price ≤ 5× annual income; rent ≤ 30% | Purchase Advisor (property) |
 | RULE-CC-UTIL | Card utilisation ≤ 30%; never revolve (severe) | FHS debt pillar, card alerts |
+| RULE-CC-DUE | Remind 3 days before a card's due date and again on the day, only when something is owed | Card alerts, AI-NTF |
 | RULE-PAYOFF-ORDER | Avalanche vs snowball with interest delta | Debt simulator |
 | RULE-PREPAY-VS-INVEST | Loan rate vs after-tax expected return; show breakeven | Loan simulator, AI-FOO |
 | RULE-RECEIPT-PARSE | Total = the currency amount nearest {total, grand, amount, payable}; GST from lines naming {gst, cgst, sgst}; merchant = text in the top 3 000 bps of the image; a field under 6 000 bps confidence is flagged for review; a manual/SMS row within 1% and 1 day is offered as a merge | Receipt parser |

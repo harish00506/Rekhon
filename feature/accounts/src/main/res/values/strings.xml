@@ -4,7 +4,7 @@
         and cannot be checked for length at 200% font. `CfoHardcodedUiString` (issue 1.5) fails the
         build on a literal in a :feature:* composable, so this file is not optional.
   What: the accounts list, the editor, and the eleven FR-ACC-001 type labels.
-  Result: the whole feature's copy in one reviewable place.
+  Result: the whole feature\'s copy in one reviewable place.
   Changelog: 2026-07-28 — Created for issue 2.5.
 -->
 <resources>
@@ -18,7 +18,7 @@
     <string name="accounts_unarchive">Reopen account</string>
     <string name="accounts_delete">Delete</string>
     <string name="accounts_archived_label">Closed</string>
-    <!-- The list row's second line: the institution when there is one, then what it opened with. -->
+    <!-- The list row\'s second line: the institution when there is one, then what it opened with. -->
     <string name="accounts_row_supporting">%1$s · opened with %2$s</string>
     <string name="accounts_row_supporting_no_institution">Opened with %1$s</string>
     <string name="accounts_error_dismiss">Dismiss</string>
@@ -66,7 +66,7 @@
     <string name="account_editor_cancel">Cancel</string>
     <string name="account_editor_error_validation">Check the name and the opening balance.</string>
 
-    <!-- FR-ACC-001's eleven types. The stored codes live in AccountType; these are only labels. -->
+    <!-- FR-ACC-001\'s eleven types. The stored codes live in AccountType; these are only labels. -->
     <string name="account_type_bank">Bank account</string>
     <string name="account_type_cash">Cash</string>
     <string name="account_type_credit_card">Credit card</string>
@@ -78,4 +78,28 @@
     <string name="account_type_vehicle">Vehicle</string>
     <string name="account_type_receivable">Money owed to you</string>
     <string name="account_type_payable">Money you owe</string>
+
+    <!-- Issue 6.1: credit-card terms (FR-ACC-002). Shown only when the type is a credit card - the
+         first type branch in this module. The two days are days-of-month, not dates, because that
+         is what a card bills on and what FR-ACC-002 stores. -->
+    <string name="account_editor_card_section">Card details</string>
+    <string name="account_editor_card_limit">Credit limit</string>
+    <string name="account_editor_card_statement_day">Statement day</string>
+    <string name="account_editor_card_due_day">Due day</string>
+    <string name="account_editor_card_last_statement">Last statement amount</string>
+    <string name="account_editor_card_minimum_due">Minimum due</string>
+    <string name="account_editor_card_help">The limit and both days are needed together — without
+        all three the app cannot work out your billing cycle. The statement amount and minimum are
+        optional; add them and you\'ll get a reminder before the payment is due.</string>
+
+    <!-- Issue 6.1: the utilisation bar on a credit-card row. The figure shown is the LIVE one -
+         everything currently owed - and it says so, because the app also holds a statement figure
+         that is deliberately different (P-02, ADR-0025). -->
+    <string name="accounts_card_utilisation">%1$s of %2$s used now</string>
+    <string name="accounts_card_utilisation_percent">%1$d%%</string>
+    <string name="accounts_card_utilisation_description">Using %1$d%% of this card\'s limit right
+        now. %2$s of %3$s.</string>
+    <string name="accounts_card_due">Due %1$s</string>
+    <string name="accounts_card_no_terms">Add this card\'s limit and dates</string>
+
 </resources>

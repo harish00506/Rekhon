@@ -74,6 +74,30 @@
     <string name="budget_alert_warn_title_blurred">%1$s is near its budget</string>
     <string name="budget_alert_body_blurred">Open the app to see where you stand.</string>
 
+    <!-- Issue 6.1: credit-card alerts (FR-ACC-002, SRS 17.1). Two channels, not one, because
+         NTF-006 maps a channel to a taxonomy row and a payment due is a Critical money event while
+         a utilisation warning is discipline. The `_blurred` variants carry NO digits at all, per
+         NTF-004: a lock screen is the most exposed surface the app has, and the privacy blur must
+         reach it (issue 5.3). Note the tone rule from SRS 24.1 - these state a fact and an amount,
+         they do not scold. -->
+    <string name="notification_channel_critical_money">Critical money events</string>
+    <string name="notification_channel_critical_money_description">Payments that are about to be
+        due. The only notifications that can interrupt quiet hours.</string>
+    <string name="notification_channel_debt_discipline">Card &amp; debt</string>
+    <string name="notification_channel_debt_discipline_description">Tells you once per statement
+        when a card is using a large share of its limit.</string>
+
+    <string name="card_due_title">%1$s payment due in %2$d days</string>
+    <string name="card_due_title_today">%1$s payment due today</string>
+    <string name="card_due_body">%1$s is due. The minimum is %2$s.</string>
+    <string name="card_due_body_no_minimum">%1$s is due on this statement.</string>
+    <string name="card_due_title_blurred">%1$s payment is due soon</string>
+    <string name="card_due_body_blurred">Open the app to see the amount.</string>
+    <string name="card_utilisation_title">%1$s is at %2$d%% of its limit</string>
+    <string name="card_utilisation_body">This statement used %1$s of %2$s.</string>
+    <string name="card_utilisation_title_blurred">%1$s is using a lot of its limit</string>
+    <string name="card_utilisation_body_blurred">Open the app to see where you stand.</string>
+
     <!-- ICU plurals: "1 attempt" must not read as "1 attempts" (§21.6). -->
     <plurals name="lock_attempts_remaining">
         <item quantity="one">%1$d attempt left before a timeout</item>
