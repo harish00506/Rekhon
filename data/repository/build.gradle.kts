@@ -62,6 +62,10 @@ dependencies {
     // all, so the dashboard must be able to name it and every line on it (the reasoning `:networth`
     // set above).
     api(project(":domain:engines:safetospend"))
+    // Issue 6.1: SRS §5.7, FR-ACC-002. `api` — CardStatus and CardAlert are what this module emits,
+    // both figures and the cycle dates included, so the accounts screen and the alert worker must be
+    // able to name them (the reasoning `:networth` set above).
+    api(project(":domain:engines:card"))
 
     // withTransaction — the atomicity guarantee applySeeds is built on (issue 2.3).
     implementation(libs.room.ktx)

@@ -162,6 +162,8 @@ internal class RoomDemoModeRepository(
                     // wipe cannot reach is residue ADR-0006 forbids, and it had been reachable but
                     // unreached since 4.5 shipped.
                     demo.deleteBudgetAlerts(DemoModeRepository.DEMO_PROFILE_ID)
+                    demo.deleteCardAlerts(DemoModeRepository.DEMO_PROFILE_ID)
+                    demo.deleteCreditCards(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteBudgets(DemoModeRepository.DEMO_PROFILE_ID)
                     // Issue 4.6: no ordering requirement against deleteBudgets — budget_review carries
                     // no budget_id, since it claims a whole reviewed month rather than one budget

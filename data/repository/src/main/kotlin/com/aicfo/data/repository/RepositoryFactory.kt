@@ -9,6 +9,7 @@ import com.aicfo.core.datastore.ConsentStore
 import com.aicfo.core.datastore.SettingsStore
 import com.aicfo.data.sms.SmsInboxReader
 import com.aicfo.domain.engines.budget.BudgetEngine
+import com.aicfo.domain.engines.card.CardEngine
 import com.aicfo.domain.engines.classification.ClassificationEngine
 import com.aicfo.domain.engines.nature.NatureEngine
 import com.aicfo.domain.engines.networth.NetWorthEngine
@@ -181,6 +182,7 @@ object RepositoryFactory {
      *         minting two (see `categoryBudgetId`).
      * Output: [BudgetRepository].
      */
+
     fun budgets(
         database: CfoDatabase,
         engine: BudgetEngine,
@@ -188,6 +190,28 @@ object RepositoryFactory {
         dispatchers: DispatcherProvider,
         activeProfileId: Flow<String>,
     ): BudgetRepository = RoomBudgetRepository(database, engine, clock, dispatchers, activeProfileId)
+
+    /**
+     * Builds the credit-card store (issue 6.1, FR-ACC-002).
+     * Why:    takes the whole [database] because one read spans `account`, `credit_card` and the
+     *         correlated transaction sum behind the balance; and takes the [engine] rather than
+     *         constructing one, for the reason [netWorth] gives — the figure and the code that
+     *         produced it stay assembled in the DI graph (ARC-003, P-03).
+     * Result: a [CreditCardRepository] over the encrypted database.
+     * Input:  [database]; [engine]; [clock] — TIM-001, and the single clock read on this path;
+     *         [ids] — mints the alert-claim ids from an injected source (P-08); [dispatchers];
+     *         [activeProfileId] — so the demo profile gets its own cards.
+     * Output: [CreditCardRepository].
+     */
+    @Suppress("LongParameterList") // One argument per collaborator, as the other factories here.
+    fun creditCards(
+        database: CfoDatabase,
+        engine: CardEngine,
+        clock: Clock,
+        ids: IdGenerator,
+        dispatchers: DispatcherProvider,
+        activeProfileId: Flow<String>,
+    ): CreditCardRepository = RoomCreditCardRepository(database, engine, clock, ids, dispatchers, activeProfileId)
 
     /**
      * Builds the recurring-series store (issue 3.7, FR-TXN-006).
