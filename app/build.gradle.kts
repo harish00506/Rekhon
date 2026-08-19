@@ -14,7 +14,7 @@ android {
 
     defaultConfig {
         applicationId = "com.aicfo.personalcfo"
-        versionCode = 23
+        versionCode = 24
         versionName = rootProject.file("VERSION").readText().trim()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

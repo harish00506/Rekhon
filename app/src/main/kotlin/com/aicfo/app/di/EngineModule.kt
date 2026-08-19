@@ -6,6 +6,8 @@ import com.aicfo.domain.engines.card.CardEngine
 import com.aicfo.domain.engines.card.CardEngineFactory
 import com.aicfo.domain.engines.classification.ClassificationEngine
 import com.aicfo.domain.engines.classification.ClassificationEngineFactory
+import com.aicfo.domain.engines.loan.LoanEngine
+import com.aicfo.domain.engines.loan.LoanEngineFactory
 import com.aicfo.domain.engines.nature.NatureEngine
 import com.aicfo.domain.engines.nature.NatureEngineFactory
 import com.aicfo.domain.engines.networth.NetWorthEngine
@@ -171,6 +173,19 @@ object EngineModule {
     @Provides
     @Singleton
     fun provideCardEngine(): CardEngine = CardEngineFactory.create()
+
+    /**
+     * A loan's EMI and its principal/interest split (issue 6.2; §5.8, FR-ACC-003).
+     * Why:    stateless and pure like every engine here, and clockless for the same reason the card
+     *         engine is — every instalment date comes from the loan's own first-EMI date, so a
+     *         twenty-year schedule is reproducible from five numbers alone (P-08). `@Singleton`
+     *         because there is nothing to keep per caller.
+     * Result: a [LoanEngine]. Input: none. Output: the engine.
+     * Changelog: 2026-08-19 — Created for issue 6.2.
+     */
+    @Provides
+    @Singleton
+    fun provideLoanEngine(): LoanEngine = LoanEngineFactory.create()
 
     /**
      * What is left to spend this month, and why (issue 5.2; §5.2, §14, AI-STS, P-02/P-03).

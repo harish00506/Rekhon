@@ -13,6 +13,7 @@ import com.aicfo.data.repository.BudgetRepository
 import com.aicfo.data.repository.CategoryRepository
 import com.aicfo.data.repository.CreditCardRepository
 import com.aicfo.data.repository.DemoModeRepository
+import com.aicfo.data.repository.LoanRepository
 import com.aicfo.data.repository.NetWorthRepository
 import com.aicfo.data.repository.QuickSetupRepository
 import com.aicfo.data.repository.ReceiptRepository
@@ -25,6 +26,7 @@ import com.aicfo.data.sms.SmsInboxReader
 import com.aicfo.domain.engines.budget.BudgetEngine
 import com.aicfo.domain.engines.card.CardEngine
 import com.aicfo.domain.engines.classification.ClassificationEngine
+import com.aicfo.domain.engines.loan.LoanEngine
 import com.aicfo.domain.engines.nature.NatureEngine
 import com.aicfo.domain.engines.networth.NetWorthEngine
 import com.aicfo.domain.engines.receipt.ReceiptEngine
@@ -238,6 +240,26 @@ object RepositoryModule {
         demoMode: DemoModeRepository,
     ): CreditCardRepository =
         RepositoryFactory.creditCards(database, engine, clock, ids, dispatchers, demoMode.activeProfileId)
+
+    /**
+     * The loan store (issue 6.2; §5.8, FR-ACC-003).
+     * Why:    takes the gated [CfoDatabase] like every binding here, so a loan's principal is no more
+     *         readable before an unlock than a transaction is. Follows the demo (ADR-0006), so the
+     *         sample dataset can carry its own loans without touching the real profile's. **No
+     *         `IdGenerator`**, unlike [provideCreditCardRepository]: a loan is keyed by its account
+     *         and mints no rows of its own.
+     * Result: a [LoanRepository]. Input: the graph's shared dependencies. Output: the repository.
+     * Changelog: 2026-08-19 — Created for issue 6.2.
+     */
+    @Provides
+    @Singleton
+    fun provideLoanRepository(
+        database: CfoDatabase,
+        engine: LoanEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        demoMode: DemoModeRepository,
+    ): LoanRepository = RepositoryFactory.loans(database, engine, clock, dispatchers, demoMode.activeProfileId)
 
     /**
      * The export/import archive store (issue 5.4; §5.10, §34, P-01).
