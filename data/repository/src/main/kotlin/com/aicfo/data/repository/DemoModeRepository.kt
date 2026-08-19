@@ -164,6 +164,7 @@ internal class RoomDemoModeRepository(
                     demo.deleteBudgetAlerts(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteCardAlerts(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteCreditCards(DemoModeRepository.DEMO_PROFILE_ID)
+                    demo.deleteLoans(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteBudgets(DemoModeRepository.DEMO_PROFILE_ID)
                     // Issue 4.6: no ordering requirement against deleteBudgets — budget_review carries
                     // no budget_id, since it claims a whole reviewed month rather than one budget

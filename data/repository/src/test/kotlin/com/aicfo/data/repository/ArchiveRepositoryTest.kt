@@ -17,6 +17,7 @@ import com.aicfo.core.database.entity.BudgetReviewEntity
 import com.aicfo.core.database.entity.CardAlertEntity
 import com.aicfo.core.database.entity.CategoryEntity
 import com.aicfo.core.database.entity.CreditCardEntity
+import com.aicfo.core.database.entity.LoanEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
 import com.aicfo.core.database.entity.ProfileEntity
 import com.aicfo.core.database.entity.RecurringRuleEntity
@@ -330,6 +331,7 @@ class ArchiveRepositoryTest {
             "sms_draft" to dao.smsDrafts(REAL_PROFILE),
             "credit_card" to dao.creditCards(REAL_PROFILE),
             "card_alert" to dao.cardAlerts(REAL_PROFILE),
+            "loan" to dao.loans(REAL_PROFILE),
         )
     }
 
@@ -468,6 +470,23 @@ class ArchiveRepositoryTest {
                     lastStatementIsoDate = "2026-03-05",
                     minimumDueMinor = 350_000L,
                     aprBps = 4_200,
+                    createdAtUtcMillis = NOW,
+                    updatedAtUtcMillis = NOW,
+                ),
+            ),
+        )
+        dao.insertLoans(
+            listOf(
+                // Five columns and no schedule: the amortisation rows are derived on read
+                // (ADR-0026), so a round trip that carried them would be round-tripping a cache.
+                LoanEntity(
+                    accountId = ACCOUNT,
+                    profileId = REAL_PROFILE,
+                    principalMinor = 300_000_000L,
+                    annualRateBps = 850,
+                    tenureMonths = 240,
+                    firstEmiIsoDate = "2026-09-05",
+                    emiOverrideMinor = null,
                     createdAtUtcMillis = NOW,
                     updatedAtUtcMillis = NOW,
                 ),
@@ -635,6 +654,7 @@ class ArchiveRepositoryTest {
         demo.deleteTransactions(REAL_PROFILE)
         demo.deleteCategories(REAL_PROFILE)
         demo.deleteCreditCards(REAL_PROFILE)
+        demo.deleteLoans(REAL_PROFILE)
         demo.deleteAccounts(REAL_PROFILE)
         demo.deleteProfile(REAL_PROFILE)
     }

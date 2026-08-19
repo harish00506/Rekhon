@@ -2208,6 +2208,15 @@ interface DemoDao {
     suspend fun deleteCreditCards(profileId: String): Int
 
     /**
+     * Result: rows removed from `loan`. Input: [profileId]. Output: the count.
+     *
+     * A loan's terms are a child of an account, like a card's, so this runs before the accounts are
+     * cleared. No companion wipe for a schedule: none is stored (ADR-0026).
+     */
+    @Query("DELETE FROM loan WHERE profile_id = :profileId")
+    suspend fun deleteLoans(profileId: String): Int
+
+    /**
      * Result: rows removed from `budget_review`. Input: [profileId]. Output: the count.
      *
      * Added by issue 4.6, which introduced the table. Unlike [deleteBudgetAlerts] there is no
@@ -2430,6 +2439,15 @@ interface ArchiveDao {
     @Query("SELECT * FROM card_alert WHERE profile_id = :profileId ORDER BY id")
     suspend fun cardAlerts(profileId: String): List<CardAlertEntity>
 
+    /**
+     * Result: every loan's terms, tombstones included (FR-ACC-003). Input: [profileId].
+     *
+     * Five columns and no schedule — the rows are derived from them on read (ADR-0026), so an
+     * archive that carried a schedule would be carrying a cache of its own contents.
+     */
+    @Query("SELECT * FROM loan WHERE profile_id = :profileId ORDER BY account_id")
+    suspend fun loans(profileId: String): List<LoanEntity>
+
     /** Result: every recurring rule, confirmed and dismissed alike (FR-TXN-006). Input: [profileId]. */
     @Query("SELECT * FROM recurring_rule WHERE profile_id = :profileId ORDER BY id")
     suspend fun recurringRules(profileId: String): List<RecurringRuleEntity>
@@ -2501,6 +2519,10 @@ interface ArchiveDao {
     /** Result: the cards' terms are present. Input: [rows]. Output: none (suspends). */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCreditCards(rows: List<CreditCardEntity>)
+
+    /** Result: the loans' terms are present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertLoans(rows: List<LoanEntity>)
 
     /**
      * Result: the card alerts already sent are present. Input: [rows]. Output: none (suspends).

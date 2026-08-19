@@ -942,6 +942,7 @@ internal object Migrations {
 
     /** Matches `CfoDatabase.VERSION` at the time this migration was written (issue 4.6). */
     private const val VERSION_15 = 15
+
     /** Matches `CfoDatabase.VERSION` at the time issue 6.1 was written. */
     private const val VERSION_16 = 16
 

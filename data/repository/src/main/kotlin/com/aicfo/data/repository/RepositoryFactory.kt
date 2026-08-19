@@ -11,6 +11,7 @@ import com.aicfo.data.sms.SmsInboxReader
 import com.aicfo.domain.engines.budget.BudgetEngine
 import com.aicfo.domain.engines.card.CardEngine
 import com.aicfo.domain.engines.classification.ClassificationEngine
+import com.aicfo.domain.engines.loan.LoanEngine
 import com.aicfo.domain.engines.nature.NatureEngine
 import com.aicfo.domain.engines.networth.NetWorthEngine
 import com.aicfo.domain.engines.receipt.ReceiptEngine
@@ -212,6 +213,26 @@ object RepositoryFactory {
         dispatchers: DispatcherProvider,
         activeProfileId: Flow<String>,
     ): CreditCardRepository = RoomCreditCardRepository(database, engine, clock, ids, dispatchers, activeProfileId)
+
+    /**
+     * Builds the loan store (issue 6.2, FR-ACC-003).
+     * Why:    takes the whole [database] because a save spans `account` and `loan`; and takes the
+     *         [engine] rather than constructing one, for the reason [netWorth] gives — the figure
+     *         and the code that produced it stay assembled in the DI graph (ARC-003, P-03).
+     * Result: a [LoanRepository] over the encrypted database.
+     * Input:  [database]; [engine]; [clock] — TIM-001, and the single clock read on this path, which
+     *         decides which instalment is next; [dispatchers]; [activeProfileId] — so the demo
+     *         profile gets its own loans. **No `IdGenerator`**, unlike [creditCards]: a loan is keyed
+     *         by its account and mints no rows of its own.
+     * Output: [LoanRepository].
+     */
+    fun loans(
+        database: CfoDatabase,
+        engine: LoanEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        activeProfileId: Flow<String>,
+    ): LoanRepository = RoomLoanRepository(database, engine, clock, dispatchers, activeProfileId)
 
     /**
      * Builds the recurring-series store (issue 3.7, FR-TXN-006).

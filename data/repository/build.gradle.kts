@@ -66,6 +66,9 @@ dependencies {
     // both figures and the cycle dates included, so the accounts screen and the alert worker must be
     // able to name them (the reasoning `:networth` set above).
     api(project(":domain:engines:card"))
+    // Issue 6.2: SRS §5.8, FR-ACC-003. `api` — AmortisationRow and AmortisationSchedule are what
+    // this module emits, so the accounts screen must be able to name them (same reasoning as above).
+    api(project(":domain:engines:loan"))
 
     // withTransaction — the atomicity guarantee applySeeds is built on (issue 2.3).
     implementation(libs.room.ktx)
