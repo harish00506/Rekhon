@@ -66,6 +66,7 @@ include(":domain:engines:nature")      // §8.3 — what a rupee became: Need/Wa
 include(":domain:engines:budget")      // §5.5 — FR-BUD-002/003 suggested budgets + spent/pace/projection
 include(":domain:engines:safetospend") // §5.2/§14 AI-STS — what is left to spend this month, and why
 include(":domain:engines:card")        // §5.7 FR-ACC-002 — a card's billing cycle, utilisation and reminders
+include(":domain:engines:loan")        // §5.8 FR-ACC-003 — a loan's EMI and its principal/interest split
 include(":domain:usecase")
 
 // :data:*                  the ONLY DAO/network touchers (ARC-005)
