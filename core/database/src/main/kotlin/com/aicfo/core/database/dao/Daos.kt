@@ -20,6 +20,7 @@ import com.aicfo.core.database.entity.BudgetReviewEntity
 import com.aicfo.core.database.entity.CardAlertEntity
 import com.aicfo.core.database.entity.CategoryEntity
 import com.aicfo.core.database.entity.CreditCardEntity
+import com.aicfo.core.database.entity.LoanEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
 import com.aicfo.core.database.entity.ProfileEntity
 import com.aicfo.core.database.entity.RecurringRuleEntity
@@ -2922,6 +2923,78 @@ interface CreditCardDao {
      */
     @Query(
         "UPDATE credit_card SET deleted_at_utc_millis = :deletedAtUtcMillis, " +
+            "updated_at_utc_millis = :deletedAtUtcMillis WHERE account_id = :accountId",
+    )
+    suspend fun softDelete(
+        accountId: String,
+        deletedAtUtcMillis: Long,
+    ): Int
+}
+
+/**
+ * Reads and writes a loan's terms (issue 6.2; FR-ACC-003, §5.8).
+ *
+ * Why:  the same shape as [CreditCardDao] and for the same reason — a loan's principal, rate and
+ *       tenure change almost never and are read on every accounts screen, which is the opposite of
+ *       the ledger's paged DAOs. So one upsert, one live read per profile, one point read.
+ * What: the CRUD `loan` needs and nothing more. **No schedule queries**, because no schedule is
+ *       stored — the engine derives it from these five columns (ADR-0026).
+ * Result: the terms the amortisation engine turns into an EMI and a principal/interest split.
+ * Changelog: 2026-08-19 — Created for issue 6.2.
+ */
+@Dao
+interface LoanDao {
+    /**
+     * Writes the loan's terms, replacing any that were there.
+     * Why:    `REPLACE` for the reason [CreditCardDao.upsert] gives — the row is keyed by
+     *         `account_id` and describes the *current* terms, so a second write is an edit and not a
+     *         duplicate. A restructured loan is a new fact, not an event with history to keep.
+     * Result: the row is present with these values.
+     * Input:  [loan]. Output: none.
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(loan: LoanEntity)
+
+    /**
+     * Observes every live loan for a profile.
+     * Why:    the accounts list shows the next instalment's split under each loan, so it needs them
+     *         all at once and needs to re-render when one is edited.
+     * Result: the profile's undeleted loans, re-emitted on every write.
+     * Input:  [profileId]. Output: `Flow<List<LoanEntity>>`.
+     */
+    @Query(
+        "SELECT * FROM loan WHERE profile_id = :profileId " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY account_id",
+    )
+    fun observeForProfile(profileId: String): Flow<List<LoanEntity>>
+
+    /**
+     * Reads every live loan once.
+     * Why:    the export archive needs one reading, and collecting a Flow for one value would be a
+     *         subscription standing in for a lookup.
+     * Result: the profile's undeleted loans. Input: [profileId]. Output: the list.
+     */
+    @Query("SELECT * FROM loan WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL")
+    suspend fun forProfile(profileId: String): List<LoanEntity>
+
+    /**
+     * Reads one loan.
+     * Result: the row, or `null` when the account has no loan detail — the ordinary state of a loan
+     *         account the user has not filled in yet, not an error.
+     * Input:  [accountId]. Output: [LoanEntity]?.
+     */
+    @Query("SELECT * FROM loan WHERE account_id = :accountId AND deleted_at_utc_millis IS NULL")
+    suspend fun find(accountId: String): LoanEntity?
+
+    /**
+     * Soft-deletes a loan's detail.
+     * Why:    tombstoned rather than removed, like every other profile-scoped row — DB-003 and the
+     *         export format both assume nothing vanishes.
+     * Result: the number of rows changed, 0 or 1.
+     * Input:  [accountId]; [deletedAtUtcMillis] — from the injected `Clock`. Output: [Int].
+     */
+    @Query(
+        "UPDATE loan SET deleted_at_utc_millis = :deletedAtUtcMillis, " +
             "updated_at_utc_millis = :deletedAtUtcMillis WHERE account_id = :accountId",
     )
     suspend fun softDelete(

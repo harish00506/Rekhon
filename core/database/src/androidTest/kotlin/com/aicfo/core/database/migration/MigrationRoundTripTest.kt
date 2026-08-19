@@ -53,6 +53,10 @@ import org.junit.runner.RunWith
  *            create is invisible until a user happens to have two of something.
  *            2026-08-15 — Issue 4.6: added the 14 → 15 case (`budget_review`), the same
  *            refusal-not-declaration shape `migrate13To14` uses, keyed one level coarser.
+ *            2026-08-19 — Issue 6.2: added the 16 → 17 case (`loan`). It asserts one thing the
+ *            others do not — that a table is *absent*: the amortisation schedule is derived from
+ *            `loan`'s columns and never stored (ADR-0026), so a schedule table appearing later is a
+ *            reversed decision rather than an addition, and this is where that gets noticed.
  */
 @RunWith(AndroidJUnit4::class)
 class MigrationRoundTripTest {
@@ -914,6 +918,72 @@ class MigrationRoundTripTest {
         migrated.query("SELECT COUNT(*) FROM card_alert WHERE profile_id = 'p1'").use { cursor ->
             assertTrue(cursor.moveToFirst())
             assertEquals("two kinds in one cycle and one in the next are three claims", 3, cursor.getInt(0))
+        }
+        migrated.close()
+    }
+
+    /**
+     * 16 → 17 adds `loan` (issue 6.2; FR-ACC-003, §5.8).
+     *
+     * Input:  a version-16 database holding a loan account with an exact paise balance.
+     * Output: asserts the account survives untouched and a loan's terms round-trip through SQL with
+     *         the paise and the basis points intact.
+     *
+     * **What is asserted by its absence: there is no schedule table.** The amortisation rows are
+     * derived from these five columns on every read (ADR-0026), so a `loan_amortization_rows`
+     * appearing here later would be a decision reversed, not a table added — the query below fails
+     * loudly if one ever shows up.
+     *
+     * Purely additive, so the failure this guards against is the same one 15 → 16 guards against: a
+     * migration that recreated `account` on its way to adding `loan` would validate perfectly
+     * against `schemas/17.json` and lose the user's accounts. The balance is asserted byte for byte
+     * (MNY-001).
+     */
+    @Test
+    fun migrate16To17_preservesAccountsAndRoundTripsLoanTermsWithoutStoringASchedule() {
+        helper.createDatabase(TEST_DB, 16).use { db ->
+            db.execSQL(
+                "INSERT INTO account (id, profile_id, name, type, opening_balance_minor, " +
+                    "current_balance_minor, currency_code, include_in_networth, " +
+                    "created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('a2','p1','SBI Home Loan','loan',0,-300000000,'INR',1," +
+                    "1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 17, true, Migrations.MIGRATION_16_17)
+
+        migrated.query("SELECT current_balance_minor FROM account WHERE id = 'a2'").use { cursor ->
+            assertTrue("the pre-migration account must still be there", cursor.moveToFirst())
+            assertEquals("MNY-001: the balance must survive byte for byte", -300000000L, cursor.getLong(0))
+        }
+
+        migrated.execSQL(
+            "INSERT INTO loan (account_id, profile_id, principal_minor, annual_rate_bps, " +
+                "tenure_months, first_emi_iso_date, emi_override_minor, " +
+                "created_at_utc_millis, updated_at_utc_millis) " +
+                "VALUES ('a2','p1',300000000,850,240,'2026-09-05',NULL," +
+                "1767312000000,1767312000000)",
+        )
+        migrated.query(
+            "SELECT principal_minor, annual_rate_bps, tenure_months, first_emi_iso_date, " +
+                "emi_override_minor FROM loan WHERE account_id = 'a2'",
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("MNY-001: the principal is paise", 300000000L, cursor.getLong(0))
+            assertEquals("MNY-002: the rate is integer basis points", 850, cursor.getInt(1))
+            assertEquals(240, cursor.getInt(2))
+            assertEquals("TIM-002: a date-only field is an ISO string", "2026-09-05", cursor.getString(3))
+            assertTrue("an absent override is NULL, never 0 — 0 would repay nothing", cursor.isNull(4))
+        }
+
+        // The schedule is derived, never stored (ADR-0026). If this ever finds a table, the decision
+        // was reversed somewhere and this test is the place that says so.
+        migrated.query(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name LIKE '%amorti%'",
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("no schedule table: the rows are a pure function of loan's columns", 0, cursor.getInt(0))
         }
         migrated.close()
     }
