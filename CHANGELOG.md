@@ -11,6 +11,62 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > Credit cards, loans with amortisation, investment holdings with XIRR, allocation and net-worth
 > history — exact paise math throughout.
 
+### [0.6.2] — Issue 6.2: Loans + amortisation + EMI split  (2026-08-20)
+
+- **Implemented:** a loan's terms and the deterministic schedule they imply — principal, annual rate,
+  tenure, first EMI date and an optional lender-stated EMI; the closed-form instalment; and for every
+  one of up to 600 instalments an exact principal/interest split (**§5.8**, **§11**, FR-ACC-003). New
+  module `:domain:engines:loan`, new table `loan` (schema **16 → 17**), the loan section of the
+  account editor, and the next EMI's split on every loan row. **No new worker** — 6.2 is the
+  arithmetic, not an alert; the worker count is still seven.
+- **The schedule is derived, never stored**
+  ([ADR-0026](docs/adr/0026-amortisation-schedule-is-derived-not-stored.md)), contra the
+  `loan_amortization_rows` table [ADR-0016](docs/adr/0016-nature-classification-by-account-type.md)
+  named. 240 rows per loan would be a cache of a pure function of five columns: correct a mistyped
+  rate and the copy silently disagrees with what produced it — the argument
+  [ADR-0007](docs/adr/0007-account-balances-derived-not-stored.md) makes for balances and `CreditCard`
+  makes for unbilled spend. The 16→17 migration test asserts the table's **absence**.
+- **Exact by construction, not by luck.** The closing instalment absorbs the rounding remainder —
+  exactly what a lender's final instalment does — so `Σ principal == P` and, on every row,
+  `principal + interest == EMI`. Both are enforced in `AmortisationRow.init` and
+  `AmortisationSchedule.init`, so a schedule that does not balance cannot be constructed. `Long` paise
+  throughout (MNY-001), integer basis points (MNY-002); `BigDecimal` appears only inside the closed
+  form, at a **pinned** `MathContext(34, HALF_EVEN)` that is part of the engine's version contract.
+- **The user's bank wins.** The EMI is derived, and a typed lender figure replaces it outright —
+  banks round the closed form their own way, and a schedule that disagrees with the borrower's own
+  statement by ₹2 a month is one they stop trusting. `LoanEmi` carries **both** figures plus its
+  `EmiBasis`, so a screen can show the difference rather than hide it (P-02). A lender EMI above the
+  derived one closes the loan early, and the walk stops there rather than driving the balance negative.
+- **The first engine that reads no rulebook row, and says so.** Amortisation has no tunable threshold
+  — the formula is the loan contract's, not the app's — so there is no `LoanRules.kt`, no
+  `RulebookDriftTest`, and `provenance.evidence` is empty. `CardStatus` refuses an empty evidence list
+  because a card alert is a judgement; a schedule is arithmetic, and citing a rule it never read would
+  be a false claim about where the number came from. `ENGINE.md` states this under its own heading.
+  `_meta.version` is untouched, so no other engine's `RULEBOOK_VERSION` moved.
+- **`Money.percentOf` gained a period divisor.** 850 bps a year is 70.83… bps a month, so truncating
+  first drifts over 240 months. One optional parameter keeps a single HALF_EVEN rounding at the end,
+  on the paise; every existing call site is unchanged by construction.
+- **The rate is typed in percent and stored in basis points** without a `Double` anywhere.
+  `MoneyFormatter.parse` already scales two decimals by 100 on text and `BigInteger`, and 1% is 100 bps
+  in precisely the way ₹1 is 100 paise — so its minor units *are* the basis points. `8.555` is
+  refused rather than rounded (P-03).
+- **Tests:** a golden file of five loans and their entire schedules (~500 instalments), produced by an
+  **independent** 50-significant-digit decimal implementation rather than captured from this engine;
+  500 seeded property loans checked against five identities; `LoanRepositoryTest` at four points in a
+  loan's life; and Compose tests asserting the card and loan sections are never on screen together.
+  Coverage: the loan engine reports **0 missed** on every counter (gate is ≥ 85%, money 100%).
+- **Two gates were broken on purpose and watched go red** before being trusted: removing the closing
+  instalment's remainder absorption (5 tests), and widening `showsLoanFields` to `type.isLiability`
+  (2 tests). Both green on restore.
+- **Three static-analysis failures fixed rather than suppressed.** `CfoMoneyAsFloatingPoint` fired on
+  the engine's one deliberate `BigDecimal` amount (renamed, with the reason recorded — this repo has
+  had no lint baseline and no suppression since issue 1.5); `EngineModule` and `AccountEditorScreen.kt`
+  both hit detekt's function ceiling, so Epic 6's two wealth engines moved to `WealthEngineModule` and
+  the loan composables to `AccountEditorLoanFields.kt`.
+- **Verified on a device.** ₹30,00,000 · 8.5% · 240 months reads **₹26,034.70** on the accounts row,
+  split ₹4,784.70 principal · ₹21,250.00 interest — the golden file's figure, on the emulator. Checked
+  in airplane mode (P-04) and through an export → delete → import round trip.
+
 ### [0.6.1] — Issue 6.1: Credit card details + alerts  (2026-08-17)
 
 - **Implemented:** a credit card's terms and the two notifications that come out of them — limit,
