@@ -6,6 +6,7 @@ import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.MoneyFormatter
 import com.aicfo.domain.engines.card.CardStatus
+import com.aicfo.domain.engines.loan.AmortisationRow
 
 /**
  * Everything the accounts list renders, as one value (ARC-004).
@@ -49,6 +50,17 @@ data class AccountsUiState(
      * than as a 0% bar (P-03).
      */
     val cards: Map<String, CardStatus> = emptyMap(),
+    /**
+     * The **next** instalment due on every loan, keyed by account id (issue 6.2; FR-ACC-003).
+     *
+     * One row, not a schedule: the list shows a single line per loan and building 240 rows to
+     * render it would be waste that only appears on somebody else's phone. Which instalment is
+     * "next" is decided in the repository, where the clock is (TIM-001).
+     *
+     * A `LOAN` account **absent** here has either no terms entered yet — rendered as a prompt
+     * rather than a ₹0 EMI (P-03) — or is repaid, and a repaid loan has no next EMI to name.
+     */
+    val loans: Map<String, AmortisationRow> = emptyMap(),
 ) {
     /**
      * Whether to show the "no accounts yet" invitation rather than a list.
@@ -192,6 +204,18 @@ data class AccountEditorUiState(
     val dueDayText: String = "",
     val lastStatementText: String = "",
     val minimumDueText: String = "",
+    // --- Issue 6.2: loan terms (FR-ACC-003) ---------------------------------------------------
+    //
+    // The second type branch, held as text for the reason the card fields are: a half-typed "8." is
+    // a real intermediate state. Parsed once, on Save.
+    //
+    // [annualRateText] is typed in **percent** ("8.5") and stored in basis points (850) — the
+    // conversion is one line in `toLoan`, and it is the only place in this module that knows it.
+    val principalText: String = "",
+    val annualRateText: String = "",
+    val tenureMonthsText: String = "",
+    val firstEmiDateText: String = "",
+    val emiOverrideText: String = "",
 ) {
     /** Whether this is an edit of an existing account rather than a new one. */
     val isEditing: Boolean get() = id != null
@@ -200,10 +224,19 @@ data class AccountEditorUiState(
      * Whether the card section is on screen (issue 6.1).
      *
      * A limit and a statement day mean nothing on a savings account, and showing them would invite
-     * a user to fill in fields the app would then ignore. Issue 6.2 adds the loan branch beside
+     * a user to fill in fields the app would then ignore. Issue 6.2 added [showsLoanFields] beside
      * this one.
      */
     val showsCardFields: Boolean get() = type == AccountType.CREDIT_CARD
+
+    /**
+     * Whether the loan section is on screen (issue 6.2; FR-ACC-003).
+     *
+     * The same argument [showsCardFields] makes, and deliberately the same **shape**: an exact type
+     * match rather than `type.isLiability`, which would hand a credit card a tenure in months and a
+     * loan a statement day.
+     */
+    val showsLoanFields: Boolean get() = type == AccountType.LOAN
 
     /**
      * Whether the card's terms are complete enough to store (issue 6.1).
@@ -215,6 +248,22 @@ data class AccountEditorUiState(
      */
     val hasCardTerms: Boolean
         get() = creditLimitText.isNotBlank() && statementDayText.isNotBlank() && dueDayText.isNotBlank()
+
+    /**
+     * Whether the loan's terms are complete enough to store (issue 6.2).
+     *
+     * All four or none, for the reason [hasCardTerms] gives: there is no schedule without every one
+     * of principal, rate, tenure and a first EMI date — three of four produces nothing at all, not
+     * a partial answer. **The rate is required even at zero**: an interest-free family loan is a
+     * real case the engine handles, and a blank field cannot be told apart from an unanswered one,
+     * so the user types `0` and means it.
+     *
+     * The EMI override is not here. It is genuinely optional — its absence means "derive it".
+     */
+    val hasLoanTerms: Boolean
+        get() =
+            principalText.isNotBlank() && annualRateText.isNotBlank() &&
+                tenureMonthsText.isNotBlank() && firstEmiDateText.isNotBlank()
 
     /**
      * Whether Save may proceed.
@@ -257,6 +306,15 @@ sealed interface AccountEditorEvent {
      */
     data class CardFieldChanged(val field: CardField, val value: String) : AccountEditorEvent
 
+    /**
+     * The user typed in one of the loan fields (issue 6.2, FR-ACC-003).
+     *
+     * A second event rather than widening [CardFieldChanged] to a shared field enum: the two
+     * sections are never on screen together, and one enum spanning both would make every `when`
+     * over it carry five cases that cannot happen.
+     */
+    data class LoanFieldChanged(val field: LoanField, val value: String) : AccountEditorEvent
+
     /** The user tapped Save. */
     data object Save : AccountEditorEvent
 
@@ -286,4 +344,34 @@ enum class CardField {
 
     /** The minimum payment on that statement. Optional. */
     MINIMUM_DUE,
+}
+
+/**
+ * Which loan field an edit was for (issue 6.2; FR-ACC-003).
+ *
+ * Why:  a closed set rather than a string key, the reason [CardField] gives — a typo becomes a
+ *       compile error, and the `when` that applies the edit must stay exhaustive when a later
+ *       issue adds a term (a moratorium, say, or a floating-rate reset).
+ * Changelog: 2026-08-20 — Created for issue 6.2.
+ */
+enum class LoanField {
+    /** The sanctioned amount, in rupees as typed. */
+    PRINCIPAL,
+
+    /** The annual interest rate, typed in **percent** — `8.5`, not `850` (MNY-002 converts at save). */
+    ANNUAL_RATE,
+
+    /** How many monthly instalments the loan runs for, 1..600. */
+    TENURE_MONTHS,
+
+    /** The first EMI's date, ISO `yyyy-MM-dd` (TIM-002). Every later one steps a month from it. */
+    FIRST_EMI_DATE,
+
+    /**
+     * The lender's own EMI, in rupees. Optional — blank means "work it out from the terms above".
+     *
+     * Offered because banks round the closed form their own way, and a schedule that disagrees with
+     * the borrower's statement by ₹2 a month is a schedule they stop trusting.
+     */
+    EMI_OVERRIDE,
 }

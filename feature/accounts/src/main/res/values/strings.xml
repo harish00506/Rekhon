@@ -64,7 +64,8 @@
         way.</string>
     <string name="account_editor_save">Save</string>
     <string name="account_editor_cancel">Cancel</string>
-    <string name="account_editor_error_validation">Check the name and the opening balance.</string>
+    <string name="account_editor_error_validation">Check what you entered - the name, the amounts, and any
+        dates or days.</string>
 
     <!-- FR-ACC-001\'s eleven types. The stored codes live in AccountType; these are only labels. -->
     <string name="account_type_bank">Bank account</string>
@@ -101,5 +102,28 @@
         now. %2$s of %3$s.</string>
     <string name="accounts_card_due">Due %1$s</string>
     <string name="accounts_card_no_terms">Add this card\'s limit and dates</string>
+
+    <!-- Issue 6.2 (FR-ACC-003): loan terms. Shown only when the type is a loan - the second type
+         branch in this module. The rate is asked for in PERCENT because that is what the sanction
+         letter says; it becomes basis points once, at save (MNY-002). The first EMI is a full date
+         rather than a day-of-month, because a schedule is anchored: instalment 47 falls on a
+         particular day of a particular year. -->
+    <string name="account_editor_loan_section">Loan details</string>
+    <string name="account_editor_loan_principal">Loan amount</string>
+    <string name="account_editor_loan_rate">Interest rate (%)</string>
+    <string name="account_editor_loan_tenure">Tenure (months)</string>
+    <string name="account_editor_loan_first_emi">First EMI date (YYYY-MM-DD)</string>
+    <string name="account_editor_loan_emi_override">Your bank\'s EMI (optional)</string>
+    <string name="account_editor_loan_help">The amount, rate, tenure and first EMI date are needed
+        together - without all four there is no schedule to work out. Leave the EMI blank and the app
+        calculates it; enter your bank\'s own figure if it differs and the app will use that instead.</string>
+
+    <!-- Issue 6.2: the next instalment on a loan row. Both halves of the split are shown and they
+         sum to the EMI above them, so the reader can check the line rather than trust it (P-02). -->
+    <string name="accounts_loan_next_emi">Next EMI %1$s on %2$s</string>
+    <string name="accounts_loan_split">%1$s principal · %2$s interest</string>
+    <string name="accounts_loan_next_emi_description">Next EMI %1$s, due %2$s. %3$s goes to
+        principal and %4$s to interest.</string>
+    <string name="accounts_loan_no_terms">Add this loan\'s amount, rate and tenure</string>
 
 </resources>

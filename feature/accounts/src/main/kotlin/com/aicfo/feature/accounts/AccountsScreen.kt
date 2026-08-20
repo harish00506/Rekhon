@@ -37,8 +37,10 @@ import com.aicfo.core.designsystem.component.maskedAmount
 import com.aicfo.core.designsystem.theme.CfoDimens
 import com.aicfo.core.model.Account
 import com.aicfo.core.model.AccountType
+import com.aicfo.core.model.DateFormatter
 import com.aicfo.core.model.Money
 import com.aicfo.domain.engines.card.CardStatus
+import com.aicfo.domain.engines.loan.AmortisationRow
 
 /**
  * The accounts list (issue 2.5; FR-ACC-001, FR-ACC-007, ARC-004).
@@ -123,6 +125,7 @@ fun AccountsContent(
                     AccountRow(
                         account = account,
                         card = uiState.cards[account.id],
+                        instalment = uiState.loans[account.id],
                         onEdit = { onEditAccount(account.id) },
                         onEvent = onEvent,
                     )
@@ -191,6 +194,59 @@ private fun CardUtilisation(card: CardStatus?) {
 }
 
 /**
+ * The next EMI and where it goes, on a loan's row (issue 6.2; FR-ACC-003, P-02, P-03).
+ *
+ * Why:    a loan's balance is the one balance that tells a borrower almost nothing. "You owe
+ *         ₹28,40,000" is true and useless; what they cannot see anywhere else is that this month's
+ *         ₹26,034.70 is ₹21,250.00 of interest and only ₹4,784.70 of principal. That split is the
+ *         whole point of the engine, and this row is where it first reaches a user.
+ *
+ *         **Both halves are shown, never one.** Interest alone reads as a complaint and principal
+ *         alone reads as progress; the two together are the fact, and they sum to the instalment
+ *         above them so the reader can check the line without trusting it (P-02).
+ *
+ *         Amounts go through `maskedAmount`, so the privacy blur reaches this row like every other
+ *         (issue 5.3).
+ * Result: two lines — the instalment with its date, then the split — or a prompt when the loan has
+ *         no terms yet or is repaid. **Never a ₹0 EMI**, which would tell a borrower with twenty
+ *         years left that they owe nothing this month (P-03).
+ * Input:  [instalment] — the next row due, or `null`. Output: the composition.
+ * Changelog: 2026-08-20 — Created for issue 6.2.
+ */
+@Composable
+private fun NextInstalment(instalment: AmortisationRow?) {
+    if (instalment == null) {
+        Text(
+            text = stringResource(R.string.accounts_loan_no_terms),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        return
+    }
+
+    val amount = maskedAmount(instalment.amount)
+    val principal = maskedAmount(instalment.principal)
+    val interest = maskedAmount(instalment.interest)
+    val due = DateFormatter.day(instalment.dueIsoDate)
+    // Resolved before the semantics block, which is not composable.
+    val spoken = stringResource(R.string.accounts_loan_next_emi_description, amount, due, principal, interest)
+    Column(
+        verticalArrangement = Arrangement.spacedBy(CfoDimens.spaceXs),
+        // One node for a screen reader, not two: an amount and its split announced separately are
+        // two fragments the listener has to reassemble into one sentence.
+        modifier = Modifier.semantics(mergeDescendants = true) { contentDescription = spoken },
+    ) {
+        Text(
+            text = stringResource(R.string.accounts_loan_next_emi, amount, due),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Text(
+            text = stringResource(R.string.accounts_loan_split, principal, interest),
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+/**
  * One account in the list.
  * Why:    the balance shown is the **derived** one (DB-001), and the opening balance is relegated to
  *         the supporting line — those are two different facts and a row that showed only one would
@@ -204,6 +260,7 @@ private fun CardUtilisation(card: CardStatus?) {
 private fun AccountRow(
     account: Account,
     card: CardStatus?,
+    instalment: AmortisationRow?,
     onEdit: () -> Unit,
     onEvent: (AccountsEvent) -> Unit,
 ) {
@@ -217,6 +274,10 @@ private fun AccountRow(
             // Issue 6.1: only a credit card has a limit to be a share of.
             if (account.type == AccountType.CREDIT_CARD) {
                 CardUtilisation(card)
+            }
+            // Issue 6.2: only a loan has an instalment to split.
+            if (account.type == AccountType.LOAN) {
+                NextInstalment(instalment)
             }
             // FlowRow, not Row: three buttons do not fit one line once the archive action reads
             // "Reopen account" rather than "Close account", and a plain Row pushes Delete off the

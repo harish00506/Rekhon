@@ -9,6 +9,7 @@ import com.aicfo.core.common.Result
 import com.aicfo.core.common.toAppError
 import com.aicfo.data.repository.AccountRepository
 import com.aicfo.data.repository.CreditCardRepository
+import com.aicfo.data.repository.LoanRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -47,6 +48,7 @@ class AccountsViewModel
     constructor(
         private val repository: AccountRepository,
         private val cards: CreditCardRepository,
+        private val loans: LoanRepository,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(AccountsUiState())
 
@@ -60,6 +62,28 @@ class AccountsViewModel
         init {
             observeAccounts()
             observeCards()
+            observeLoans()
+        }
+
+        /**
+         * Keeps each loan's next instalment on screen (issue 6.2; FR-ACC-003).
+         *
+         * Why:    a **third** collector rather than a `combine`, for the reason [observeCards]
+         *         gives one line down: the three streams answer different questions and fail
+         *         differently, and a loan whose terms will not read must not blank the accounts
+         *         list. It is the cheapest correct arrangement too — a loan's split changes when
+         *         its terms change or the month turns, neither of which is a transaction.
+         * Result: `loans` follows every edit. A read failure empties the map and the loan rows fall
+         *         back to their prompt, rather than raising a banner over a list that is fine.
+         * Input:  none. Output: none (collects on `viewModelScope`, so it dies with the screen —
+         *         ARC-006).
+         * Changelog: 2026-08-20 — Created for issue 6.2.
+         */
+        private fun observeLoans() {
+            loans.observeNextInstalments()
+                .onEach { instalments -> _uiState.update { it.copy(loans = instalments) } }
+                .catch { _uiState.update { it.copy(loans = emptyMap()) } }
+                .launchIn(viewModelScope)
         }
 
         /**

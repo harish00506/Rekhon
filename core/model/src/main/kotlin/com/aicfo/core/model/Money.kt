@@ -48,22 +48,46 @@ value class Money(val minor: Long) : Comparable<Money> {
     operator fun times(count: Int): Money = Money(Math.multiplyExact(minor, count.toLong()))
 
     /**
-     * Takes a percentage expressed in basis points (MNY-002: 1 bps = 0.01%, so 250 bps = 2.5%).
+     * Takes a percentage expressed in basis points (MNY-002: 1 bps = 0.01%, so 250 bps = 2.5%),
+     * optionally for one period of a year.
      * Why:    rates must be integers too — a `Double` interest rate reintroduces exactly the drift
      *         [Money] exists to prevent. Ties round HALF_EVEN (banker's rounding) so repeated
      *         rounding does not bias totals upward the way HALF_UP does.
-     * What:   computes `minor x bps / 10_000` in exact decimal arithmetic, then rounds to a whole
-     *         paise. [BigDecimal] is an internal detail — it never appears in the public API.
+     *
+     *         **[overPeriods] exists because an annual rate divided by twelve is not an integer**
+     *         (issue 6.2). A home loan at 8.5% is 850 bps a year and 70.83… bps a month, so a
+     *         caller that had to hand this method a whole number would have to truncate first — and
+     *         a loan schedule applies that truncated rate 240 times. Dividing inside the same
+     *         exact-decimal expression keeps one rounding, at the end, on the paise. It is a
+     *         divisor of the *rate*, never of the amount: [split] and [allocate] are what divide an
+     *         amount, because only they redistribute the remainder.
+     * What:   computes `minor x bps / (10_000 x overPeriods)` in exact decimal arithmetic, then
+     *         rounds to a whole paise. [BigDecimal] is an internal detail — it never appears in the
+     *         public API.
      * Result: the rounded share, or [ArithmeticException] if the true value exceeds `Long`.
-     * Input:  [bps] — a non-negative rate in basis points (10 000 bps = 100%).
+     * Input:  [bps] — a non-negative rate in basis points (10 000 bps = 100%);
+     *         [overPeriods] — how many equal periods the year's rate is spread across; must be
+     *         positive; `1` (the default) means the whole rate, `12` means one month of it.
      * Output: a new [Money].
+     * Changelog: 2026-07-25 — Created for issue 1.2.
+     *            2026-08-19 — Added [overPeriods] for issue 6.2's monthly-rest amortisation. Every
+     *            existing call site is unaffected: the default reproduces the old expression
+     *            exactly.
      */
-    fun percentOf(bps: Int): Money {
+    fun percentOf(
+        bps: Int,
+        overPeriods: Int = 1,
+    ): Money {
         require(bps >= 0) { "Rate must be non-negative basis points (MNY-002), was $bps" }
+        require(overPeriods > 0) { "A year splits into a positive number of periods, was $overPeriods" }
         val exact =
             BigDecimal.valueOf(minor)
                 .multiply(BigDecimal.valueOf(bps.toLong()))
-                .divide(BPS_DENOMINATOR, 0, RoundingMode.HALF_EVEN)
+                .divide(
+                    BPS_DENOMINATOR.multiply(BigDecimal.valueOf(overPeriods.toLong())),
+                    0,
+                    RoundingMode.HALF_EVEN,
+                )
         return Money(exact.longValueExact())
     }
 

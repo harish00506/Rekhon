@@ -2,6 +2,13 @@ package com.aicfo.feature.accounts
 
 import app.cash.turbine.test
 import com.aicfo.core.common.AppError
+import com.aicfo.core.common.Ok
+import com.aicfo.core.model.AccountType
+import com.aicfo.core.model.Loan
+import com.aicfo.core.model.Money
+import com.aicfo.domain.engines.loan.AmortisationRow
+import com.aicfo.domain.engines.loan.LoanEngineFactory
+import com.aicfo.domain.engines.loan.LoanInstalmentInput
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -63,7 +70,7 @@ class AccountsViewModelTest {
         runTest {
             repository.setAccounts(account { copy(id = "account:1", name = "HDFC Savings") })
 
-            AccountsViewModel(repository, FakeCreditCardRepository()).uiState.test {
+            AccountsViewModel(repository, FakeCreditCardRepository(), FakeLoanRepository()).uiState.test {
                 val loaded = awaitItem()
                 assertFalse(loaded.isLoading)
                 assertEquals(listOf("HDFC Savings"), loaded.accounts.map { it.name })
@@ -78,7 +85,7 @@ class AccountsViewModelTest {
             // empty invitation are both wrong answers to "the database would not open".
             repository.failOnObserve = AppError.Storage("disk")
 
-            val state = AccountsViewModel(repository, FakeCreditCardRepository()).uiState.value
+            val state = AccountsViewModel(repository, FakeCreditCardRepository(), FakeLoanRepository()).uiState.value
 
             assertFalse("must not spin forever", state.isLoading)
             // The code, not which code: a Flow carries a raw `Throwable`, so the mapping is
@@ -91,7 +98,7 @@ class AccountsViewModelTest {
     @Test
     fun `an empty store is empty, not loading`() =
         runTest {
-            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository())
+            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository(), FakeLoanRepository())
 
             val state = viewModel.uiState.value
             assertFalse(state.isLoading)
@@ -105,7 +112,7 @@ class AccountsViewModelTest {
                 account { copy(id = "account:1", name = "Active") },
                 account { copy(id = "account:2", name = "Closed", isArchived = true) },
             )
-            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository())
+            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository(), FakeLoanRepository())
 
             assertEquals(listOf("Active"), viewModel.uiState.value.accounts.map { it.name })
 
@@ -119,7 +126,7 @@ class AccountsViewModelTest {
     fun `turning the toggle back off hides them again`() =
         runTest {
             repository.setAccounts(account { copy(id = "account:2", name = "Closed", isArchived = true) })
-            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository())
+            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository(), FakeLoanRepository())
             viewModel.onEvent(AccountsEvent.ToggleArchived(show = true))
 
             viewModel.onEvent(AccountsEvent.ToggleArchived(show = false))
@@ -131,7 +138,7 @@ class AccountsViewModelTest {
     fun `archiving an account calls the repository and the list follows`() =
         runTest {
             repository.setAccounts(account { copy(id = "account:1", name = "Old Card") })
-            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository())
+            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository(), FakeLoanRepository())
 
             viewModel.onEvent(AccountsEvent.SetArchived("account:1", archived = true))
 
@@ -144,7 +151,7 @@ class AccountsViewModelTest {
     fun `deleting an account calls the repository and the list follows`() =
         runTest {
             repository.setAccounts(account { copy(id = "account:1") })
-            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository())
+            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository(), FakeLoanRepository())
 
             viewModel.onEvent(AccountsEvent.Delete("account:1"))
 
@@ -156,7 +163,7 @@ class AccountsViewModelTest {
     fun `a failed delete is reported rather than swallowed`() =
         runTest {
             repository.setAccounts(account { copy(id = "account:1") })
-            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository())
+            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository(), FakeLoanRepository())
             repository.failWith = AppError.Storage("disk")
 
             viewModel.onEvent(AccountsEvent.Delete("account:1"))
@@ -169,7 +176,7 @@ class AccountsViewModelTest {
     fun `a failed archive is reported rather than swallowed`() =
         runTest {
             repository.setAccounts(account { copy(id = "account:1") })
-            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository())
+            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository(), FakeLoanRepository())
             repository.failWith = AppError.NotFound
 
             viewModel.onEvent(AccountsEvent.SetArchived("account:1", archived = true))
@@ -180,7 +187,7 @@ class AccountsViewModelTest {
     @Test
     fun `dismissing the error clears it`() =
         runTest {
-            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository())
+            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository(), FakeLoanRepository())
             repository.failWith = AppError.Storage("disk")
             viewModel.onEvent(AccountsEvent.Delete("account:1"))
 
@@ -193,7 +200,7 @@ class AccountsViewModelTest {
     fun `restoring an archived account brings it back to the active list`() =
         runTest {
             repository.setAccounts(account { copy(id = "account:1", name = "Reopened", isArchived = true) })
-            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository())
+            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository(), FakeLoanRepository())
 
             viewModel.onEvent(AccountsEvent.SetArchived("account:1", archived = false))
 
@@ -208,15 +215,82 @@ class AccountsViewModelTest {
             repository.setAccounts(
                 account {
                     copy(
-                        openingBalance = com.aicfo.core.model.Money(1_00_000_00L),
-                        balance = com.aicfo.core.model.Money(75_000_00L),
+                        openingBalance = Money(1_00_000_00L),
+                        balance = Money(75_000_00L),
                     )
                 },
             )
 
-            val account = AccountsViewModel(repository, FakeCreditCardRepository()).uiState.value.accounts.single()
+            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository(), FakeLoanRepository())
+            val account = viewModel.uiState.value.accounts.single()
 
-            assertEquals(com.aicfo.core.model.Money(75_000_00L), account.balance)
-            assertEquals(com.aicfo.core.model.Money(1_00_000_00L), account.openingBalance)
+            assertEquals(Money(75_000_00L), account.balance)
+            assertEquals(Money(1_00_000_00L), account.openingBalance)
         }
+
+    // --- issue 6.2: the next EMI on a loan row (FR-ACC-003) -----------------------------------
+
+    @Test
+    fun `a loan's next instalment reaches the state and its split sums to the EMI`() =
+        runTest {
+            // The figure the accounts list exists to show. The split is asserted to **sum** rather
+            // than compared to a constant: the constant lives in the engine's golden file, and
+            // restating it here would only prove this test can copy a number (P-02).
+            repository.setAccounts(account { copy(id = "account:1", type = AccountType.LOAN) })
+            val row = instalment()
+            val loans = FakeLoanRepository(mapOf("account:1" to row))
+
+            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository(), loans)
+
+            val shown = viewModel.uiState.value.loans.getValue("account:1")
+            assertEquals(row.amount, shown.principal + shown.interest)
+            assertEquals("2026-11-05", shown.dueIsoDate)
+        }
+
+    @Test
+    fun `a loan with no terms is absent from the map rather than showing zeros`() =
+        runTest {
+            // Absent, not present-with-zeros: a zero EMI would tell a borrower with twenty years
+            // left that they owe nothing this month, and the row renders a prompt instead (P-03).
+            repository.setAccounts(account { copy(id = "account:1", type = AccountType.LOAN) })
+
+            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository(), FakeLoanRepository())
+
+            assertTrue(viewModel.uiState.value.loans.isEmpty())
+        }
+
+    @Test
+    fun `the loan stream survives a failed account read`() =
+        runTest {
+            // Three separate collectors, not a `combine`: a loan read that fails must not blank the
+            // accounts list, and a list that fails must not be reported as "no loans". Asserted by
+            // failing the account read and checking the loan map came through anyway.
+            repository.failWith = AppError.Storage("disk")
+            val loans = FakeLoanRepository(mapOf("account:1" to instalment()))
+
+            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository(), loans)
+
+            assertEquals(1, viewModel.uiState.value.loans.size)
+        }
+
+    /**
+     * One instalment of the canonical loan, produced by the **real** engine.
+     * Why:    a hand-written [AmortisationRow] would have to satisfy the type's own invariants, and
+     *         picking numbers that do is picking the answer. Asking the engine is both shorter and
+     *         honest about where the figure came from (P-03).
+     * Result: instalment 3 of 30,00,000 at 8.5% over 240 months, due 2026-11-05.
+     * Input:  none. Output: [AmortisationRow].
+     */
+    private fun instalment(): AmortisationRow {
+        val loan =
+            Loan(
+                accountId = "account:1",
+                principal = Money(300_000_000L),
+                annualRateBps = 850,
+                tenureMonths = 240,
+                firstEmiIsoDate = "2026-09-05",
+            )
+        val engine = LoanEngineFactory.create()
+        return (engine.instalment(LoanInstalmentInput(loan, number = 3)) as Ok).value
+    }
 }

@@ -112,6 +112,7 @@ internal class RoomArchiveRepository(
                         smsDrafts = dao.smsDrafts(profileId),
                         creditCards = dao.creditCards(profileId),
                         cardAlerts = dao.cardAlerts(profileId),
+                        loans = dao.loans(profileId),
                     ),
                 )
             }
@@ -190,6 +191,7 @@ internal class RoomArchiveRepository(
         demo.deleteTransactions(profileId)
         demo.deleteCategories(profileId)
         demo.deleteCreditCards(profileId)
+        demo.deleteLoans(profileId)
         demo.deleteAccounts(profileId)
         demo.deleteProfile(profileId)
     }
@@ -220,6 +222,7 @@ internal class RoomArchiveRepository(
         dao.insertSmsDrafts(archive.smsDrafts)
         dao.insertCreditCards(archive.creditCards)
         dao.insertCardAlerts(archive.cardAlerts)
+        dao.insertLoans(archive.loans)
     }
 
     private companion object {

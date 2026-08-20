@@ -8,6 +8,7 @@ import com.aicfo.core.database.entity.BudgetReviewEntity
 import com.aicfo.core.database.entity.CardAlertEntity
 import com.aicfo.core.database.entity.CategoryEntity
 import com.aicfo.core.database.entity.CreditCardEntity
+import com.aicfo.core.database.entity.LoanEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
 import com.aicfo.core.database.entity.ProfileEntity
 import com.aicfo.core.database.entity.RecurringRuleEntity
@@ -73,6 +74,7 @@ data class CfoArchive(
     val smsDrafts: List<SmsDraftEntity> = emptyList(),
     val creditCards: List<CreditCardEntity> = emptyList(),
     val cardAlerts: List<CardAlertEntity> = emptyList(),
+    val loans: List<LoanEntity> = emptyList(),
 ) {
     companion object {
         /**

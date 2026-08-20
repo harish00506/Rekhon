@@ -2,8 +2,6 @@ package com.aicfo.app.di
 
 import com.aicfo.domain.engines.budget.BudgetEngine
 import com.aicfo.domain.engines.budget.BudgetEngineFactory
-import com.aicfo.domain.engines.card.CardEngine
-import com.aicfo.domain.engines.card.CardEngineFactory
 import com.aicfo.domain.engines.classification.ClassificationEngine
 import com.aicfo.domain.engines.classification.ClassificationEngineFactory
 import com.aicfo.domain.engines.nature.NatureEngine
@@ -43,6 +41,10 @@ import javax.inject.Singleton
  *            three device-backed collaborators that were never engines — the text recogniser, the
  *            inbox reader, the receipt store — moved to [PlatformModule]. The "no Android imports"
  *            claim above is now true of every binding here rather than most of them.
+ *            2026-08-20 — Issue 6.2: the loan engine took the object back to the ceiling, so Epic
+ *            6's two wealth engines — the card and the loan — moved to [WealthEngineModule]. The
+ *            seam is the epic rather than an arbitrary cut, and the next wealth engine has a
+ *            home.
  *
  * **Singletons, safely.** Every engine here is stateless and deterministic — fixed input, fixed
  * output (P-08) — so one instance shared across the app has nothing to reset between screens and
@@ -159,18 +161,6 @@ object EngineModule {
     @Provides
     @Singleton
     fun provideBudgetEngine(): BudgetEngine = BudgetEngineFactory.create()
-
-    /**
-     * A credit card's billing cycle, utilisation and reminders (issue 6.1; §5.7, FR-ACC-002).
-     * Why:    stateless and pure like every engine here — it reads no clock, so the repository hands
-     *         it today's date (TIM-001) and two amounts, and every answer is reproducible from them.
-     *         `@Singleton` for the reason the others are: there is nothing to keep per caller.
-     * Result: a [CardEngine]. Input: none. Output: the engine.
-     * Changelog: 2026-08-17 — Created for issue 6.1.
-     */
-    @Provides
-    @Singleton
-    fun provideCardEngine(): CardEngine = CardEngineFactory.create()
 
     /**
      * What is left to spend this month, and why (issue 5.2; §5.2, §14, AI-STS, P-02/P-03).

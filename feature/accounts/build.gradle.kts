@@ -25,6 +25,8 @@ tasks.withType<Test>()
         exclude("**/AccountsFlowTest.class")
         // Issue 6.1's card-terms form is the same shape and needs the same exclusion.
         exclude("**/AccountEditorCardFieldsTest.class")
+        // Issue 6.2 adds a second type-specific form, and it needs the same exclusion.
+        exclude("**/AccountEditorLoanFieldsTest.class")
     }
 
 dependencies {

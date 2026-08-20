@@ -1102,6 +1102,75 @@ data class CreditCardEntity(
 )
 
 /**
+ * What a loan is, beyond an `account` row with a negative balance (issue 6.2; FR-ACC-003, §5.8).
+ *
+ * Why:    the second half of the promise [CreditCardEntity] answered the first half of —
+ *         `AccountType`'s doc comment has said since issue 2.5 that *"a loan's principal, rate and
+ *         EMI (FR-ACC-003) live in their own tables"*. Same shape, same reason: five columns that
+ *         mean nothing on the other ten account types.
+ *
+ *         **Five columns and no schedule.** The amortisation rows are a pure function of these
+ *         fields, so they are derived on every read and never stored (ADR-0026). ADR-0016 names a
+ *         `loan_amortization_rows` table; this is the considered answer to it — a stored schedule is
+ *         a cache that can disagree with the terms that produced it, and the disagreement would be
+ *         silent. It is the argument [CreditCardEntity] makes for storing no "current unbilled" and
+ *         ADR-0007 makes for storing no account balance.
+ *
+ *         **Keyed by `account_id`**, for the reason [CreditCardEntity] is: a loan *is* an account
+ *         here, and a second identity would allow two loan rows for one account.
+ * What:   the sanctioned terms, and the instalment the lender actually charges when it differs.
+ * Result: a Room row in `loan`, added at schema version 17 by issue 6.2.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-08-19 — Created for issue 6.2 (FR-ACC-003).
+ *
+ * **No EMI day column.** A loan bills on the day of month its first instalment fell on, so a column
+ * for it would be a second copy of [firstEmiIsoDate]'s day and a chance for the two to disagree.
+ *
+ * **No outstanding column.** DB-001 already makes the account's current balance derivable rather
+ * than authoritative; a second running total here would be a third opinion about the same rupee.
+ */
+@Serializable
+@Entity(
+    tableName = "loan",
+    indices = [
+        Index("profile_id"),
+        Index("profile_id", "deleted_at_utc_millis"),
+    ],
+)
+data class LoanEntity(
+    /** The `account` row this describes. One loan per account, which is why it is the key. */
+    @PrimaryKey
+    @ColumnInfo(name = "account_id")
+    val accountId: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** MNY-001: the sanctioned amount in paise. Positive — the model refuses zero and below. */
+    @ColumnInfo(name = "principal_minor")
+    val principalMinor: Long,
+    /** MNY-002: the annual rate in integer basis points. Never a `Double`. `0` is a real 0% EMI. */
+    @ColumnInfo(name = "annual_rate_bps")
+    val annualRateBps: Int,
+    /** The number of instalments, 1..600 (fifty years — longer than any Indian retail loan). */
+    @ColumnInfo(name = "tenure_months")
+    val tenureMonths: Int,
+    /** TIM-002: when the first instalment falls, ISO `yyyy-MM-dd`. Its day is the loan's EMI day. */
+    @ColumnInfo(name = "first_emi_iso_date")
+    val firstEmiIsoDate: String,
+    /**
+     * MNY-001: paise. The instalment the lender actually charges, when the user has entered it.
+     * Null means "derive it" — not zero, which would be an instalment that never repays anything.
+     */
+    @ColumnInfo(name = "emi_override_minor")
+    val emiOverrideMinor: Long? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+)
+
+/**
  * A record that the user has already been told one thing about one card in one billing cycle
  * (issue 6.1; FR-ACC-002, §17.1).
  *

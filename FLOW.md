@@ -329,6 +329,77 @@ longer re-raises the flag: the collectors are live, and a cold Flow does not re-
 
 ---
 
+### 2.2 · A loan's EMI split — the only figure with no row behind it (issue 6.2)
+
+Shape A with one difference worth drawing: **nothing on this path is stored**. The five columns in
+`loan` are the terms; every instalment the user ever sees is derived from them at read time
+([ADR-0026](docs/adr/0026-amortisation-schedule-is-derived-not-stored.md)).
+
+```
+AccountsScreen()                                    feature/accounts/AccountsScreen.kt
+└─ hiltViewModel<AccountsViewModel>()
+    └─ init { observeAccounts(); observeCards(); observeLoans() }   THREE collectors, no combine()
+        └─ observeLoans()
+            └─ LoanRepository.observeNextInstalments()      data/repository — ARC-005
+                └─ activeProfileId.flatMapLatest { profileId ->
+                     database.loanDao().observeForProfile(profileId).map { rows ->
+                     │   ┌── the ONE clock read on this path (TIM-001)
+                     ├─  today = clock.today()
+                     ├─  rows.mapNotNull { entity ->
+                     │     ├─ nextInstalmentNumber(loan, today)
+                     │     │    first k in 1..tenure where firstEmi.plusMonths(k-1) !isBefore today
+                     │     │    └─ null → the loan is repaid → ABSENT from the map, not zeroed
+                     │     └─ engine.instalment(LoanInstalmentInput(loan, k, now))   → shape C
+                     │         └─ AmortisationRow(number, dueIsoDate, amount,
+                     │                            principal, interest, opening, closing)
+                     │             └─ init { require(principal + interest == amount) }   ← P-02
+                     └─  }.toMap()
+                   }.flowOn(dispatchers.io)
+        ⇣
+    _uiState.update { copy(loans = instalments) }   →  AccountsUiState.loans: Map<id, Row>
+        │   .catch { copy(loans = emptyMap()) }     a loan read that fails does NOT blank the list
+        ▼
+    AccountRow(account, card, instalment = uiState.loans[account.id])
+    └─ if (account.type == LOAN) NextInstalment(instalment)
+        ├─ instalment == null  → "Add this loan's amount, rate and tenure"   never a ₹0 EMI (P-03)
+        └─ else → "Next EMI ₹26,034.70 on 5 Nov 2026"
+                  "₹4,784.70 principal · ₹21,250.00 interest"     both halves, they sum (P-02)
+                  └─ maskedAmount(...)                            the 5.3 blur reaches this row
+```
+
+The write side is the same account-then-terms order issue 6.1 established, with the engine consulted
+**before** anything is stored:
+
+```
+AccountEditorScreen  ⇡ onEvent(AccountEditorEvent.Save)
+└─ AccountEditorViewModel.save()
+    ├─ repository.create(draft) / .update(id, draft)      the account row first — loan is keyed by it
+    └─ saveTypeTerms(savedId, state)                      the two sections are mutually exclusive
+        ├─ saveCardTerms(...)      6.1, unchanged
+        └─ saveLoanTerms(...)
+            ├─ !showsLoanFields || !hasLoanTerms → Ok(Unit)     blank section is a supported state
+            ├─ state.toLoan(id)                                 parsed ONCE, here (MNY-001)
+            │   ├─ MoneyFormatter.parse(principalText)          → Money paise
+            │   ├─ parseRateBps(annualRateText)                 "8.5" → 850 bps (MNY-002)
+            │   └─ runCatching { Loan(...) }.getOrNull()        Loan's requires, caught not thrown
+            └─ LoanRepository.save(loan)
+                ├─ accountDao().findWithBalance(...) == null      → Err(NotFound)
+                ├─ type != LOAN                                   → Err(Validation("account.notALoan"))
+                ├─ engine.emi(LoanTermsInput(loan)) is Err        → that Err, NOTHING WRITTEN
+                │   └─ EMI ≤ first month's interest ⇒ never amortises
+                └─ loanDao().upsert(LoanEntity(...))              createdAt preserved across an edit
+                    └─ Room invalidates → observeNextInstalments() re-emits → the row updates
+```
+
+**The guard runs before the write, not after.** Terms that produce no schedule are terms the user has
+to fix while the form is still open; a row saved first would show an empty schedule with nothing on
+screen explaining it.
+
+**No worker, no notifier, no channel.** 6.2 ships the arithmetic, not an EMI reminder — the worker
+count is still seven.
+
+---
+
 ## 3 · Shape B — a background worker
 
 The app is usually not open when a band is crossed. Budget alerts, as the worked example:

@@ -836,6 +836,50 @@ internal object Migrations {
         )
     }
 
+    /**
+     * 16 → 17: adds `loan` — a loan's principal, rate, tenure and first instalment date (issue 6.2;
+     * FR-ACC-003, §5.8).
+     *
+     * Why:    one table, not two, and that is the decision worth recording. ADR-0016 names a
+     *         `loan_amortization_rows` table, and this migration deliberately does not create one:
+     *         the schedule is a pure function of the five columns here, so it is derived on read and
+     *         never stored (ADR-0026). A stored schedule is a cache that can disagree with the terms
+     *         that produced it, and nothing in the app would notice the disagreement. Same argument
+     *         `credit_card` makes for storing no "current unbilled", and ADR-0007 for storing no
+     *         account balance.
+     *
+     *         Keyed by `account_id` for the reason `credit_card` is: a loan *is* an account here.
+     * What:   one `CREATE TABLE` plus its two indices. No backfill, and none is possible: no loan
+     *         had terms before this version, so the empty table is the complete and correct history
+     *         (DB-003 — nothing is destroyed).
+     */
+    val MIGRATION_16_17 =
+        object : Migration(VERSION_16, VERSION_17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `loan` (" +
+                        "`account_id` TEXT NOT NULL, " +
+                        "`profile_id` TEXT NOT NULL, " +
+                        "`principal_minor` INTEGER NOT NULL, " +
+                        "`annual_rate_bps` INTEGER NOT NULL, " +
+                        "`tenure_months` INTEGER NOT NULL, " +
+                        "`first_emi_iso_date` TEXT NOT NULL, " +
+                        "`emi_override_minor` INTEGER, " +
+                        "`created_at_utc_millis` INTEGER NOT NULL, " +
+                        "`updated_at_utc_millis` INTEGER NOT NULL, " +
+                        "`deleted_at_utc_millis` INTEGER, " +
+                        "PRIMARY KEY(`account_id`))",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_loan_profile_id` ON `loan` (`profile_id`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_loan_profile_id_deleted_at_utc_millis` " +
+                        "ON `loan` (`profile_id`, `deleted_at_utc_millis`)",
+                )
+            }
+        }
+
     /** Every migration, in order, for `CfoDatabaseFactory` to register. */
     val ALL: Array<Migration> =
         arrayOf(
@@ -854,6 +898,7 @@ internal object Migrations {
             MIGRATION_13_14,
             MIGRATION_14_15,
             MIGRATION_15_16,
+            MIGRATION_16_17,
         )
 
     /** Named so the version pair reads as a schema version rather than an unexplained literal. */
@@ -897,5 +942,10 @@ internal object Migrations {
 
     /** Matches `CfoDatabase.VERSION` at the time this migration was written (issue 4.6). */
     private const val VERSION_15 = 15
+
+    /** Matches `CfoDatabase.VERSION` at the time issue 6.1 was written. */
     private const val VERSION_16 = 16
+
+    /** The version issue 6.2 introduces — `loan` (FR-ACC-003). */
+    private const val VERSION_17 = 17
 }
