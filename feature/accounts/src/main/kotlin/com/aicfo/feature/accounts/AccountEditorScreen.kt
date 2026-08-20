@@ -175,6 +175,10 @@ private fun EditorFields(
     if (uiState.showsCardFields) {
         CardFields(uiState = uiState, onEvent = onEvent)
     }
+    // Issue 6.2: the second. Mutually exclusive with the branch above — an account is one type.
+    if (uiState.showsLoanFields) {
+        LoanFields(uiState = uiState, onEvent = onEvent)
+    }
 }
 
 /**

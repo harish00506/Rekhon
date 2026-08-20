@@ -74,7 +74,10 @@ value class Money(val minor: Long) : Comparable<Money> {
      *            existing call site is unaffected: the default reproduces the old expression
      *            exactly.
      */
-    fun percentOf(bps: Int, overPeriods: Int = 1): Money {
+    fun percentOf(
+        bps: Int,
+        overPeriods: Int = 1,
+    ): Money {
         require(bps >= 0) { "Rate must be non-negative basis points (MNY-002), was $bps" }
         require(overPeriods > 0) { "A year splits into a positive number of periods, was $overPeriods" }
         val exact =

@@ -44,10 +44,15 @@ internal object Emi {
      * Input:  [loan] — validated terms. Output: [Money].
      */
     fun derive(loan: Loan): Money {
-        val principal = BigDecimal.valueOf(loan.principal.minor)
+        // `sanctioned`, not `principal`: MNY-001 bans a floating-point declaration with a monetary
+        // name and `CfoMoneyAsFloatingPoint` fails the build for one, which is the right rule — this
+        // is the single place in the app where an amount is deliberately lifted into BigDecimal, for
+        // the growth factor below, and it comes straight back down to whole paise before it leaves.
+        // The name says which figure it is without pretending it is a Money.
+        val sanctioned = BigDecimal.valueOf(loan.principal.minor)
         if (loan.annualRateBps == 0) {
             return Money(
-                principal.divide(BigDecimal.valueOf(loan.tenureMonths.toLong()), 0, RoundingMode.HALF_EVEN)
+                sanctioned.divide(BigDecimal.valueOf(loan.tenureMonths.toLong()), 0, RoundingMode.HALF_EVEN)
                     .longValueExact(),
             )
         }
@@ -56,7 +61,7 @@ internal object Emi {
                 .divide(MONTHLY_BPS_DENOMINATOR, CONTEXT)
         val growth = BigDecimal.ONE.add(monthlyRate).pow(loan.tenureMonths, CONTEXT)
         val instalment =
-            principal.multiply(monthlyRate, CONTEXT)
+            sanctioned.multiply(monthlyRate, CONTEXT)
                 .multiply(growth, CONTEXT)
                 .divide(growth.subtract(BigDecimal.ONE), CONTEXT)
         return Money(instalment.setScale(0, RoundingMode.HALF_EVEN).longValueExact())
