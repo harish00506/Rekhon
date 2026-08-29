@@ -41,6 +41,7 @@ Issue ID,Epic,Epic Title,Issue Title,Assignee,Labels,Priority,Depends On
 6.3,6,Wealth: Loans & Investments,Investments holdings/lots + XIRR,Harish G,wealth;investments;engine,High,2.5
 6.4,6,Wealth: Loans & Investments,Allocation & diversification (AI-INV),Harish G,wealth;investments;ai,Medium,6.3
 6.5,6,Wealth: Loans & Investments,Gold/crypto valuation via market API,Harish G,wealth;market-data,Medium,6.3
+6.7,6,Wealth: Loans & Investments,Market-data backend proxy (§22),Harish G,wealth;market-data;backend,Medium,6.5
 6.6,6,Wealth: Loans & Investments,Net-worth snapshots history,Harish G,wealth,Medium,2.6
 7.1,7,Goals & Emergency Fund,Goals engine (AI-GOAL),Harish G,goals;engine,High,3.1;5.1
 7.2,7,Goals & Emergency Fund,Emergency Fund engine (AI-EMF),Harish G,emergency;engine,High,4.3

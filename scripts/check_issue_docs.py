@@ -45,7 +45,7 @@ except Exception:  # pragma: no cover
     pass
 
 EXPECTED_EPICS = 13
-EXPECTED_ISSUES = 85
+EXPECTED_ISSUES = 86
 
 ISSUE_SECTIONS = [
     "## Description",

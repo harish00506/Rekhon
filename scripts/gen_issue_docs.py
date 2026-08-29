@@ -760,6 +760,33 @@ ISSUES: list[Issue] = [
        "Offline shows the last cached value with a staleness label (P-04); no core path blocks on the network.",
        "The network is consent-gated; covered by tests with the backend absent."],
       ["Market data via the backend proxy only; degrade to cached + staleness (P-04)."]),
+    I("6.7", 6, "Market-data backend proxy (SS22)", "wealth;market-data;backend", "M", "6.5",
+      "SS16, SS22; EXT-001, EXT-003, API-001, API-002, P-01, P-04", "SS11 External Data & Backend",
+      "The stateless market-data proxy SS22 specifies and nothing has yet built. Issue 6.5 shipped the "
+      "client for it - cert-pinning enforced, payload provably identifier-only, consent-gated - "
+      "configured with a blank base URL, so it constructs no HTTP stack at all. This issue is the "
+      "other half: the service, and the one binding in NetworkModule that points at it. Until it "
+      "lands, 6.5's first acceptance criterion cannot be demonstrated (ADR-0030). "
+      "NOTE ON SCOPE: the deliverable is a service and its deployment, not Android code - the client "
+      "is finished and tested. This repository is Android-only and has no server module, so the "
+      "first decision this issue makes is where the service lives and who hosts it.",
+      ["`GET /v1/market/prices?ids=` returns integer paise per unit plus an `as_of` date, matching "
+       "the DTO 6.5 already parses; a non-integer price is a contract violation, because parsing one "
+       "would route money through a `Double` (MNY-001) and corrupt every derived figure silently.",
+       "The service is **stateless and holds no user financial data** - it sees instrument "
+       "identifiers and nothing else, which is what makes EXT-003 a property of the system rather "
+       "than of the client alone. No request logging that retains identifiers per device.",
+       "TLS 1.3 with a published SPKI pin set of at least two (current + rotation), or a rotation "
+       "bricks every installed copy. `NetworkConfig` already refuses a host configured without pins.",
+       "Vendor scraping happens **here, never on-device** (EXT-001): AMFI NAVs, RBI rates, a gold "
+       "source, a crypto source - each behind the same response shape.",
+       "The app degrades unchanged when the service is down: 6.5's repository already returns "
+       "`Ok(0)` and keeps the cached price (P-04). Prove it against the deployed host, not a mock.",
+       "Closes the one gap 6.5 recorded: TLS and certificate pinning become testable, because "
+       "there is finally a certificate to pin."],
+      ["Market data via our own proxy only; never scrape on-device (EXT-001).",
+       "The proxy holds no user financial data; only instrument identifiers leave the device (EXT-003).",
+       "The app must stay fully functional with the backend absent (P-04)."]),
     I("6.6", 6, "Net-worth snapshots history", "wealth", "M", "2.6",
       "SS5.7 (FR-ACC-005), SS20.3", "SS5 Data Model",
       "Persisted net-worth snapshot history with trend queries - an exact, reproducible time series from the daily snapshots (2.6).",
@@ -1516,9 +1543,35 @@ def main() -> int:
 
     file_count = 0
     preserved: list[str] = []
+    preserved_docs: list[str] = []
     for issue in ISSUES:
         slug = slugify(issue.title)
-        (ISSUES_DIR / f"{issue.id}-{slug}.md").write_text(polish(render_issue(issue, slug)), encoding="utf-8")
+
+        # An issue file is hand-annotated once the work is done: the acceptance criteria get
+        # ticked with the evidence that satisfied each one, a "files changed" table is added, and
+        # `**Status:**` stops saying "Todo". None of that is derivable from the record below, so
+        # overwriting it destroys the only statement of *how* an issue was actually met.
+        #
+        # This is the same hazard issue 2.5 found in trackers, and the guard it added was applied
+        # only to trackers -- the identical exposure on issue files went unnoticed until adding 6.7
+        # blanked the completion record of 28 finished issues in one command. A half-applied guard
+        # reads as protection while protecting half of what it names.
+        #
+        # The test is **content, not a marker**: a first attempt keyed on `**Status:** Todo` still
+        # clobbered six files that carried a hand-written table under an untouched status line. So
+        # the file is rendered and compared. Identical means nothing was added and rewriting is a
+        # no-op; different means a human wrote something here, and this script is not the authority
+        # on it. `read_text` normalises CRLF, so a line-ending difference is not mistaken for an edit.
+        #
+        # The cost is that a deliberate edit to the record below no longer propagates silently --
+        # it is reported as preserved, and you delete the file to regenerate. That is exactly the
+        # workflow trackers have had since 2.5, and the same reason: silence is the dangerous part.
+        doc = ISSUES_DIR / f"{issue.id}-{slug}.md"
+        rendered = polish(render_issue(issue, slug))
+        if doc.exists() and doc.read_text(encoding="utf-8") != rendered:
+            preserved_docs.append(doc.name)
+        else:
+            doc.write_text(rendered, encoding="utf-8")
         file_count += 1
 
         # A tracker is hand-maintained once work starts: it carries the Verification Log, the phase
@@ -1536,6 +1589,8 @@ def main() -> int:
         tracker.write_text(polish(render_tracker(issue, slug)), encoding="utf-8")
         file_count += 1
 
+    if preserved_docs:
+        print(f"  preserved {len(preserved_docs)} issue file(s) with a recorded outcome (delete to regenerate)")
     if preserved:
         print(f"  preserved {len(preserved)} tracker(s) with recorded progress (delete to regenerate)")
 
