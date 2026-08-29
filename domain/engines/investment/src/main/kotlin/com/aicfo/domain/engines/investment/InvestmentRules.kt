@@ -124,11 +124,20 @@ data class InvestmentRules(
         /** `RULE-CONC-15-70` — concentration risk, the fastest way to a permanent loss. */
         val CONCENTRATION = RuleCitation("RULE-CONC-15-70", "1.0")
 
-        /** Every row this engine cites, in the order a drill-down should show them. */
+        /** `RULE-PRICE-STALE` — how often to re-fetch a price, and when to call one old. */
+        val PRICE_STALE = RuleCitation("RULE-PRICE-STALE", "1.0")
+
+        /**
+         * Every row the **allocation** analysis cites, in the order a drill-down should show them.
+         *
+         * `PRICE_STALE` is deliberately absent: it decides nothing about how a portfolio is spread,
+         * and a clean allocation citing a staleness rule would be pointing the user at a row that
+         * had no part in the decision.
+         */
         val CITATIONS = listOf(GOLD_CAP, CRYPTO_CAP, CONCENTRATION)
 
         /** The rulebook file these thresholds were copied from, as `_meta.version`. */
-        const val RULEBOOK_VERSION = "1.13.0"
+        const val RULEBOOK_VERSION = "1.14.0"
 
         /** `RULE-GOLD-CAP.cap_pct`. */
         private const val GOLD_CAP_PCT = 10

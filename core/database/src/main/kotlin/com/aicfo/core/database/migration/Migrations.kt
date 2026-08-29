@@ -985,6 +985,39 @@ internal object Migrations {
         )
     }
 
+    /**
+     * 18 -> 19: where a holding's price comes from, and when this device last heard it
+     * (issue 6.5; §16 EXT-002/EXT-003, §22.2, FR-ACC-004).
+     *
+     * Why:   until now a unit price could only be typed by hand, and nothing recorded its age — a
+     *        figure entered in July still read as fact in September. `price_key` names the
+     *        instrument a market-data proxy can resolve, and `price_fetched_at_utc_millis` records
+     *        when a fetched price was written. The second is deliberately not the same as
+     *        `priced_on_iso_date`: that is the day the *market* priced the thing, this is when the
+     *        *device* last asked. One decides whether to warn the user in days, the other whether
+     *        to spend a network call in minutes (SRS §16.1 prices crypto every fifteen).
+     * What:  two `ALTER TABLE ... ADD COLUMN`s, both nullable. No backfill, and none is wanted:
+     *        `NULL` on every existing row already means exactly the truth — "typed by hand, never
+     *        fetched" — which is the argument [MIGRATION_9_10] makes for its own column.
+     * Result: an upgraded installation keeps every holding and every price, and gains two empty
+     *        columns (DB-003 — nothing is destroyed).
+     * Input:  [SupportSQLiteDatabase] mid-upgrade. Output: none (executes DDL).
+     *
+     * No index on `price_key`, deliberately. The refresh reads `DISTINCT price_key` over a table
+     * holding tens of rows per profile, which the existing `profile_id, deleted_at_utc_millis`
+     * index already covers; an index would cost a write on every priced row of every refresh to
+     * speed up a scan of thirty.
+     */
+    val MIGRATION_18_19 =
+        object : Migration(VERSION_18, VERSION_19) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `investment_holding` ADD COLUMN `price_key` TEXT")
+                db.execSQL(
+                    "ALTER TABLE `investment_holding` ADD COLUMN `price_fetched_at_utc_millis` INTEGER",
+                )
+            }
+        }
+
     /** Every migration, in order, for `CfoDatabaseFactory` to register. */
     val ALL: Array<Migration> =
         arrayOf(
@@ -1005,6 +1038,7 @@ internal object Migrations {
             MIGRATION_15_16,
             MIGRATION_16_17,
             MIGRATION_17_18,
+            MIGRATION_18_19,
         )
 
     /** Named so the version pair reads as a schema version rather than an unexplained literal. */
@@ -1055,6 +1089,9 @@ internal object Migrations {
     /** The version issue 6.2 introduces — `loan` (FR-ACC-003). */
     private const val VERSION_17 = 17
 
-    /** The version issue 6.2 introduced, and the one issue 6.3 upgrades from. */
+    /** The version issue 6.3 introduced, and the one issue 6.5 upgrades from. */
     private const val VERSION_18 = 18
+
+    /** The version issue 6.5 introduces — a holding's price key and its fetch stamp (FR-ACC-004). */
+    private const val VERSION_19 = 19
 }

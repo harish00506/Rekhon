@@ -96,6 +96,30 @@ internal class DefaultInvestmentEngine : InvestmentEngine {
         )
     }
 
+    override fun priceFreshness(input: PriceFreshnessInput): Result<PriceFreshness, AppError> {
+        val (verdict, ageDays, refreshDue) = Freshness.of(input)
+
+        return Ok(
+            PriceFreshness(
+                verdict = verdict,
+                // Echoed only when there is one, so the type's own invariant holds: a date and an
+                // age are both present or both absent.
+                pricedOnIsoDate = input.pricedOnIsoDate.takeIf { verdict != PriceVerdict.NEVER_PRICED },
+                ageDays = ageDays,
+                refreshDue = refreshDue,
+                citation = InvestmentRules.PRICE_STALE,
+                // One row decided this, so one row is cited — the same rule the concentration flags
+                // keep. Pointing "why am I being told this is old?" at the gold cap would be worse
+                // than citing nothing.
+                provenance =
+                    provenance(
+                        nowUtcMillis = input.nowUtcMillis,
+                        evidence = listOf(InvestmentRules.PRICE_STALE),
+                    ),
+            ),
+        )
+    }
+
     /**
      * How much of the portfolio the split could see, in basis points.
      * Why:    an allocation computed over eight of eleven holdings is a different claim from one

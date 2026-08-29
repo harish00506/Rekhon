@@ -3,6 +3,7 @@ package com.aicfo.core.model
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -125,6 +126,43 @@ class InvestmentTest {
     }
 
     /** Input: strings that are not resolvable calendar days. Output: asserts each is refused. */
+    @Test
+    fun `a fetch timestamp needs a price to be about`() {
+        // Otherwise the screen would say "fetched an hour ago" beside "not valued yet" (issue 6.5).
+        val thrown =
+            assertThrows(IllegalArgumentException::class.java) {
+                holding().copy(unitPrice = null, pricedOnIsoDate = null, priceFetchedAtUtcMillis = 1L)
+            }
+
+        assertTrue(thrown.message!!.contains("there must be a price"))
+    }
+
+    @Test
+    fun `a hand-typed price with no fetch timestamp is the ordinary case`() {
+        val subject = holding().copy(priceFetchedAtUtcMillis = null)
+
+        assertNull("a price the user typed has no fetch provenance", subject.priceFetchedAtUtcMillis)
+    }
+
+    @Test
+    fun `a fetch timestamp must be a positive instant`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            holding().copy(priceFetchedAtUtcMillis = 0L)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            holding().copy(priceFetchedAtUtcMillis = -1L)
+        }
+    }
+
+    @Test
+    fun `a price key is optional, and its absence is the opt-out from refreshing`() {
+        assertNull("a hand-priced holding has no key", holding().priceKey)
+        assertEquals(
+            PriceKey("gold:inr.gram.24k"),
+            holding().copy(priceKey = PriceKey("gold:inr.gram.24k")).priceKey,
+        )
+    }
+
     @Test
     fun `a pricing date must be a real calendar day`() {
         assertThrows(IllegalArgumentException::class.java) {

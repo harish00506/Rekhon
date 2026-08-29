@@ -113,11 +113,18 @@ enum class LotKind(val storedValue: String, val cashFlowSign: Int) {
  *
  * **The price is stored though everything else is derived**, and the distinction is the point: a
  * market price is an observation the device cannot compute from anything it holds. Issue 6.5
- * replaces only where it comes from — the column and every figure derived from it are unchanged.
+ * replaced only where it comes from — the column and every figure derived from it are unchanged.
  *
  * **[unitPrice] and [pricedOnIsoDate] are both-or-neither.** A price with no date has no terminal
  * flow date, so XIRR would fall back to "today" and give a different answer tomorrow for a holding
  * nobody touched — a P-08 violation invisible to any single run.
+ *
+ * **Two dates, deliberately, and they answer different questions** (issue 6.5). [pricedOnIsoDate] is
+ * the day the *market* priced the instrument; [priceFetchedAtUtcMillis] is when *this device* last
+ * heard about it. They are usually minutes apart and occasionally days: a Monday fetch of Friday's
+ * closing gold price has a Friday price date and a Monday fetch time. One decides whether the number
+ * shown to the user is old (in days); the other decides whether it is worth spending a network call
+ * (in minutes, because crypto moves that fast — SRS §16.1). A single column could not do both.
  *
  * @property id stable identifier, minted by the injected id source.
  * @property accountId the account this sits in; 1:N, unlike `loan` and `credit_card`.
@@ -126,6 +133,11 @@ enum class LotKind(val storedValue: String, val cashFlowSign: Int) {
  * @property unitPrice paise per unit as last observed, or `null` when never priced (P-03: absent is
  *   null, never zero).
  * @property pricedOnIsoDate ISO `yyyy-MM-dd` day [unitPrice] was observed (TIM-002), or `null`.
+ * @property priceKey the instrument identifier a market-data proxy resolves, or `null` when this
+ *   holding is priced by hand. **Null is also the opt-out**: a holding with no key is never touched
+ *   by a refresh, so the user keeps whatever they typed (issue 6.5).
+ * @property priceFetchedAtUtcMillis when a fetched price was last written, UTC epoch millis
+ *   (TIM-001), or `null` when the current price was typed by hand rather than fetched.
  */
 data class InvestmentHolding(
     val id: String,
@@ -134,6 +146,8 @@ data class InvestmentHolding(
     val assetClass: AssetClass,
     val unitPrice: Money?,
     val pricedOnIsoDate: String?,
+    val priceKey: PriceKey? = null,
+    val priceFetchedAtUtcMillis: Long? = null,
 ) {
     init {
         require(id.isNotBlank()) { "A holding must have an id" }
@@ -149,6 +163,16 @@ data class InvestmentHolding(
         }
         require(pricedOnIsoDate == null || DateFormatter.isCalendarDate(pricedOnIsoDate)) {
             "The pricing date is an ISO yyyy-MM-dd calendar date (TIM-002), was '$pricedOnIsoDate'"
+        }
+        // A fetch stamp with no price is a row claiming provenance for a value that is not there —
+        // it would make the screen say "fetched an hour ago" beside "not valued yet". The reverse is
+        // fine and ordinary: a hand-typed price has no fetch stamp at all.
+        require(priceFetchedAtUtcMillis == null || unitPrice != null) {
+            "A fetch timestamp records where a price came from, so there must be a price: " +
+                "priceFetchedAtUtcMillis was $priceFetchedAtUtcMillis with no unitPrice"
+        }
+        require(priceFetchedAtUtcMillis == null || priceFetchedAtUtcMillis > 0L) {
+            "A fetch timestamp is UTC epoch millis and must be positive, was $priceFetchedAtUtcMillis"
         }
     }
 }
