@@ -126,4 +126,116 @@
         principal and %4$s to interest.</string>
     <string name="accounts_loan_no_terms">Add this loan\'s amount, rate and tenure</string>
 
+    <!-- Issue 6.3 (§11, AI-INV): holdings inside an investment account, their value and their
+         money-weighted return. Every figure is shown beside the inputs it came from, so the reader
+         can check the line rather than trust it (P-02). -->
+    <string name="accounts_investments_value">%1$s across %2$s</string>
+    <plurals name="accounts_investments_count">
+        <item quantity="one">%d holding</item>
+        <item quantity="other">%d holdings</item>
+    </plurals>
+    <string name="accounts_investments_none">Add what this account holds</string>
+    <string name="accounts_investments_open">Holdings</string>
+
+    <string name="holdings_title">Holdings</string>
+    <string name="holdings_empty">Nothing here yet. Add a fund, a stock or a deposit and the app can
+        work out what it is worth and what it has returned.</string>
+    <string name="holdings_add">Add a holding</string>
+    <string name="holdings_add_lot">Add a purchase or sale</string>
+    <string name="holdings_delete">Delete</string>
+
+    <!-- The value line. The units and the price are named beside the value because a value with
+         neither is a figure the reader has no way to check (P-02). -->
+    <string name="holdings_value">%1$s</string>
+    <string name="holdings_units_at">%1$s units at %2$s</string>
+    <string name="holdings_priced_on">Priced %1$s</string>
+    <string name="holdings_unpriced">Not valued yet - add a price per unit</string>
+    <string name="holdings_cost">%1$s invested</string>
+    <string name="holdings_returned">%1$s returned</string>
+    <string name="holdings_gain">%1$s gain</string>
+    <string name="holdings_loss">%1$s loss</string>
+
+    <!-- The return, and why there sometimes is not one. Each reason is its own string because each
+         is a different thing for the user to do about it (P-02). -->
+    <string name="holdings_return">%1$s a year</string>
+    <string name="holdings_return_percent">%1$s%2$d.%3$d%%</string>
+    <string name="holdings_return_over">over %1$s days, from %2$s</string>
+    <plurals name="holdings_return_flows">
+        <item quantity="one">%d cash flow</item>
+        <item quantity="other">%d cash flows</item>
+    </plurals>
+    <string name="holdings_return_too_few">A return needs at least two dated amounts</string>
+    <string name="holdings_return_same_sign">Add a price per unit, or a sale, to see a return</string>
+    <string name="holdings_return_not_bracketed">This has fallen too far to annualise</string>
+
+    <!-- The editor. -->
+    <string name="holdings_name">Name</string>
+    <string name="holdings_asset_class">Asset class</string>
+    <string name="holdings_unit_price">Price per unit</string>
+    <string name="holdings_priced_on_field">Priced on (YYYY-MM-DD)</string>
+    <string name="holdings_lot_kind">Bought, sold or paid out</string>
+    <string name="holdings_lot_date">Date (YYYY-MM-DD)</string>
+    <string name="holdings_lot_units">Units</string>
+    <string name="holdings_lot_amount">Amount</string>
+    <string name="holdings_save">Save</string>
+    <string name="holdings_cancel">Cancel</string>
+
+    <string name="asset_class_equity">Equity</string>
+    <string name="asset_class_debt">Debt</string>
+    <string name="asset_class_gold">Gold</string>
+    <string name="asset_class_crypto">Crypto</string>
+    <string name="asset_class_cash">Cash</string>
+    <string name="asset_class_real_estate">Property</string>
+    <string name="asset_class_other">Other</string>
+
+    <!-- Issue 6.4: allocation and diversification (FR-INV-002). The percentages are computed by
+         the engine and only rendered here (P-03), and every warning names the rulebook row that
+         raised it, because a warning nobody can trace is the black-box verdict P-02 forbids. -->
+    <string name="allocation_title">Allocation</string>
+    <string name="allocation_open">See allocation</string>
+    <string name="allocation_total">%1$s invested</string>
+    <string name="allocation_share">%1$s%%</string>
+    <string name="allocation_legend_row">%1$s, %2$s, %3$s of the portfolio</string>
+    <string name="allocation_bar_description">How your portfolio is split: %1$s</string>
+    <string name="allocation_done">Done</string>
+
+    <!-- The three empty states. Each names a different thing for the user to do, because "you have
+         not invested yet" and "you have not priced what you hold" are different problems (P-03). -->
+    <string name="allocation_empty_title">Nothing invested yet</string>
+    <string name="allocation_empty_body">Add an investment, gold or crypto account and what it
+        holds, and the split will appear here.</string>
+    <string name="allocation_unpriced_title">Nothing is priced yet</string>
+    <string name="allocation_unpriced_body">Add a price per unit to what you hold and the split
+        will appear here. We will not guess a value you have not given us.</string>
+    <string name="allocation_error">We could not read your holdings just now.</string>
+
+    <!-- Coverage. A split computed over part of the portfolio says so (P-02). -->
+    <plurals name="allocation_unvalued">
+        <item quantity="one">Based on %1$d of %2$d holdings - one has no price yet</item>
+        <item quantity="other">Based on %1$d of %2$d holdings - %3$d have no price yet</item>
+    </plurals>
+
+    <!-- The concentration warnings. Observations with their numbers, never instructions (P-07). -->
+    <string name="allocation_flags_title">Worth a look</string>
+    <string name="allocation_flags_none">Nothing is over the limits we check.</string>
+    <string name="allocation_flag_class_cap">%1$s is %2$s of your portfolio, above the %3$s we
+        flag at</string>
+    <string name="allocation_flag_single_class">%1$s is %2$s of your portfolio, above the %3$s we
+        flag at for one asset class</string>
+    <string name="allocation_flag_single_holding">%1$s is %2$s of your portfolio, above the %3$s we
+        flag at for one holding</string>
+    <string name="allocation_flag_amount">%1$s</string>
+    <string name="allocation_reason_rule">Rule %1$s v%2$s</string>
+
+    <string name="lot_kind_buy">Bought</string>
+    <string name="lot_kind_sell">Sold</string>
+    <string name="lot_kind_income">Dividend or interest</string>
+
+    <!-- §11.1 requires this wording in the module footer, and issue 6.3 is what first puts an
+         investment figure on screen. It is not decoration: the app analyses and flags, it does not
+         recommend securities, and it is not SEBI-registered advice (P-07). -->
+    <string name="holdings_disclaimer">This screen analyses and explains what you already own. It
+        does not recommend specific securities or funds, and it is not SEBI-registered investment
+        advice. Every figure here is computed from what you entered - tap a number to see its
+        inputs.</string>
 </resources>

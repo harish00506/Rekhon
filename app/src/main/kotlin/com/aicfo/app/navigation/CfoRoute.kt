@@ -84,6 +84,26 @@ sealed interface CfoRoute {
     data class AccountEditor(val accountId: String? = null) : CfoRoute
 
     /**
+     * What one investment account holds (issue 6.3; §11).
+     *
+     * A typed property rather than a string template, like every route here (ARC-001). [accountId]
+     * is required, unlike [AccountEditor]'s: there is no "holdings in general" screen — a holding
+     * only means anything inside the account that holds it.
+     */
+    @Serializable
+    data class Holdings(val accountId: String) : CfoRoute
+
+    /**
+     * How the whole portfolio is spread across asset classes (issue 6.4; FR-INV-002).
+     *
+     * A `data object` and not a `data class`, unlike [Holdings]: allocation is a question about
+     * every investable account at once, so there is no id to scope it by. Reached from the accounts
+     * list rather than from an account, for the same reason.
+     */
+    @Serializable
+    data object Allocation : CfoRoute
+
+    /**
      * The category taxonomy editor (issue 4.1; FR-SET-001).
      *
      * **No arguments, and it is reached from the transaction list rather than from Settings.**

@@ -8,7 +8,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.aicfo.feature.accounts.AccountEditorScreen
+import com.aicfo.feature.accounts.AccountsActions
 import com.aicfo.feature.accounts.AccountsScreen
+import com.aicfo.feature.accounts.AllocationScreen
+import com.aicfo.feature.accounts.HoldingsScreen
 import com.aicfo.feature.budgets.BudgetsScreen
 import com.aicfo.feature.categories.CategoriesScreen
 import com.aicfo.feature.dashboard.DashboardActions
@@ -71,18 +74,7 @@ fun CfoNavHost(
         }
         planningDestinations()
         captureDestinations(navController)
-        composable<CfoRoute.Accounts> {
-            AccountsScreen(
-                onAddAccount = { navController.navigate(CfoRoute.AccountEditor()) },
-                onEditAccount = { id -> navController.navigate(CfoRoute.AccountEditor(id)) },
-            )
-        }
-        composable<CfoRoute.AccountEditor> {
-            // popBackStack, not navigate: the editor was pushed on top of the list, so returning is
-            // a pop. Navigating would push a *second* list above the first, and Back would then walk
-            // the user through every account they had edited.
-            AccountEditorScreen(onDone = { navController.popBackStack() })
-        }
+        accountsDestinations(navController)
     }
 }
 
@@ -107,6 +99,49 @@ fun CfoNavHost(
 private fun NavGraphBuilder.planningDestinations() {
     composable<CfoRoute.Categories> { CategoriesScreen() }
     composable<CfoRoute.Budgets> { BudgetsScreen() }
+}
+
+/**
+ * The accounts destinations (issue 6.3; §11).
+ *
+ * Why:  extracted from [CfoNavHost] because issue 6.3's holdings route took that function past
+ *       detekt's 40-line limit — the same pressure that produced [captureDestinations], and the
+ *       same kind of seam rather than an arbitrary cut. These three are reached from each other:
+ *       the list opens the editor and the holdings, and both pop back to it.
+ * What: registers `Accounts`, `Holdings` and `AccountEditor`.
+ * Result: [CfoNavHost] reads as a list of destinations again.
+ * Changelog: 2026-08-24 — Extracted for issue 6.3.
+ *
+ * Input:  [navController] — passed rather than captured so this stays a plain extension on the
+ *         builder. Output: none (registers destinations).
+ */
+private fun NavGraphBuilder.accountsDestinations(navController: NavHostController) {
+    composable<CfoRoute.Accounts> {
+        AccountsScreen(
+            actions =
+                AccountsActions(
+                    onAddAccount = { navController.navigate(CfoRoute.AccountEditor()) },
+                    onEditAccount = { id -> navController.navigate(CfoRoute.AccountEditor(id)) },
+                    onOpenHoldings = { id -> navController.navigate(CfoRoute.Holdings(id)) },
+                    onOpenAllocation = { navController.navigate(CfoRoute.Allocation) },
+                ),
+        )
+    }
+    composable<CfoRoute.Allocation> {
+        // popBackStack for the reason holdings gives: allocation was pushed on top of the list.
+        AllocationScreen(onDone = { navController.popBackStack() })
+    }
+    composable<CfoRoute.Holdings> {
+        // popBackStack for the reason the editor gives one destination up: holdings were pushed
+        // on top of the list, so returning is a pop.
+        HoldingsScreen(onDone = { navController.popBackStack() })
+    }
+    composable<CfoRoute.AccountEditor> {
+        // popBackStack, not navigate: the editor was pushed on top of the list, so returning is
+        // a pop. Navigating would push a *second* list above the first, and Back would then walk
+        // the user through every account they had edited.
+        AccountEditorScreen(onDone = { navController.popBackStack() })
+    }
 }
 
 /**
