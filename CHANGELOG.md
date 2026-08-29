@@ -53,6 +53,14 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
   and certificate pinning are **the only untested part** of `:core:network`, because MockWebServer
   serves cleartext and `NetworkConfig` refuses a cleartext host; a real airplane-mode test is
   structurally unmeetable here, and `server.shutdown()` is the labelled stand-in.
+- **Fixed — a stale screenshot baseline, and the gate that let it through.** The pre-merge run
+  caught `DashboardScreenshotTest.empty_light` failing by 1.15%: the baseline was recorded at issue
+  5.4, and the Settings screen then added a button to the dashboard without re-recording it. The
+  image was re-recorded and checked; more importantly **`verifyPaparazziDebug` is now part of the
+  root `unitTests` task**. Paparazzi verifies only when that task is in the graph, so a plain
+  `testDebugUnitTest` asserted nothing — the check existed in `/pre-merge` and `ci.yml` and was run
+  by neither. The new gate was broken on purpose and observed to fail before being restored.
+
 - **Tests:** 16 against MockWebServer (200 with paise intact, 500, malformed JSON, a real 5s timeout,
   a dead server, and the three refusals), 13 against in-memory Room with the real engine, 5 on the
   worker, plus the engine's golden fixture and the model's invariants. The consent gate and the TTL

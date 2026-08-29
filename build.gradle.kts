@@ -40,20 +40,35 @@ plugins {
  *       only those two — so the enforcement layer's own tests had never run in CI. A detector could
  *       have broken and every gate would have stayed green while the rules quietly stopped being
  *       enforced. That is the same shape as audit G-01's vacuous coverage gate.
- * What: depends on both unit-test task names across every subproject, so a module cannot be missed
- *       by having the "wrong" kind of build script.
+ *       **And the screenshot baselines were verified by nothing.** Paparazzi only compares against
+ *       its recorded PNGs when `verifyPaparazziDebug` is in the task graph; a plain
+ *       `testDebugUnitTest` renders and asserts nothing. That task lived only in `/pre-merge`, which
+ *       is a checklist a human runs, so a UI change could — and did — ship against a stale baseline:
+ *       issue 5.4 recorded the dashboard's empty state, the Settings screen added a button to it,
+ *       and every gate stayed green for a commit while the recorded image no longer showed the app.
+ *       Screenshot tests are the DoD's evidence for dark mode and 200% font (§4.2), so a baseline
+ *       nothing compares against is the same vacuous gate in a different costume.
+ * What: depends on all three unit-test task names across every subproject, so a module cannot be
+ *       missed by having the "wrong" kind of build script.
  * Result: one command that genuinely means "run the unit tests".
  * Changelog: 2026-08-02 — Created for issue 2.6, after `testDebugUnitTest` reported a stale failure.
+ *            2026-08-29 — Issue 6.5: added `verifyPaparazziDebug`, after a stale dashboard baseline
+ *            survived a merge. Paparazzi reuses the same test task, so this enables verification
+ *            rather than running the suite twice.
  *
  * Deliberately matched by **name** rather than by listing modules: a module added later is picked up
  * without anyone remembering to edit this, which is precisely the failure being fixed.
  */
 tasks.register("unitTests") {
     group = "verification"
-    description = "Runs every module's unit tests — Android variants, pure-Kotlin modules and :lint."
+    description =
+        "Runs every module's unit tests — Android variants, pure-Kotlin modules, :lint, " +
+            "and the Paparazzi baselines."
     dependsOn(
         subprojects.mapNotNull { module ->
-            module.tasks.matching { it.name == "testDebugUnitTest" || it.name == "test" }
+            module.tasks.matching {
+                it.name == "testDebugUnitTest" || it.name == "test" || it.name == "verifyPaparazziDebug"
+            }
         },
     )
 }

@@ -181,6 +181,35 @@ disagree.
 
 Both restored and re-run green.
 
+### A bug the pre-merge gate found — a stale screenshot baseline, and the gate that never ran
+
+`verifyPaparazziDebug` failed on `DashboardScreenshotTest.empty_light`, by 1.15%. **Not from 6.5.**
+The recorded PNG was last written by issue 5.4 (`c644dd4`); the Settings screen (`60b26c8`) then
+added a **Settings** button to the dashboard and reworded two empty-state lines, and the baseline was
+never re-recorded. It shipped to `dev` and sat there.
+
+It shipped because **nothing local ran the check**. Paparazzi compares against its PNGs only when
+`verifyPaparazziDebug` is in the task graph; a plain `testDebugUnitTest` renders and asserts nothing.
+That task lived only in `/pre-merge` — a checklist a human runs — and in `ci.yml`, which has never
+executed on a GitHub runner. So every gate a developer is told to run stayed green while the recorded
+image no longer showed the app.
+
+**Both halves fixed:**
+
+1. The baseline was re-recorded and visually checked — the new image has the Settings button and the
+   current copy. Exactly one PNG changed, so no other screen had drifted.
+2. `verifyPaparazziDebug` was added to the root `unitTests` task, by name-match alongside
+   `testDebugUnitTest` and `test` — the same mechanism, and for the same reason, that task already
+   existed for. Paparazzi reuses the test task, so this enables verification rather than running the
+   suite twice.
+
+**The new gate was broken on purpose** (ADR-0005): the stale PNG was restored, `./gradlew unitTests`
+was run, and it failed on `empty_light` — where before it passed. Restored and green.
+
+This is the third instance of the pattern audit G-01 named: a gate that is documented, believed, and
+executed by nothing. Screenshot tests are the DoD's evidence for dark mode and 200% font (§4.2), so a
+baseline nothing compares against is a vacuous gate in a different costume.
+
 ### Honest caveats — recorded, not worked around
 
 1. **AC-1 cannot be demonstrated.** There is no proxy. The client is made structurally correct and
