@@ -106,10 +106,10 @@ this app.
 Using the app for your own finances, including finances of a business you run, is
 covered by these terms.
 
-Using the *software itself* commercially — selling it, offering it as a service,
-building a product on it, or distributing it as part of a commercial offering —
-requires a separate written licence from the copyright holder. See
-[LICENSE](LICENSE) and [CONTRIBUTING.md](CONTRIBUTING.md).
+Using the *software itself* — modifying it, redistributing it, or building a
+product or service on it — is covered by [LICENSE](LICENSE), not by these terms.
+You may do so under the AGPL provided you publish your changes; if you cannot,
+see [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md).
 
 ## 9. Changes to these terms
 

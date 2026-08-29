@@ -17,6 +17,13 @@ import kotlin.coroutines.resume
 /**
  * The production [ReceiptTextRecognizer], over ML Kit Text Recognition v2 (issue 3.8; FR-OCR-002).
  *
+ * **This is the only class in the project that touches proprietary code, and that is a licensing
+ * fact as well as an architectural one.** Rekhon is AGPL; ML Kit cannot be, so `LICENSE` carries a
+ * linking exception naming it. Keep the coupling here: no ML Kit type may reach a domain model —
+ * `RecognizedText` exists precisely so none does — and nothing outside this file may import
+ * `com.google.mlkit`. That is what keeps a fully free build, substituting an open-source
+ * recogniser behind [ReceiptTextRecognizer], a contained change rather than a redesign.
+ *
  * Why:  deliberately the thinnest class in this issue. Everything here needs a device and can only
  *       be checked by running the app, so every *decision* — which number is the total, which line
  *       is the date, what the merchant is called — lives in `:domain:engines:receipt`, where it is

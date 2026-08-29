@@ -7,13 +7,15 @@ are unusual enough to be worth knowing up front.
 
 ## 1. Read this first: the licence affects your contribution
 
-Rekhon is **source-available, not open source**. It is licensed under the
-[PolyForm Noncommercial License 1.0.0](LICENSE): free for any noncommercial
-purpose, with commercial use requiring a separate written licence from the owner.
+Rekhon is **dual-licensed**: [AGPL-3.0 with a linking exception](LICENSE) for
+everyone, and a [commercial licence](COMMERCIAL-LICENSE.md) for those who cannot
+comply with copyleft. The AGPL option is open source in the OSI sense — you may
+take it, modify it and ship it commercially, provided you publish your changes.
 
-That has a direct consequence for you. Because the owner grants commercial
-licences, contributions must not make that impossible — which it would be if
-each contributor kept exclusive copyright over their part.
+That has a direct consequence for you. Dual licensing only works while the
+copyright holder can grant *both* licences. If each contributor kept exclusive
+copyright over their patch, no commercial licence could be granted for any file
+they touched, and the model would quietly break.
 
 **By submitting a pull request you agree that:**
 

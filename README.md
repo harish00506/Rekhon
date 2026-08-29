@@ -94,26 +94,31 @@ actually travels through the app.
 
 ## Licence
 
-**[PolyForm Noncommercial License 1.0.0](LICENSE)** — source-available, not open
-source.
+**Dual-licensed** — see [LICENSE](LICENSE).
 
-- **Any noncommercial use is free**: personal use, study, research, hobby
-  projects, and use by charities, schools, public research bodies and government
-  institutions.
-- **Commercial use requires a separate written licence** from the copyright
-  holder. Open an issue to ask.
+- **[AGPL-3.0](licenses/AGPL-3.0.txt), with a linking exception** — free for
+  everyone, including commercial use. If you distribute a modified version, or
+  run one as a network service, you publish your changes under the same licence.
+  Improvements come back.
+- **[Commercial licence](COMMERCIAL-LICENSE.md)** — for building on Rekhon
+  without opening your own source. Ask, and we will talk.
 
-The source is published so the privacy claim can be checked rather than merely
-believed — a finance app that says "nothing leaves your device" is asking for
-trust it has not earned unless you can read it. The noncommercial restriction is
-there so that publishing it is not the same as giving it away.
+Most people want the first one and need no permission to take it.
 
-Third-party attribution is in [NOTICE](NOTICE); the Apache 2.0 text those
-dependencies rely on is kept at [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt)
-and applies to them, not to Rekhon.
+The source is public because Rekhon's central claim — *nothing about your money
+leaves your device* — is one you cannot verify from a store listing. Publishing
+the code is what makes it checkable rather than marketed.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) before sending a pull request — the licence
-affects what you are granting.
+**The linking exception** permits linking against Google ML Kit and Play services,
+which are proprietary and cannot be AGPL. Without it, shipping an APK containing
+both would be an unresolvable conflict rather than a choice. It is deliberately
+narrow, and the coupling it covers is one class behind one interface — a fully
+free build with an open-source recogniser is a contained change.
+
+Third-party attribution is in [NOTICE](NOTICE). See
+[CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request: dual licensing
+only works while the copyright holder can grant both licences, so contributors
+grant a relicensing right while keeping their own copyright.
 
 ## Terms
 
