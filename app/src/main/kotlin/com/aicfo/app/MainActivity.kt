@@ -14,9 +14,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -28,6 +30,7 @@ import androidx.navigation.compose.rememberNavController
 import com.aicfo.app.lock.AppLockGate
 import com.aicfo.app.navigation.CfoNavHost
 import com.aicfo.app.navigation.CfoRoute
+import com.aicfo.app.work.MarketPriceWorker
 import com.aicfo.core.designsystem.component.CfoDemoBanner
 import com.aicfo.core.designsystem.component.LocalPrivacyBlur
 import com.aicfo.core.designsystem.theme.CfoDimens
@@ -78,6 +81,13 @@ class MainActivity : FragmentActivity() {
                         // there is no navigation — deep link, restored back stack or otherwise —
                         // that reaches a screen without passing it. It covers onboarding too.
                         AppLockGate {
+                            // API-002: one market-price refresh per open. Inside the gate, so it is
+                            // composed exactly once per unlock and never on a locked device — and
+                            // it enqueues work rather than fetching, so the activity never touches
+                            // a repository. With no backend configured the job does nothing (6.5).
+                            val context = LocalContext.current
+                            LaunchedEffect(Unit) { MarketPriceWorker.refreshNow(context) }
+
                             // The graph is only built once the stored onboarding flag has been read.
                             // Until then the surface stays empty rather than guessing: a returning
                             // user must never see the welcome screen appear and vanish. This is a

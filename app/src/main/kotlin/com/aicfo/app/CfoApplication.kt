@@ -10,6 +10,7 @@ import com.aicfo.app.widget.WidgetBlurWatcher
 import com.aicfo.app.work.BalanceIntegrityWorker
 import com.aicfo.app.work.BudgetAlertWorker
 import com.aicfo.app.work.CardAlertWorker
+import com.aicfo.app.work.MarketPriceWorker
 import com.aicfo.app.work.NetWorthSnapshotWorker
 import com.aicfo.app.work.ScheduledTransactionWorker
 import com.aicfo.app.work.SmsScanWorker
@@ -110,6 +111,10 @@ class CfoApplication : Application(), Configuration.Provider {
         BudgetAlertWorker.schedule(this)
         CardAlertWorker.schedule(this)
         WidgetRefreshWorker.schedule(this)
+        // The only scheduled job that can reach a network, and the only one carrying a constraint
+        // (issue 6.5). In a shipping build it finds the market-data client unconfigured and does
+        // nothing, so the app remains fully functional in airplane mode (P-04).
+        MarketPriceWorker.schedule(this)
         WidgetRefreshWorker.refreshNow(this)
     }
 }
