@@ -69,6 +69,9 @@ dependencies {
     // Issue 6.2: SRS §5.8, FR-ACC-003. `api` — AmortisationRow and AmortisationSchedule are what
     // this module emits, so the accounts screen must be able to name them (same reasoning as above).
     api(project(":domain:engines:loan"))
+    // Issue 6.3: SRS §11, AI-INV. `api` — HoldingPerformance is what this module emits for every
+    // investment account, so the accounts screen must be able to name it (same reasoning as above).
+    api(project(":domain:engines:investment"))
 
     // withTransaction — the atomicity guarantee applySeeds is built on (issue 2.3).
     implementation(libs.room.ktx)

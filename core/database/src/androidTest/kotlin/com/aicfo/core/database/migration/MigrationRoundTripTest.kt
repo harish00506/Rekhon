@@ -989,6 +989,99 @@ class MigrationRoundTripTest {
     }
 
     /**
+     * 17 -> 18: the holdings and their lots arrive, and everything already there survives
+     * (issue 6.3; §11, DB-003).
+     *
+     * Why:    purely additive, so the failure this guards against is the one 16 -> 17 guards
+     *         against: a migration that recreated `account` on its way to adding the holdings would
+     *         validate perfectly against `schemas/18.json` and lose the user's accounts. The
+     *         balance is asserted byte for byte (MNY-001).
+     *
+     * **What is asserted by its absence: no stored value, quantity or cost.** A holding is worth
+     *         its lots times its unit price, computed on read (ADR-0027) - so a `current_value` or
+     *         `total_quantity` column appearing here later would be a decision reversed, not a
+     *         column added, and the query below fails loudly if one ever shows up.
+     */
+    @Test
+    fun migrate17To18_preservesAccountsAndRoundTripsHoldingsAndLotsWithoutStoringAValue() {
+        helper.createDatabase(TEST_DB, 17).use { db ->
+            db.execSQL(
+                "INSERT INTO account (id, profile_id, name, type, opening_balance_minor, " +
+                    "current_balance_minor, currency_code, include_in_networth, " +
+                    "created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('a3','p1','Zerodha','investment',0,4500000,'INR',1," +
+                    "1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 18, true, Migrations.MIGRATION_17_18)
+
+        migrated.query("SELECT current_balance_minor FROM account WHERE id = 'a3'").use { cursor ->
+            assertTrue("the pre-migration account must still be there", cursor.moveToFirst())
+            assertEquals("MNY-001: the balance must survive byte for byte", 4500000L, cursor.getLong(0))
+        }
+
+        migrated.execSQL(
+            "INSERT INTO investment_holding (id, profile_id, account_id, name, asset_class, " +
+                "unit_price_minor, priced_on_iso_date, created_at_utc_millis, updated_at_utc_millis) " +
+                "VALUES ('h1','p1','a3','Parag Parikh Flexi Cap','equity',7843,'2026-08-20'," +
+                "1767312000000,1767312000000)",
+        )
+        migrated.execSQL(
+            "INSERT INTO investment_lot (id, profile_id, holding_id, kind, transacted_on_iso_date, " +
+                "quantity_nano, amount_minor, created_at_utc_millis, updated_at_utc_millis) " +
+                "VALUES ('l1','p1','h1','buy','2026-01-15',100000000000,750000," +
+                "1767312000000,1767312000000)",
+        )
+
+        migrated.query(
+            "SELECT asset_class, unit_price_minor, priced_on_iso_date FROM investment_holding " +
+                "WHERE id = 'h1'",
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("the rulebook's own spelling of the class", "equity", cursor.getString(0))
+            assertEquals("MNY-001: the unit price is paise", 7843L, cursor.getLong(1))
+            assertEquals("TIM-002: a date-only field is an ISO string", "2026-08-20", cursor.getString(2))
+        }
+        migrated.query(
+            "SELECT kind, transacted_on_iso_date, quantity_nano, amount_minor FROM investment_lot " +
+                "WHERE id = 'l1'",
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("direction lives in the kind, never in a sign", "buy", cursor.getString(0))
+            assertEquals("TIM-002: a date-only field is an ISO string", "2026-01-15", cursor.getString(1))
+            assertEquals("units are scaled by 10^9", 100000000000L, cursor.getLong(2))
+            assertEquals("MNY-001: the cash moved is paise, a magnitude", 750000L, cursor.getLong(3))
+        }
+
+        // A holding whose price was never entered is NULL, not zero (P-03).
+        migrated.execSQL(
+            "INSERT INTO investment_holding (id, profile_id, account_id, name, asset_class, " +
+                "unit_price_minor, priced_on_iso_date, created_at_utc_millis, updated_at_utc_millis) " +
+                "VALUES ('h2','p1','a3','Unpriced','debt',NULL,NULL,1767312000000,1767312000000)",
+        )
+        migrated.query("SELECT unit_price_minor FROM investment_holding WHERE id = 'h2'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertTrue("an unentered price is NULL, never 0 - 0 would read as worthless", cursor.isNull(0))
+        }
+
+        // The value is derived, never stored (ADR-0027). If this ever finds a column, the decision
+        // was reversed somewhere and this test is the place that says so.
+        migrated.query("PRAGMA table_info(investment_holding)").use { cursor ->
+            val columns = mutableListOf<String>()
+            while (cursor.moveToNext()) columns += cursor.getString(1)
+            assertEquals(
+                "no stored value or quantity: both are a pure function of the lots and the price",
+                emptyList<String>(),
+                columns.filter {
+                    it.contains("value") || it.contains("quantity") || it.contains("cost")
+                },
+            )
+        }
+        migrated.close()
+    }
+
+    /**
      * Builds one `card_alert` insert.
      * Why:    the four inserts above differ in three values, and spelling the column list out four
      *         times would hide that.

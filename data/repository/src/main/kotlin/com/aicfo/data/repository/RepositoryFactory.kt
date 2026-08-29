@@ -11,6 +11,7 @@ import com.aicfo.data.sms.SmsInboxReader
 import com.aicfo.domain.engines.budget.BudgetEngine
 import com.aicfo.domain.engines.card.CardEngine
 import com.aicfo.domain.engines.classification.ClassificationEngine
+import com.aicfo.domain.engines.investment.InvestmentEngine
 import com.aicfo.domain.engines.loan.LoanEngine
 import com.aicfo.domain.engines.nature.NatureEngine
 import com.aicfo.domain.engines.networth.NetWorthEngine
@@ -233,6 +234,30 @@ object RepositoryFactory {
         dispatchers: DispatcherProvider,
         activeProfileId: Flow<String>,
     ): LoanRepository = RoomLoanRepository(database, engine, clock, dispatchers, activeProfileId)
+
+    /**
+     * Builds the holdings store (issue 6.3, §11).
+     * Why:    takes the whole [database] because a save spans `account`, `investment_holding` and
+     *         `investment_lot`; and takes the [engine] rather than constructing one, for the reason
+     *         [loans] gives — the figure and the code that produced it stay assembled in the DI
+     *         graph (ARC-003, P-03).
+     * Result: an [InvestmentRepository] over the encrypted database.
+     * Input:  [database]; [engine]; [clock] — TIM-001, though only for stamps and provenance here:
+     *         the return itself is dated by the day the price was observed, never by today;
+     *         [ids] — holdings and lots mint their own keys, unlike a loan; [dispatchers];
+     *         [activeProfileId] — so the demo profile gets its own holdings.
+     * Output: an [InvestmentRepository].
+     * Changelog: 2026-08-24 — Created for issue 6.3.
+     */
+    @Suppress("LongParameterList") // Six collaborators, each a distinct binding — as [creditCards].
+    fun investments(
+        database: CfoDatabase,
+        engine: InvestmentEngine,
+        clock: Clock,
+        ids: IdGenerator,
+        dispatchers: DispatcherProvider,
+        activeProfileId: Flow<String>,
+    ): InvestmentRepository = RoomInvestmentRepository(database, engine, clock, ids, dispatchers, activeProfileId)
 
     /**
      * Builds the recurring-series store (issue 3.7, FR-TXN-006).

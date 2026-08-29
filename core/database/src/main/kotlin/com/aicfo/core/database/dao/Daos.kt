@@ -20,6 +20,8 @@ import com.aicfo.core.database.entity.BudgetReviewEntity
 import com.aicfo.core.database.entity.CardAlertEntity
 import com.aicfo.core.database.entity.CategoryEntity
 import com.aicfo.core.database.entity.CreditCardEntity
+import com.aicfo.core.database.entity.InvestmentHoldingEntity
+import com.aicfo.core.database.entity.InvestmentLotEntity
 import com.aicfo.core.database.entity.LoanEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
 import com.aicfo.core.database.entity.ProfileEntity
@@ -2217,6 +2219,26 @@ interface DemoDao {
     suspend fun deleteLoans(profileId: String): Int
 
     /**
+     * Result: rows removed from `investment_lot`. Input: [profileId]. Output: the count.
+     *
+     * Runs before [deleteInvestmentHoldings] for the reason [deleteBudgetAlerts] runs before its
+     * budgets: lots are children, and a wipe that clears the parents first leaves rows whose
+     * holding no longer exists - invisible to every screen and permanently counted by
+     * [countRowsFor].
+     */
+    @Query("DELETE FROM investment_lot WHERE profile_id = :profileId")
+    suspend fun deleteInvestmentLots(profileId: String): Int
+
+    /**
+     * Result: rows removed from `investment_holding`. Input: [profileId]. Output: the count.
+     *
+     * A holding is a child of an account, like a card's terms, so this runs before the accounts are
+     * cleared and after [deleteInvestmentLots].
+     */
+    @Query("DELETE FROM investment_holding WHERE profile_id = :profileId")
+    suspend fun deleteInvestmentHoldings(profileId: String): Int
+
+    /**
      * Result: rows removed from `budget_review`. Input: [profileId]. Output: the count.
      *
      * Added by issue 4.6, which introduced the table. Unlike [deleteBudgetAlerts] there is no
@@ -2448,6 +2470,19 @@ interface ArchiveDao {
     @Query("SELECT * FROM loan WHERE profile_id = :profileId ORDER BY account_id")
     suspend fun loans(profileId: String): List<LoanEntity>
 
+    /**
+     * Result: every holding, tombstones included (§11). Input: [profileId].
+     *
+     * No quantity or value column to carry: both are sums of the lots exported beside them, so an
+     * archive holding either would be carrying a cache of its own contents.
+     */
+    @Query("SELECT * FROM investment_holding WHERE profile_id = :profileId ORDER BY id")
+    suspend fun investmentHoldings(profileId: String): List<InvestmentHoldingEntity>
+
+    /** Result: every lot, tombstones included - the flows XIRR needs (§11). Input: [profileId]. */
+    @Query("SELECT * FROM investment_lot WHERE profile_id = :profileId ORDER BY id")
+    suspend fun investmentLots(profileId: String): List<InvestmentLotEntity>
+
     /** Result: every recurring rule, confirmed and dismissed alike (FR-TXN-006). Input: [profileId]. */
     @Query("SELECT * FROM recurring_rule WHERE profile_id = :profileId ORDER BY id")
     suspend fun recurringRules(profileId: String): List<RecurringRuleEntity>
@@ -2523,6 +2558,14 @@ interface ArchiveDao {
     /** Result: the loans' terms are present. Input: [rows]. Output: none (suspends). */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertLoans(rows: List<LoanEntity>)
+
+    /** Result: the holdings are present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertInvestmentHoldings(rows: List<InvestmentHoldingEntity>)
+
+    /** Result: the lots are present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertInvestmentLots(rows: List<InvestmentLotEntity>)
 
     /**
      * Result: the card alerts already sent are present. Input: [rows]. Output: none (suspends).
@@ -3057,4 +3100,188 @@ interface CardAlertDao {
      */
     @Query("SELECT * FROM card_alert WHERE profile_id = :profileId")
     suspend fun forProfile(profileId: String): List<CardAlertEntity>
+}
+
+/**
+ * The holdings inside an investment account (issue 6.3; §11, FR-ACC-001).
+ *
+ * Why:  the shape [LoanDao] argues for, with one difference that changes every query: holdings are
+ *       1:N per account, so nothing here is keyed by `account_id` and every read is a list. The
+ *       accounts screen wants one live read per profile, the holdings screen wants one live read
+ *       per account, and the editor wants a point read — so that is exactly what this exposes.
+ * What: the CRUD `investment_holding` needs and nothing more. **No value or quantity queries**,
+ *       because neither is stored: both are derived from the lots and the unit price.
+ * Result: the holdings the investment engine turns into a value, a gain and an XIRR.
+ * Changelog: 2026-08-24 — Created for issue 6.3.
+ */
+@Dao
+interface InvestmentHoldingDao {
+    /**
+     * Writes a holding, replacing any row with the same id.
+     * Why:    `REPLACE` for the reason [LoanDao.upsert] gives — the row describes a holding's
+     *         *current* facts, so a second write with the same id is an edit, not a duplicate.
+     *         Unlike a loan, the id is a surrogate, so a genuinely new holding brings a new id and
+     *         cannot collide.
+     * Result: the row is present with these values.
+     * Input:  [holding]. Output: none.
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(holding: InvestmentHoldingEntity)
+
+    /**
+     * Observes every live holding for a profile.
+     * Why:    the accounts list shows a value and a return under each investment account, so it
+     *         needs them all at once and must re-render when a lot or a price is edited.
+     * Result: the profile's undeleted holdings, re-emitted on every write.
+     * Input:  [profileId]. Output: `Flow<List<InvestmentHoldingEntity>>`.
+     */
+    @Query(
+        "SELECT * FROM investment_holding WHERE profile_id = :profileId " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY name",
+    )
+    fun observeForProfile(profileId: String): Flow<List<InvestmentHoldingEntity>>
+
+    /**
+     * Observes the live holdings inside one account.
+     * Why:    the holdings screen is per-account, and filtering the profile-wide Flow in Kotlin
+     *         would re-render every account's screen whenever any other account changed.
+     * Result: that account's undeleted holdings, re-emitted on every write.
+     * Input:  [accountId]. Output: `Flow<List<InvestmentHoldingEntity>>`.
+     */
+    @Query(
+        "SELECT * FROM investment_holding WHERE account_id = :accountId " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY name",
+    )
+    fun observeForAccount(accountId: String): Flow<List<InvestmentHoldingEntity>>
+
+    /**
+     * Reads every live holding once.
+     * Why:    the export archive needs one reading, and collecting a Flow for one value would be a
+     *         subscription standing in for a lookup.
+     * Result: the profile's undeleted holdings. Input: [profileId]. Output: the list.
+     */
+    @Query(
+        "SELECT * FROM investment_holding WHERE profile_id = :profileId " +
+            "AND deleted_at_utc_millis IS NULL",
+    )
+    suspend fun forProfile(profileId: String): List<InvestmentHoldingEntity>
+
+    /**
+     * Reads one holding.
+     * Result: the row, or `null` when no live holding has that id — deleted or never written.
+     * Input:  [id]. Output: [InvestmentHoldingEntity]?.
+     */
+    @Query("SELECT * FROM investment_holding WHERE id = :id AND deleted_at_utc_millis IS NULL")
+    suspend fun find(id: String): InvestmentHoldingEntity?
+
+    /**
+     * Soft-deletes a holding.
+     * Why:    tombstoned rather than removed, like every other profile-scoped row — DB-003 and the
+     *         export format both assume nothing vanishes. The lots beneath it are tombstoned by
+     *         their own call: cascading here would need a foreign key, and this schema has none.
+     * Result: the number of rows changed, 0 or 1.
+     * Input:  [id]; [deletedAtUtcMillis] — from the injected `Clock`. Output: [Int].
+     */
+    @Query(
+        "UPDATE investment_holding SET deleted_at_utc_millis = :deletedAtUtcMillis, " +
+            "updated_at_utc_millis = :deletedAtUtcMillis WHERE id = :id",
+    )
+    suspend fun softDelete(
+        id: String,
+        deletedAtUtcMillis: Long,
+    ): Int
+}
+
+/**
+ * The dated cash movements inside a holding (issue 6.3; §11).
+ *
+ * Why:  XIRR is money-weighted, so the engine needs every lot of every holding it is asked about,
+ *       ordered by date. [observeForProfile] exists because the accounts screen prices every
+ *       holding at once, and N per-holding subscriptions would be N queries per render.
+ * What: the CRUD `investment_lot` needs, plus the profile-wide read the engine consumes.
+ * Result: the cash flows XIRR runs over.
+ * Changelog: 2026-08-24 — Created for issue 6.3.
+ */
+@Dao
+interface InvestmentLotDao {
+    /** Result: the lot is present with these values. Input: [lot]. Output: none. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(lot: InvestmentLotEntity)
+
+    /**
+     * Observes every live lot for a profile, oldest first.
+     * Why:    the ordering is the engine's, not the screen's: cash flows are weighted by date, and
+     *         sorting once in SQL beats sorting per holding in Kotlin on every emission.
+     * Result: the profile's undeleted lots, re-emitted on every write.
+     * Input:  [profileId]. Output: `Flow<List<InvestmentLotEntity>>`.
+     */
+    @Query(
+        "SELECT * FROM investment_lot WHERE profile_id = :profileId " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY transacted_on_iso_date, id",
+    )
+    fun observeForProfile(profileId: String): Flow<List<InvestmentLotEntity>>
+
+    /**
+     * Observes the live lots of one holding, oldest first.
+     * Result: that holding's undeleted lots, for the screen that lists them.
+     * Input:  [holdingId]. Output: `Flow<List<InvestmentLotEntity>>`.
+     */
+    @Query(
+        "SELECT * FROM investment_lot WHERE holding_id = :holdingId " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY transacted_on_iso_date, id",
+    )
+    fun observeForHolding(holdingId: String): Flow<List<InvestmentLotEntity>>
+
+    /**
+     * Reads every live lot once, for the export archive.
+     * Result: the profile's undeleted lots. Input: [profileId]. Output: the list.
+     */
+    @Query(
+        "SELECT * FROM investment_lot WHERE profile_id = :profileId " +
+            "AND deleted_at_utc_millis IS NULL",
+    )
+    suspend fun forProfile(profileId: String): List<InvestmentLotEntity>
+
+    /**
+     * Reads one lot.
+     * Why:    an edit must keep the row's original `created_at`, and this is the only way to know
+     *         it — the same reason [InvestmentHoldingDao.find] exists.
+     * Result: the row, or `null` when no live lot has that id.
+     * Input:  [id]. Output: [InvestmentLotEntity]?.
+     */
+    @Query("SELECT * FROM investment_lot WHERE id = :id AND deleted_at_utc_millis IS NULL")
+    suspend fun findRow(id: String): InvestmentLotEntity?
+
+    /**
+     * Soft-deletes one lot.
+     * Result: the number of rows changed, 0 or 1.
+     * Input:  [id]; [deletedAtUtcMillis] — from the injected `Clock`. Output: [Int].
+     */
+    @Query(
+        "UPDATE investment_lot SET deleted_at_utc_millis = :deletedAtUtcMillis, " +
+            "updated_at_utc_millis = :deletedAtUtcMillis WHERE id = :id",
+    )
+    suspend fun softDelete(
+        id: String,
+        deletedAtUtcMillis: Long,
+    ): Int
+
+    /**
+     * Soft-deletes every lot of a holding.
+     * Why:    a deleted holding whose lots stayed live would leave the engine summing cash flows
+     *         for something the user removed. There is no foreign key to cascade through — this
+     *         schema has none, by convention — so the repository calls this beside
+     *         [InvestmentHoldingDao.softDelete], in one transaction.
+     * Result: the number of rows changed.
+     * Input:  [holdingId]; [deletedAtUtcMillis]. Output: [Int].
+     */
+    @Query(
+        "UPDATE investment_lot SET deleted_at_utc_millis = :deletedAtUtcMillis, " +
+            "updated_at_utc_millis = :deletedAtUtcMillis " +
+            "WHERE holding_id = :holdingId AND deleted_at_utc_millis IS NULL",
+    )
+    suspend fun softDeleteForHolding(
+        holdingId: String,
+        deletedAtUtcMillis: Long,
+    ): Int
 }

@@ -9,6 +9,7 @@ import com.aicfo.core.common.Result
 import com.aicfo.core.common.toAppError
 import com.aicfo.data.repository.AccountRepository
 import com.aicfo.data.repository.CreditCardRepository
+import com.aicfo.data.repository.InvestmentRepository
 import com.aicfo.data.repository.LoanRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -49,6 +50,7 @@ class AccountsViewModel
         private val repository: AccountRepository,
         private val cards: CreditCardRepository,
         private val loans: LoanRepository,
+        private val investments: InvestmentRepository,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(AccountsUiState())
 
@@ -63,6 +65,7 @@ class AccountsViewModel
             observeAccounts()
             observeCards()
             observeLoans()
+            observeInvestments()
         }
 
         /**
@@ -83,6 +86,26 @@ class AccountsViewModel
             loans.observeNextInstalments()
                 .onEach { instalments -> _uiState.update { it.copy(loans = instalments) } }
                 .catch { _uiState.update { it.copy(loans = emptyMap()) } }
+                .launchIn(viewModelScope)
+        }
+
+        /**
+         * Keeps each investment account's holdings priced on screen (issue 6.3; §11).
+         *
+         * Why:    a **fourth** collector rather than a `combine`, for the reason [observeLoans] and
+         *         [observeCards] give: the streams answer different questions and fail differently,
+         *         and holdings that will not read must not blank the accounts list. It re-emits on
+         *         every lot and every price edit, because both change what an account is worth.
+         * Result: `investments` follows every edit. A read failure empties the map and the rows
+         *         fall back to their prompt, rather than raising a banner over a list that is fine.
+         * Input:  none. Output: none (collects on `viewModelScope`, so it dies with the screen —
+         *         ARC-006).
+         * Changelog: 2026-08-24 — Created for issue 6.3.
+         */
+        private fun observeInvestments() {
+            investments.observeByAccount()
+                .onEach { priced -> _uiState.update { it.copy(investments = priced) } }
+                .catch { _uiState.update { it.copy(investments = emptyMap()) } }
                 .launchIn(viewModelScope)
         }
 

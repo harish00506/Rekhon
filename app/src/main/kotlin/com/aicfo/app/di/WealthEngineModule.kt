@@ -2,6 +2,8 @@ package com.aicfo.app.di
 
 import com.aicfo.domain.engines.card.CardEngine
 import com.aicfo.domain.engines.card.CardEngineFactory
+import com.aicfo.domain.engines.investment.InvestmentEngine
+import com.aicfo.domain.engines.investment.InvestmentEngineFactory
 import com.aicfo.domain.engines.loan.LoanEngine
 import com.aicfo.domain.engines.loan.LoanEngineFactory
 import dagger.Module
@@ -16,7 +18,7 @@ import javax.inject.Singleton
  * Why:  split out of [EngineModule] when issue 6.2's loan engine took that object to detekt's
  *       `TooManyFunctions` ceiling — the third such split, and the same rule each time: cut on a
  *       real seam rather than wherever the count happens to fall. Epic 6 is the app's wealth epic,
- *       and a card and a loan are the two things it models. They also share a property none of the
+ *       and a card, a loan and a holding are what it models. They also share a property none of the
  *       engines next door do: **both compute a schedule from terms rather than from history**, so
  *       neither reads a clock and both are reproducible from a handful of stored numbers (P-08).
  * What: one `@Provides` per engine, each built through its factory because the implementations are
@@ -56,4 +58,18 @@ object WealthEngineModule {
     @Provides
     @Singleton
     fun provideLoanEngine(): LoanEngine = LoanEngineFactory.create()
+
+    /**
+     * A holding's value, gain and money-weighted return (issue 6.3; §11, AI-INV).
+     * Why:    the third engine with this object's shared property, and the most literally so: it is
+     *         handed a list of dated amounts and reads no clock at all, because a holding's closing
+     *         cash flow is dated by the day its price was observed rather than by today. That is
+     *         what makes a twelve-year SIP's return reproducible from stored rows alone (P-08).
+     *         `@Singleton` because there is nothing to keep per caller.
+     * Result: an [InvestmentEngine]. Input: none. Output: the engine.
+     * Changelog: 2026-08-24 — Created for issue 6.3.
+     */
+    @Provides
+    @Singleton
+    fun provideInvestmentEngine(): InvestmentEngine = InvestmentEngineFactory.create()
 }

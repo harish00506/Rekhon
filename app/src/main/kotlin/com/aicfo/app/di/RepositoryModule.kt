@@ -13,6 +13,7 @@ import com.aicfo.data.repository.BudgetRepository
 import com.aicfo.data.repository.CategoryRepository
 import com.aicfo.data.repository.CreditCardRepository
 import com.aicfo.data.repository.DemoModeRepository
+import com.aicfo.data.repository.InvestmentRepository
 import com.aicfo.data.repository.LoanRepository
 import com.aicfo.data.repository.NetWorthRepository
 import com.aicfo.data.repository.QuickSetupRepository
@@ -26,6 +27,7 @@ import com.aicfo.data.sms.SmsInboxReader
 import com.aicfo.domain.engines.budget.BudgetEngine
 import com.aicfo.domain.engines.card.CardEngine
 import com.aicfo.domain.engines.classification.ClassificationEngine
+import com.aicfo.domain.engines.investment.InvestmentEngine
 import com.aicfo.domain.engines.loan.LoanEngine
 import com.aicfo.domain.engines.nature.NatureEngine
 import com.aicfo.domain.engines.networth.NetWorthEngine
@@ -260,6 +262,30 @@ object RepositoryModule {
         dispatchers: DispatcherProvider,
         demoMode: DemoModeRepository,
     ): LoanRepository = RepositoryFactory.loans(database, engine, clock, dispatchers, demoMode.activeProfileId)
+
+    /**
+     * The holdings store (issue 6.3; §11, AI-INV).
+     * Why:    takes the gated [CfoDatabase] like every binding here, so what a person owns is no
+     *         more readable before an unlock than a transaction is. Follows the demo (ADR-0006), so
+     *         the sample dataset can carry its own holdings without touching the real profile's.
+     *         Takes an [IdGenerator], unlike [provideLoanRepository]: holdings and lots are 1:N and
+     *         mint their own keys.
+     * Result: an [InvestmentRepository]. Input: the graph's shared dependencies. Output: the
+     *         repository.
+     * Changelog: 2026-08-24 — Created for issue 6.3.
+     */
+    @Provides
+    @Singleton
+    @Suppress("LongParameterList") // Hilt reads the signature; each argument is one binding.
+    fun provideInvestmentRepository(
+        database: CfoDatabase,
+        engine: InvestmentEngine,
+        clock: Clock,
+        ids: IdGenerator,
+        dispatchers: DispatcherProvider,
+        demoMode: DemoModeRepository,
+    ): InvestmentRepository =
+        RepositoryFactory.investments(database, engine, clock, ids, dispatchers, demoMode.activeProfileId)
 
     /**
      * The export/import archive store (issue 5.4; §5.10, §34, P-01).

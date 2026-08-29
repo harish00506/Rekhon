@@ -8,6 +8,8 @@ import com.aicfo.core.database.entity.BudgetReviewEntity
 import com.aicfo.core.database.entity.CardAlertEntity
 import com.aicfo.core.database.entity.CategoryEntity
 import com.aicfo.core.database.entity.CreditCardEntity
+import com.aicfo.core.database.entity.InvestmentHoldingEntity
+import com.aicfo.core.database.entity.InvestmentLotEntity
 import com.aicfo.core.database.entity.LoanEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
 import com.aicfo.core.database.entity.ProfileEntity
@@ -75,6 +77,8 @@ data class CfoArchive(
     val creditCards: List<CreditCardEntity> = emptyList(),
     val cardAlerts: List<CardAlertEntity> = emptyList(),
     val loans: List<LoanEntity> = emptyList(),
+    val investmentHoldings: List<InvestmentHoldingEntity> = emptyList(),
+    val investmentLots: List<InvestmentLotEntity> = emptyList(),
 ) {
     companion object {
         /**

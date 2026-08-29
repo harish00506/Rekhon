@@ -292,6 +292,34 @@ class MigrationSafetyTest {
     }
 
     /**
+     * Input:  the `investment_holding` and `investment_lot` columns.
+     * Output: asserts neither is exempt - both carry a tombstone and a profile id.
+     *
+     * The same mirror `credit_card` is, for the same reason. Two tables landing in one migration is
+     * exactly when a quiet exemption gets waved through, and these are the plainest user data in
+     * the schema: instruments the user named and cash movements they entered, both of which an
+     * undo has to be able to bring back (DB-003). `investment_lot` carries `profile_id` even though
+     * it could be reached through its holding, because the demo wipe and the export both address
+     * every table by profile alone (ADR-0006) and a table reachable only by a join is one they will
+     * eventually miss.
+     */
+    @Test
+    fun `the investment tables are ordinary user data and obey both invariants`() {
+        val entities = SchemaFixtures.load(CfoDatabase.VERSION).database.entitiesByTableName()
+
+        for (table in listOf("investment_holding", "investment_lot")) {
+            val columns = entities.getValue(table).fieldsByColumnName().keys
+
+            assertTrue("$table must carry profile_id", "profile_id" in columns)
+            assertTrue(
+                "$table must have deleted_at_utc_millis - holdings and lots are user data (DB-003)",
+                "deleted_at_utc_millis" in columns,
+            )
+            assertTrue("$table must be exempt from nothing", table !in INVARIANT_EXEMPT_TABLES)
+        }
+    }
+
+    /**
      * Input:  the `budget_alert` table's columns.
      * Output: asserts it keeps profile scoping and deliberately has no tombstone.
      *

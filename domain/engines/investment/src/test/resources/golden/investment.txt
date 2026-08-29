@@ -1,0 +1,103 @@
+# Golden cases for :domain:engines:investment - the money-weighted return (XIRR) over dated cash
+# flows (issue 6.3; §11, P-08).
+#
+# WHERE THESE NUMBERS COME FROM: an independent 60-significant-digit decimal implementation that
+# solves NPV(r) = sum cf_i * (1+r)^(-days_i/365) = 0 directly, using exp/ln for the fractional
+# powers. The engine does something different on purpose - it substitutes x = (1+r)^(1/365) and
+# bisects a polynomial in integer powers of x - so agreement between the two is evidence the answer
+# is right, not merely unchanged. A golden file regenerated from the code it guards asserts only
+# that the code has not changed, which is a different and much weaker claim.
+#
+# FORMAT: blocks separated by a line of '==='. Each block is '# key=value' headers followed by one
+# 'iso_date|amount_minor' row per cash flow. Amounts are paise (MNY-001), signed here because these
+# are flows and not stored lots: negative is money leaving the user. Dates are ISO yyyy-MM-dd
+# (TIM-002). expect_bps is the annualised rate in integer basis points (MNY-002), 1000 = 10%.
+#
+# Flows are listed in date order for readability only. The engine sorts and coalesces them itself,
+# and InvestmentEnginePropertyTest proves the answer does not depend on the order they arrive in.
+
+===
+# case=simple-year
+# expect_bps=1000
+# span_days=365
+# note= A full year at exactly ten percent. Hand-checkable without any tooling: one
+#       rupee out, 1.10 back, 365 days apart.
+2026-01-01|-10000000
+2027-01-01|11000000
+===
+# case=loss-year
+# expect_bps=-1000
+# span_days=365
+# note= The same year ending ten percent down. A loss has one sign change like any
+#       other case and needs no special handling - but it is the case a wrong sign
+#       convention would still pass, so it is pinned.
+2026-01-01|-10000000
+2027-01-01|9000000
+===
+# case=break-even
+# expect_bps=0
+# span_days=365
+# note= Out and back with nothing gained. The root is exactly x = 1, the one value the
+#       bisection can land on at its first midpoint.
+2026-01-01|-10000000
+2027-01-01|10000000
+===
+# case=sip-12
+# expect_bps=1567
+# span_days=365
+# note= Twelve monthly instalments and a terminal value - the ordinary Indian case, and
+#       the one a time-weighted return would get wrong. The money-weighted answer is
+#       far above the 8.3 percent a naive cost-to-value ratio would report, because
+#       most of the money was invested for far less than a year.
+2026-01-01|-500000
+2026-02-01|-500000
+2026-03-01|-500000
+2026-04-01|-500000
+2026-05-01|-500000
+2026-06-01|-500000
+2026-07-01|-500000
+2026-08-01|-500000
+2026-09-01|-500000
+2026-10-01|-500000
+2026-11-01|-500000
+2026-12-01|-500000
+2027-01-01|6500000
+===
+# case=same-day-buys
+# expect_bps=1000
+# span_days=365
+# note= Two purchases on one day must give exactly what one purchase of their sum gives
+#       - so this block's expectation is simple-year's, to the basis point. This is
+#       what proves the same-date coalescing, and it fails loudly if a day ever gets
+#       counted twice.
+2026-01-01|-7000000
+2026-01-01|-3000000
+2027-01-01|11000000
+===
+# case=quarter
+# expect_bps=1041
+# span_days=91
+# note= Ninety-one days held. Pins the annualisation: 2.5 percent over a quarter is not
+#       10 percent a year, it is 10.41, and a linear scaling would report the wrong
+#       one in a way no full-year case can see.
+2026-01-01|-10000000
+2026-04-02|10250000
+===
+# case=sell-and-income
+# expect_bps=1606
+# span_days=888
+# note= A dividend and a partial sale before the terminal value, spanning 888 days. The
+#       realistic shape: money in once, money out twice, and a residual position.
+2024-03-15|-20000000
+2025-06-10|1500000
+2025-11-20|8000000
+2026-08-20|18000000
+===
+# case=leap-span
+# expect_bps=997
+# span_days=366
+# note= 366 days across a leap year. Under ACT/365 that is 366/365 of a year, so the
+#       same 10 percent gain annualises to slightly less - deliberately, because it
+#       is what Excel's XIRR does and what the user will check against.
+2028-01-01|-10000000
+2029-01-01|11000000
