@@ -104,6 +104,16 @@ sealed interface CfoRoute {
     data object Allocation : CfoRoute
 
     /**
+     * How net worth has moved over time (issue 6.6; FR-ACC-005).
+     *
+     * A `data object` for the same reason [Allocation] is: the history is a question about the
+     * whole profile, so there is no id to scope it by. Reached from the dashboard's net-worth card,
+     * because that is where the figure it drills into already lives.
+     */
+    @Serializable
+    data object NetWorthHistory : CfoRoute
+
+    /**
      * Income, consents and the app lock (FR-SET-001).
      *
      * **The route FR-SET-001 always specified and the app never had.** Five strings across three

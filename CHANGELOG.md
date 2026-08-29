@@ -11,6 +11,48 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > Credit cards, loans with amortisation, investment holdings with XIRR, allocation and net-worth
 > history — exact paise math throughout.
 
+### [0.6.6] — Issue 6.6: Net-worth snapshots history  (2026-08-30)
+
+- **Implemented:** the daily net-worth series is finally visible (**FR-ACC-005**, §5.7, §20.3). Issue
+  2.6 built the table in August and 3.10 made it repair itself; nothing could read it. A new
+  **Net worth over time** screen offers FR-ACC-005's `1M/6M/1Y/All` windows, draws the line, and puts
+  the figures beside it — the change over the period, and the highest and lowest days with their
+  dates (P-02). Reached by tapping the dashboard's net-worth card. **No schema change and no
+  migration:** schema stays at **19**, because the `(profile_id, as_of_iso_date)` index already
+  covers the range scan and Room's exported schema describes tables, not queries.
+- **It reads history and never recomputes it.** That is the entire purpose of storing a row per day —
+  recomputing from today's accounts would rewrite the past whenever an account is archived or a
+  transaction back-dated, and the chart would show a past that never happened. The test that proves
+  it stores a figure deliberately at odds with what the fixture account would produce today and
+  asserts the stored one comes back; substituting a re-derivation in the mapper was tried on purpose
+  and turns it red.
+- **A percentage change is refused when net worth starts at or below zero**
+  ([ADR-0031](docs/adr/0031-a-percentage-change-is-refused-when-net-worth-starts-at-or-below-zero.md)).
+  Net worth is routinely negative for a user with a home loan, and dividing by a negative flips the
+  sign: −₹50,000 improving to −₹10,000 would report as "−80%" — the opposite of what happened, under
+  a chart visibly sloping upward. The test is `> 0` and never `>= 0`; the absolute change, which is
+  always correct, is reported in every case, and the screen says why there is no percentage rather
+  than leaving a gap. `abs(first)` was rejected: it fixes that case and silently breaks a series
+  crossing zero, which is worse because it never announces itself.
+- **A change over one reading is absent, not zero.** One snapshot says what net worth was that day
+  and nothing about direction, so `change` is `null` below two points — the same distinction the
+  dashboard already draws between "no snapshot yet" and a net worth of zero (P-03). It matters in the
+  UI too: `CfoSparkline` needs two points and draws **nothing at all** below that, silently, so the
+  screen renders an explicit "not enough history yet" rather than an empty box.
+- **`CfoSparkline` gets its first production call site.** It has existed since issue 1.8, documented
+  as being for "a balance or net-worth trend", and was used by nothing. "Charts come from the design
+  system" is met by using it rather than building a second chart.
+- **The trend carries its own engine id and version** (`net-worth-trend` 1.0), leaving `compute`'s
+  `net-worth` 1.0 untouched. `engine_version` is written into every stored row (AI-ARC-006), so
+  sharing one string would stamp thousands of snapshots as the output of a formula that never moved.
+- **Tests:** a ten-record golden fixture whose every number came from an **independent Python
+  implementation** written from the specification — five records exist solely to pin the refusal — a
+  300-series seeded property sweep asserting the rule in both directions across the sign boundary,
+  six repository tests including the no-drift guard, three ViewModel tests, six Compose screen tests,
+  four Paparazzi baselines (light, dark, 200% font, and the not-enough-history state), and an
+  instrumented case driving the real Hilt graph and the real encrypted database. Both golden gates
+  and the drift guard were broken on purpose and observed to fail (ADR-0005).
+
 ### [0.6.5] — Issue 6.5: Gold/crypto valuation via market API  (2026-08-29)
 
 - **Implemented:** a stored price now carries its age (**FR-INV-004**, §16.1, §22, API-001/API-002).

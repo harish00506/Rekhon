@@ -1,5 +1,6 @@
 package com.aicfo.feature.dashboard
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,6 +15,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.aicfo.core.designsystem.chart.CfoProportionBar
@@ -113,7 +115,7 @@ fun DashboardContent(
             Text(text = stringResource(R.string.dashboard_error), color = CfoTheme.extendedColors.negative)
         }
 
-        MoneySummary(uiState)
+        MoneySummary(uiState, actions.onNavigateToNetWorthHistory)
         SpendSplitSection(uiState)
         // Issue 4.3: the plan is above, the outcome is here. Adjacent on purpose.
         ActualSpendSection(uiState)
@@ -149,25 +151,43 @@ fun DashboardContent(
  *            2026-08-16 — Issue 5.2: Safe-to-Spend became a real figure with a breakdown.
  */
 @Composable
-private fun MoneySummary(uiState: DashboardUiState) {
+private fun MoneySummary(
+    uiState: DashboardUiState,
+    onNavigateToNetWorthHistory: () -> Unit,
+) {
     CfoCard {
         Text(text = stringResource(R.string.dashboard_safe_to_spend_label))
         SafeToSpendSection(uiState.safeToSpend)
     }
     CfoCard {
-        Text(text = stringResource(R.string.dashboard_net_worth_label))
-        // The absence is rendered, not zeroed: no snapshot has been taken yet, and ₹0 would be a
-        // figure the app invented (P-03, issue 2.6).
-        val netWorth = uiState.netWorth
-        if (netWorth == null) {
-            Text(text = stringResource(R.string.dashboard_net_worth_pending))
-        } else {
-            CfoAmountText(
-                amount = netWorth,
-                contentDescription = stringResource(R.string.dashboard_net_worth_description),
-                // Signed: a user who owes more than they hold has a negative net worth, and hiding
-                // the minus would turn a debt into savings.
-                showSign = true,
+        // Clickable on the content rather than the card, because CfoCard takes no onClick — and with
+        // an explicit Role.Button and a click label, because a card that navigates without saying so
+        // is invisible to TalkBack. Issue 6.6 opens the history from here.
+        val openLabel = stringResource(R.string.net_worth_history_open)
+        Column(
+            modifier =
+                Modifier.fillMaxWidth()
+                    .clickable(onClickLabel = openLabel, role = Role.Button) { onNavigateToNetWorthHistory() },
+        ) {
+            Text(text = stringResource(R.string.dashboard_net_worth_label))
+            // The absence is rendered, not zeroed: no snapshot has been taken yet, and ₹0 would be a
+            // figure the app invented (P-03, issue 2.6).
+            val netWorth = uiState.netWorth
+            if (netWorth == null) {
+                Text(text = stringResource(R.string.dashboard_net_worth_pending))
+            } else {
+                CfoAmountText(
+                    amount = netWorth,
+                    contentDescription = stringResource(R.string.dashboard_net_worth_description),
+                    // Signed: a user who owes more than they hold has a negative net worth, and
+                    // hiding the minus would turn a debt into savings.
+                    showSign = true,
+                )
+            }
+            Text(
+                text = openLabel,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -461,4 +481,6 @@ data class DashboardActions(
     val onNavigateToAccounts: () -> Unit,
     val onNavigateToBudgets: () -> Unit,
     val onNavigateToSettings: () -> Unit,
+    /** Opens the stored net-worth series (issue 6.6, FR-ACC-005). */
+    val onNavigateToNetWorthHistory: () -> Unit,
 )

@@ -120,4 +120,30 @@
         app. Nothing on this device has been changed.</string>
     <string name="dashboard_archive_write_failed">Couldn\'t write to that location. Try somewhere else.</string>
     <string name="dashboard_archive_failed">Something went wrong. Nothing on this device has been changed.</string>
+
+    <!-- Issue 6.6: the net-worth history screen (FR-ACC-005's 1M/6M/1Y/All charts). -->
+    <string name="net_worth_history_title">Net worth over time</string>
+    <string name="net_worth_history_open">See how it has changed</string>
+    <string name="net_worth_history_done">Done</string>
+    <string name="net_worth_history_range_1m">1M</string>
+    <string name="net_worth_history_range_6m">6M</string>
+    <string name="net_worth_history_range_1y">1Y</string>
+    <string name="net_worth_history_range_all">All</string>
+    <!-- Deliberately carries NO amount: it is read aloud, and it must not leak a figure the
+         privacy blur is hiding on screen (§23). The shape and the window, nothing else. -->
+    <string name="net_worth_history_chart_description">Your net worth over the selected period</string>
+    <string name="net_worth_history_change_label">Change over this period</string>
+    <string name="net_worth_history_percent">%1$s%%</string>
+    <!-- Shown instead of a percentage when net worth started at or below zero, where a ratio would
+         report an improvement as a fall (P-03). The amount above it is the honest figure. -->
+    <string name="net_worth_history_percent_unavailable">Percentage isn\'t meaningful from this
+        starting point</string>
+    <string name="net_worth_history_high">Highest</string>
+    <string name="net_worth_history_low">Lowest</string>
+    <string name="net_worth_history_period">%1$s to %2$s</string>
+    <!-- A daily series needs two days before there is a line to draw. Never rendered as a flat
+         chart at zero, which would claim a stability nobody measured (P-03). -->
+    <string name="net_worth_history_empty">Not enough history yet. Your net worth is recorded once a
+        day, so a line appears after your second daily update.</string>
+    <string name="net_worth_history_error">Couldn\'t read your history just now.</string>
 </resources>

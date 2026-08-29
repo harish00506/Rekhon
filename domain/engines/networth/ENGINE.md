@@ -87,11 +87,34 @@ did not, which is the kind of false trail P-02 exists to prevent.
 What provenance *does* carry is `engineVersion`, stored on every `net_worth_snapshot` row
 (AI-ARC-006) — so a figure computed today stays explainable after this formula changes.
 
+## The trend (issue 6.6)
+
+A second operation, `trend`, reads a series of **stored** snapshots and measures between them. It
+never recomputes: that is the whole reason the rows exist. It receives points already bounded to the
+window, because choosing a window needs a clock and this module may not read one (TIM-001).
+
+```
+change     = last.netWorth − first.netWorth        (null below two readings)
+changeBps  = change × 10000 ÷ first.netWorth       (ONLY when first.netWorth > 0)
+high / low = extremes, earliest point on a tie
+```
+
+**`changeBps` is refused rather than signed when the series starts at or below zero.** Net worth is
+routinely negative for a user with a home loan, and dividing by a negative flips the sign: −₹50,000
+improving to −₹10,000 would report as "−80%", stating the opposite of what happened. Zero is the
+same lie by division. The test is `> 0`, never `>= 0`, and the absolute change — which is always
+correct — is reported in every case.
+
 ## Version log
 
-| Version | Date | Change |
-|---|---|---|
-| 1.0 | 2026-08-01 | Created for issue 2.6 (FR-ACC-005). Assets − liabilities over `AccountType.isLiability`. |
+Two operations, two independent version histories. `compute`'s version is written into every
+`net_worth_snapshot` row, so bumping it because `trend` changed would stamp thousands of stored rows
+as the output of a formula that never moved.
 
-**Bump this whenever the formula changes**, and record why. A stored snapshot names the version that
-produced it; a change without a bump makes every earlier row unexplainable.
+| Engine id | Version | Date | Change |
+|---|---|---|---|
+| `net-worth` | 1.0 | 2026-08-01 | Created for issue 2.6 (FR-ACC-005). Assets − liabilities over `AccountType.isLiability`. |
+| `net-worth-trend` | 1.0 | 2026-08-30 | Created for issue 6.6 (FR-ACC-005). Endpoints, extremes, change, and the basis-point refusal above. |
+
+**Bump the relevant one whenever its formula changes**, and record why. A stored snapshot names the
+version that produced it; a change without a bump makes every earlier row unexplainable.

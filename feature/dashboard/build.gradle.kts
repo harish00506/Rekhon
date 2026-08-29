@@ -25,7 +25,11 @@ android {
 // runs every other test here, which is what would catch a release-only compile problem.
 tasks.withType<Test>()
     .matching { it.name.contains("Release") }
-    .configureEach { exclude("**/DashboardPrivacyBlurTest.class") }
+    .configureEach {
+        exclude("**/DashboardPrivacyBlurTest.class")
+        // Issue 6.6: same reason — it launches a ComponentActivity to tap the range chips.
+        exclude("**/NetWorthHistoryScreenTest.class")
+    }
 
 dependencies {
     implementation(project(":core:model"))

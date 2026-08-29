@@ -120,6 +120,7 @@ class DashboardPrivacyBlurTest {
                             onNavigateToAccounts = {},
                             onNavigateToBudgets = {},
                             onNavigateToSettings = {},
+                            onNavigateToNetWorthHistory = {},
                         ),
                 )
             }

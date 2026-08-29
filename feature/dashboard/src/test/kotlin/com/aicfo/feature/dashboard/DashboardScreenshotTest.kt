@@ -107,6 +107,7 @@ class DashboardScreenshotTest {
                                 onNavigateToAccounts = {},
                                 onNavigateToBudgets = {},
                                 onNavigateToSettings = {},
+                                onNavigateToNetWorthHistory = {},
                             ),
                     )
                 }

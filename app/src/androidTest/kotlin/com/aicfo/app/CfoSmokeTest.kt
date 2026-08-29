@@ -94,27 +94,16 @@ class CfoSmokeTest {
     fun theRecurringSectionProposesASeriesFromTheRealLedger() {
         compose.waitUntilAtLeastOneExists(hasText(ONBOARDING_HEADLINE).or(hasText(DASHBOARD)), TIMEOUT_MILLIS)
 
-        // The demo's sample ledger IS this test's fixture, and the only way into it is the
-        // onboarding button. On a device whose app data already holds a real profile there is no
-        // seeded ledger, nothing will ever propose a series, and the old code walked straight past
-        // this branch into a twenty-second wait that failed with "condition still not satisfied" —
-        // which names the symptom and not one word of the cause.
-        //
-        // So the precondition is asserted where it is knowable. Not `assumeTrue`: a test that
-        // quietly skips itself when its fixture is missing is the vacuous gate this repo keeps
-        // finding, and a green run would then mean nothing.
-        assertTrue(
-            "This test needs a clean install: its fixture is the demo ledger, and the only way in " +
-                "is the onboarding screen, which is not showing. The app already holds a profile. " +
-                "Run `adb shell pm clear com.aicfo.personalcfo` and try again.",
-            compose.onAllNodesWithTextCount(ONBOARDING_HEADLINE) > 0,
-        )
-
-        compose.onNodeWithText(ENTER_DEMO).performClick()
-        // Its own budget, not TIMEOUT_MILLIS: this wait covers seeding three months of sample
-        // ledger into an encrypted database, which is real work and much slower than the screen
-        // transitions the shared timeout was sized for.
-        compose.waitUntilAtLeastOneExists(hasText(DASHBOARD), SEED_TIMEOUT_MILLIS)
+        // Enter the demo when onboarding is showing, and otherwise carry on: a sibling test may
+        // already have entered it, in which case the sample ledger this test measures is present
+        // and there is nothing to do. An earlier version asserted onboarding *must* be showing —
+        // added while chasing the wrong cause of a flake — which made the suite order-dependent
+        // the moment a second test entered the demo first. The real cause was an off-screen tap
+        // and is fixed below.
+        if (compose.onAllNodesWithTextCount(ONBOARDING_HEADLINE) > 0) {
+            compose.onNodeWithText(ENTER_DEMO).performClick()
+            compose.waitUntilAtLeastOneExists(hasText(DASHBOARD), SEED_TIMEOUT_MILLIS)
+        }
 
         // `performScrollTo` before the click, and it is the whole fix for what used to be a ~60%
         // flake. The dashboard is one scrolling column and this button lives at its foot: with the
@@ -143,6 +132,37 @@ class CfoSmokeTest {
     }
 
     /**
+     * The stored net-worth series, end to end (issue 6.6; FR-ACC-005).
+     *
+     * Input:  the app, entering the demo if it is still on onboarding — the sample ledger plus the
+     *         daily worker's backfill give the series something to be a series of.
+     * Output: asserts the history screen opens from the dashboard's net-worth card and renders
+     *         FR-ACC-005's four windows, driven by the real Hilt graph and the real encrypted
+     *         database. A green Robolectric screen test cannot make that claim: it renders a
+     *         literal state, so it would pass with the ViewModel unbound and the query broken.
+     *
+     * The demo's ledger is three months old, so 1Y and All show the same window as 6M. That is the
+     * honest rendering of what is stored, not a defect.
+     */
+    @Test
+    fun theNetWorthHistoryOpensFromTheDashboardAndOffersEveryWindow() {
+        compose.waitUntilAtLeastOneExists(hasText(ONBOARDING_HEADLINE).or(hasText(DASHBOARD)), TIMEOUT_MILLIS)
+        if (compose.onAllNodesWithTextCount(ONBOARDING_HEADLINE) > 0) {
+            compose.onNodeWithText(ENTER_DEMO).performClick()
+            compose.waitUntilAtLeastOneExists(hasText(DASHBOARD), SEED_TIMEOUT_MILLIS)
+        }
+
+        // performScrollTo before the click, for the reason recorded on the recurring test above: a
+        // tap dispatched at a node below the fold lands nowhere and the screen never changes.
+        compose.onNodeWithText(NET_WORTH_OPEN).performScrollTo().performClick()
+
+        compose.waitUntilAtLeastOneExists(hasText(NET_WORTH_HISTORY_TITLE), SEED_TIMEOUT_MILLIS)
+        listOf(RANGE_1M, RANGE_6M, RANGE_1Y, RANGE_ALL).forEach { window ->
+            compose.onAllNodes(hasText(window)).onFirst().assertExists()
+        }
+    }
+
+    /**
      * Counts the nodes carrying one exact string.
      * Why:    `onNodeWithText` throws when there is no match, which is the wrong shape for a test
      *         that has to ask *which* of two screens it is looking at rather than assert one.
@@ -167,6 +187,14 @@ class CfoSmokeTest {
         /** From `transactions_title` — proves the tap actually navigated. */
         const val TRANSACTIONS_TITLE = "Transactions"
         const val RECURRING_HEADING = "Looks like a repeat"
+
+        /** Issue 6.6: the dashboard's affordance and the history screen behind it. */
+        const val NET_WORTH_OPEN = "See how it has changed"
+        const val NET_WORTH_HISTORY_TITLE = "Net worth over time"
+        const val RANGE_1M = "1M"
+        const val RANGE_6M = "6M"
+        const val RANGE_1Y = "1Y"
+        const val RANGE_ALL = "All"
 
         /** From `transactions_recurring_occurrences`, the ICU plural that carries the evidence. */
         const val OCCURRENCES_SUFFIX = "payments"

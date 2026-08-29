@@ -496,6 +496,47 @@ stays `1.13.0` either way — 6.4 reads three rows that already existed and auth
 
 ---
 
+### 2.35 · Net worth over time — the one figure that is read, never recomputed (issue 6.6)
+
+```
+DashboardScreen → net-worth CfoCard (clickable, Role.Button)
+└─ actions.onNavigateToNetWorthHistory()
+    └─ navController.navigate(CfoRoute.NetWorthHistory)        app/navigation/CfoRoute.kt
+           ▼
+NetWorthHistoryScreen → NetWorthHistoryViewModel
+├─ selected: MutableStateFlow<NetWorthRange>  = SIX_MONTHS     the four chips write here
+└─ .flatMapLatest { range -> repository.observeHistory(range) }
+    │  flatMapLatest, not four subscriptions: picking a chip must CANCEL the previous window,
+    │  or a slow query for a window the user has left can land over the one they are looking at.
+    ▼
+RoomNetWorthRepository.observeHistory(range)                   data/repository/NetWorthRepository.kt
+├─ activeProfileId.flatMapLatest { ... }                       demo and real never mix (ADR-0006)
+├─ clock.today()                                               TIM-001 — read HERE, not in the engine
+├─ range.fromDate(today)                                       LocalDate.minusMonths, not minusDays:
+│                                                              1M back from 31 Mar is 28 Feb
+├─ netWorthSnapshotDao().observeRange(profile, from, today)     ORDER BY as_of_iso_date (ISO sorts)
+│   │  READS STORED ROWS. Nothing here calls computeAsOf.
+│   │  Recomputing would rewrite the past whenever an account is archived (FR-ACC-005's freeze).
+│   └─ tombstones excluded — unlike ArchiveDao.netWorthSnapshots, which exports them
+│
+└─ engine.trend(NetWorthTrendInput(points, range, now))         → shape C
+    ├─ change    = last − first          null below two readings — absent, not zero (P-03)
+    ├─ changeBps = change × 10000 ÷ first    ONLY when first > 0   → ADR-0031
+    │              null for a negative or zero start, because dividing by a negative
+    │              reports an improvement as a fall
+    └─ high / low = extremes, earliest on a tie                 deterministic (P-08)
+           ▼
+NetWorthHistoryContent
+├─ CfoSparkline(points.map { it.netWorth.minor })   design system, first production call site
+│   └─ contentDescription names the WINDOW and never an amount — it is read aloud, and a figure
+│      in it would survive the privacy blur masking the same number on screen (§23)
+├─ change + percentage, or the sentence saying why there is none (P-02)
+└─ high / low with their dates
+```
+
+**The line and the figures come from one engine call**, so the chart and the numbers beside it
+cannot disagree.
+
 ### 2.4 · How the portfolio is spread — the first figure that cites a rule to accuse something (issue 6.4)
 
 `FR-INV-002` asks a question no single account can answer, so this is the first read path that

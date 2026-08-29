@@ -16,6 +16,7 @@ import com.aicfo.feature.budgets.BudgetsScreen
 import com.aicfo.feature.categories.CategoriesScreen
 import com.aicfo.feature.dashboard.DashboardActions
 import com.aicfo.feature.dashboard.DashboardScreen
+import com.aicfo.feature.dashboard.NetWorthHistoryScreen
 import com.aicfo.feature.onboarding.OnboardingScreen
 import com.aicfo.feature.settings.SettingsScreen
 import com.aicfo.feature.transactions.AddTransactionScreen
@@ -66,8 +67,14 @@ fun CfoNavHost(
                         onNavigateToAccounts = { navController.navigate(CfoRoute.Accounts) },
                         onNavigateToBudgets = { navController.navigate(CfoRoute.Budgets) },
                         onNavigateToSettings = { navController.navigate(CfoRoute.Settings) },
+                        onNavigateToNetWorthHistory = { navController.navigate(CfoRoute.NetWorthHistory) },
                     ),
             )
+        }
+        composable<CfoRoute.NetWorthHistory> {
+            // popBackStack for the reason allocation gives: the history was pushed on top of the
+            // dashboard, so "done" returns to where the figure it drills into is shown.
+            NetWorthHistoryScreen(onDone = { navController.popBackStack() })
         }
         composable<CfoRoute.Transactions> {
             TransactionsScreen(
