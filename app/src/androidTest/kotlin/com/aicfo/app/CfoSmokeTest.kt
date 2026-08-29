@@ -73,28 +73,44 @@ class CfoSmokeTest {
      * Output: asserts a proposal renders **with its evidence** (P-02) on the transactions list,
      *         computed by the real engine from rows read out of the real encrypted database.
      *
-     * **KNOWN DEFECT — this test needs a clean install, and nobody yet knows why.**
-     * Reproduction is reliable: `adb shell pm clear com.aicfo.personalcfo` then run, and it passes;
-     * run it a second time without clearing, and the wait for [RECURRING_HEADING] times out. Ruled
-     * out so far, each by evidence rather than reasoning:
+     * **KNOWN DEFECT — this test is FLAKY. Do not trust a single green run of it.**
+     * Twelve runs on one emulator in one evening: six passed, six failed, on unchanged code. An
+     * earlier version of this note claimed the reproduction was reliable ("clean install passes, a
+     * second run fails"); that was wrong, and it is corrected here rather than quietly deleted,
+     * because a confident wrong lead costs the next person more than no lead at all.
      *
-     *  - **Not the onboarding path.** The precondition below does not fire on the failing run —
-     *    onboarding is showing, the demo is entered, and the dashboard renders.
-     *  - **Not a timeout.** Raised from 20s to [SEED_TIMEOUT_MILLIS]; the failing run still spends
-     *    the whole budget.
+     * The failure is always the same: the wait for [RECURRING_HEADING] exhausts its budget. What
+     * correlates — **not** determines — is how the app got onto the device. Five of the six passes
+     * followed `pm clear` on an already-installed app; most failures followed a cold install, which
+     * is what CI does. One cold install passed, which is what rules out determinism.
+     *
+     * Ruled out, each by evidence rather than reasoning:
+     *
+     *  - **Not the onboarding path.** The precondition below does not fire on a failing run —
+     *    onboarding shows, the demo is entered, and the dashboard renders.
+     *  - **Not the timeout.** Raised from 20s to [SEED_TIMEOUT_MILLIS]; failing runs still spend the
+     *    whole budget, and 60s is no more enough than 20s was.
+     *  - **Not issue 6.5's `MarketPriceWorker`.** Disabling its scheduling still reproduces the
+     *    failure, so the eighth worker is not necessary for it.
      *  - **Not a write on a read path.** Only three places write `recurring_rule`
      *    (`DemoModeRepository.enter`, `QuickSetupRepository`, `RecurringRepository.confirm/dismiss`)
-     *    and none is on the render path, so nothing silently marks a proposal decided.
+     *    and none is on the render path.
      *  - **Not the demo's own seeded rules.** They are written with `name = null`, and
      *    `RecurringRuleDao.observeDecidedNames` filters `name IS NOT NULL`, so they exclude nothing.
      *  - **Not duplicated seed rows.** Demo ids are deterministic (`demo:txn:0001`) and upserted.
+     *  - **Not the clock or the window.** The device runs the same date as the host, and
+     *    `LOOKBACK_DAYS` is 730 — three months of demo ledger sit well inside it.
      *
-     * What blocked going further is the app's own privacy design, which is working as intended:
-     * `uiautomator dump` returns an empty hierarchy because the window is secure, and the database
-     * is SQLCipher-encrypted, so neither the rendered screen nor the stored rows can be inspected
-     * from outside the process. Pinning this down needs a diagnostic from *inside* an instrumented
-     * build — read the candidate rows and the decided names through the repository at the point of
-     * failure and print the difference between the two runs.
+     * The live suspicion, untested: `observeRecurringProposals` combines two Room Flows, and a
+     * cold first launch has eight workers competing for the same freshly created SQLCipher database.
+     * A first emission that pairs seeded candidates with a decided-names list from before the seed
+     * would render, whereas the reverse ordering would not — which is the shape of a race that
+     * flips with load.
+     *
+     * External diagnosis is closed off by the app's own privacy design, working as intended:
+     * `uiautomator dump` returns an empty hierarchy on a secure window, and the database is
+     * SQLCipher. Pinning this down needs a diagnostic inside an instrumented build — log what
+     * `observeRecurringProposals` emits, in order, across a passing and a failing run.
      */
     @Test
     fun theRecurringSectionProposesASeriesFromTheRealLedger() {

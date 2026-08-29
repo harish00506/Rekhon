@@ -266,8 +266,23 @@ rows (ids are deterministic and upserted), and timing. Going further needs a dia
 an instrumented build, because the app's own privacy design blocks every external route:
 `uiautomator dump` returns an empty hierarchy on a secure window, and the database is SQLCipher.
 
-That is written into the test's KDoc so the next attempt starts from the eliminations rather than
-repeating them. **It is an open defect, not a fixed one.**
+**Correction, after twelve runs:** the "needs a clean install" story recorded above was wrong, and
+so was the state-pollution story before it. Twelve runs on one emulator in one evening, unchanged
+code: **six passed, six failed.** The test is flaky. Five of the six passes followed `pm clear` on an
+already-installed app and most failures followed a cold install — which is what CI does — but one
+cold install passed, which rules out determinism.
+
+Also ruled out by evidence: **issue 6.5's `MarketPriceWorker` is not the cause.** Disabling its
+scheduling still reproduces the failure, so the eighth worker is not necessary for it.
+
+The live suspicion, untested: `observeRecurringProposals` combines two Room Flows, and a cold first
+launch has eight workers competing for one freshly created SQLCipher database. A first emission
+pairing seeded candidates with a pre-seed decided-names list would render; the reverse ordering
+would not. That is the shape of a race that flips with load.
+
+Both wrong stories are corrected in the test's KDoc rather than quietly deleted — a confident wrong
+lead costs the next reader more than no lead at all. **It is an open, flaky defect, and a single
+green run of this test does not mean anything.**
 
 ---
 
