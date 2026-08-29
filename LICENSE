@@ -1,79 +1,102 @@
-# PolyForm Noncommercial License 1.0.0
+Rekhon — Licence
+Copyright (C) 2026 Harish G
 
-<https://polyformproject.org/licenses/noncommercial/1.0.0>
+Rekhon is DUAL-LICENSED. You may use it under EITHER of the following, at your
+option:
 
-Required Notice: Copyright 2026 Harish G (https://github.com/harish00506/Rekhon)
+  (1) the GNU Affero General Public License, version 3, together with the
+      Linking Exception set out below; or
 
-Commercial use of this software requires a separate written licence from the
-copyright holder. To request one, open an issue at
-https://github.com/harish00506/Rekhon/issues or contact the owner directly.
+  (2) a commercial licence obtained from the copyright holder.
 
-## Acceptance
+Choose one. You do not need permission to use option (1) — take it and comply
+with it. Option (2) exists for people who cannot or do not wish to comply with
+the AGPL's source-sharing obligations. See COMMERCIAL-LICENSE.md.
 
-In order to get any license under these terms, you must agree to them as both strict obligations and conditions to all your licenses.
+================================================================================
+OPTION 1 — GNU Affero General Public License, version 3, with Linking Exception
+================================================================================
 
-## Copyright License
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version.
 
-The licensor grants you a copyright license for the software to do everything you might do with the software that would otherwise infringe the licensor's copyright in it for any permitted purpose.  However, you may only distribute the software according to [Distribution License](#distribution-license) and make changes or new works based on the software according to [Changes and New Works License](#changes-and-new-works-license).
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE.  See the GNU Affero General Public License for more details.
 
-## Distribution License
+You should have received a copy of the GNU Affero General Public License along
+with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-The licensor grants you an additional copyright license to distribute copies of the software.  Your license to distribute covers distributing the software with changes and new works permitted by [Changes and New Works License](#changes-and-new-works-license).
+The full text is at licenses/AGPL-3.0.txt.
 
-## Notices
+What this means in practice: you may use, study, modify and redistribute Rekhon
+freely, including commercially. If you distribute it, or make a modified version
+available to users over a network, you must release your changes under the same
+licence and make the corresponding source available. Improvements come back.
 
-You must ensure that anyone who gets a copy of any part of the software from you also gets a copy of these terms or the URL for them above, as well as copies of any plain-text lines beginning with `Required Notice:` that the licensor provided with the software.  For example:
+--------------------------------------------------------------------------------
+LINKING EXCEPTION
+--------------------------------------------------------------------------------
 
-> Required Notice: Copyright Yoyodyne, Inc. (http://example.com)
+As a special exception, the copyright holder gives permission to link this
+program with the following proprietary components, and to convey the resulting
+executable, provided you otherwise comply with the AGPL for this program's own
+code:
 
-## Changes and New Works License
+  * Google ML Kit (com.google.mlkit:*)
+  * Google Play services and Google Mobile Services libraries
+    (com.google.android.gms:*)
+  * Google AICore and MediaPipe on-device inference runtimes, if and when this
+    program uses them
 
-The licensor grants you an additional copyright license to make changes and new works based on the software for any permitted purpose.
+WHY THIS EXISTS. Rekhon reads receipts on the device using Google ML Kit
+(issue 3.8, FR-OCR-002). ML Kit is proprietary and cannot be relicensed under the
+AGPL, so distributing an APK containing both this program and ML Kit would
+otherwise be an unresolvable conflict rather than a licensing choice. This
+exception resolves it, and nothing more: it permits linking against the named
+components only, and does not weaken any AGPL obligation on Rekhon's own source.
 
-## Patent License
+If you modify this program, you may extend this exception to your version, but
+you are not obliged to. If you do not wish to, delete this paragraph and the
+exception above from your version.
 
-The licensor grants you a patent license for the software that covers patent claims the licensor can license, or becomes able to license, that you would infringe by using the software.
+The coupling this exception covers is deliberately narrow and easy to remove:
+ML Kit is reachable from exactly one class, MlKitReceiptTextRecognizer, behind
+the ReceiptTextRecognizer interface, and no domain model references an ML Kit
+type. A fully free build substituting an open-source recogniser is a contained
+change, and needs no part of this exception.
 
-## Noncommercial Purposes
+================================================================================
+OPTION 2 — Commercial licence
+================================================================================
 
-Any noncommercial purpose is a permitted purpose.
+If you want to build on Rekhon without releasing your source under the AGPL —
+in a proprietary product, a closed-source fork, or a hosted service you do not
+wish to publish the source of — you need a commercial licence from the copyright
+holder instead.
 
-## Personal Uses
+Ask: https://github.com/harish00506/Rekhon/issues
 
-Personal use for research, experiment, and testing for the benefit of public knowledge, personal study, private entertainment, hobby projects, amateur pursuits, or religious observance, without any anticipated commercial application, is use for a permitted purpose.
+See COMMERCIAL-LICENSE.md for what that covers and how to request it.
 
-## Noncommercial Organizations
+================================================================================
+THIRD-PARTY COMPONENTS AND TERMS OF USE
+================================================================================
 
-Use by any charitable organization, educational institution, public research organization, public safety or health organization, environmental protection organization, or government institution is use for a permitted purpose regardless of the source of funding or obligations resulting from the funding.
+This licence governs Rekhon's own source code. Third-party dependencies remain
+under their own licences — see NOTICE. Use of the application itself is governed
+by TERMS.md, which also records that Rekhon is not registered with SEBI or any
+financial regulator and that nothing it produces is financial advice.
 
-## Fair Use
+================================================================================
+LICENCE HISTORY
+================================================================================
 
-You may have "fair use" rights for the software under the law. These terms do not limit them.
-
-## No Other Rights
-
-These terms do not allow you to sublicense or transfer any of your licenses to anyone else, or prevent the licensor from granting licenses to anyone else.  These terms do not imply any other licenses.
-
-## Patent Defense
-
-If you make any written claim that the software infringes or contributes to infringement of any patent, your patent license for the software granted under these terms ends immediately. If your company makes such a claim, your patent license ends immediately for work on behalf of your company.
-
-## Violations
-
-The first time you are notified in writing that you have violated any of these terms, or done anything with the software not covered by your licenses, your licenses can nonetheless continue if you come into full compliance with these terms, and take practical steps to correct past violations, within 32 days of receiving notice.  Otherwise, all your licenses end immediately.
-
-## No Liability
-
-***As far as the law allows, the software comes as is, without any warranty or condition, and the licensor will not be liable to you for any damages arising out of these terms or the use or nature of the software, under any kind of legal claim.***
-
-## Definitions
-
-The **licensor** is the individual or entity offering these terms, and the **software** is the software the licensor makes available under these terms.
-
-**You** refers to the individual or entity agreeing to these terms.
-
-**Your company** is any legal entity, sole proprietorship, or other kind of organization that you work for, plus all organizations that have control over, are under the control of, or are under common control with that organization.  **Control** means ownership of substantially all the assets of an entity, or the power to direct its management and policies by vote, contract, or otherwise.  Control can be direct or indirect.
-
-**Your licenses** are all the licenses granted to you for the software under these terms.
-
-**Use** means anything you do with the software requiring one of your licenses.
+Rekhon was briefly published under the PolyForm Noncommercial License 1.0.0
+(kept at licenses/PolyForm-Noncommercial-1.0.0.txt for the record). It was
+relicensed to the terms above on 2026-08-29, while the copyright holder was still
+the sole author of every commit. Anyone who obtained a copy under the earlier
+licence may continue to rely on it for that copy; everything from this commit
+onward is under the dual licence described here.

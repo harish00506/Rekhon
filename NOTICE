@@ -2,12 +2,11 @@ Rekhon
 Copyright 2026 Harish G
 
 This product includes software developed as part of the Rekhon project.
-Licensed under the PolyForm Noncommercial License 1.0.0 (see LICENSE).
+Dual-licensed: AGPL-3.0 with a linking exception, or a commercial licence from
+the copyright holder (see LICENSE and COMMERCIAL-LICENSE.md).
 
-Rekhon itself is source-available, NOT open source: any noncommercial use is
-permitted, and commercial use requires a separate written licence from the
-copyright holder. That restriction applies only to Rekhon's own code. It does not
-and cannot apply to the third-party components below, which remain under their
+The AGPL option is open source in the OSI sense. Its copyleft applies to Rekhon's
+own code and not to the third-party components below, which remain under their
 own terms — the permissive licences they carry are what allow Rekhon to be
 licensed this way at all.
 
@@ -36,9 +35,19 @@ Google ML Kit — com.google.mlkit:text-recognition
 ML Kit is NOT open source. It is a proprietary Google SDK distributed under the
 ML Kit Terms of Service, which impose obligations on the app that ships it.
 
-The practical consequence: this repository's source is Apache 2.0, but a build of
-it is not a wholly open-source artefact, and anyone forking it inherits Google's
-terms rather than only ours. Used by the on-device receipt scanner (issue 3.8).
+This is the reason LICENSE carries a linking exception. Rekhon's own code is
+AGPL, ML Kit cannot be, and shipping an APK containing both would otherwise be an
+unresolvable conflict rather than a licensing choice. The exception permits the
+link and weakens no AGPL obligation on Rekhon's own source.
+
+The practical consequence for you: a build of this repository is not a wholly
+free artefact even though its source is, and a fork inherits Google's terms as
+well as ours. Used by the on-device receipt scanner (issue 3.8).
+
+The coupling is one class — MlKitReceiptTextRecognizer, behind the
+ReceiptTextRecognizer interface — and no domain model names an ML Kit type. A
+fully free build substituting an open-source recogniser is a contained change and
+needs no part of the exception.
 
 --------------------------------------------------------------------------------
 Google Tink — com.google.crypto.tink:tink-android
@@ -67,7 +76,7 @@ this file, as the authoritative record.
 This is not financial advice
 ================================================================================
 
-The licence's warranty disclaimer covers software defects. It does NOT cover the
+The AGPL's warranty disclaimer covers software defects. It does NOT cover the
 consequences of acting on what this app tells you, and the two are different
 risks. The user-facing position is set out in full in TERMS.md.
 
