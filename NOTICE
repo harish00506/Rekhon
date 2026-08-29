@@ -1,0 +1,69 @@
+Rekhon
+Copyright 2026 Harish G
+
+This product includes software developed as part of the Rekhon project.
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+================================================================================
+Third-party components
+================================================================================
+
+Most of this app's dependencies are licensed under the Apache License 2.0 and
+require only the attribution this file provides. Three need specific attention,
+and are called out because getting them wrong has consequences beyond tidiness.
+
+--------------------------------------------------------------------------------
+SQLCipher for Android — net.zetetic:sqlcipher-android
+--------------------------------------------------------------------------------
+Copyright (c) Zetetic LLC. SQLCipher Community Edition is distributed under a
+BSD-style license that permits commercial use but REQUIRES the copyright notice
+and disclaimer to be reproduced in distributed software and its documentation.
+
+This app encrypts its entire database with SQLCipher (issue 1.6, SEC-001), so
+this attribution is not optional. Reproduce Zetetic's notice verbatim from the
+version of the library you actually ship — do not paraphrase it.
+
+--------------------------------------------------------------------------------
+Google ML Kit — com.google.mlkit:text-recognition
+--------------------------------------------------------------------------------
+ML Kit is NOT open source. It is a proprietary Google SDK distributed under the
+ML Kit Terms of Service, which impose obligations on the app that ships it.
+
+The practical consequence: this repository's source is Apache 2.0, but a build of
+it is not a wholly open-source artefact, and anyone forking it inherits Google's
+terms rather than only ours. Used by the on-device receipt scanner (issue 3.8).
+
+--------------------------------------------------------------------------------
+Google Tink — com.google.crypto.tink:tink-android
+--------------------------------------------------------------------------------
+Apache License 2.0. Named separately because SEC-003 makes it the only sanctioned
+cryptography in this project: no hand-rolled crypto, review-blocking.
+
+--------------------------------------------------------------------------------
+Everything else
+--------------------------------------------------------------------------------
+AndroidX (Compose, Room, DataStore, Glance, WorkManager, Navigation, Lifecycle,
+Paging, Biometric, Activity, Core, SQLite), Kotlin and kotlinx, Dagger/Hilt, KSP,
+Protobuf, Retrofit, OkHttp, and the build and test toolchain (AGP, detekt, ktlint,
+Truth, MockK, Robolectric, Turbine, JUnit) — see each project for its own terms.
+
+DO NOT treat the list above as a licence audit. It is a hand-written summary and
+hand-written attribution lists go stale the first time someone adds a dependency.
+Before you ship publicly, generate the real one mechanically — the
+com.google.android.gms.oss-licenses-plugin produces an in-app licences screen
+from the actual resolved dependency graph — and keep the generated artefact, not
+this file, as the authoritative record.
+
+================================================================================
+This is not financial advice
+================================================================================
+
+The Apache License's warranty disclaimer covers software defects. It does NOT
+cover the consequences of acting on what this app tells you, and the two are
+different risks.
+
+Rekhon analyses and explains money you already have. It does not recommend
+specific securities or funds, it is not registered with SEBI or any other
+financial regulator, and nothing it produces is investment, tax or legal advice.
+Every figure it shows is computed from data you entered yourself. The decision,
+and its consequences, remain yours (P-07).
