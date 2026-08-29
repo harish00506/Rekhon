@@ -251,41 +251,41 @@ files and 42 trackers are now reported as preserved on every run. The cost is th
 to a record no longer propagates silently; you delete the file to regenerate, exactly as trackers
 have worked since 2.5.
 
-### `CfoSmokeTest` — improved, and honestly **not** root-caused
+### `CfoSmokeTest` — root-caused and fixed: an off-screen tap, not an app bug
 
-The instrumented failure reported earlier was real and reproduces reliably: clean install passes,
-a second run without `pm clear` fails. Two defensible fixes went in — the demo-seeding waits got
-their own 60s budget (the failing run died on a 20s budget at 21.3s, close enough that it would have
-gone on failing intermittently anyway), and the onboarding precondition is now asserted with a
-message naming the cause instead of timing out cryptically.
+**Before: 6 failures in 10 cold-install runs. After: 0 in 10.** Same emulator, same configuration.
 
-**Neither fixed it.** The precondition does not fire on the failing run, and 60s is no more enough
-than 20s was. Four hypotheses were killed by evidence — a write on the render path, the demo's own
-seeded rules (`name = null`, and `observeDecidedNames` filters `name IS NOT NULL`), duplicated seed
-rows (ids are deterministic and upserted), and timing. Going further needs a diagnostic from inside
-an instrumented build, because the app's own privacy design blocks every external route:
-`uiautomator dump` returns an empty hierarchy on a secure window, and the database is SQLCipher.
+The cause was in the test, not the app. The dashboard is one scrolling column and "View
+transactions" sits at its foot; once the demo's figures render it lands at **y ≈ 3174 on a 2340px
+window**. `performClick()` dispatches a tap at the node's centre, so the tap went ~830px below the
+bottom of the screen and hit nothing. The app stayed on the dashboard, and the test then spent its
+whole budget waiting for a heading on a screen it had never navigated to. Intermittent because the
+button's position depends on how much demo content has rendered above it — click early enough and it
+was still on-screen.
 
-**Measured, after ten controlled runs: it fails ~60% of the time.** Ten consecutive cold-install
-runs in one fixed configuration, unchanged code — **six failed** (runs 2, 3, 5, 7, 9, 10), always
-this test, always the same signature. The other test in the class passed 10/10, so the app boots and
-opens its database every time; it is specifically the recurring proposal that does not appear.
+The fix is `performScrollTo()` before the click, plus an assertion on the transactions title so this
+class of failure can never again present as a missing proposal.
 
-Two earlier explanations recorded during the session were wrong: state left by a manual launch, and
-then a clean-versus-cold-install discriminator. The measurement retires both — the runs that looked
-like a pattern were the 40%.
+**Three published explanations were wrong before the right measurement was taken** — state left by a
+manual launch, a clean-versus-cold-install discriminator, and a race between the two Room Flows
+behind the proposal. Each sent the investigation somewhere real and irrelevant: the detector, the
+repository, the demo dataset, the rulebook. The common error is worth naming, because it is cheap
+here and expensive later: **a timeout says where a test gave up, not what went wrong**, and every one
+of those hypotheses treated the two as the same fact.
 
-Also ruled out by evidence: **issue 6.5's `MarketPriceWorker` is not the cause.** Disabling its
-scheduling still reproduces the failure, so the eighth worker is not necessary for it.
+What settled it took two minutes: dump the Compose semantics tree at the moment of failure. That
+should have been the first move, not the fifth. `uiautomator` could not do it — the window is
+`FLAG_SECURE` — but Compose prints its own tree from inside the process, which is exactly the seam a
+privacy-hardened app leaves open for its own tests.
 
-The live suspicion, untested: `observeRecurringProposals` combines two Room Flows, and a cold first
-launch has eight workers competing for one freshly created SQLCipher database. A first emission
-pairing seeded candidates with a pre-seed decided-names list would render; the reverse ordering
-would not. That is the shape of a race that flips with load.
+The wrong leads stay in the test's KDoc rather than being deleted, so the next reader inherits the
+eliminations and the lesson instead of repeating the search.
 
-Both wrong stories are corrected in the test's KDoc rather than quietly deleted — a confident wrong
-lead costs the next reader more than no lead at all. **It is an open, flaky defect, and a single
-green run of this test does not mean anything.**
+**Latent, not fixed:** five other `performClick()` calls in instrumented tests have the same
+exposure (`ENTER_DEMO` here, four in `OnboardingFlowInstrumentedTest`). All pass today because their
+screens are short. They are left alone deliberately — churning passing tests to pre-empt a hazard
+that has not fired is scope this session did not ask for — but they are the first place to look if
+one of them starts flaking.
 
 ---
 

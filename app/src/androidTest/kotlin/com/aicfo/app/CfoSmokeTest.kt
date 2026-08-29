@@ -7,6 +7,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -73,48 +74,21 @@ class CfoSmokeTest {
      * Output: asserts a proposal renders **with its evidence** (P-02) on the transactions list,
      *         computed by the real engine from rows read out of the real encrypted database.
      *
-     * **KNOWN DEFECT — this test FAILS ABOUT 60% OF THE TIME. A green run means nothing.**
-     * Measured, not estimated: ten consecutive cold-install runs in one fixed configuration, on
-     * unchanged code, **failed six times** (runs 2, 3, 5, 7, 9, 10). Always this test, always the
-     * same signature — the wait for [RECURRING_HEADING] exhausts its budget. The other test in this
-     * class passed 10/10, so the app boots and opens its database every time; it is specifically the
-     * recurring proposal that does not appear.
+     * **Was flaky at ~60%; fixed by scrolling before the tap. The history is kept on purpose.**
+     * Ten cold-install runs of the unfixed test failed six times, always here, always with the wait
+     * for [RECURRING_HEADING] exhausting its budget — which read as "the detector proposes nothing"
+     * and sent the investigation into the engine, the repository, the demo dataset and the rulebook.
+     * All of it was wrong. Dumping the Compose semantics tree at the moment of failure showed the
+     * screen was still the **dashboard**: the tap on "View transactions" had gone to y=3174 on a
+     * 2340px window and hit nothing.
      *
-     * Two earlier versions of this note were wrong and are corrected here rather than quietly
-     * deleted, because a confident wrong lead costs the next person more than no lead at all. The
-     * first blamed state left by a manual launch; the second claimed a reliable reproduction
-     * ("clean install passes, a second run fails") and read a discriminator into how the app reached
-     * the device. The ten-run measurement retires both: there is no clean-versus-cold discriminator,
-     * and the runs that looked like a pattern were simply the 40%.
-     *
-     * Ruled out, each by evidence rather than reasoning:
-     *
-     *  - **Not the onboarding path.** The precondition below does not fire on a failing run —
-     *    onboarding shows, the demo is entered, and the dashboard renders.
-     *  - **Not the timeout.** Raised from 20s to [SEED_TIMEOUT_MILLIS]; failing runs still spend the
-     *    whole budget, and 60s is no more enough than 20s was. Whatever is awaited never arrives —
-     *    this is not a slow path being cut short.
-     *  - **Not issue 6.5's `MarketPriceWorker`.** Disabling its scheduling still reproduces the
-     *    failure, so the eighth worker is not necessary for it.
-     *  - **Not a write on a read path.** Only three places write `recurring_rule`
-     *    (`DemoModeRepository.enter`, `QuickSetupRepository`, `RecurringRepository.confirm/dismiss`)
-     *    and none is on the render path.
-     *  - **Not the demo's own seeded rules.** They are written with `name = null`, and
-     *    `RecurringRuleDao.observeDecidedNames` filters `name IS NOT NULL`, so they exclude nothing.
-     *  - **Not duplicated seed rows.** Demo ids are deterministic (`demo:txn:0001`) and upserted.
-     *  - **Not the clock or the window.** The device runs the same date as the host, and
-     *    `LOOKBACK_DAYS` is 730 — three months of demo ledger sit well inside it.
-     *
-     * The live suspicion, untested: `observeRecurringProposals` combines two Room Flows, and a
-     * cold first launch has eight workers competing for the same freshly created SQLCipher database.
-     * A first emission that pairs seeded candidates with a decided-names list from before the seed
-     * would render, whereas the reverse ordering would not — which is the shape of a race that
-     * flips with load.
-     *
-     * External diagnosis is closed off by the app's own privacy design, working as intended:
-     * `uiautomator dump` returns an empty hierarchy on a secure window, and the database is
-     * SQLCipher. Pinning this down needs a diagnostic inside an instrumented build — log what
-     * `observeRecurringProposals` emits, in order, across a passing and a failing run.
+     * Three explanations were published before that measurement and all three were wrong — state
+     * left by a manual launch, a clean-versus-cold-install discriminator, and a race between the two
+     * Room Flows behind the proposal. They are recorded rather than deleted because the lesson is
+     * cheap here and expensive later: **a timeout names where a test gave up, not what went wrong**,
+     * and every hypothesis above was built on treating the two as the same thing. The assertion on
+     * [TRANSACTIONS_TITLE] below exists so the next failure of this kind cannot masquerade as a
+     * missing proposal.
      */
     @Test
     fun theRecurringSectionProposesASeriesFromTheRealLedger() {
@@ -142,7 +116,23 @@ class CfoSmokeTest {
         // transitions the shared timeout was sized for.
         compose.waitUntilAtLeastOneExists(hasText(DASHBOARD), SEED_TIMEOUT_MILLIS)
 
-        compose.onNodeWithText(VIEW_TRANSACTIONS).performClick()
+        // `performScrollTo` before the click, and it is the whole fix for what used to be a ~60%
+        // flake. The dashboard is one scrolling column and this button lives at its foot: with the
+        // demo's figures rendered it sits around y=3174 on a 2340px screen, so `performClick` alone
+        // dispatched a tap ~830px below the bottom of the window. Nothing received it, the app
+        // stayed on the dashboard, and the wait below then spent its whole budget looking for a
+        // heading on a screen the test had never reached.
+        //
+        // It was intermittent rather than constant because the button's position depends on how
+        // much of the demo has rendered above it — click early enough and it was still on-screen.
+        // That is a race against layout, and scrolling the node into view is what settles it.
+        compose.onNodeWithText(VIEW_TRANSACTIONS).performScrollTo().performClick()
+
+        // Assert the navigation before waiting on its content. Without this, any future failure to
+        // arrive here reads as "the proposal is missing" — which is what sent the last investigation
+        // looking for a detector bug that was never there.
+        compose.waitUntilAtLeastOneExists(hasText(TRANSACTIONS_TITLE), SEED_TIMEOUT_MILLIS)
+
         // Also generous: the detector runs over every seeded row on first render.
         compose.waitUntilAtLeastOneExists(hasText(RECURRING_HEADING), SEED_TIMEOUT_MILLIS)
 
@@ -173,6 +163,9 @@ class CfoSmokeTest {
         const val ENTER_DEMO = "Explore with sample data"
         const val DASHBOARD = "Dashboard"
         const val VIEW_TRANSACTIONS = "View transactions"
+
+        /** From `transactions_title` — proves the tap actually navigated. */
+        const val TRANSACTIONS_TITLE = "Transactions"
         const val RECURRING_HEADING = "Looks like a repeat"
 
         /** From `transactions_recurring_occurrences`, the ICU plural that carries the evidence. */
