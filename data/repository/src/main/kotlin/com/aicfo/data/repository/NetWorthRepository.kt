@@ -17,7 +17,11 @@ import com.aicfo.core.model.Money
 import com.aicfo.domain.engines.networth.AccountBalance
 import com.aicfo.domain.engines.networth.NetWorthEngine
 import com.aicfo.domain.engines.networth.NetWorthInput
+import com.aicfo.domain.engines.networth.NetWorthPoint
+import com.aicfo.domain.engines.networth.NetWorthRange
 import com.aicfo.domain.engines.networth.NetWorthResult
+import com.aicfo.domain.engines.networth.NetWorthTrend
+import com.aicfo.domain.engines.networth.NetWorthTrendInput
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -56,6 +60,23 @@ interface NetWorthRepository {
      * Input:  none. Output: `Flow<NetWorthResult?>`.
      */
     fun observeLatest(): Flow<NetWorthResult?>
+
+    /**
+     * Observes the stored series for one window, with the trend measured off it (issue 6.6).
+     * Why:    **this reads history; it never recomputes it.** FR-ACC-005 stores a row per day so a
+     *         trend cannot move under the user, and that promise is only kept if the read path stays
+     *         away from today's accounts. Nothing here calls [computeAsOf] — the figures come out of
+     *         `net_worth_snapshot` exactly as the worker left them, and the engine measures between
+     *         them.
+     * Result: emits on every write or repair to the window. A window holding nothing emits a trend
+     *         with no points rather than failing — a profile before its first snapshot has asked a
+     *         reasonable question and "not yet" is the answer (P-03).
+     * Input:  [range] — which of FR-ACC-005's four windows to read; the from-date is resolved here
+     *         because it needs the profile's today (TIM-001).
+     * Output: `Flow<NetWorthTrend>`.
+     * Changelog: 2026-08-29 — Created for issue 6.6.
+     */
+    fun observeHistory(range: NetWorthRange): Flow<NetWorthTrend>
 
     /**
      * Observes net worth **as it stands right now**, recomputed as accounts and transactions change.
@@ -183,6 +204,18 @@ internal class RoomNetWorthRepository(
         activeProfileId
             .flatMapLatest { profileId -> database.netWorthSnapshotDao().observeLatest(profileId) }
             .map { row -> row?.toResult() }
+            .flowOn(dispatchers.io)
+
+    override fun observeHistory(range: NetWorthRange): Flow<NetWorthTrend> =
+        activeProfileId
+            .flatMapLatest { profileId ->
+                // Inside the lambda for the reason observeCurrent gives: a flow left open across
+                // midnight must roll its window forward rather than keep yesterday's.
+                val today = clock.today()
+                database.netWorthSnapshotDao()
+                    .observeRange(profileId, range.fromDate(today).toString(), today.toString())
+                    .map { rows -> trendOf(engine, rows, range, clock.nowUtcMillis()) }
+            }
             .flowOn(dispatchers.io)
 
     override suspend fun computeAsOf(asOfIsoDate: String): Result<NetWorthResult, AppError> =
@@ -387,6 +420,73 @@ internal fun NetWorthSnapshotEntity.toResult(): NetWorthResult =
                 inputWindow = asOfIsoDate,
             ),
     )
+
+/**
+ * The earliest day one of FR-ACC-005's windows covers.
+ * Why:    calendar arithmetic, not a day count — "one month" back from 31 March is 28 February, and
+ *         `minusDays(30)` would quietly disagree with the label on the chip. `LocalDate` gets this
+ *         right, and the caller has already resolved [today] in the profile zone (TIM-001/TIM-002).
+ *
+ *         **[NetWorthRange.ALL] uses a sentinel rather than a second query.** Asking the database for
+ *         `MIN(as_of_iso_date)` first would be a round trip to learn something the range scan is
+ *         about to discover anyway, and a date before the Gregorian calendar cannot exclude a row
+ *         any real profile holds.
+ * Result: the inclusive lower bound, ISO `yyyy-MM-dd`.
+ * Input:  the receiver — the window; [today] — the profile's today. Output: [LocalDate].
+ * Changelog: 2026-08-29 — Created for issue 6.6.
+ */
+internal fun NetWorthRange.fromDate(today: LocalDate): LocalDate =
+    when (this) {
+        NetWorthRange.ONE_MONTH -> today.minusMonths(1)
+        NetWorthRange.SIX_MONTHS -> today.minusMonths(SIX_MONTHS)
+        NetWorthRange.ONE_YEAR -> today.minusYears(1)
+        NetWorthRange.ALL -> ALL_TIME_FROM_DATE
+    }
+
+/**
+ * Measures the trend off rows read straight out of the table.
+ * Why:    file scope rather than a member, because it touches no instance state — the same pressure
+ *         that moved `freshness` out of `RoomInvestmentRepository`, and this class already carries a
+ *         `TooManyFunctions` suppression.
+ *
+ *         The engine is **total over this input** — an empty window and a single reading are
+ *         verdicts — so an `Err` here would be a programming mistake rather than a user state, and
+ *         the `as Ok` says so.
+ * Result: the trend the history screen renders.
+ * Input:  [engine] — the measurer; [rows] — the stored snapshots, already ordered by date; [range] —
+ *         carried into provenance; [nowUtcMillis] — the provenance stamp, read by the caller
+ *         (TIM-001).
+ * Output: [NetWorthTrend].
+ * Changelog: 2026-08-29 — Created for issue 6.6.
+ */
+private fun trendOf(
+    engine: NetWorthEngine,
+    rows: List<NetWorthSnapshotEntity>,
+    range: NetWorthRange,
+    nowUtcMillis: Long,
+): NetWorthTrend =
+    (
+        engine.trend(
+            NetWorthTrendInput(
+                // Mapped to points rather than through `toResult()`: a chart needs a date and a
+                // figure, and carrying the subtotals and a provenance stamp for every one of up to
+                // 730 days would be ballast to draw one line.
+                points = rows.map { row -> NetWorthPoint(row.asOfIsoDate, Money(row.netWorthMinor)) },
+                range = range,
+                nowUtcMillis = nowUtcMillis,
+            ),
+        ) as Ok
+    ).value
+
+/**
+ * The lower bound [NetWorthRange.ALL] scans from — before any profile this app could hold.
+ *
+ * A sentinel and not a real date: it exists so "everything" is one query shape rather than two.
+ */
+private val ALL_TIME_FROM_DATE: LocalDate = LocalDate.of(1, 1, 1)
+
+/** The six in `SIX_MONTHS`, named because detekt counts a literal in an expression as magic. */
+private const val SIX_MONTHS = 6L
 
 /**
  * Result: the derived id for one day's snapshot. Input: [profileId], [asOfIsoDate].

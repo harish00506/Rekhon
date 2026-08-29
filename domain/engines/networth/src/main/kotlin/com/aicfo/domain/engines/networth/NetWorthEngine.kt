@@ -40,6 +40,28 @@ interface NetWorthEngine {
      * Output: `Result<NetWorthResult, AppError>`.
      */
     fun compute(input: NetWorthInput): Result<NetWorthResult, AppError>
+
+    /**
+     * Reads the trend off a series of stored snapshots.
+     * Why:    **it reads, it does not recompute.** FR-ACC-005 stores a row per day precisely so a
+     *         trend cannot move under the user, and recomputing history from today's accounts would
+     *         silently rewrite it whenever an account is archived or a transaction back-dated — the
+     *         chart would show a past that never happened. So this takes the stored figures and
+     *         measures between them; it never sees a balance and could not recompute one if it
+     *         wanted to.
+     *
+     *         A second operation on this interface rather than a second engine: it answers a
+     *         question about the same quantity, from the same module, and splitting it out would
+     *         mean a module whose only job is one subtraction and one ratio.
+     * What:   endpoints, extremes, and the change between the endpoints.
+     * Result: `Ok(trend)` always — **total over its input**. An empty window and a single reading are
+     *         verdicts, not errors, the way `XirrUnavailable` and `AllocationUnavailable` are: a new
+     *         profile with one snapshot has asked a perfectly good question and the honest answer is
+     *         "not yet". `Err` only for an overflow no real series can reach.
+     * Input:  [input] — points already bounded to the window, plus the caller's clock reading.
+     * Output: `Result<NetWorthTrend, AppError>`.
+     */
+    fun trend(input: NetWorthTrendInput): Result<NetWorthTrend, AppError>
 }
 
 /**

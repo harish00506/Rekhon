@@ -1,0 +1,157 @@
+Golden file for :domain:engines:networth's trend (issue 6.6; FR-ACC-005).
+
+Every record is one series of STORED daily snapshots and the trend read off it. Amounts are PAISE
+(MNY-001), never rupees -- a fixture written in rupees is a fixture that silently passes at a
+hundredth of the amount it claims. The percentage change is integer BASIS POINTS (MNY-002): 2500 is
+25.00%, not 2500%.
+
+WHERE THESE NUMBERS COME FROM: an independent Python implementation written from the specification
+and not from the Kotlin it guards. Agreement between the two is therefore evidence the figures are
+RIGHT, not merely unchanged. A golden file regenerated from the code it checks asserts only that the
+code has not moved, which is a different and much weaker claim.
+
+THE FIVE RECORDS THAT ARE THE POINT OF THIS FILE are the ones where a percentage must be REFUSED.
+Net worth is routinely negative for a user with a loan and little saved, and -50,00,000 paise moving
+to -10,00,000 paise is an improvement of 40,00,000 paise -- it is NOT "+80%", and reporting it as
+one would be a fabricated figure in the position a user trusts most (P-03). The rule is that a
+percentage is reported only when the STARTING value is strictly positive: `> 0`, never `>= 0`,
+because a zero denominator is the same lie by a different route. Those records are `negative
+throughout`, `crossing zero`, `starting at exactly zero`, plus the two single/empty cases where
+there is no interval to measure at all.
+
+A change over a ZERO-LENGTH interval is absent, not zero. One reading tells you what net worth was
+that day and nothing whatever about which way it is going, so `expect_change=none` -- the same
+distinction the dashboard already draws between "no snapshot yet" and a net worth of zero.
+
+Ties on high and low resolve to the EARLIEST point, so a flat series names its first day rather than
+an arbitrary one, and the file stays reproducible to the byte (P-08).
+
+Record format -- one `# key=value` per line, then one payload row per snapshot, records separated by
+a line of `===`:
+
+  label           what the case is for, quoted back in assertion failures
+  expect_first    `iso_date:paise` of the earliest point, or `none` for an empty series
+  expect_last     `iso_date:paise` of the latest point, or `none`
+  expect_change   last minus first, in paise, or `none` when there is no interval
+  expect_bps      integer basis points, or `none` when a percentage would mislead
+  expect_high     `iso_date:paise` of the largest value, earliest on a tie, or `none`
+  expect_low      `iso_date:paise` of the smallest value, earliest on a tie, or `none`
+  expect_points   how many rows the record carries, so a dropped row cannot pass unnoticed
+
+  payload row: as_of_iso_date|net_worth_minor
+               net_worth_minor is SIGNED -- negative is a user who owes more than they hold
+
+No clock is read and no order is incidental. The engine receives points already bounded to the
+requested range; choosing that window is the repository's job, because it needs a clock (TIM-001).
+===
+# label=a rising series - the ordinary case, and the only one here where a percentage is sound
+# expect_first=2026-03-01:10000000
+# expect_last=2026-05-01:12500000
+# expect_change=2500000
+# expect_bps=2500
+# expect_high=2026-05-01:12500000
+# expect_low=2026-03-01:10000000
+# expect_points=3
+2026-03-01|10000000
+2026-04-01|11000000
+2026-05-01|12500000
+===
+# label=a falling series - change and bps both negative
+# expect_first=2026-03-01:20000000
+# expect_last=2026-05-01:15000000
+# expect_change=-5000000
+# expect_bps=-2500
+# expect_high=2026-03-01:20000000
+# expect_low=2026-05-01:15000000
+# expect_points=3
+2026-03-01|20000000
+2026-04-01|18000000
+2026-05-01|15000000
+===
+# label=flat - zero change is a fact here, unlike an absent one; high and low tie to the EARLIEST
+# expect_first=2026-03-01:7500000
+# expect_last=2026-05-01:7500000
+# expect_change=0
+# expect_bps=0
+# expect_high=2026-03-01:7500000
+# expect_low=2026-03-01:7500000
+# expect_points=3
+2026-03-01|7500000
+2026-04-01|7500000
+2026-05-01|7500000
+===
+# label=one reading - a change over a zero-length interval is not zero, it is unknown (P-03)
+# expect_first=2026-03-01:5000000
+# expect_last=2026-03-01:5000000
+# expect_change=none
+# expect_bps=none
+# expect_high=2026-03-01:5000000
+# expect_low=2026-03-01:5000000
+# expect_points=1
+2026-03-01|5000000
+===
+# label=no readings at all - a new profile before its first snapshot has been taken
+# expect_first=none
+# expect_last=none
+# expect_change=none
+# expect_bps=none
+# expect_high=none
+# expect_low=none
+# expect_points=0
+===
+# label=negative throughout - the percentage is REFUSED, not signed; -50k to -10k is not +80%
+# expect_first=2026-03-01:-5000000
+# expect_last=2026-05-01:-1000000
+# expect_change=4000000
+# expect_bps=none
+# expect_high=2026-05-01:-1000000
+# expect_low=2026-03-01:-5000000
+# expect_points=3
+2026-03-01|-5000000
+2026-04-01|-3000000
+2026-05-01|-1000000
+===
+# label=crossing zero - a sign flip makes any ratio meaningless, so bps stays absent
+# expect_first=2026-03-01:-2000000
+# expect_last=2026-05-01:3000000
+# expect_change=5000000
+# expect_bps=none
+# expect_high=2026-05-01:3000000
+# expect_low=2026-03-01:-2000000
+# expect_points=3
+2026-03-01|-2000000
+2026-04-01|0
+2026-05-01|3000000
+===
+# label=starting at exactly zero - the divide-by-zero boundary; the test is > 0, never >= 0
+# expect_first=2026-03-01:0
+# expect_last=2026-04-01:2500000
+# expect_change=2500000
+# expect_bps=none
+# expect_high=2026-04-01:2500000
+# expect_low=2026-03-01:0
+# expect_points=2
+2026-03-01|0
+2026-04-01|2500000
+===
+# label=bps truncates toward zero, positive - 3.333% must report 333 and never 334
+# expect_first=2026-03-01:3000000
+# expect_last=2026-04-01:3100000
+# expect_change=100000
+# expect_bps=333
+# expect_high=2026-04-01:3100000
+# expect_low=2026-03-01:3000000
+# expect_points=2
+2026-03-01|3000000
+2026-04-01|3100000
+===
+# label=bps truncates toward zero, negative - -3.333% must report -333 and never -334
+# expect_first=2026-03-01:3000000
+# expect_last=2026-04-01:2900000
+# expect_change=-100000
+# expect_bps=-333
+# expect_high=2026-03-01:3000000
+# expect_low=2026-04-01:2900000
+# expect_points=2
+2026-03-01|3000000
+2026-04-01|2900000

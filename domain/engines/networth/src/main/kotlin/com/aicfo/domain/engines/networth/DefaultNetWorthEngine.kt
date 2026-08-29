@@ -54,6 +54,32 @@ internal class DefaultNetWorthEngine : NetWorthEngine {
             )
         }
 
+    override fun trend(input: NetWorthTrendInput): Result<NetWorthTrend, AppError> =
+        runCatchingToResult {
+            val points = input.points
+            val change = Trend.change(points)
+
+            NetWorthTrend(
+                points = points,
+                first = points.firstOrNull(),
+                last = points.lastOrNull(),
+                change = change,
+                changeBps = Trend.changeBps(points, change),
+                high = Trend.high(points),
+                low = Trend.low(points),
+                provenance =
+                    EngineProvenance(
+                        engineId = TREND_ENGINE_ID,
+                        engineVersion = TREND_ENGINE_VERSION,
+                        computedAtUtcMillis = input.nowUtcMillis,
+                        // Nothing to cite: measuring a stored series against itself involves no
+                        // threshold, so there is no rulebook row behind it (CLAUDE.md §6).
+                        evidence = emptyList(),
+                        inputWindow = input.range.name,
+                    ),
+            )
+        }
+
     private companion object {
         /** Stable identifier stored with every snapshot (AI-ARC-003). */
         const val ENGINE_ID = "net-worth"
@@ -65,6 +91,20 @@ internal class DefaultNetWorthEngine : NetWorthEngine {
          * explained after the engine is rewritten — which is the whole reason the column exists.
          */
         const val ENGINE_VERSION = "1.0"
+
+        /**
+         * The trend's own identifier, deliberately not [ENGINE_ID] (issue 6.6).
+         *
+         * Two computations sharing one version string would have to move together, and these two
+         * have no reason to: `compute`'s version is **written into every `net_worth_snapshot` row**
+         * (AI-ARC-006), so bumping it because the trend changed would stamp thousands of stored rows
+         * as the output of a formula that did not move — and make the one signal that column exists
+         * to carry meaningless. Separate ids, separate version histories, both logged in ENGINE.md.
+         */
+        const val TREND_ENGINE_ID = "net-worth-trend"
+
+        /** Bump when the trend arithmetic changes; `compute`'s [ENGINE_VERSION] is untouched by it. */
+        const val TREND_ENGINE_VERSION = "1.0"
     }
 }
 

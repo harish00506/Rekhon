@@ -15,6 +15,7 @@ import com.aicfo.core.database.entity.TransactionEntity
 import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Money
 import com.aicfo.domain.engines.networth.NetWorthEngineFactory
+import com.aicfo.domain.engines.networth.NetWorthRange
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -656,6 +657,119 @@ class NetWorthRepositoryTest {
             ),
         )
     }
+
+    // --- the history, issue 6.6 -----------------------------------------------------------------
+
+    /**
+     * Input:  five stored days, read back as the ALL window.
+     * Output: asserts every one comes back, oldest first, with the trend measured between the ends.
+     */
+    @Test
+    fun `the history returns every stored day, oldest first`() =
+        runTest {
+            insertSnapshot("2026-03-13", 10_000_00L)
+            insertSnapshot("2026-03-17", 12_500_00L)
+            insertSnapshot("2026-03-15", 11_000_00L)
+
+            val trend = repository.observeHistory(NetWorthRange.ALL).first()
+
+            assertEquals(listOf("2026-03-13", "2026-03-15", "2026-03-17"), trend.points.map { it.asOfIsoDate })
+            assertEquals(Money(2_500_00L), trend.change)
+            assertEquals("2026-03-13", trend.first?.asOfIsoDate)
+            assertEquals("2026-03-17", trend.last?.asOfIsoDate)
+        }
+
+    /**
+     * Input:  a stored figure that deliberately disagrees with what the accounts would produce.
+     * Output: asserts the **stored** figure is what comes back.
+     *
+     * This is the assertion that proves FR-ACC-005's freeze rather than describing it. The fixture
+     * account holds a balance the engine would turn into a quite different number; if anything on
+     * this path recomputed instead of reading, the history would silently follow today's accounts
+     * and the chart would show a past that never happened. A day nobody changed must read back
+     * exactly as it was written, however wrong it looks from here.
+     */
+    @Test
+    fun `the history reads what was stored and never recomputes it`() =
+        runTest {
+            insertAccount(id = "acc-live", type = AccountType.BANK, openingBalanceMinor = 999_999_00L)
+            insertSnapshot("2026-03-16", 1_234_00L)
+
+            val trend = repository.observeHistory(NetWorthRange.ALL).first()
+
+            assertEquals(1, trend.points.size)
+            assertEquals(Money(1_234_00L), trend.points.single().netWorth)
+        }
+
+    /**
+     * Input:  one day inside the window and one well outside it.
+     * Output: asserts the range bounds the read — a 1M chart must not quietly plot a year.
+     */
+    @Test
+    fun `the range bounds which days are read`() =
+        runTest {
+            insertSnapshot("2026-03-16", 10_000_00L)
+            insertSnapshot("2025-03-16", 5_000_00L)
+
+            val month = repository.observeHistory(NetWorthRange.ONE_MONTH).first()
+            val all = repository.observeHistory(NetWorthRange.ALL).first()
+
+            assertEquals(listOf("2026-03-16"), month.points.map { it.asOfIsoDate })
+            assertEquals(listOf("2025-03-16", "2026-03-16"), all.points.map { it.asOfIsoDate })
+        }
+
+    /**
+     * Input:  a day exactly on the window's lower bound.
+     * Output: asserts the bound is inclusive. Off-by-one at a boundary is the likeliest bug here and
+     *         the least visible: the chart simply starts a day late.
+     */
+    @Test
+    fun `the earliest day of the window is included`() =
+        runTest {
+            val boundary = clock.today().minusMonths(1).toString()
+            insertSnapshot(boundary, 4_000_00L)
+
+            val trend = repository.observeHistory(NetWorthRange.ONE_MONTH).first()
+
+            assertEquals(listOf(boundary), trend.points.map { it.asOfIsoDate })
+        }
+
+    /**
+     * Input:  a profile with nothing stored.
+     * Output: asserts an empty window is a trend with no points, not an error and not a zero — the
+     *         same absent-is-not-zero line the dashboard already draws (P-03).
+     */
+    @Test
+    fun `a profile with no snapshots has an empty history, not a zero one`() =
+        runTest {
+            val trend = repository.observeHistory(NetWorthRange.ALL).first()
+
+            assertTrue("expected no points", trend.points.isEmpty())
+            assertNull(trend.change)
+            assertNull(trend.changeBps)
+        }
+
+    /**
+     * Input:  a snapshot in the demo profile while the real one is active.
+     * Output: asserts the history follows the active profile, so the demo's figures never appear in
+     *         the real chart (ADR-0006).
+     */
+    @Test
+    fun `the history follows the active profile`() =
+        runTest {
+            insertSnapshot("2026-03-16", 7_000_00L, profileId = DEMO_PROFILE)
+            insertSnapshot("2026-03-16", 1_000_00L)
+
+            assertEquals(Money(1_000_00L), onlyPointOfHistory())
+
+            activeProfileId.value = DEMO_PROFILE
+
+            assertEquals(Money(7_000_00L), onlyPointOfHistory())
+        }
+
+    /** Result: the single stored figure the active profile's history holds. Output: [Money]. */
+    private suspend fun onlyPointOfHistory(): Money =
+        repository.observeHistory(NetWorthRange.ALL).first().points.single().netWorth
 
     /** Result: every stored day for the active profile, oldest first. Output: `List<String>`. */
     private fun storedDates(): List<String> =

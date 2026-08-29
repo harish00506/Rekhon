@@ -16,7 +16,9 @@ import com.aicfo.core.model.Money
 import com.aicfo.core.model.RuleCitation
 import com.aicfo.data.repository.NetWorthRepository
 import com.aicfo.data.repository.SafeToSpendRepository
+import com.aicfo.domain.engines.networth.NetWorthRange
 import com.aicfo.domain.engines.networth.NetWorthResult
+import com.aicfo.domain.engines.networth.NetWorthTrend
 import com.aicfo.domain.engines.safetospend.SafeToSpend
 import com.aicfo.domain.engines.safetospend.SafeToSpendComponent
 import com.aicfo.domain.engines.safetospend.SafeToSpendLine
@@ -212,6 +214,30 @@ private class RecordingWidgetNetWorthRepository : NetWorthRepository {
     }
 
     override fun observeLatest(): Flow<NetWorthResult?> = flowOf(null)
+
+    /**
+     * The stored series (issue 6.6). This worker never reads history — it only writes days — so an
+     * empty trend is the honest answer rather than a fabricated one.
+     */
+    override fun observeHistory(range: NetWorthRange): Flow<NetWorthTrend> =
+        flowOf(
+            NetWorthTrend(
+                points = emptyList(),
+                first = null,
+                last = null,
+                change = null,
+                changeBps = null,
+                high = null,
+                low = null,
+                provenance =
+                    EngineProvenance(
+                        engineId = "net-worth-trend",
+                        engineVersion = "1.0",
+                        computedAtUtcMillis = 1L,
+                        inputWindow = range.name,
+                    ),
+            ),
+        )
 
     override suspend fun computeAsOf(asOfIsoDate: String): Result<NetWorthResult, AppError> = Err(AppError.NotFound)
 

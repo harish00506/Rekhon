@@ -2652,6 +2652,43 @@ interface NetWorthSnapshotDao {
     suspend fun findLatestAsOfDate(profileId: String): String?
 
     /**
+     * Observes every stored day inside a window, oldest first (issue 6.6; FR-ACC-005).
+     * Why:    the query issue 6.6's chart is built on, and the first read of this table that returns
+     *         more than one row for display. It reads what was **stored**, which is the whole point
+     *         of the table: recomputing history from today's accounts would rewrite the past every
+     *         time an account is archived or a transaction back-dated, and the chart would show a
+     *         past that never happened.
+     *
+     *         **`ORDER BY as_of_iso_date` sorts correctly because the dates are ISO strings** —
+     *         `yyyy-MM-dd` sorts lexicographically in the same order it sorts chronologically, which
+     *         is a large part of why TIM-002 mandates that format over a timestamp. No index is
+     *         needed beyond the `(profile_id, as_of_iso_date)` composite this table already carries;
+     *         it covers both the equality and the range in one scan.
+     *
+     *         **Tombstones are excluded here and included by [ArchiveDao.netWorthSnapshots]**, and
+     *         the difference is deliberate: an export is a copy of everything the profile owns, while
+     *         a chart is what is true now. A deleted day must not put a notch in the line.
+     * Result: the profile's undeleted snapshots between the bounds inclusive, re-emitted whenever the
+     *         worker writes or repairs a day; empty for a profile with nothing stored yet, which is a
+     *         real state and not an error.
+     * Input:  [profileId]; [fromIsoDate] and [toIsoDate] — inclusive bounds, ISO `yyyy-MM-dd` in the
+     *         profile zone, resolved by the repository because choosing a window needs a clock
+     *         (TIM-001).
+     * Output: `Flow<List<NetWorthSnapshotEntity>>`.
+     * Changelog: 2026-08-29 — Created for issue 6.6.
+     */
+    @Query(
+        "SELECT * FROM net_worth_snapshot WHERE profile_id = :profileId " +
+            "AND as_of_iso_date >= :fromIsoDate AND as_of_iso_date <= :toIsoDate " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY as_of_iso_date",
+    )
+    fun observeRange(
+        profileId: String,
+        fromIsoDate: String,
+        toIsoDate: String,
+    ): Flow<List<NetWorthSnapshotEntity>>
+
+    /**
      * Fetches one day's snapshot.
      * Result: the row, or `null`. Input: [profileId], [asOfIsoDate]. Output: `NetWorthSnapshotEntity?`.
      */

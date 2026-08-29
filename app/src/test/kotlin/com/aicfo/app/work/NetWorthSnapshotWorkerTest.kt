@@ -8,8 +8,11 @@ import com.aicfo.core.common.Err
 import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
 import com.aicfo.core.crypto.SessionLock
+import com.aicfo.core.model.EngineProvenance
 import com.aicfo.data.repository.NetWorthRepository
+import com.aicfo.domain.engines.networth.NetWorthRange
 import com.aicfo.domain.engines.networth.NetWorthResult
+import com.aicfo.domain.engines.networth.NetWorthTrend
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
@@ -168,6 +171,30 @@ private class RecordingNetWorthRepository : NetWorthRepository {
     var repairResult: Result<Int, AppError> = Ok(0)
 
     override fun observeLatest(): Flow<NetWorthResult?> = flowOf(null)
+
+    /**
+     * The stored series (issue 6.6). This worker never reads history — it only writes days — so an
+     * empty trend is the honest answer rather than a fabricated one.
+     */
+    override fun observeHistory(range: NetWorthRange): Flow<NetWorthTrend> =
+        flowOf(
+            NetWorthTrend(
+                points = emptyList(),
+                first = null,
+                last = null,
+                change = null,
+                changeBps = null,
+                high = null,
+                low = null,
+                provenance =
+                    EngineProvenance(
+                        engineId = "net-worth-trend",
+                        engineVersion = "1.0",
+                        computedAtUtcMillis = 1L,
+                        inputWindow = range.name,
+                    ),
+            ),
+        )
 
     override fun observeCurrent(): Flow<NetWorthResult> = flowOf()
 

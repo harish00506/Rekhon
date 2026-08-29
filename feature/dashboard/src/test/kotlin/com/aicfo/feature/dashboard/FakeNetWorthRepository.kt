@@ -6,10 +6,14 @@ import com.aicfo.core.common.Result
 import com.aicfo.core.model.EngineProvenance
 import com.aicfo.core.model.Money
 import com.aicfo.data.repository.NetWorthRepository
+import com.aicfo.domain.engines.networth.NetWorthPoint
+import com.aicfo.domain.engines.networth.NetWorthRange
 import com.aicfo.domain.engines.networth.NetWorthResult
+import com.aicfo.domain.engines.networth.NetWorthTrend
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.map
 
 /**
  * A [NetWorthRepository] the dashboard tests drive directly (issue 2.6).
@@ -39,11 +43,23 @@ internal class FakeNetWorthRepository : NetWorthRepository {
      */
     override fun observeCurrent(): Flow<NetWorthResult> = latest.filterNotNull()
 
+    /**
+     * The stored series (issue 6.6).
+     * Why: derived from the same published figure rather than given a second setter, so a test
+     *      cannot arrange a history that contradicts the headline. [history] overrides it when a
+     *      test needs a specific shape.
+     */
+    override fun observeHistory(range: NetWorthRange): Flow<NetWorthTrend> =
+        latest.map { current -> history ?: trendOf(listOfNotNull(current?.let { point(it) }), range) }
+
     override suspend fun computeAsOf(asOfIsoDate: String): Result<NetWorthResult, AppError> = Ok(result(0L))
 
     override suspend fun snapshotUpToToday(): Result<Int, AppError> = Ok(0)
 
     override suspend fun repairStaleHistory(): Result<Int, AppError> = Ok(0)
+
+    /** Set to publish a specific series; `null` derives one from whatever [emit] last published. */
+    var history: NetWorthTrend? = null
 
     /**
      * Publishes a snapshot.
@@ -52,6 +68,34 @@ internal class FakeNetWorthRepository : NetWorthRepository {
     fun emit(netWorthMinor: Long) {
         latest.value = result(netWorthMinor)
     }
+
+    /** Result: the point one snapshot contributes. Input: [from]. Output: [NetWorthPoint]. */
+    private fun point(from: NetWorthResult) = NetWorthPoint(from.asOfIsoDate, from.netWorth)
+
+    /**
+     * Result: a trend over [points], measured the way the real engine measures it — one reading has
+     * no change, because a change over a zero-length interval is unknown rather than zero (P-03).
+     * Input: [points], [range]. Output: [NetWorthTrend].
+     */
+    private fun trendOf(
+        points: List<NetWorthPoint>,
+        range: NetWorthRange,
+    ) = NetWorthTrend(
+        points = points,
+        first = points.firstOrNull(),
+        last = points.lastOrNull(),
+        change = null,
+        changeBps = null,
+        high = points.maxByOrNull { it.netWorth.minor },
+        low = points.minByOrNull { it.netWorth.minor },
+        provenance =
+            EngineProvenance(
+                engineId = "net-worth-trend",
+                engineVersion = "1.0",
+                computedAtUtcMillis = 1_785_542_400_000L,
+                inputWindow = range.name,
+            ),
+    )
 
     /** Result: a snapshot with the given net worth. Input: [netWorthMinor]. Output: the result. */
     private fun result(netWorthMinor: Long) =
