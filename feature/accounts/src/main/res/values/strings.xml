@@ -149,6 +149,16 @@
     <string name="holdings_value">%1$s</string>
     <string name="holdings_units_at">%1$s units at %2$s</string>
     <string name="holdings_priced_on">Priced %1$s</string>
+    <!-- Issue 6.5: the staleness label. The wording carries the meaning, not the colour - a red
+         date is invisible in greyscale, to a colour-blind reader and to TalkBack, so "old" and the
+         day count do the work and the colour is decoration (P-02). -->
+    <plurals name="holdings_priced_as_of_days">
+        <item quantity="one">As of %1$s - %2$d day old</item>
+        <item quantity="other">As of %1$s - %2$d days old</item>
+    </plurals>
+    <string name="holdings_price_key">Price key (optional, e.g. gold:inr.gram.24k)</string>
+    <string name="holdings_price_key_help">Leave this blank to keep pricing by hand. With a key, the
+        app can refresh the price for you once market data is switched on in Settings.</string>
     <string name="holdings_unpriced">Not valued yet - add a price per unit</string>
     <string name="holdings_cost">%1$s invested</string>
     <string name="holdings_returned">%1$s returned</string>

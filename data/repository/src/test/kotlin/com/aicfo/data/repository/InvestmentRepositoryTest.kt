@@ -227,12 +227,12 @@ class InvestmentRepositoryTest {
             investments.saveLot(lot(debt, units = 20, minor = 200_000)).expectOk()
 
             val byAccount = investments.observeByAccount().first()
-            val priced = byAccount.getValue(accountId).associateBy { it.holdingId }
+            val priced = byAccount.getValue(accountId).associateBy { it.performance.holdingId }
 
-            assertEquals(Quantity(100 * Quantity.SCALE), priced.getValue(equity).netQuantity)
-            assertEquals(Money(825_000), priced.getValue(equity).currentValue)
-            assertEquals(Quantity(20 * Quantity.SCALE), priced.getValue(debt).netQuantity)
-            assertEquals(Money(200_000), priced.getValue(debt).currentValue)
+            assertEquals(Quantity(100 * Quantity.SCALE), priced.getValue(equity).performance.netQuantity)
+            assertEquals(Money(825_000), priced.getValue(equity).performance.currentValue)
+            assertEquals(Quantity(20 * Quantity.SCALE), priced.getValue(debt).performance.netQuantity)
+            assertEquals(Money(200_000), priced.getValue(debt).performance.currentValue)
         }
 
     /**
@@ -247,7 +247,7 @@ class InvestmentRepositoryTest {
             val id = investments.saveHolding(holding()).expectOk()
             investments.saveLot(lot(id, day = "2026-01-01", units = 100, minor = 750_000)).expectOk()
 
-            val priced = investments.observeForAccount(accountId).first().single()
+            val priced = investments.observeForAccount(accountId).first().single().performance
 
             assertEquals(1_000, priced.xirrBps)
             assertNull(priced.xirrUnavailable)
@@ -265,7 +265,7 @@ class InvestmentRepositoryTest {
             investments.saveLot(lot(id)).expectOk()
             investments.saveLot(lot(id, day = "2026-07-01", units = 50, minor = 400_000)).expectOk()
 
-            val priced = investments.observeForAccount(accountId).first().single()
+            val priced = investments.observeForAccount(accountId).first().single().performance
 
             assertNull(priced.currentValue)
             assertNull(priced.gain)

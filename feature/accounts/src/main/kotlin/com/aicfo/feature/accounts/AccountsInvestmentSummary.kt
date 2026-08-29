@@ -7,7 +7,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.aicfo.core.designsystem.component.maskedAmount
 import com.aicfo.core.model.Money
-import com.aicfo.domain.engines.investment.HoldingPerformance
+import com.aicfo.data.repository.PricedHolding
 
 /**
  * What an investment account holds, in one line (issue 6.3; §11, P-02, P-03).
@@ -26,7 +26,7 @@ import com.aicfo.domain.engines.investment.HoldingPerformance
  * Changelog: 2026-08-24 — Created for issue 6.3.
  */
 @Composable
-internal fun InvestmentSummary(holdings: List<HoldingPerformance>?) {
+internal fun InvestmentSummary(holdings: List<PricedHolding>?) {
     if (holdings.isNullOrEmpty()) {
         Text(
             text = stringResource(R.string.accounts_investments_none),
@@ -34,7 +34,10 @@ internal fun InvestmentSummary(holdings: List<HoldingPerformance>?) {
         )
         return
     }
-    val total = holdings.mapNotNull { it.currentValue }.fold(Money.ZERO) { running, value -> running + value }
+    val total =
+        holdings.mapNotNull { it.performance.currentValue }.fold(
+            Money.ZERO,
+        ) { running, value -> running + value }
     val count = pluralStringResource(R.plurals.accounts_investments_count, holdings.size, holdings.size)
     Text(
         text = stringResource(R.string.accounts_investments_value, maskedAmount(total), count),

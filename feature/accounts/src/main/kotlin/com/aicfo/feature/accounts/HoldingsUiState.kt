@@ -3,7 +3,7 @@ package com.aicfo.feature.accounts
 import androidx.compose.runtime.Immutable
 import com.aicfo.core.model.AssetClass
 import com.aicfo.core.model.LotKind
-import com.aicfo.domain.engines.investment.HoldingPerformance
+import com.aicfo.data.repository.PricedHolding
 
 /**
  * Everything the holdings screen shows, in one immutable value (issue 6.3; §11, ARC-004).
@@ -20,7 +20,7 @@ import com.aicfo.domain.engines.investment.HoldingPerformance
  * a list of holdings re-priced on every lot edit is exactly the shape that re-renders needlessly.
  *
  * @property accountId the account whose holdings these are.
- * @property holdings the priced holdings, name-ordered, straight from the engine.
+ * @property holdings the priced holdings with their price age, name-ordered (issue 6.5).
  * @property editor the open editor, or `null` when the list is showing.
  * @property isLoading whether the first read has landed.
  * @property errorCode a failure to show in the banner, or `null`.
@@ -28,7 +28,7 @@ import com.aicfo.domain.engines.investment.HoldingPerformance
 @Immutable
 data class HoldingsUiState(
     val accountId: String = "",
-    val holdings: List<HoldingPerformance> = emptyList(),
+    val holdings: List<PricedHolding> = emptyList(),
     val editor: HoldingEditorState? = null,
     val isLoading: Boolean = true,
     val errorCode: String? = null,

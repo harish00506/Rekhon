@@ -9,12 +9,13 @@ import com.aicfo.core.model.InvestmentLot
 import com.aicfo.data.repository.HoldingDraft
 import com.aicfo.data.repository.InvestmentRepository
 import com.aicfo.data.repository.LotDraft
+import com.aicfo.data.repository.PricedHolding
 import com.aicfo.domain.engines.investment.AllocationInput
 import com.aicfo.domain.engines.investment.HoldingInput
-import com.aicfo.domain.engines.investment.HoldingPerformance
 import com.aicfo.domain.engines.investment.InvestmentEngineFactory
 import com.aicfo.domain.engines.investment.PortfolioAllocation
 import com.aicfo.domain.engines.investment.PortfolioPosition
+import com.aicfo.domain.engines.investment.PriceFreshnessInput
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
@@ -45,6 +46,9 @@ internal class FakeInvestmentRepository : InvestmentRepository {
     /** Set by a test to make the next write fail. */
     var failOnSave: AppError? = null
 
+    /** The day freshness is judged against. Fixed so a verdict does not rot with the calendar. */
+    var today: String = "2026-08-29"
+
     /** How many ids this fake has minted, so a test can assert a create rather than an edit. */
     var minted: Int = 0
         private set
@@ -59,10 +63,10 @@ internal class FakeInvestmentRepository : InvestmentRepository {
         lots.value = rows.toList()
     }
 
-    override fun observeByAccount(): Flow<Map<String, List<HoldingPerformance>>> =
-        holdings.map { rows -> priced(rows).groupBy { it.accountId } }
+    override fun observeByAccount(): Flow<Map<String, List<PricedHolding>>> =
+        holdings.map { rows -> priced(rows).groupBy { it.performance.accountId } }
 
-    override fun observeForAccount(accountId: String): Flow<List<HoldingPerformance>> =
+    override fun observeForAccount(accountId: String): Flow<List<PricedHolding>> =
         holdings.map { rows -> priced(rows.filter { it.accountId == accountId }) }
 
     /**
@@ -77,7 +81,7 @@ internal class FakeInvestmentRepository : InvestmentRepository {
     override fun observeAllocation(): Flow<PortfolioAllocation> =
         holdings.map { rows ->
             val positions =
-                priced(rows).map { performance ->
+                priced(rows).map { it.performance }.map { performance ->
                     PortfolioPosition(
                         holdingId = performance.holdingId,
                         accountId = performance.accountId,
@@ -145,9 +149,30 @@ internal class FakeInvestmentRepository : InvestmentRepository {
     }
 
     /** Result: the real engine's figures for [rows]. Input: [rows]. Output: the performances. */
-    private fun priced(rows: List<InvestmentHolding>): List<HoldingPerformance> =
+    private fun priced(rows: List<InvestmentHolding>): List<PricedHolding> =
         rows.mapNotNull { holding ->
             val its = lots.value.filter { it.holdingId == holding.id }
-            (engine.holding(HoldingInput(holding, its)) as? Ok)?.value
+            val performance = (engine.holding(HoldingInput(holding, its)) as? Ok)?.value
+            performance?.let { PricedHolding(it, freshness(holding)) }
         }
+
+    /**
+     * The real engine's freshness verdict against a fixed today.
+     *
+     * Fixed rather than the wall clock so a test asserting "stale" stays true next year — the same
+     * reason every other date in this module's tests is a literal (P-08). Tests that care about the
+     * verdict set [today].
+     */
+    private fun freshness(holding: InvestmentHolding) =
+        (
+            engine.priceFreshness(
+                PriceFreshnessInput(
+                    assetClass = holding.assetClass,
+                    pricedOnIsoDate = holding.pricedOnIsoDate,
+                    fetchedAtUtcMillis = holding.priceFetchedAtUtcMillis,
+                    todayIsoDate = today,
+                    nowUtcMillis = 1L,
+                ),
+            ) as Ok
+        ).value
 }
