@@ -3190,6 +3190,62 @@ interface InvestmentHoldingDao {
         id: String,
         deletedAtUtcMillis: Long,
     ): Int
+
+    /**
+     * The instrument identifiers this profile actually needs a price for (issue 6.5; EXT-003).
+     * Why:    the refresh path must never learn more than it needs, and the cheapest way to
+     *         guarantee that is a query that **cannot return anything else**. This projects one
+     *         column; there is no holding name, no quantity and no amount in its result type, so no
+     *         later edit to the caller can accidentally put one in a request. `DISTINCT` because two
+     *         holdings of the same instrument are one question to ask the proxy, not two.
+     *
+     *         A null [InvestmentHoldingEntity.priceKey] is the opt-in switch: a hand-priced holding
+     *         has none, is not returned here, and is therefore never overwritten by a refresh.
+     * Result: the distinct non-null price keys of the profile's live holdings; empty when nothing is
+     *         market-priced, which is every profile until the user sets a key.
+     * Input:  [profileId]. Output: `List<String>` — raw column values; `PriceKey` validates them.
+     * Changelog: 2026-08-29 — Created for issue 6.5.
+     */
+    @Query(
+        "SELECT DISTINCT price_key FROM investment_holding WHERE profile_id = :profileId " +
+            "AND price_key IS NOT NULL AND deleted_at_utc_millis IS NULL",
+    )
+    suspend fun distinctPriceKeys(profileId: String): List<String>
+
+    /**
+     * Writes a fetched price onto every holding of one instrument (issue 6.5; §16.1, MNY-001).
+     * Why:    an `UPDATE` of four named columns rather than a read-modify-`upsert`, and that choice
+     *         is the anti-clobber guarantee. `upsert` uses `REPLACE`, so a refresh that raced a user
+     *         renaming a holding would write back the stale name it had read. **This statement
+     *         cannot reach `name`, `asset_class` or any lot** — not by convention but because those
+     *         identifiers do not appear in it — so the two writers cannot collide however they
+     *         interleave.
+     *
+     *         Scoped by [profileId] as well as [priceKey] so a fetch for one profile can never touch
+     *         another's rows, even though price keys are global.
+     * Result: the number of rows updated — 0 when the user deleted or unkeyed the holding between
+     *         the read and the write, which is not an error.
+     * Input:  [profileId]; [priceKey]; [unitPriceMinor] — paise per unit, must be positive;
+     *         [pricedOnIsoDate] — the day the market priced it (TIM-002); [fetchedAtUtcMillis] — when
+     *         this device heard it, from the injected `Clock` (TIM-001).
+     * Output: [Int].
+     * Changelog: 2026-08-29 — Created for issue 6.5.
+     */
+    @Query(
+        "UPDATE investment_holding SET unit_price_minor = :unitPriceMinor, " +
+            "priced_on_iso_date = :pricedOnIsoDate, " +
+            "price_fetched_at_utc_millis = :fetchedAtUtcMillis, " +
+            "updated_at_utc_millis = :fetchedAtUtcMillis " +
+            "WHERE profile_id = :profileId AND price_key = :priceKey " +
+            "AND deleted_at_utc_millis IS NULL",
+    )
+    suspend fun updatePriceByKey(
+        profileId: String,
+        priceKey: String,
+        unitPriceMinor: Long,
+        pricedOnIsoDate: String,
+        fetchedAtUtcMillis: Long,
+    ): Int
 }
 
 /**

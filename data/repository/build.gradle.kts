@@ -74,6 +74,10 @@ dependencies {
     api(project(":domain:engines:investment"))
 
     // withTransaction — the atomicity guarantee applySeeds is built on (issue 2.3).
+    // api, not implementation: MarketDataApi is a parameter of RepositoryFactory.marketPrice, so
+    // :app has to be able to name it to bind one (issue 6.5).
+    api(project(":core:network"))
+
     implementation(libs.room.ktx)
 
     // Issue 3.6: FR-TXN-007's "infinite scroll via paging". `api`, not `implementation` — a

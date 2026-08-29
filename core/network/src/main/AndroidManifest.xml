@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The INTERNET permission, declared here and nowhere else (issue 6.5).
+
+  Why:  the same convention `data/sms` keeps for READ_SMS — a permission belongs to the module that
+        uses the capability, not to :app. The consequence is worth stating plainly: exactly one
+        module in this repository can open a socket, and it is the one whose entire purpose is the
+        network edge. A reviewer asking "what can reach the internet?" has one file to read.
+  Note: this manifest adds nothing else. No cleartext traffic is permitted, and NetworkConfig
+        refuses any base URL that is not https with pins.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+</manifest>
