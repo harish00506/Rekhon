@@ -56,6 +56,7 @@ evaluate: RuleEngine.evaluate(ruleId, FeatureSnapshot)
 | RULE-SIP-STREAK | Missed SIP month → insight with long-term cost | SIP consistency |
 | RULE-IDLE-CASH | Liquid > (STS needs + buffer) for 60 days → deploy prompt | Idle-cash detector, AI-MKT gate |
 | RULE-CONC-15-70 | Single holding ≤ 15%, single class ≤ 70% | Diversification score |
+| RULE-PRICE-STALE | Refresh gold daily / crypto every 15 min; flag a price older than 3 / 1 days | Price freshness label |
 
 ## §29.4 Debt & big-purchase
 

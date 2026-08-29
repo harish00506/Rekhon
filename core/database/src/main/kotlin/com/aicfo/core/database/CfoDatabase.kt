@@ -185,9 +185,12 @@ abstract class CfoDatabase : RoomDatabase() {
          * schedule is derived from those and deliberately **not** stored — ADR-0026; FR-ACC-003)
          * · 18 — issue 6.3 (`investment_holding`, an instrument's asset class and last observed
          * unit price; `investment_lot`, its dated cash movements — the value, the cost and the
-         * XIRR are all derived from those two, ADR-0027; §11).
+         * XIRR are all derived from those two, ADR-0027; §11) · 19 — issue 6.5
+         * (`investment_holding.price_key`, the instrument identifier a market-data proxy resolves,
+         * and `price_fetched_at_utc_millis`, when this device last heard a price — distinct from
+         * `priced_on_iso_date`, which is when the *market* priced it; §16 EXT-002, FR-ACC-004).
          */
-        const val VERSION = 18
+        const val VERSION = 19
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"

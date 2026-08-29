@@ -78,6 +78,20 @@ interface InvestmentEngine {
      * Changelog: 2026-08-28 — Created for issue 6.4 (§11, FR-INV-002).
      */
     fun allocation(input: AllocationInput): Result<PortfolioAllocation, AppError>
+
+    /**
+     * Decides whether a stored price is still worth believing (issue 6.5; §16 EXT-002, P-02).
+     * Why:    the only question this engine answers that is *supposed* to move with the calendar,
+     *         which is why it takes its own input carrying `todayIsoDate` rather than an `asOf`
+     *         being added to [HoldingInput]. A money-weighted return that changed with the date
+     *         would be a P-08 violation; a freshness verdict that did not would be useless.
+     * Result: [Ok] with the verdict, the age and whether a refresh is due. Total over its input —
+     *         "never priced" is a verdict, not an error, the same way [XirrUnavailable] is.
+     * Input:  [input] — the dates, the asset class and the thresholds.
+     * Output: `Result<PriceFreshness, AppError>`.
+     * Changelog: 2026-08-29 — Created for issue 6.5 (§16, FR-ACC-004).
+     */
+    fun priceFreshness(input: PriceFreshnessInput): Result<PriceFreshness, AppError>
 }
 
 /**

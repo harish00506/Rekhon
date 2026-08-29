@@ -2,8 +2,8 @@ package com.aicfo.feature.accounts
 
 import androidx.compose.runtime.Immutable
 import com.aicfo.core.model.AccountType
+import com.aicfo.data.repository.PricedHolding
 import com.aicfo.domain.engines.card.CardStatus
-import com.aicfo.domain.engines.investment.HoldingPerformance
 import com.aicfo.domain.engines.loan.AmortisationRow
 
 /**
@@ -57,7 +57,7 @@ data class AccountsActions(
 data class AccountFigures(
     val card: CardStatus? = null,
     val instalment: AmortisationRow? = null,
-    val holdings: List<HoldingPerformance>? = null,
+    val holdings: List<PricedHolding>? = null,
 )
 
 /**

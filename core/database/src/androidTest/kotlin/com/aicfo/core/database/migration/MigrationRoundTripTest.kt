@@ -1082,6 +1082,72 @@ class MigrationRoundTripTest {
     }
 
     /**
+     * 18 -> 19: a priced holding keeps its price, and gains somewhere to record where it came from
+     * (issue 6.5; §16 EXT-002, FR-ACC-004).
+     *
+     * The assertion that matters is the *preservation* one. This migration exists so a fetched
+     * price has a key to be fetched by and a stamp saying when — but it runs against installations
+     * whose every price was typed by hand, and not one of those may move. A migration that added
+     * the columns while disturbing a rupee would be worse than no migration at all.
+     */
+    @Test
+    fun migrate18To19_keepsHandTypedPricesAndAddsSomewhereToRecordAFetch() {
+        helper.createDatabase(TEST_DB, 18).use { db ->
+            db.execSQL(
+                "INSERT INTO account (id, profile_id, name, type, opening_balance_minor, " +
+                    "current_balance_minor, currency_code, include_in_networth, " +
+                    "created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('a4','p1','Zerodha','investment',0,0,'INR',1," +
+                    "1767312000000,1767312000000)",
+            )
+            db.execSQL(
+                "INSERT INTO investment_holding (id, profile_id, account_id, name, asset_class, " +
+                    "unit_price_minor, priced_on_iso_date, created_at_utc_millis, " +
+                    "updated_at_utc_millis) " +
+                    "VALUES ('h9','p1','a4','SGB 2030','gold',783412,'2026-08-20'," +
+                    "1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 19, true, Migrations.MIGRATION_18_19)
+
+        migrated.query(
+            "SELECT name, asset_class, unit_price_minor, priced_on_iso_date, price_key, " +
+                "price_fetched_at_utc_millis FROM investment_holding WHERE id = 'h9'",
+        ).use { cursor ->
+            assertTrue("the pre-migration holding must still be there", cursor.moveToFirst())
+            assertEquals("SGB 2030", cursor.getString(0))
+            assertEquals("gold", cursor.getString(1))
+            assertEquals("MNY-001: the hand-typed price survives byte for byte", 783412L, cursor.getLong(2))
+            assertEquals("TIM-002: and so does the day it was observed", "2026-08-20", cursor.getString(3))
+            assertTrue(
+                "a price nobody fetched has no key - NULL is the opt-out, not a default",
+                cursor.isNull(4),
+            )
+            assertTrue(
+                "and no fetch stamp: this price was typed, and claiming otherwise would be a lie " +
+                    "about where it came from",
+                cursor.isNull(5),
+            )
+        }
+
+        // The new columns must accept what issue 6.5 will write through them.
+        migrated.execSQL(
+            "UPDATE investment_holding SET unit_price_minor = 790000, " +
+                "priced_on_iso_date = '2026-08-28', price_key = 'gold:inr.gram.24k', " +
+                "price_fetched_at_utc_millis = 1767398400000 WHERE id = 'h9'",
+        )
+        migrated.query(
+            "SELECT price_key, price_fetched_at_utc_millis FROM investment_holding WHERE id = 'h9'",
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("gold:inr.gram.24k", cursor.getString(0))
+            assertEquals(1767398400000L, cursor.getLong(1))
+        }
+        migrated.close()
+    }
+
+    /**
      * Builds one `card_alert` insert.
      * Why:    the four inserts above differ in three values, and spelling the column list out four
      *         times would hide that.

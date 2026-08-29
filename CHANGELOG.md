@@ -11,6 +11,62 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > Credit cards, loans with amortisation, investment holdings with XIRR, allocation and net-worth
 > history — exact paise math throughout.
 
+### [0.6.5] — Issue 6.5: Gold/crypto valuation via market API  (2026-08-29)
+
+- **Implemented:** a stored price now carries its age (**FR-INV-004**, §16.1, §22, API-001/API-002).
+  Schema **18 → 19** adds two nullable columns to `investment_holding` — `price_key` (the instrument
+  identifier, and the opt-in switch) and `price_fetched_at_utc_millis` (when this device heard it, as
+  distinct from `priced_on_iso_date`, the day the market priced it). A fourth engine operation,
+  `priceFreshness`, returns `NEVER_PRICED | FRESH | STALE` with an age in days, and the holdings
+  screen renders it beneath each value. **Colour is decoration, never the signal** — the word "old"
+  and the day count carry the meaning, so it survives greyscale and TalkBack.
+- **`:core:network` exists, and ships unconfigured**
+  ([ADR-0030](docs/adr/0030-the-market-data-client-ships-unconfigured.md)). It is the only module of
+  thirty-five that can open a socket, and holds the only `INTERNET` permission — in its own manifest,
+  the convention `data/sms` set with `READ_SMS`. **`NetworkConfig.UNCONFIGURED` has a blank base URL,
+  so `MarketDataFactory` constructs no OkHttp client at all**: no connection pool, no DNS, no socket.
+  The §22 proxy is specified and unbuilt, and the only alternative was pointing the client at AMFI or
+  an exchange directly, which EXT-001 forbids. `NetworkModule` is the whole switch for the day a
+  proxy exists. A configured host **cannot be expressed without certificate pins** (§22.1).
+- **Revoking MARKET_DATA stops fetching and keeps the cached price** — deliberately unlike the SMS
+  drafts issue 3.9 deletes. An SMS draft is an inference about the user drawn from data they withdrew
+  permission to read; a gold price is a public fact about gold. What is private is the *request*, and
+  that is what the consent gates. There is no `MarketDataConsentWatcher`, and that absence is a
+  decision.
+- **The rulebook gained `RULE-PRICE-STALE` v1.0** (`_meta.version` **1.13.0 → 1.14.0**, and all four
+  `RULEBOOK_VERSION` pins with it). Two thresholds, because they answer different questions:
+  `refresh_minutes` (gold 1440, crypto 15) asks *is it worth a network call*, `stale_after_days`
+  (gold 3, crypto 1, default 7) asks *should the user be warned*. One value cannot do both — at
+  fifteen minutes crypto is permanently stale, at one day it never refreshes.
+- **The price columns have a second, narrower writer.** `MarketPriceRepository` owns them;
+  `InvestmentRepository` owns the row. `updatePriceByKey` is an `UPDATE` of four named columns that
+  **cannot reach `name` or `asset_class`**, so a refresh landing during a rename cannot revert it —
+  the guarantee is in the statement, not a lock. `distinctPriceKeys` cannot return anything but a
+  price key, so the request payload is identifier-only by construction (**EXT-003**).
+- **`MarketPriceWorker` is the app's eighth worker and the first with a constraint**
+  (`NetworkType.CONNECTED`). The other seven must not have one: they are pure local computation, and
+  gating a net-worth snapshot on connectivity would break airplane mode (P-04). Daily, not
+  quarter-hourly — §16.1 gives crypto fifteen minutes *while the app is open*, which is what
+  `refreshNow()` covers, once per unlock.
+- **Not delivered, stated plainly:** AC-1 ("prices come through our backend proxy") **cannot be
+  demonstrated** — there is no proxy. It is made structurally true and provably inert, not live. TLS
+  and certificate pinning are **the only untested part** of `:core:network`, because MockWebServer
+  serves cleartext and `NetworkConfig` refuses a cleartext host; a real airplane-mode test is
+  structurally unmeetable here, and `server.shutdown()` is the labelled stand-in.
+- **Fixed — a stale screenshot baseline, and the gate that let it through.** The pre-merge run
+  caught `DashboardScreenshotTest.empty_light` failing by 1.15%: the baseline was recorded at issue
+  5.4, and the Settings screen then added a button to the dashboard without re-recording it. The
+  image was re-recorded and checked; more importantly **`verifyPaparazziDebug` is now part of the
+  root `unitTests` task**. Paparazzi verifies only when that task is in the graph, so a plain
+  `testDebugUnitTest` asserted nothing — the check existed in `/pre-merge` and `ci.yml` and was run
+  by neither. The new gate was broken on purpose and observed to fail before being restored.
+
+- **Tests:** 16 against MockWebServer (200 with paise intact, 500, malformed JSON, a real 5s timeout,
+  a dead server, and the three refusals), 13 against in-memory Room with the real engine, 5 on the
+  worker, plus the engine's golden fixture and the model's invariants. The consent gate and the TTL
+  gate were each broken on purpose and observed to fail the suite (ADR-0005); the fake api throws
+  when called, so those gates are proved rather than described.
+
 ### [0.6.4] — Issue 6.4: Allocation and diversification  (2026-08-28)
 
 - **Implemented:** what shape the portfolio is in (**FR-INV-002**, §11.2, AI-INV). A new

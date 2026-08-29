@@ -638,6 +638,64 @@ CardAlertWorker.doWork()
 
 ---
 
+### 3.2 · The price refresh — the only path in the app that can open a socket (issue 6.5)
+
+```
+CfoApplication.onCreate()
+└─ MarketPriceWorker.schedule(context)                         app/work/MarketPriceWorker.kt
+    └─ enqueueUniquePeriodicWork("market-price-refresh", KEEP, every 1 day,
+                                 Constraints(NetworkType.CONNECTED))
+                                 │  THE ONLY CONSTRAINT IN THE APP. The other seven workers are
+                                 │  pure local computation; gating one of them on connectivity
+                                 │  would break the app in airplane mode (P-04).
+
+MainActivity.onCreate() → AppLockGate { LaunchedEffect(Unit) }
+└─ MarketPriceWorker.refreshNow(context)                       API-002, once per unlock
+    └─ enqueueUniqueWork("market-price-refresh-now", KEEP, one-time, same constraint)
+           ▼
+MarketPriceWorker.doWork()
+├─ sessionLock.isUnlocked.value == false  →  Result.retry()     same SEC-002 guard
+│
+└─ repository.get().refresh()                                  MarketPriceRepository
+    │
+    ├─ GATE 1  consents.observe(MARKET_DATA).first()           P-01
+    │          not Ok, or not granted  →  Ok(0)                 ← an unreadable store is NOT a grant
+    │          NOTHING BELOW THIS LINE RUNS. No request is built, no socket is opened.
+    │
+    ├─ GATE 2  holdingDao.distinctPriceKeys(profile)            EXT-003
+    │          empty  →  Ok(0)                                  a null price_key is the opt-in switch
+    │          This query CANNOT RETURN ANYTHING BUT A PRICE KEY — the request payload is
+    │          identifier-only by construction, not by review.
+    │
+    ├─ GATE 3  holdingDao.forProfile(profile)                    read stays on the device
+    │          └─ engine.priceFreshness(...)                     → shape C, per row
+    │              └─ PriceFreshnessRules.refreshMinutesFor(class)   RULE-PRICE-STALE (rulebook)
+    │          nothing refreshDue  →  Ok(0)
+    │
+    ├─ api.quotes(keys ∩ due)                                    :core:network
+    │   ├─ MarketDataFactory.create(NetworkConfig.UNCONFIGURED)
+    │   │   └─ baseUrl blank → UnconfiguredMarketDataApi
+    │   │       NO OkHttpClient IS CONSTRUCTED. No pool, no DNS, no socket.  ← the shipping build
+    │   │       └─ Err(AppError.Network(retryable = false))
+    │   └─ (configured build) Retrofit → pinned OkHttp → GET /v1/market/prices?ids=…
+    │       └─ RetrofitMarketDataApi drops a quote that is unasked-for, non-positive, or malformed
+    │   Err  →  Ok(0)                                            P-04: keep the cached price
+    │
+    └─ holdingDao.updatePriceByKey(profile, key, paise, asOf, fetchedAt)
+        UPDATE of four named columns. `name` and `asset_class` DO NOT OCCUR IN THE STATEMENT,
+        so a refresh landing during a rename cannot revert it — the guarantee is in the SQL.
+```
+
+**Every failure is `Ok(0)`, not `Err`.** No consent, no keys, nothing due, and no backend are all the
+feature correctly doing nothing. `Err` is reserved for the database failing, which is the only thing
+`retry()` can help with — reporting a missing proxy as a failure would have WorkManager backing off
+for ever on every install, since today that is all of them.
+
+The staleness the user sees comes from the same engine call on the read path (§2.3), so the label and
+the refresh decision cannot disagree.
+
+---
+
 ## 4 · Shape C — an engine
 
 Pure Kotlin, no Android, no clock, no I/O. **Fixed input → fixed output** (P-08).

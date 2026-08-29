@@ -7,6 +7,7 @@ import com.aicfo.core.crypto.ReceiptImageStore
 import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.datastore.ConsentStore
 import com.aicfo.core.datastore.SettingsStore
+import com.aicfo.core.network.MarketDataApi
 import com.aicfo.data.sms.SmsInboxReader
 import com.aicfo.domain.engines.budget.BudgetEngine
 import com.aicfo.domain.engines.card.CardEngine
@@ -258,6 +259,32 @@ object RepositoryFactory {
         dispatchers: DispatcherProvider,
         activeProfileId: Flow<String>,
     ): InvestmentRepository = RoomInvestmentRepository(database, engine, clock, ids, dispatchers, activeProfileId)
+
+    /**
+     * Builds the market-price refresher (issue 6.5, FR-INV-004).
+     * Why:    separate from [investments] because the two own different columns of the same table —
+     *         see `MarketPriceRepository`'s class doc. Takes [api] rather than building one, for the
+     *         same reason every other function here takes its engine: in a shipping build that
+     *         argument is the unconfigured client, and swapping it for a live one is one binding in
+     *         `:app` and no change at all in this module.
+     * Result: a [MarketPriceRepository] over the encrypted database.
+     * Input:  [database]; [api] — the market-data client; [engine] — decides what is due;
+     *         [consents] — the MARKET_DATA gate (P-01); [clock] — TIM-001; [dispatchers];
+     *         [activeProfileId]. **No `IdGenerator`**: this never creates a row, only updates
+     *         four columns of rows that already exist.
+     * Output: [MarketPriceRepository].
+     */
+    @Suppress("LongParameterList") // Seven collaborators, each a distinct binding — as [receipts].
+    fun marketPrice(
+        database: CfoDatabase,
+        api: MarketDataApi,
+        engine: InvestmentEngine,
+        consents: ConsentStore,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        activeProfileId: Flow<String>,
+    ): MarketPriceRepository =
+        RoomMarketPriceRepository(database, api, engine, consents, clock, dispatchers, activeProfileId)
 
     /**
      * Builds the recurring-series store (issue 3.7, FR-TXN-006).

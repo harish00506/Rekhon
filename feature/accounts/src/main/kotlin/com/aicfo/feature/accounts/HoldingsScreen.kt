@@ -11,6 +11,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -21,8 +22,12 @@ import com.aicfo.core.designsystem.component.CfoCard
 import com.aicfo.core.designsystem.component.CfoSecondaryButton
 import com.aicfo.core.designsystem.component.maskedAmount
 import com.aicfo.core.designsystem.theme.CfoDimens
+import com.aicfo.core.model.DateFormatter
 import com.aicfo.core.model.Money
+import com.aicfo.data.repository.PricedHolding
 import com.aicfo.domain.engines.investment.HoldingPerformance
+import com.aicfo.domain.engines.investment.PriceFreshness
+import com.aicfo.domain.engines.investment.PriceVerdict
 
 /**
  * What one investment account holds, and what it has returned (issue 6.3; §11, P-02, P-07).
@@ -133,8 +138,8 @@ private fun HoldingsList(
             style = MaterialTheme.typography.bodyMedium,
         )
     } else {
-        uiState.holdings.forEach { holding ->
-            HoldingRow(holding = holding, onEvent = onEvent)
+        uiState.holdings.forEach { priced ->
+            HoldingRow(priced = priced, onEvent = onEvent)
         }
     }
 }
@@ -148,9 +153,10 @@ private fun HoldingsList(
  */
 @Composable
 private fun HoldingRow(
-    holding: HoldingPerformance,
+    priced: PricedHolding,
     onEvent: (HoldingsEvent) -> Unit,
 ) {
+    val holding = priced.performance
     CfoCard {
         Column(verticalArrangement = Arrangement.spacedBy(CfoDimens.spaceXs)) {
             Text(text = holding.name, style = MaterialTheme.typography.titleMedium)
@@ -159,6 +165,7 @@ private fun HoldingRow(
                 style = MaterialTheme.typography.bodySmall,
             )
             HoldingValue(holding)
+            PriceAge(priced.freshness)
             HoldingCost(holding)
             HoldingReturn(holding)
             CfoSecondaryButton(
@@ -190,6 +197,48 @@ private fun HoldingValue(holding: HoldingPerformance) {
         text = stringResource(R.string.holdings_value, maskedAmount(value)),
         style = MaterialTheme.typography.bodyLarge,
     )
+}
+
+/**
+ * How old the price behind the value is (issue 6.5; §16 EXT-002, P-02, P-04).
+ *
+ * Why:    a value with no age is a figure the reader cannot check. Offline the last cached price is
+ *         the only price there is (P-04), so this never hides it — it says how old it is and lets
+ *         the user judge.
+ *
+ *         **The colour is decoration; the words carry the meaning.** A date shown in red is
+ *         invisible in greyscale, to a colour-blind reader, and to a screen reader. "old" and the
+ *         day count survive all three, so they do the work and the colour only reinforces it.
+ * Result: nothing for a holding that was never priced — [HoldingValue] has already said so, and
+ *         repeating it would be noise.
+ * Input:  [freshness] — the engine's verdict. Output: the composition.
+ * Changelog: 2026-08-29 — Created for issue 6.5.
+ */
+@Composable
+private fun PriceAge(freshness: PriceFreshness) {
+    val pricedOn = freshness.pricedOnIsoDate ?: return
+    val day = DateFormatter.day(pricedOn)
+    when (freshness.verdict) {
+        PriceVerdict.NEVER_PRICED -> Unit
+        PriceVerdict.FRESH ->
+            Text(
+                text = stringResource(R.string.holdings_priced_on, day),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        PriceVerdict.STALE ->
+            Text(
+                text =
+                    pluralStringResource(
+                        R.plurals.holdings_priced_as_of_days,
+                        freshness.ageDays ?: 0,
+                        day,
+                        freshness.ageDays ?: 0,
+                    ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+    }
 }
 
 /**

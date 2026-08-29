@@ -5,7 +5,7 @@
     "what": "Seed rows for the rules_knowledge_base table (§29.1). RuleEngine.evaluate(ruleId, FeatureSnapshot) -> RuleResult{pass|warn|fail, measuredValue, threshold, evidence, ruleId, version}.",
     "result": "Changing a number here changes the app's advice everywhere that rule is cited, reproducibly and with an audit trail.",
     "source_section": "§29",
-    "version": "1.13.0",
+    "version": "1.14.0",
     "changelog": [
       "2026-07-17 — Created from SRS v1.7 §29.2–§29.5; defaults are the floor, refined by user overrides at runtime.",
       "2026-08-07 — Added RULE-SMS-PARSE for issue 3.9's opt-in, on-device bank-alert parser (§18, §23).",
@@ -13,7 +13,8 @@
       "2026-08-13 — Added RULE-BUD-ALERT for issue 4.5's 80%/100% budget alerts (§5.5, FR-BUD-004). Minted as a NEW row at v1.0 rather than added to RULE-BUD-PACE's params: bumping a shipped row's version is ADR-0017's trigger 3, which would force the runtime rules loader before this issue could compile.",
       "2026-08-14 — Added RULE-BUD-REVIEW for issue 4.6's monthly budget review (§5.5, FR-BUD-*). A new row again, for the same trigger-3 reason and on the same merits: materiality ('is this gap worth mentioning?') is a different question from the median ('what should this cost?'), and a review result cites both rows.",
       "2026-08-16 — Added RULE-STS for issue 5.2's Safe-to-Spend card (§5.2, §14, AI-STS). The first row in this file that defines a headline figure rather than a threshold to compare one against: its params fix the income basis, the horizon and the buffer, and the engine's arithmetic is fully determined by them. `buffer_pct` is the only genuinely new number here — RULE-IDLE-CASH has named a 'Safe-to-Spend needs + buffer' since this file was created, so the term was already the rulebook's, without a value.",
-      "2026-08-17 — Added RULE-CC-DUE for issue 6.1's credit-card payment reminder (FR-ACC-002, §17.1). RULE-CC-UTIL was deliberately NOT touched: it already named `card_alerts` in consumed_by, so the utilisation alert reads its shipped 30% threshold exactly as it stands, and only the date question needed a row. A new row again for ADR-0017's trigger 3, and on the merits too - scoring how much of a limit is used and deciding when to wake someone about a date are different jobs with different severities and, per §17.1, different notification channels."
+      "2026-08-17 — Added RULE-CC-DUE for issue 6.1's credit-card payment reminder (FR-ACC-002, §17.1). RULE-CC-UTIL was deliberately NOT touched: it already named `card_alerts` in consumed_by, so the utilisation alert reads its shipped 30% threshold exactly as it stands, and only the date question needed a row. A new row again for ADR-0017's trigger 3, and on the merits too - scoring how much of a limit is used and deciding when to wake someone about a date are different jobs with different severities and, per §17.1, different notification channels.",
+      "2026-08-29 — Added RULE-PRICE-STALE for issue 6.5's market-price refresh and staleness label (FR-ACC-004, §16.1, §22 EXT-002). A new row again for ADR-0017's trigger 3, and on the merits: RULE-GOLD-CAP and RULE-CRYPTO-CAP say how much of a portfolio a class may be, which is a question about allocation and not about time. Nothing in this file had ever expressed a cadence or a shelf life before, so there was no row to extend."
     ],
     "schema": {
       "rule_id": "stable public ID cited in evidence — never rename, deprecate instead",
@@ -326,6 +327,22 @@
       "version": "1.0"
     },
 
+    {
+      "rule_id": "RULE-PRICE-STALE",
+      "domain": "investment",
+      "name": "A market price is refreshed on its class's cadence and shown with its age once past it.",
+      "formula_id": "price_freshness",
+      "params_json": {
+        "refresh_minutes": { "gold": 1440, "crypto": 15, "default": 1440 },
+        "stale_after_days": { "gold": 3, "crypto": 1, "default": 7 }
+      },
+      "severity": "info",
+      "rationale": "A price with no age is a figure the reader cannot check (P-02), and offline the last cached value is the only value there is (P-04). Two numbers rather than one because they answer different questions: how often to spend a network call, and when to tell the user the number is old. One value cannot do both - at fifteen minutes crypto would read as permanently stale, and at one day it would never refresh often enough to be worth fetching.",
+      "source_note": "SRS §16.1 sets the refresh cadence: gold and silver end-of-day, crypto every 15 minutes while the app is open. §22 EXT-002 requires every cached datum to carry fetchedAt + TTL and the UI to say 'as of <date>' once past it. The stale_after_days figures are judgement rather than SRS: gold gets three days because a weekend plus a holiday is a normal gap between end-of-day prints, crypto one because it moves that fast, and anything else a week because a mutual-fund NAV is daily.",
+      "consumed_by": ["AI-INV.price_freshness"],
+      "enabled": true,
+      "version": "1.0"
+    },
     {
       "rule_id": "RULE-EMI-40",
       "domain": "debt",

@@ -101,7 +101,7 @@ class HoldingsViewModelTest {
             viewModel().uiState.test {
                 val loaded = awaitItem()
                 assertFalse(loaded.isLoading)
-                val row = loaded.holdings.single()
+                val row = loaded.holdings.single().performance
                 assertEquals("Parag Parikh Flexi Cap", row.name)
                 assertEquals(Money(825_000), row.currentValue)
                 assertEquals("100 units bought, worth 825000 a year later", 1_000, row.xirrBps)
@@ -305,7 +305,7 @@ class HoldingsViewModelTest {
                 ),
             )
 
-            val row = viewModel().uiState.value.holdings.single()
+            val row = viewModel().uiState.value.holdings.single().performance
 
             assertNull(row.currentValue)
             assertEquals(XirrUnavailable.SAME_SIGN, row.xirrUnavailable)

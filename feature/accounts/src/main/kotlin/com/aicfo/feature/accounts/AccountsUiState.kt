@@ -5,8 +5,8 @@ import com.aicfo.core.model.Account
 import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.MoneyFormatter
+import com.aicfo.data.repository.PricedHolding
 import com.aicfo.domain.engines.card.CardStatus
-import com.aicfo.domain.engines.investment.HoldingPerformance
 import com.aicfo.domain.engines.loan.AmortisationRow
 
 /**
@@ -70,7 +70,7 @@ data class AccountsUiState(
      * account **absent** here holds nothing yet, which the row renders as a prompt rather than as
      * ₹0 across 0 holdings (P-03).
      */
-    val investments: Map<String, List<HoldingPerformance>> = emptyMap(),
+    val investments: Map<String, List<PricedHolding>> = emptyMap(),
 ) {
     /**
      * Whether to show the "no accounts yet" invitation rather than a list.

@@ -101,6 +101,56 @@ class RulebookDriftTest {
     }
 
     /**
+     * Input:  RULE-PRICE-STALE's two param maps.
+     * Output: asserts every cadence and every threshold this engine applies.
+     *
+     * Both maps carry a `default` key, so each value is read from inside its own object rather than
+     * from the row as a whole — `intParam` takes the first match, and `"default"` appears twice.
+     */
+    @Test
+    fun `the refresh cadences and staleness thresholds match RULE-PRICE-STALE`() {
+        val rules = PriceFreshnessRules()
+        val row = ruleBlock("RULE-PRICE-STALE")
+        val refresh = row.objectParam("refresh_minutes")
+        val stale = row.objectParam("stale_after_days")
+
+        assertEquals(rules.refreshMinutesFor(AssetClass.GOLD), refresh.intParam("gold"))
+        assertEquals(rules.refreshMinutesFor(AssetClass.CRYPTO), refresh.intParam("crypto"))
+        assertEquals(rules.defaultRefreshMinutes, refresh.intParam("default"))
+        assertEquals(rules.staleAfterDaysFor(AssetClass.GOLD), stale.intParam("gold"))
+        assertEquals(rules.staleAfterDaysFor(AssetClass.CRYPTO), stale.intParam("crypto"))
+        assertEquals(rules.defaultStaleAfterDays, stale.intParam("default"))
+        assertEquals(InvestmentRules.PRICE_STALE.ruleVersion, row.version())
+    }
+
+    /**
+     * Input:  RULE-PRICE-STALE's row and the two class-cap rows.
+     * Output: asserts the cadence params did not leak onto rows that shipped before this issue.
+     *
+     * The tempting home for a refresh interval is `RULE-GOLD-CAP` — it is already the gold rule.
+     * But it answers "how much gold is too much", not "how often should we look at the price", and
+     * adding a param to it would bump a shipped row's version, which is ADR-0017's trigger 3 and
+     * forces the runtime rules loader before this module can compile again.
+     */
+    @Test
+    fun `the cadence lives on its own row, not on the class caps`() {
+        listOf("refresh_minutes", "stale_after_days").forEach { key ->
+            listOf("RULE-GOLD-CAP", "RULE-CRYPTO-CAP", "RULE-CONC-15-70").forEach { ruleId ->
+                assertTrue(
+                    "'$key' appeared on $ruleId. A cadence belongs to RULE-PRICE-STALE: adding one " +
+                        "to a shipped row bumps its version, which is ADR-0017 trigger 3",
+                    "\"$key\"" !in ruleBlock(ruleId),
+                )
+            }
+        }
+        assertTrue(
+            "'cap_pct' appeared on RULE-PRICE-STALE. How much of a portfolio a class may be and " +
+                "how old its price may be are different questions on different rows",
+            "\"cap_pct\"" !in ruleBlock("RULE-PRICE-STALE"),
+        )
+    }
+
+    /**
      * Input:  every rule id the engine cites.
      * Output: asserts each exists and is enabled. A citation pointing at a disabled rule would show
      *         the user a reason that is no longer the app's.
@@ -178,6 +228,24 @@ class RulebookDriftTest {
         assertTrue("$ruleId is not in the rulebook — the engine cites a rule that no longer exists", start >= 0)
         val next = rulebook.indexOf("\"rule_id\":", start + 1)
         return if (next < 0) rulebook.substring(start) else rulebook.substring(start, next)
+    }
+
+    /**
+     * Extracts one nested JSON object out of a rule's text.
+     * Why:    `refresh_minutes` and `stale_after_days` both carry a `default` key, and [intParam]
+     *         takes the first match in whatever it is given. Reading either from the whole row
+     *         would silently assert one map's default twice and never check the other's.
+     * Result: the text between this key's braces.
+     * Input:  the receiver — a rule block; [name] — the object's key.
+     * Output: the object's text; fails the test when the key is absent.
+     */
+    private fun String.objectParam(name: String): String {
+        val start = indexOf("\"$name\"")
+        assertTrue("object '$name' not found — the rulebook's shape changed", start >= 0)
+        val open = indexOf('{', start)
+        val close = indexOf('}', open)
+        assertTrue("object '$name' is not a JSON object", open in 0..<close)
+        return substring(open, close)
     }
 
     /**

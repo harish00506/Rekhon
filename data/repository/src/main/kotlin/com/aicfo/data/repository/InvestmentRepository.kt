@@ -18,6 +18,7 @@ import com.aicfo.core.model.InvestmentHolding
 import com.aicfo.core.model.InvestmentLot
 import com.aicfo.core.model.LotKind
 import com.aicfo.core.model.Money
+import com.aicfo.core.model.PriceKey
 import com.aicfo.core.model.Quantity
 import com.aicfo.domain.engines.investment.AllocationInput
 import com.aicfo.domain.engines.investment.HoldingInput
@@ -25,6 +26,8 @@ import com.aicfo.domain.engines.investment.HoldingPerformance
 import com.aicfo.domain.engines.investment.InvestmentEngine
 import com.aicfo.domain.engines.investment.PortfolioAllocation
 import com.aicfo.domain.engines.investment.PortfolioPosition
+import com.aicfo.domain.engines.investment.PriceFreshness
+import com.aicfo.domain.engines.investment.PriceFreshnessInput
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -68,20 +71,20 @@ interface InvestmentRepository {
      *         An account with no holdings is **absent from the map**, not present with a zero — the
      *         convention the `cards` and `loans` maps already keep, because "not set up yet" and
      *         "worth nothing" are different things (P-03).
-     * Input:  none. Output: `Flow<Map<String, List<HoldingPerformance>>>`.
+     * Input:  none. Output: `Flow<Map<String, List<PricedHolding>>>`.
      * Changelog: 2026-08-24 — Created for issue 6.3.
      */
-    fun observeByAccount(): Flow<Map<String, List<HoldingPerformance>>>
+    fun observeByAccount(): Flow<Map<String, List<PricedHolding>>>
 
     /**
      * Watches the holdings inside one account.
      * Why:    the holdings screen is per-account. Filtering [observeByAccount] in the ViewModel
      *         would re-render this screen whenever any *other* account changed.
      * Result: that account's holdings with their figures, name-ordered, re-emitted on every write.
-     * Input:  [accountId]. Output: `Flow<List<HoldingPerformance>>`.
+     * Input:  [accountId]. Output: `Flow<List<PricedHolding>>`.
      * Changelog: 2026-08-24 — Created for issue 6.3.
      */
-    fun observeForAccount(accountId: String): Flow<List<HoldingPerformance>>
+    fun observeForAccount(accountId: String): Flow<List<PricedHolding>>
 
     /**
      * Watches how the whole portfolio is spread, and what about that is worth mentioning.
@@ -205,6 +208,8 @@ data class HoldingDraft(
     val assetClass: AssetClass,
     val unitPrice: Money? = null,
     val pricedOnIsoDate: String? = null,
+    /** The instrument a market-data proxy resolves, or `null` to keep pricing this by hand (6.5). */
+    val priceKey: PriceKey? = null,
 )
 
 /**
@@ -251,7 +256,7 @@ internal class RoomInvestmentRepository(
     private val activeProfileId: Flow<String>,
 ) : InvestmentRepository {
     @OptIn(ExperimentalCoroutinesApi::class)
-    override fun observeByAccount(): Flow<Map<String, List<HoldingPerformance>>> =
+    override fun observeByAccount(): Flow<Map<String, List<PricedHolding>>> =
         activeProfileId
             .flatMapLatest { profileId ->
                 // Both streams, combined, because a lot edited under one holding changes that
@@ -261,12 +266,12 @@ internal class RoomInvestmentRepository(
                     database.investmentHoldingDao().observeForProfile(profileId),
                     database.investmentLotDao().observeForProfile(profileId),
                 ) { holdings, lots ->
-                    price(holdings, lots).groupBy { it.accountId }
+                    price(holdings, lots).groupBy { it.performance.accountId }
                 }
             }.flowOn(dispatchers.io)
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    override fun observeForAccount(accountId: String): Flow<List<HoldingPerformance>> =
+    override fun observeForAccount(accountId: String): Flow<List<PricedHolding>> =
         activeProfileId
             .flatMapLatest { profileId ->
                 // The profile's lots, not the account's: there is no "lots of an account" query and
@@ -293,7 +298,8 @@ internal class RoomInvestmentRepository(
                     database.investmentHoldingDao().observeForProfile(profileId),
                     database.investmentLotDao().observeForProfile(profileId),
                 ) { accounts, holdings, lots ->
-                    val input = AllocationInput(positions(accounts, price(holdings, lots)), clock.nowUtcMillis())
+                    val priced = price(holdings, lots).map { it.performance }
+                    val input = AllocationInput(positions(accounts, priced), clock.nowUtcMillis())
                     // The engine is total over this input — it answers with a reason rather than an
                     // error — so an Err here would be a programming mistake, not a user state.
                     (engine.allocation(input) as Ok).value
@@ -334,6 +340,13 @@ internal class RoomInvestmentRepository(
                             assetClass = draft.assetClass.storedValue,
                             unitPriceMinor = draft.unitPrice?.minor,
                             pricedOnIsoDate = draft.pricedOnIsoDate,
+                            priceKey = draft.priceKey?.value,
+                            // Cleared whenever the price itself changed. A number the user just
+                            // typed must not inherit the provenance of one that was fetched, or the
+                            // screen would say "fetched an hour ago" about their own typing.
+                            priceFetchedAtUtcMillis =
+                                existing?.priceFetchedAtUtcMillis
+                                    ?.takeIf { existing.unitPriceMinor == draft.unitPrice?.minor },
                             // Preserved across an edit, so "when did I start tracking this?" stays
                             // answerable — as every other row keeps its created stamp.
                             createdAtUtcMillis = existing?.createdAtUtcMillis ?: now,
@@ -402,13 +415,18 @@ internal class RoomInvestmentRepository(
     private fun price(
         holdings: List<InvestmentHoldingEntity>,
         lots: List<InvestmentLotEntity>,
-    ): List<HoldingPerformance> {
+    ): List<PricedHolding> {
         val now = clock.nowUtcMillis()
+        // Read once for the whole batch, so every holding on one screen is judged against the same
+        // day. Reading it per row would let two prices dated identically disagree about their age
+        // across a midnight boundary (TIM-001).
+        val today = clock.today().toString()
         val byHolding = lots.groupBy { it.holdingId }
         return holdings.mapNotNull { entity ->
             val holding = entity.toHolding() ?: return@mapNotNull null
             val its = byHolding[entity.id].orEmpty().mapNotNull { it.toLot() }
-            (engine.holding(HoldingInput(holding, its, now)) as? Ok)?.value
+            val performance = (engine.holding(HoldingInput(holding, its, now)) as? Ok)?.value
+            performance?.let { PricedHolding(it, freshness(engine, holding, today, now)) }
         }
     }
 }
@@ -446,6 +464,10 @@ private fun InvestmentHoldingEntity.toHolding(): InvestmentHolding? {
         assetClass = assetClass,
         unitPrice = unitPriceMinor?.let { Money(it) },
         pricedOnIsoDate = pricedOnIsoDate,
+        // An unparseable key is dropped rather than defaulted, the same forward-compatibility
+        // contract the asset class keeps: a row written by a newer build must not take this one down.
+        priceKey = priceKey?.let { key -> runCatching { PriceKey(key) }.getOrNull() },
+        priceFetchedAtUtcMillis = priceFetchedAtUtcMillis,
     )
 }
 
@@ -541,3 +563,35 @@ private fun accountAsPosition(account: Account): List<PortfolioPosition> {
         ),
     )
 }
+
+/**
+ * Asks the engine how old this holding's price is.
+ * Why:    the clock lives here and not in the engine (TIM-001), so today is resolved once by
+ *         the caller and handed down. The engine is total over this input — "never priced" is a
+ *         verdict — so an `Err` would be a programming mistake rather than a user state, and
+ *         the `as Ok` says so.
+ * Result: the verdict the screen renders beneath the value.
+ *
+ * File scope rather than a member because it touches no instance state, and
+ * `RoomInvestmentRepository` sits exactly on detekt's eleven-function ceiling — the same pressure
+ * that moved `positions` and `accountAsPosition` out in issue 6.4.
+ * Input:  [engine]; [holding] — for its dates and class; [today]; [now]. Output: [PriceFreshness].
+ * Changelog: 2026-08-29 — Created for issue 6.5.
+ */
+private fun freshness(
+    engine: InvestmentEngine,
+    holding: InvestmentHolding,
+    today: String,
+    now: Long,
+): PriceFreshness =
+    (
+        engine.priceFreshness(
+            PriceFreshnessInput(
+                assetClass = holding.assetClass,
+                pricedOnIsoDate = holding.pricedOnIsoDate,
+                fetchedAtUtcMillis = holding.priceFetchedAtUtcMillis,
+                todayIsoDate = today,
+                nowUtcMillis = now,
+            ),
+        ) as Ok
+    ).value

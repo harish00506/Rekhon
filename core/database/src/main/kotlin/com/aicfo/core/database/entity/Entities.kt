@@ -1260,9 +1260,9 @@ data class CardAlertEntity(
  * Changelog: 2026-08-24 — Created for issue 6.3 (§11). See ADR-0027 for why `asset_class` is a
  *            column here rather than a derivation from the account's type.
  *
- * **No `symbol` or ISIN.** Issue 6.5 needs a price key and adds it with its own migration; every
- * issue adds the columns it can argue for, which is why this schema has survived seventeen
- * versions without a destructive change.
+ * **The price key arrived with issue 6.5**, as the note that stood here promised it would. Every
+ * issue adds the columns it can argue for, which is why this schema has survived eighteen versions
+ * without a destructive change.
  *
  * **No stored total quantity or cost.** Both are sums of the lots beneath this row, and a cached
  * total is a second opinion that goes stale the first time a lot is corrected.
@@ -1304,6 +1304,35 @@ data class InvestmentHoldingEntity(
      */
     @ColumnInfo(name = "priced_on_iso_date")
     val pricedOnIsoDate: String? = null,
+    /**
+     * The instrument identifier a market-data proxy resolves (issue 6.5; §16 EXT-003, §22.2), e.g.
+     * `gold:inr.gram.24k`. Null means this holding is priced by hand.
+     *
+     * **Null is also the opt-out.** The refresh selects `DISTINCT price_key ... WHERE price_key IS
+     * NOT NULL`, so a holding without one is never asked about and never overwritten — the user
+     * keeps whatever they typed. Validated by `PriceKey` on the way in, whose character set is what
+     * makes "a request carries only instrument identifiers" true by construction rather than by
+     * convention.
+     *
+     * Deliberately unindexed: this table holds tens of rows per profile, the existing
+     * `profile_id, deleted_at_utc_millis` index already covers the filter, and an index here would
+     * cost a write on every priced row of every refresh to speed up a scan of thirty.
+     */
+    @ColumnInfo(name = "price_key")
+    val priceKey: String? = null,
+    /**
+     * TIM-001: when a *fetched* price was last written, UTC epoch millis. Null when the current
+     * price was typed by the user rather than fetched (issue 6.5).
+     *
+     * **Not the same date as [pricedOnIsoDate], and the difference is load-bearing.** That one is
+     * the day the market priced the instrument; this is when this device last heard about it. A
+     * Monday fetch of Friday's closing gold price has a Friday price date and a Monday fetch time.
+     * The first decides whether to tell the user the number is old, in days; the second decides
+     * whether to spend a network call, in minutes — crypto refreshes every fifteen (SRS §16.1), a
+     * cadence no date column can express.
+     */
+    @ColumnInfo(name = "price_fetched_at_utc_millis")
+    val priceFetchedAtUtcMillis: Long? = null,
     @ColumnInfo(name = "created_at_utc_millis")
     val createdAtUtcMillis: Long,
     @ColumnInfo(name = "updated_at_utc_millis")
