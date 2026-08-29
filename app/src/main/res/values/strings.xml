@@ -6,7 +6,7 @@
   compliance is on us — which is why the lock screen's copy is here rather than inline.
 -->
 <resources>
-    <string name="app_name">AI Personal CFO</string>
+    <string name="app_name">Rekhon</string>
 
     <!--
       Demo mode (issue 2.4, FR-ONB-004). The banner sits above the nav graph, so this copy is what

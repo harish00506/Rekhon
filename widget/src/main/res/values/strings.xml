@@ -12,7 +12,7 @@
          `_title` names the widget in the launcher's picker; `_description` is the one-line blurb
          beneath it there. `_pending` is what stands in for a figure no engine has produced yet —
          it exists so the widget never renders ₹0.00 as if it were an answer (P-03). -->
-    <string name="widget_title">AI Personal CFO</string>
+    <string name="widget_title">Rekhon</string>
     <string name="widget_description">Your Safe-to-Spend and net worth, at a glance.</string>
     <string name="widget_safe_to_spend_label">Safe to spend</string>
     <string name="widget_net_worth_label">Net worth</string>

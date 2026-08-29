@@ -94,13 +94,32 @@ actually travels through the app.
 
 ## Licence
 
-Apache License 2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+**[PolyForm Noncommercial License 1.0.0](LICENSE)** — source-available, not open
+source.
 
-Apache 2.0 was chosen over a copyleft licence deliberately: it is compatible with
-every dependency here, it carries an explicit patent grant, and it is the licence
-Android developers can adopt without asking anyone. A privacy-first finance app
-asks people to believe a claim about what it does with their data — publishing
-the source is how that claim becomes checkable rather than marketed.
+- **Any noncommercial use is free**: personal use, study, research, hobby
+  projects, and use by charities, schools, public research bodies and government
+  institutions.
+- **Commercial use requires a separate written licence** from the copyright
+  holder. Open an issue to ask.
+
+The source is published so the privacy claim can be checked rather than merely
+believed — a finance app that says "nothing leaves your device" is asking for
+trust it has not earned unless you can read it. The noncommercial restriction is
+there so that publishing it is not the same as giving it away.
+
+Third-party attribution is in [NOTICE](NOTICE); the Apache 2.0 text those
+dependencies rely on is kept at [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt)
+and applies to them, not to Rekhon.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) before sending a pull request — the licence
+affects what you are granting.
+
+## Terms
+
+Using the app is covered by [TERMS.md](TERMS.md).
 
 **Rekhon is not registered with SEBI or any financial regulator, and nothing it
-produces is investment, tax or legal advice.** See [NOTICE](NOTICE).
+produces is investment, tax or legal advice.** Every figure comes from data you
+entered; it never moves money; and your data lives only on your device, which
+means backing it up is your responsibility.

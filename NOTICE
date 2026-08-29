@@ -2,7 +2,14 @@ Rekhon
 Copyright 2026 Harish G
 
 This product includes software developed as part of the Rekhon project.
-Licensed under the Apache License, Version 2.0 (see LICENSE).
+Licensed under the PolyForm Noncommercial License 1.0.0 (see LICENSE).
+
+Rekhon itself is source-available, NOT open source: any noncommercial use is
+permitted, and commercial use requires a separate written licence from the
+copyright holder. That restriction applies only to Rekhon's own code. It does not
+and cannot apply to the third-party components below, which remain under their
+own terms — the permissive licences they carry are what allow Rekhon to be
+licensed this way at all.
 
 ================================================================================
 Third-party components
@@ -46,6 +53,8 @@ AndroidX (Compose, Room, DataStore, Glance, WorkManager, Navigation, Lifecycle,
 Paging, Biometric, Activity, Core, SQLite), Kotlin and kotlinx, Dagger/Hilt, KSP,
 Protobuf, Retrofit, OkHttp, and the build and test toolchain (AGP, detekt, ktlint,
 Truth, MockK, Robolectric, Turbine, JUnit) — see each project for its own terms.
+Most are Apache 2.0; a copy of that licence is kept at licenses/Apache-2.0.txt
+for their attribution, and applies to them rather than to Rekhon.
 
 DO NOT treat the list above as a licence audit. It is a hand-written summary and
 hand-written attribution lists go stale the first time someone adds a dependency.
@@ -58,9 +67,9 @@ this file, as the authoritative record.
 This is not financial advice
 ================================================================================
 
-The Apache License's warranty disclaimer covers software defects. It does NOT
-cover the consequences of acting on what this app tells you, and the two are
-different risks.
+The licence's warranty disclaimer covers software defects. It does NOT cover the
+consequences of acting on what this app tells you, and the two are different
+risks. The user-facing position is set out in full in TERMS.md.
 
 Rekhon analyses and explains money you already have. It does not recommend
 specific securities or funds, it is not registered with SEBI or any other
