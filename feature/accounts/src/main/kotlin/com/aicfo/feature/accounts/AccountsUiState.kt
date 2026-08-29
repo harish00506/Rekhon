@@ -6,6 +6,7 @@ import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.MoneyFormatter
 import com.aicfo.domain.engines.card.CardStatus
+import com.aicfo.domain.engines.investment.HoldingPerformance
 import com.aicfo.domain.engines.loan.AmortisationRow
 
 /**
@@ -61,6 +62,15 @@ data class AccountsUiState(
      * rather than a ₹0 EMI (P-03) — or is repaid, and a repaid loan has no next EMI to name.
      */
     val loans: Map<String, AmortisationRow> = emptyMap(),
+    /**
+     * Every holding inside each investment account, priced, keyed by account id (issue 6.3; §11).
+     *
+     * A map of lists rather than a field on [Account], for the reason [cards] gives: these are the
+     * engine's answers about a row, not part of the row. An `INVESTMENT`, `GOLD` or `CRYPTO`
+     * account **absent** here holds nothing yet, which the row renders as a prompt rather than as
+     * ₹0 across 0 holdings (P-03).
+     */
+    val investments: Map<String, List<HoldingPerformance>> = emptyMap(),
 ) {
     /**
      * Whether to show the "no accounts yet" invitation rather than a list.

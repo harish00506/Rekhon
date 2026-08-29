@@ -44,4 +44,26 @@ object DateFormatter {
         } catch (_: DateTimeParseException) {
             isoDate
         }
+
+    /**
+     * Whether a string names a day that exists.
+     * Why:    `LocalDate.parse` signals failure by throwing, and a `require` needs a boolean.
+     *         Keeping the `try` here rather than inline in a constructor keeps that constructor
+     *         readable and gives one place that decides what "a date" means for the whole model
+     *         layer. It was a private helper in `Loan.kt` until issue 6.3 needed the identical
+     *         check on two more dated types; duplicating it would have been three chances to
+     *         disagree about whether `2026-02-30` is a date.
+     * Result: `true` for an ISO `yyyy-MM-dd` naming a day that exists — so `2028-02-29` passes and
+     *         `2026-02-30` does not — `false` otherwise, including for a different format.
+     * Input:  [isoDate] — the candidate string (TIM-002). Output: [Boolean].
+     * Changelog: 2026-08-24 — Moved here from `Loan.kt`'s private `isCalendarDate` for issue 6.3,
+     *            behaviour unchanged.
+     */
+    fun isCalendarDate(isoDate: String): Boolean =
+        try {
+            LocalDate.parse(isoDate)
+            true
+        } catch (_: DateTimeParseException) {
+            false
+        }
 }

@@ -41,6 +41,16 @@ import org.junit.Test
 class AccountsViewModelTest {
     private val repository = FakeAccountRepository()
 
+    /**
+     * Result: the ViewModel, with fakes for the collaborators this file does not exercise.
+     * Why:    by issue 6.3 the constructor takes four repositories, and spelling all four out at
+     *         every call site put the lines past the 120-column limit while saying nothing.
+     * Input:  [loans] — the loan store, when a test cares what it holds. Output: the ViewModel.
+     * Changelog: 2026-08-24 — Created for issue 6.3.
+     */
+    private fun viewModel(loans: FakeLoanRepository = FakeLoanRepository()) =
+        AccountsViewModel(repository, FakeCreditCardRepository(), loans, FakeInvestmentRepository())
+
     /** Input: none. Output: pins `viewModelScope` to a test dispatcher so writes run inline. */
     @Before
     fun setUp() {
@@ -70,7 +80,7 @@ class AccountsViewModelTest {
         runTest {
             repository.setAccounts(account { copy(id = "account:1", name = "HDFC Savings") })
 
-            AccountsViewModel(repository, FakeCreditCardRepository(), FakeLoanRepository()).uiState.test {
+            viewModel().uiState.test {
                 val loaded = awaitItem()
                 assertFalse(loaded.isLoading)
                 assertEquals(listOf("HDFC Savings"), loaded.accounts.map { it.name })
@@ -85,7 +95,7 @@ class AccountsViewModelTest {
             // empty invitation are both wrong answers to "the database would not open".
             repository.failOnObserve = AppError.Storage("disk")
 
-            val state = AccountsViewModel(repository, FakeCreditCardRepository(), FakeLoanRepository()).uiState.value
+            val state = viewModel().uiState.value
 
             assertFalse("must not spin forever", state.isLoading)
             // The code, not which code: a Flow carries a raw `Throwable`, so the mapping is
@@ -98,7 +108,7 @@ class AccountsViewModelTest {
     @Test
     fun `an empty store is empty, not loading`() =
         runTest {
-            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository(), FakeLoanRepository())
+            val viewModel = viewModel()
 
             val state = viewModel.uiState.value
             assertFalse(state.isLoading)
@@ -112,7 +122,7 @@ class AccountsViewModelTest {
                 account { copy(id = "account:1", name = "Active") },
                 account { copy(id = "account:2", name = "Closed", isArchived = true) },
             )
-            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository(), FakeLoanRepository())
+            val viewModel = viewModel()
 
             assertEquals(listOf("Active"), viewModel.uiState.value.accounts.map { it.name })
 
@@ -126,7 +136,7 @@ class AccountsViewModelTest {
     fun `turning the toggle back off hides them again`() =
         runTest {
             repository.setAccounts(account { copy(id = "account:2", name = "Closed", isArchived = true) })
-            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository(), FakeLoanRepository())
+            val viewModel = viewModel()
             viewModel.onEvent(AccountsEvent.ToggleArchived(show = true))
 
             viewModel.onEvent(AccountsEvent.ToggleArchived(show = false))
@@ -138,7 +148,7 @@ class AccountsViewModelTest {
     fun `archiving an account calls the repository and the list follows`() =
         runTest {
             repository.setAccounts(account { copy(id = "account:1", name = "Old Card") })
-            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository(), FakeLoanRepository())
+            val viewModel = viewModel()
 
             viewModel.onEvent(AccountsEvent.SetArchived("account:1", archived = true))
 
@@ -151,7 +161,7 @@ class AccountsViewModelTest {
     fun `deleting an account calls the repository and the list follows`() =
         runTest {
             repository.setAccounts(account { copy(id = "account:1") })
-            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository(), FakeLoanRepository())
+            val viewModel = viewModel()
 
             viewModel.onEvent(AccountsEvent.Delete("account:1"))
 
@@ -163,7 +173,7 @@ class AccountsViewModelTest {
     fun `a failed delete is reported rather than swallowed`() =
         runTest {
             repository.setAccounts(account { copy(id = "account:1") })
-            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository(), FakeLoanRepository())
+            val viewModel = viewModel()
             repository.failWith = AppError.Storage("disk")
 
             viewModel.onEvent(AccountsEvent.Delete("account:1"))
@@ -176,7 +186,7 @@ class AccountsViewModelTest {
     fun `a failed archive is reported rather than swallowed`() =
         runTest {
             repository.setAccounts(account { copy(id = "account:1") })
-            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository(), FakeLoanRepository())
+            val viewModel = viewModel()
             repository.failWith = AppError.NotFound
 
             viewModel.onEvent(AccountsEvent.SetArchived("account:1", archived = true))
@@ -187,7 +197,7 @@ class AccountsViewModelTest {
     @Test
     fun `dismissing the error clears it`() =
         runTest {
-            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository(), FakeLoanRepository())
+            val viewModel = viewModel()
             repository.failWith = AppError.Storage("disk")
             viewModel.onEvent(AccountsEvent.Delete("account:1"))
 
@@ -200,7 +210,7 @@ class AccountsViewModelTest {
     fun `restoring an archived account brings it back to the active list`() =
         runTest {
             repository.setAccounts(account { copy(id = "account:1", name = "Reopened", isArchived = true) })
-            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository(), FakeLoanRepository())
+            val viewModel = viewModel()
 
             viewModel.onEvent(AccountsEvent.SetArchived("account:1", archived = false))
 
@@ -221,7 +231,7 @@ class AccountsViewModelTest {
                 },
             )
 
-            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository(), FakeLoanRepository())
+            val viewModel = viewModel()
             val account = viewModel.uiState.value.accounts.single()
 
             assertEquals(Money(75_000_00L), account.balance)
@@ -240,7 +250,7 @@ class AccountsViewModelTest {
             val row = instalment()
             val loans = FakeLoanRepository(mapOf("account:1" to row))
 
-            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository(), loans)
+            val viewModel = viewModel(loans)
 
             val shown = viewModel.uiState.value.loans.getValue("account:1")
             assertEquals(row.amount, shown.principal + shown.interest)
@@ -254,7 +264,7 @@ class AccountsViewModelTest {
             // left that they owe nothing this month, and the row renders a prompt instead (P-03).
             repository.setAccounts(account { copy(id = "account:1", type = AccountType.LOAN) })
 
-            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository(), FakeLoanRepository())
+            val viewModel = viewModel()
 
             assertTrue(viewModel.uiState.value.loans.isEmpty())
         }
@@ -268,7 +278,7 @@ class AccountsViewModelTest {
             repository.failWith = AppError.Storage("disk")
             val loans = FakeLoanRepository(mapOf("account:1" to instalment()))
 
-            val viewModel = AccountsViewModel(repository, FakeCreditCardRepository(), loans)
+            val viewModel = viewModel(loans)
 
             assertEquals(1, viewModel.uiState.value.loans.size)
         }

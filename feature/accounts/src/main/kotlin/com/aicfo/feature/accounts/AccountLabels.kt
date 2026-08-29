@@ -3,6 +3,9 @@ package com.aicfo.feature.accounts
 import androidx.annotation.StringRes
 import com.aicfo.core.common.AppError
 import com.aicfo.core.model.AccountType
+import com.aicfo.core.model.AssetClass
+import com.aicfo.core.model.LotKind
+import com.aicfo.domain.engines.investment.XirrUnavailable
 
 /**
  * Maps the domain's closed sets to this feature's strings (issue 2.5; §21.6).
@@ -16,6 +19,57 @@ import com.aicfo.core.model.AccountType
  * Changelog: 2026-07-28 — Created for issue 2.5.
  */
 internal object AccountLabels {
+    /**
+     * The label for an asset class (issue 6.3; §11.2).
+     * Why:    the reason [typeLabel] exists — `AssetClass` is in `:core:model`, which stays free of
+     *         Android (ARC-002), so the wording lives in the feature that renders it.
+     * Result: the string resource for [assetClass].
+     * Input:  [assetClass]. Output: a string resource id.
+     * Changelog: 2026-08-24 — Created for issue 6.3.
+     */
+    @StringRes
+    fun assetClassLabel(assetClass: AssetClass): Int =
+        when (assetClass) {
+            AssetClass.EQUITY -> R.string.asset_class_equity
+            AssetClass.DEBT -> R.string.asset_class_debt
+            AssetClass.GOLD -> R.string.asset_class_gold
+            AssetClass.CRYPTO -> R.string.asset_class_crypto
+            AssetClass.CASH -> R.string.asset_class_cash
+            AssetClass.REAL_ESTATE -> R.string.asset_class_real_estate
+            AssetClass.OTHER -> R.string.asset_class_other
+        }
+
+    /**
+     * The label for what a lot did (issue 6.3).
+     * Result: the string resource for [kind]. Input: [kind]. Output: a string resource id.
+     * Changelog: 2026-08-24 — Created for issue 6.3.
+     */
+    @StringRes
+    fun lotKindLabel(kind: LotKind): Int =
+        when (kind) {
+            LotKind.BUY -> R.string.lot_kind_buy
+            LotKind.SELL -> R.string.lot_kind_sell
+            LotKind.INCOME -> R.string.lot_kind_income
+        }
+
+    /**
+     * Why a holding has no money-weighted return (issue 6.3; §11, P-02).
+     * Why:    each reason gets its own sentence because each is a different thing for the user to
+     *         do about it — "add a price" and "this has fallen too far to annualise" are not the
+     *         same message, and collapsing them to one dash would be the black-box verdict P-02
+     *         forbids.
+     * Result: the string resource for [reason].
+     * Input:  [reason]. Output: a string resource id.
+     * Changelog: 2026-08-24 — Created for issue 6.3.
+     */
+    @StringRes
+    fun xirrUnavailableLabel(reason: XirrUnavailable): Int =
+        when (reason) {
+            XirrUnavailable.TOO_FEW_FLOWS -> R.string.holdings_return_too_few
+            XirrUnavailable.SAME_SIGN -> R.string.holdings_return_same_sign
+            XirrUnavailable.NOT_BRACKETED -> R.string.holdings_return_not_bracketed
+        }
+
     /**
      * The label for an account type.
      * Why:    exhaustive `when` rather than a map keyed by the enum — a map compiles fine with a

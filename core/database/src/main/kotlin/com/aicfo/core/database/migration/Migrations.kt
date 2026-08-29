@@ -880,6 +880,111 @@ internal object Migrations {
             }
         }
 
+    /**
+     * 17 -> 18: the holdings inside an investment account, and their dated cash movements
+     * (issue 6.3; §11, FR-ACC-001).
+     *
+     * Why:   §20.1 names `holdings` and `holding_lots`, and until they existed the app could show
+     *        what an investment account was worth in total but never what any part of it had
+     *        earned. `ai/knowledge/classification-kb.json` records the same gap from the other
+     *        side: `CLS-NAT-003` says its holdings need a holdings table (ADR-0016).
+     * What:  two `CREATE TABLE`s and their six indices. No backfill, and none is possible: no
+     *        account had holdings before this version, so the empty tables are the complete and
+     *        correct history (DB-003 - nothing is destroyed).
+     *
+     * No foreign key from `investment_lot` to `investment_holding`, by the convention every other
+     * table here keeps: references carry an index, not a constraint.
+     */
+    val MIGRATION_17_18 =
+        object : Migration(VERSION_17, VERSION_18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                createInvestmentHolding(db)
+                createInvestmentLot(db)
+            }
+        }
+
+    /**
+     * `investment_holding` — an instrument's class and last observed unit price (issue 6.3; §11).
+     * Why:    split from [MIGRATION_17_18]'s body for the reason [createCreditCard] was split from
+     *         [MIGRATION_15_16]'s: two `CREATE TABLE`s inline put the migration over the 40-line
+     *         limit (§21.6) and made the second one easy to skim past.
+     *
+     *         Keyed by a surrogate `id`, unlike `loan` and `credit_card`, because an account holds
+     *         many of these — hence the third index, on `account_id`, which is the read path the
+     *         holdings screen uses.
+     * Result: the table and its three indices exist.
+     * Input:  [db]. Output: none.
+     */
+    private fun createInvestmentHolding(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `investment_holding` (" +
+                "`id` TEXT NOT NULL, " +
+                "`profile_id` TEXT NOT NULL, " +
+                "`account_id` TEXT NOT NULL, " +
+                "`name` TEXT NOT NULL, " +
+                "`asset_class` TEXT NOT NULL, " +
+                "`unit_price_minor` INTEGER, " +
+                "`priced_on_iso_date` TEXT, " +
+                "`created_at_utc_millis` INTEGER NOT NULL, " +
+                "`updated_at_utc_millis` INTEGER NOT NULL, " +
+                "`deleted_at_utc_millis` INTEGER, " +
+                "PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_investment_holding_profile_id` " +
+                "ON `investment_holding` (`profile_id`)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS " +
+                "`index_investment_holding_profile_id_deleted_at_utc_millis` " +
+                "ON `investment_holding` (`profile_id`, `deleted_at_utc_millis`)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_investment_holding_account_id` " +
+                "ON `investment_holding` (`account_id`)",
+        )
+    }
+
+    /**
+     * `investment_lot` — one dated cash movement inside a holding (issue 6.3; §11).
+     * Why:    XIRR is money-weighted, so every purchase, sale and payout needs its own dated row; a
+     *         single "total invested" column could not express a SIP.
+     *
+     *         No foreign key to `investment_holding`, by the convention every other table here
+     *         keeps: a reference carries an index, not a constraint.
+     * Result: the table and its three indices exist.
+     * Input:  [db]. Output: none.
+     */
+    private fun createInvestmentLot(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `investment_lot` (" +
+                "`id` TEXT NOT NULL, " +
+                "`profile_id` TEXT NOT NULL, " +
+                "`holding_id` TEXT NOT NULL, " +
+                "`kind` TEXT NOT NULL, " +
+                "`transacted_on_iso_date` TEXT NOT NULL, " +
+                "`quantity_nano` INTEGER NOT NULL, " +
+                "`amount_minor` INTEGER NOT NULL, " +
+                "`created_at_utc_millis` INTEGER NOT NULL, " +
+                "`updated_at_utc_millis` INTEGER NOT NULL, " +
+                "`deleted_at_utc_millis` INTEGER, " +
+                "PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_investment_lot_profile_id` " +
+                "ON `investment_lot` (`profile_id`)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS " +
+                "`index_investment_lot_profile_id_deleted_at_utc_millis` " +
+                "ON `investment_lot` (`profile_id`, `deleted_at_utc_millis`)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_investment_lot_holding_id` " +
+                "ON `investment_lot` (`holding_id`)",
+        )
+    }
+
     /** Every migration, in order, for `CfoDatabaseFactory` to register. */
     val ALL: Array<Migration> =
         arrayOf(
@@ -899,6 +1004,7 @@ internal object Migrations {
             MIGRATION_14_15,
             MIGRATION_15_16,
             MIGRATION_16_17,
+            MIGRATION_17_18,
         )
 
     /** Named so the version pair reads as a schema version rather than an unexplained literal. */
@@ -948,4 +1054,7 @@ internal object Migrations {
 
     /** The version issue 6.2 introduces — `loan` (FR-ACC-003). */
     private const val VERSION_17 = 17
+
+    /** The version issue 6.2 introduced, and the one issue 6.3 upgrades from. */
+    private const val VERSION_18 = 18
 }

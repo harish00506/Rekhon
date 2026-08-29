@@ -13,6 +13,8 @@ import com.aicfo.core.database.dao.CardAlertDao
 import com.aicfo.core.database.dao.CategoryDao
 import com.aicfo.core.database.dao.CreditCardDao
 import com.aicfo.core.database.dao.DemoDao
+import com.aicfo.core.database.dao.InvestmentHoldingDao
+import com.aicfo.core.database.dao.InvestmentLotDao
 import com.aicfo.core.database.dao.LoanDao
 import com.aicfo.core.database.dao.NetWorthSnapshotDao
 import com.aicfo.core.database.dao.ProfileDao
@@ -30,6 +32,8 @@ import com.aicfo.core.database.entity.BudgetReviewEntity
 import com.aicfo.core.database.entity.CardAlertEntity
 import com.aicfo.core.database.entity.CategoryEntity
 import com.aicfo.core.database.entity.CreditCardEntity
+import com.aicfo.core.database.entity.InvestmentHoldingEntity
+import com.aicfo.core.database.entity.InvestmentLotEntity
 import com.aicfo.core.database.entity.LoanEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
 import com.aicfo.core.database.entity.ProfileEntity
@@ -79,6 +83,8 @@ import com.aicfo.core.database.entity.TransactionTagEntity
         CreditCardEntity::class,
         CardAlertEntity::class,
         LoanEntity::class,
+        InvestmentHoldingEntity::class,
+        InvestmentLotEntity::class,
     ],
     version = CfoDatabase.VERSION,
     exportSchema = true,
@@ -136,6 +142,12 @@ abstract class CfoDatabase : RoomDatabase() {
     /** Input: none. Output: the loan DAO (issue 6.2, FR-ACC-003). */
     abstract fun loanDao(): LoanDao
 
+    /** Input: none. Output: the holdings DAO (issue 6.3, §11). */
+    abstract fun investmentHoldingDao(): InvestmentHoldingDao
+
+    /** Input: none. Output: the holding-lot DAO (issue 6.3, §11). */
+    abstract fun investmentLotDao(): InvestmentLotDao
+
     /**
      * Input:  none. Output: the demo wipe DAO (issue 2.4, FR-ONB-004).
      *
@@ -170,9 +182,12 @@ abstract class CfoDatabase : RoomDatabase() {
          * · 16 — issue 6.1 (`credit_card`, a card's limit and billing days; `card_alert`, the
          * record of what the user has already been told about one; FR-ACC-002, §17.1) · 17 — issue
          * 6.2 (`loan`, a loan's principal, rate, tenure and first-EMI date; the amortisation
-         * schedule is derived from those and deliberately **not** stored — ADR-0026; FR-ACC-003).
+         * schedule is derived from those and deliberately **not** stored — ADR-0026; FR-ACC-003)
+         * · 18 — issue 6.3 (`investment_holding`, an instrument's asset class and last observed
+         * unit price; `investment_lot`, its dated cash movements — the value, the cost and the
+         * XIRR are all derived from those two, ADR-0027; §11).
          */
-        const val VERSION = 17
+        const val VERSION = 18
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"

@@ -1232,3 +1232,145 @@ data class CardAlertEntity(
     @ColumnInfo(name = "notified_at_utc_millis")
     val notifiedAtUtcMillis: Long,
 )
+
+/**
+ * One instrument the user owns inside an investment account (issue 6.3; §11, §20.1).
+ *
+ * Why:    §20.1 names `holdings` as its own table because a single broker account or MF folio holds
+ *         many instruments, each with its own asset class and its own return. Until this existed
+ *         the app could show what an investment account was worth in total but never what any part
+ *         of it had earned, and `ai/knowledge/classification-kb.json` recorded the gap from the
+ *         other side: `CLS-NAT-003` carries an `_unimplemented` note saying its holdings need a
+ *         holdings table, so nature classification fires on the account TYPE instead (ADR-0016).
+ *
+ *         **This is the first Epic-6 table not keyed on `account_id`**, and the break is
+ *         deliberate. [CreditCardEntity] and [LoanEntity] are 1:1 with their account, so the
+ *         account is their natural key; holdings are 1:N, so they need a surrogate id and an index
+ *         on `account_id` for the read path instead.
+ *
+ *         **The price is stored though the value is not.** Everything a holding is worth is derived
+ *         from its lots and this price — the argument ADR-0007 makes for account balances and
+ *         ADR-0026 for amortisation schedules. A market price is the exception because it is an
+ *         *observation the device cannot compute*: nothing else in the row implies it. Issue 6.5
+ *         replaces only where it comes from, leaving this column and every derived figure alone.
+ * What:   the identity, its account, the user's label, its asset class, and the last observed price
+ *         per unit with the day it was observed.
+ * Result: a Room row in `investment_holding`, added at schema version 18 by issue 6.3.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-08-24 — Created for issue 6.3 (§11). See ADR-0027 for why `asset_class` is a
+ *            column here rather than a derivation from the account's type.
+ *
+ * **No `symbol` or ISIN.** Issue 6.5 needs a price key and adds it with its own migration; every
+ * issue adds the columns it can argue for, which is why this schema has survived seventeen
+ * versions without a destructive change.
+ *
+ * **No stored total quantity or cost.** Both are sums of the lots beneath this row, and a cached
+ * total is a second opinion that goes stale the first time a lot is corrected.
+ */
+@Serializable
+@Entity(
+    tableName = "investment_holding",
+    indices = [
+        Index("profile_id"),
+        Index("profile_id", "deleted_at_utc_millis"),
+        Index("account_id"),
+    ],
+)
+data class InvestmentHoldingEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** The `account` row this sits in. Indexed, not the key: an account holds many of these. */
+    @ColumnInfo(name = "account_id")
+    val accountId: String,
+    /** The user's own label, e.g. "Parag Parikh Flexi Cap". Never blank — the model refuses it. */
+    @ColumnInfo(name = "name")
+    val name: String,
+    /** `AssetClass.storedValue`. Issue 6.4's allocation dimension; `RULE-GOLD-CAP` names two. */
+    @ColumnInfo(name = "asset_class")
+    val assetClass: String,
+    /**
+     * MNY-001: paise **per unit** as last observed. Null means never priced — not zero, which would
+     * read as a worthless holding rather than an unvalued one (P-03).
+     */
+    @ColumnInfo(name = "unit_price_minor")
+    val unitPriceMinor: Long? = null,
+    /**
+     * TIM-002: the day [unitPriceMinor] was observed, ISO `yyyy-MM-dd`. Both-or-neither with the
+     * price: it is XIRR's terminal flow date, and without it the answer would drift by the day.
+     * It is also where issue 6.5 hangs its staleness label.
+     */
+    @ColumnInfo(name = "priced_on_iso_date")
+    val pricedOnIsoDate: String? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+)
+
+/**
+ * One dated cash movement inside a holding — a purchase, a sale or a payout (issue 6.3; §11, §20.1).
+ *
+ * Why:    XIRR is money-weighted, so it needs every movement with its own date. A single "total
+ *         invested" column cannot express a SIP, and a return computed from one is not wrong by a
+ *         rounding but wrong by the whole shape of the contributions. §20.1 names `holding_lots`
+ *         for exactly this.
+ *
+ *         **`profile_id` is denormalised** rather than reached through the holding, for the reason
+ *         [TransactionSplitEntity] gives: the demo wipe and the export both address every table by
+ *         `profile_id` alone (ADR-0006), and a table that can only be reached by a join is a table
+ *         one of them will eventually miss.
+ * What:   the identity, its holding, what the movement was, when, how many units and how much cash.
+ * Result: a Room row in `investment_lot`, added at schema version 18 by issue 6.3.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-08-24 — Created for issue 6.3 (§11).
+ *
+ * **Units and cash are magnitudes; direction lives in `kind`.** Storing a signed amount would give
+ * two spellings of "sold ten units" and let a row disagree with itself — the argument
+ * `AccountType.isLiability` makes about classifying by type rather than by sign.
+ *
+ * **Charges are folded into `amount_minor`**, which is the cash that actually moved. A separate fee
+ * column would be a second figure that can disagree with the first, and the user's statement shows
+ * the total.
+ */
+@Serializable
+@Entity(
+    tableName = "investment_lot",
+    indices = [
+        Index("profile_id"),
+        Index("profile_id", "deleted_at_utc_millis"),
+        Index("holding_id"),
+    ],
+)
+data class InvestmentLotEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** The `investment_holding` row this belongs to. Indexed: a holding has many lots. */
+    @ColumnInfo(name = "holding_id")
+    val holdingId: String,
+    /** `buy` | `sell` | `income` — `LotKind.storedValue`. The only source of the cash direction. */
+    @ColumnInfo(name = "kind")
+    val kind: String,
+    /** TIM-002: the day the money moved, ISO `yyyy-MM-dd`. XIRR weights by this. */
+    @ColumnInfo(name = "transacted_on_iso_date")
+    val transactedOnIsoDate: String,
+    /** Units moved x 10^9, as a magnitude. Zero for an income lot: a dividend moves no units. */
+    @ColumnInfo(name = "quantity_nano")
+    val quantityNano: Long,
+    /** MNY-001: cash moved in paise, as a magnitude, charges included. Always positive. */
+    @ColumnInfo(name = "amount_minor")
+    val amountMinor: Long,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+)
