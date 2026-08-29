@@ -27,6 +27,10 @@ tasks.withType<Test>()
         exclude("**/AccountEditorCardFieldsTest.class")
         // Issue 6.2 adds a second type-specific form, and it needs the same exclusion.
         exclude("**/AccountEditorLoanFieldsTest.class")
+        // Issue 6.3: the holdings screen, for the same reason.
+        exclude("**/HoldingsScreenTest.class")
+        // Issue 6.4: the allocation screen, for the same reason.
+        exclude("**/AllocationScreenTest.class")
     }
 
 dependencies {

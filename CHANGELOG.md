@@ -11,6 +11,81 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > Credit cards, loans with amortisation, investment holdings with XIRR, allocation and net-worth
 > history — exact paise math throughout.
 
+### [0.6.4] — Issue 6.4: Allocation and diversification  (2026-08-28)
+
+- **Implemented:** what shape the portfolio is in (**FR-INV-002**, §11.2, AI-INV). A new
+  `allocation` operation on `:domain:engines:investment` splits the portfolio by `AssetClass` and
+  flags what has grown too large, a portfolio-wide **Allocation** screen renders it as a bar, a
+  legend and one card per warning, and `InvestmentRepository.observeAllocation` joins accounts,
+  holdings and lots into the positions it divides. **No schema change, no migration, no new module,
+  no new dependency, no DI change** — schema stays at 18 and the worker count is still seven.
+- **The rulebook was read, not written.** `RULE-GOLD-CAP` (10%), `RULE-CRYPTO-CAP` (5%) and
+  `RULE-CONC-15-70` (15%/70%) all shipped already naming `AI-INV.diversification` as their consumer,
+  so all three are mirrored and cited untouched and `_meta.version` stays **1.13.0** — the same way
+  issue 6.1 left `RULE-CC-UTIL` alone, and what keeps this clear of ADR-0017's trigger 3. The
+  module gained its first `RulebookDriftTest` and the `inputs.file` wiring its `build.gradle.kts`
+  promised in 6.3. **Two AI-INV rows are deliberately not mirrored:** `RULE-AGE-EQUITY` needs the
+  user's age and `RULE-5-25` needs a target band, and the app collects neither.
+- **The portfolio is the investable accounts, and unpriced holdings are excluded from it**
+  ([ADR-0029](docs/adr/0029-the-portfolio-is-the-investable-accounts.md)). Counting savings or a
+  house would put nearly every user permanently past the 70% single-class line, and a rule that
+  always fires conveys nothing. An unpriced holding is left out of the denominator and reported —
+  "Based on 8 of 11 holdings" — rather than counted as ₹0, the same P-03 rule ADR-0027 set on the
+  value path.
+- **Shares are apportioned, not rounded.** Floors plus largest-remainder distribution, so the slices
+  sum to exactly 10 000 bps and a portfolio never adds up to 99.97%. Every expectation in
+  `golden/allocation.txt` came from an **independent** Python implementation of the apportionment
+  spec, so agreement is evidence the shares are right rather than merely unchanged.
+- **A flag names the one row that raised it** (P-02), and the result names all three so a clean
+  portfolio can say what it was found clean of. Nothing here tells the user to sell anything —
+  §11.1's disclaimer is on the screen and every warning is worded as an observation (P-07).
+- **Tests:** 1 341 passed, 0 skipped across the three touched modules (`:domain:engines:investment`
+  60, `:data:repository` 1 086, `:feature:accounts` 195). `ktlintCheck`, `detekt`, `lintDebug` and
+  `koverVerify` all green. **Six gates were broken on purpose and observed failing**, then reverted
+  (ADR-0005): the cap boundary, the remainder distribution, the denominator, the unpriced exclusion,
+  a rulebook-only edit, and a deleted golden record.
+- **Engine version 1.0 → 1.1**, and `AI-INV` in `engine-registry.yaml` with it. No existing XIRR
+  answer moved — the independently-computed golden file still agrees to the basis point — but a
+  result stored under 1.0 came from an engine that could not have produced an allocation, and
+  AI-ARC-006 needs that to stay tellable.
+
+### [0.6.3] — Issue 6.3: Investment holdings, lots and XIRR  (2026-08-24)
+
+- **Implemented:** what an investment account actually holds, and what it has returned (**§11**,
+  AI-INV). Holdings carry a name, an `AssetClass` and the last observed price **per unit** with the
+  day it was observed; lots carry each dated purchase, sale and payout. New module
+  `:domain:engines:investment`, new tables `investment_holding` and `investment_lot` (schema
+  **17 → 18**), a per-account holdings screen, and a value-and-return line on every investment,
+  gold and crypto account. **No new worker** — 6.3 is the arithmetic and a screen, not a rebalancing
+  alert; the worker count is still seven.
+- **XIRR is solved deterministically, without floating point**
+  ([ADR-0028](docs/adr/0028-xirr-by-bisection-over-the-daily-growth-factor.md)). The textbook form
+  needs a fractional power, so this substitutes the daily growth factor `x = (1+r)^(1/365)` and
+  bisects a polynomial in integer powers — 128 halvings of a literal bracket, no early exit, one
+  `HALF_EVEN` rounding at the end. The golden file's eight cases were computed by an **independent**
+  60-significant-digit implementation, so agreement is evidence the answer is right rather than
+  merely unchanged. A twelve-instalment SIP reports **15.67%** where a cost-to-value ratio would
+  say 8.3%.
+- **Asset class is a column on the holding, not a derivation from the account type**
+  ([ADR-0027](docs/adr/0027-asset-class-is-a-column-on-the-holding.md)). One broker account holds an
+  equity fund *and* a debt fund, so deriving it would make issue 6.4's allocation structurally wrong.
+  `AssetClass.defaultFor` is issue 6.4's groundwork: it is the editor's default and the fallback for
+  accounts that hold value without lots. `RULE-GOLD-CAP` and `RULE-CRYPTO-CAP` already name two of
+  the stored strings, and a test pins both.
+- **Absent is never zero (P-03).** A holding with no price reports no value and no gain, and says
+  why it has no return, rather than showing ₹0 — which would report the user's entire cost as a loss.
+  A *fully exited* holding is worth exactly zero without needing a price.
+- **§11.1's disclaimer ships with the first screen that shows a figure** (P-07): the module analyses
+  and flags, does not recommend securities, and is not SEBI-registered advice. A Compose test asserts
+  it, including while the editor is open — it is the only enforcement that requirement has.
+- **The rulebook is untouched.** A money-weighted return has no threshold to tune, so
+  `ai/rules/rules-kb.json` stays at `_meta.version` **1.13.0** and no drift test was added — the
+  argument `:domain:engines:loan` already makes for amortisation. The five AI-INV rows remain
+  issue 6.4's.
+- **Fixed before it shipped:** `BigInteger.longValueExact()` in the unit-count parser requires API 31
+  against a minSdk of 26 — it compiled and would have crashed on any older device. Caught by
+  `lintDebug`, replaced with a `BigDecimal.setScale(0, HALF_EVEN).longValueExact()`.
+
 ### [0.6.2] — Issue 6.2: Loans + amortisation + EMI split  (2026-08-20)
 
 - **Implemented:** a loan's terms and the deterministic schedule they imply — principal, annual rate,

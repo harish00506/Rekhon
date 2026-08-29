@@ -68,8 +68,7 @@ class AccountsFlowTest {
                                 ),
                         ),
                     onEvent = {},
-                    onAddAccount = {},
-                    onEditAccount = {},
+                    actions = AccountsActions({}, {}, {}, {}),
                 )
             }
         }
@@ -86,8 +85,7 @@ class AccountsFlowTest {
                 AccountsContent(
                     uiState = AccountsUiState(isLoading = false),
                     onEvent = {},
-                    onAddAccount = {},
-                    onEditAccount = {},
+                    actions = AccountsActions({}, {}, {}, {}),
                 )
             }
         }
@@ -109,8 +107,7 @@ class AccountsFlowTest {
                             accounts = listOf(account { copy(name = "Old Card", isArchived = true) }),
                         ),
                     onEvent = {},
-                    onAddAccount = {},
-                    onEditAccount = {},
+                    actions = AccountsActions({}, {}, {}, {}),
                 )
             }
         }
@@ -126,8 +123,7 @@ class AccountsFlowTest {
                 AccountsContent(
                     uiState = AccountsUiState(isLoading = false),
                     onEvent = { events += it },
-                    onAddAccount = {},
-                    onEditAccount = {},
+                    actions = AccountsActions({}, {}, {}, {}),
                 )
             }
         }
@@ -145,8 +141,7 @@ class AccountsFlowTest {
                 AccountsContent(
                     uiState = AccountsUiState(isLoading = false, accounts = listOf(account { copy(id = "account:7") })),
                     onEvent = { events += it },
-                    onAddAccount = {},
-                    onEditAccount = {},
+                    actions = AccountsActions({}, {}, {}, {}),
                 )
             }
         }
@@ -177,8 +172,7 @@ class AccountsFlowTest {
                             accounts = listOf(account { copy(name = "Old Card", isArchived = true) }),
                         ),
                     onEvent = {},
-                    onAddAccount = {},
-                    onEditAccount = {},
+                    actions = AccountsActions({}, {}, {}, {}),
                 )
             }
         }
@@ -203,8 +197,7 @@ class AccountsFlowTest {
                 AccountsContent(
                     uiState = AccountsUiState(isLoading = false, errorCode = "storage"),
                     onEvent = {},
-                    onAddAccount = {},
-                    onEditAccount = {},
+                    actions = AccountsActions({}, {}, {}, {}),
                 )
             }
         }
@@ -294,8 +287,7 @@ class AccountsFlowTest {
                             accounts = listOf(account { copy(id = "account:7", name = "HDFC Savings") }),
                         ),
                     onEvent = { events += it },
-                    onAddAccount = {},
-                    onEditAccount = {},
+                    actions = AccountsActions({}, {}, {}, {}),
                 )
             }
         }
@@ -323,8 +315,7 @@ class AccountsFlowTest {
                                 ),
                         ),
                     onEvent = {},
-                    onAddAccount = {},
-                    onEditAccount = {},
+                    actions = AccountsActions({}, {}, {}, {}),
                 )
             }
         }
@@ -350,8 +341,7 @@ class AccountsFlowTest {
                             reconciling = ReconcileState(account = account()),
                         ),
                     onEvent = {},
-                    onAddAccount = {},
-                    onEditAccount = {},
+                    actions = AccountsActions({}, {}, {}, {}),
                 )
             }
         }
@@ -379,8 +369,7 @@ class AccountsFlowTest {
                                 ),
                         ),
                     onEvent = {},
-                    onAddAccount = {},
-                    onEditAccount = {},
+                    actions = AccountsActions({}, {}, {}, {}),
                 )
             }
         }
@@ -402,8 +391,7 @@ class AccountsFlowTest {
                             reconciling = ReconcileState(account = account()),
                         ),
                     onEvent = { events += it },
-                    onAddAccount = {},
-                    onEditAccount = {},
+                    actions = AccountsActions({}, {}, {}, {}),
                 )
             }
         }

@@ -398,6 +398,162 @@ screen explaining it.
 **No worker, no notifier, no channel.** 6.2 ships the arithmetic, not an EMI reminder — the worker
 count is still seven.
 
+
+### 2.3 · A holding's return — the first figure with no clock behind it (issue 6.3)
+
+Shape A again, with the difference that makes it worth drawing: **this path reads no clock at all**.
+A holding's closing cash flow is dated by the day its price was observed, so the same rows give the
+same return tomorrow ([ADR-0028](docs/adr/0028-xirr-by-bisection-over-the-daily-growth-factor.md)).
+The clock is still read in the repository — for row stamps and provenance — but nothing it returns
+reaches the arithmetic.
+
+```
+HoldingsScreen(onDone)                              feature/accounts/HoldingsScreen.kt
+└─ hiltViewModel<HoldingsViewModel>()
+    └─ savedState["accountId"]                      the typed route's one argument (ARC-001)
+    └─ init { observeHoldings() }
+        └─ InvestmentRepository.observeForAccount(accountId)     data/repository — ARC-005
+            └─ activeProfileId.flatMapLatest { profileId ->
+                 combine(                                   TWO streams, one engine pass
+                   investmentHoldingDao().observeForAccount(accountId),
+                   investmentLotDao().observeForProfile(profileId),
+                 ) { holdings, lots ->
+                 │   ┌── clock read here, and it reaches provenance ONLY (TIM-001)
+                 ├─  now = clock.nowUtcMillis()
+                 ├─  byHolding = lots.groupBy { it.holdingId }        one pass, not N filters
+                 └─  holdings.mapNotNull { entity ->
+                       ├─ entity.toHolding()                unknown asset_class → null → dropped
+                       ├─ its = byHolding[entity.id].mapNotNull { it.toLot() }
+                       │                                     unknown kind → dropped, NEVER defaulted
+                       └─ engine.holding(HoldingInput(holding, its, now))          → shape C
+                           ├─ CashFlows.netQuantity(lots)    Σ BUY − Σ SELL; INCOME moves no units
+                           ├─ CashFlows.currentValue(...)    units x price, ONE HALF_EVEN rounding
+                           │   └─ price == null && units > 0 → null    absent, never ₹0 (P-03)
+                           ├─ CashFlows.of(holding, lots, value)
+                           │   BUY → (date, −amount) · SELL/INCOME → (date, +amount)
+                           │   └─ + (pricedOn, +value)       the terminal flow, when there is one
+                           └─ Xirr.solve(flows)              ADR-0028
+                               ├─ groupBy(day).sum()         same-day flows coalesced FIRST
+                               ├─ < 2 distinct days          → TOO_FEW_FLOWS
+                               ├─ all one sign               → SAME_SIGN
+                               ├─ sign(F(0.98)) == sign(F(1.02)) → NOT_BRACKETED
+                               └─ 128 bisections, no early exit → r = x^365 − 1 → bps
+                     }
+               }.flowOn(dispatchers.io)
+        ⇣
+    _uiState.update { copy(holdings = priced, isLoading = false) }
+        │   .catch { copy(holdings = emptyList(), errorCode = ...) }   stale figures are worse than none
+        ▼
+    HoldingsList → HoldingRow(holding)
+    ├─ HoldingValue   value == null → "Not valued yet"        never ₹0.00 (P-03)
+    ├─ HoldingCost    "₹11,500.00 invested" · "₹531.60 gain"  the inputs beside the answer (P-02)
+    ├─ HoldingReturn  xirrUnavailable → its own sentence      never an empty cell (P-02)
+    │                 else → "15.6% a year"                   built from Int bps, never a Double
+    └─ maskedAmount(...)                                      the 5.3 blur reaches every amount
+    ▼
+    Text(holdings_disclaimer)     §11.1's wording, ALWAYS rendered, editor open or not (P-07)
+```
+
+The accounts list consumes the same repository through its sibling read, as a **fourth** collector
+beside cards and loans — never a `combine`, for the reason 2.2 gives:
+
+```
+AccountsViewModel.init { observeAccounts(); observeCards(); observeLoans(); observeInvestments() }
+└─ InvestmentRepository.observeByAccount()   → Map<accountId, List<HoldingPerformance>>
+    └─ AccountsUiState.investments           an account with nothing is ABSENT, not zeroed (P-03)
+        └─ AccountRow → if (type in INVESTABLE_TYPES) InvestmentSummary(figures.holdings)
+            ├─ null/empty → "Add what this account holds"
+            └─ else → "₹9,411.60 across 2 holdings"   only PRICED holdings are summed
+```
+
+The write side mints ids in the repository and writes the holding **before** its lots:
+
+```
+HoldingsScreen  ⇡ onEvent(HoldingsEvent.SaveEditor)
+└─ HoldingsViewModel.save()
+    ├─ editor.toDraft(accountId)                     parsed ONCE, here (MNY-001)
+    │   ├─ MoneyFormatter.parse(unitPrice)           → Money paise
+    │   ├─ price XOR date present                    → null → fieldError, NOTHING WRITTEN
+    │   └─ HoldingDraft(...)                         a draft, because a saved holding needs an id
+    ├─ editor.lots.map { it.toDraftOrNull() }
+    │   └─ units via BigDecimal x 10⁹, HALF_EVEN     never toDouble() — a fund quotes 3 decimals
+    └─ InvestmentRepository.saveHolding(draft, id)
+        ├─ accountDao().findWithBalance(...) == null → Err(NotFound)
+        ├─ type !in {INVESTMENT, GOLD, CRYPTO}       → Err(Validation("account.notInvestable"))
+        └─ ids.newId("holding") when id == null      injected, never UUID.randomUUID() (P-08)
+            └─ upsert → then saveLot(draft.copy(holdingId = written), lotId) per lot
+                └─ Room invalidates → both observers re-emit → every figure re-derives
+```
+
+**Nothing on this path is cached.** The value, the cost, the gain and the return are recomputed from
+the lots and the price on every emission ([ADR-0027](docs/adr/0027-asset-class-is-a-column-on-the-holding.md)),
+so correcting a mistyped lot corrects all four with nothing to invalidate.
+
+**No worker, no notifier, no channel.** 6.3 ships the arithmetic and a screen, not a rebalancing
+alert — the worker count is still seven. A money-weighted return has no threshold to tune, so *this*
+path still cites no rule; §2.4's does, and the `RulebookDriftTest` arrived with it. `_meta.version`
+stays `1.13.0` either way — 6.4 reads three rows that already existed and authored none.
+
+---
+
+### 2.4 · How the portfolio is spread — the first figure that cites a rule to accuse something (issue 6.4)
+
+`FR-INV-002` asks a question no single account can answer, so this is the first read path that
+combines **three** streams rather than two: an account's balance is part of the answer, because a
+gold account tracked as one number has no holdings to price and would otherwise vanish from the
+split.
+
+```
+AccountsScreen  → actions.onOpenAllocation
+  → CfoNavHost: navigate(CfoRoute.Allocation)          data object — no id; it is every account at once
+    → AllocationScreen → AllocationViewModel
+      → InvestmentRepository.observeAllocation()
+        └─ activeProfileId.flatMapLatest
+           ├─ clock.today() read ONCE, outside the combine   so one emission describes one day (TIM-001)
+           └─ combine(
+              │   accountDao.observeWithBalances(profileId, includeArchived = false, asOf)
+              │   investmentHoldingDao.observeForProfile(profileId)
+              │   investmentLotDao.observeForProfile(profileId))
+              ├─ price(holdings, lots) → InvestmentEngine.holding(..)   §2.3's figures, reused
+              ├─ positions(accounts, performances)              ADR-0029 — WHAT THE PORTFOLIO IS
+              │   ├─ type in INVESTABLE && includeInNetWorth    savings and property are outside it
+              │   ├─ account HAS holdings  → one position per holding
+              │   ├─ account has NONE      → one position, valued at its balance,
+              │   │                          classed by AssetClass.defaultFor(type)
+              │   └─ balance <= 0 or no class → dropped         empty is not unpriced
+              └─ InvestmentEngine.allocation(AllocationInput(positions, now, rules))
+                 → Allocation.compute
+                   ├─ priced = positions with a value           unpriced excluded, never ₹0 (P-03)
+                   ├─ total <= 0 → NOTHING_PRICED               a reason on an Ok, not an Err
+                   ├─ slices: group by class, drop empties, sort by value desc
+                   │   └─ distribute: floors + largest remainder → sums to exactly 10 000 bps
+                   └─ flags: narrowest rule first
+                       ├─ classCapFlags   RULE-GOLD-CAP / RULE-CRYPTO-CAP   cites ITS OWN row
+                       ├─ singleClassFlags   RULE-CONC-15-70 single_class_pct
+                       └─ holdingFlags       RULE-CONC-15-70 single_holding_pct
+      → AllocationUiState(allocation, isLoading = false)
+        → AllocationScreen renders
+           ├─ CfoProportionBar + legend         one list, so bar and legend cannot disagree
+           ├─ coverage line when unvaluedCount > 0            "Based on 8 of 11 holdings" (P-02)
+           ├─ one card per flag: measured, threshold, amount, and "Rule RULE-X v1.0"
+           └─ §11.1 disclaimer                  analyses and flags; never recommends (P-07)
+```
+
+**This is the first path in the app where a rulebook row accuses something.** Every earlier citation
+explained a figure the app *proposed* — a suggested budget, a Safe-to-Spend line. Here the citation
+is attached to a warning about what the user already owns, so it is rendered on the card rather than
+behind a tap: a warning nobody can trace is one they cannot argue with, and P-07 makes arguing with
+it the user's prerogative.
+
+**Each flag cites exactly one row; the result cites all three.** The result names every rule that was
+*checked*, so a clean portfolio can say what it was found clean of; a flag names only the rule that
+decided it, because pointing "why am I seeing this?" at a rule that had no part in the decision is
+worse than citing nothing.
+
+**Nothing here is cached and no clock reaches the arithmetic.** `nowUtcMillis` is stamped into
+provenance and never read as a date, so the same portfolio splits the same way tomorrow (P-08). The
+engine version moved 1.0 → 1.1 and `AI-INV` in `engine-registry.yaml` with it.
+
 ---
 
 ## 3 · Shape B — a background worker
