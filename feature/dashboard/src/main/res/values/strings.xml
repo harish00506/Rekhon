@@ -26,7 +26,7 @@
     <string name="dashboard_net_worth_pending">Not worked out yet — we\'ll have it after your first daily update.</string>
     <string name="dashboard_spend_split_description">Spending split between needs, wants and savings</string>
     <!-- Issue 2.3: shown when the user skipped quick setup, so there is no budget to chart. -->
-    <string name="dashboard_spend_split_empty">No budget yet. Add your monthly income in Settings and we\'ll suggest one.</string>
+    <string name="dashboard_spend_split_empty">No needs/wants/savings plan yet — this one comes from the head start during setup.</string>
 
     <!--
       Issue 5.2 — the Safe-to-Spend breakdown (§5.2, AI-STS).
@@ -39,7 +39,7 @@
       each names the *reason* money is unavailable rather than the mechanism, because the whole
       point of the breakdown is that someone can check it against their own memory (P-02).
     -->
-    <string name="dashboard_safe_to_spend_pending">Not worked out yet — add your monthly income in Settings and we\'ll work it out.</string>
+    <string name="dashboard_safe_to_spend_pending">Not worked out yet — record this month as income and we will work it out.</string>
     <string name="dashboard_safe_to_spend_line">%1$s %2$s</string>
     <string name="dashboard_sts_income">Income</string>
     <string name="dashboard_sts_buffer">Held back as a buffer</string>

@@ -308,7 +308,7 @@
     <string name="sms_on_device">Read on this phone. Your messages never leave it, and we only keep what we worked out.</string>
 
     <string name="sms_consent_off_title">SMS parsing is off</string>
-    <string name="sms_consent_off_body">Turn it on in Settings if you\'d like us to read bank alerts and suggest transactions. Nothing is read until you do.</string>
+    <string name="sms_consent_off_body">Reading bank alerts is off, so nothing is read. It was chosen during setup and this build has no settings screen to change it in.</string>
 
     <string name="sms_permission_title">One more step</string>
     <!--
