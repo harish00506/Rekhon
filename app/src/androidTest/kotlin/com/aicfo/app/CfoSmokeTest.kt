@@ -72,22 +72,64 @@ class CfoSmokeTest {
      *         shape the detector exists to find.
      * Output: asserts a proposal renders **with its evidence** (P-02) on the transactions list,
      *         computed by the real engine from rows read out of the real encrypted database.
+     *
+     * **KNOWN DEFECT — this test needs a clean install, and nobody yet knows why.**
+     * Reproduction is reliable: `adb shell pm clear com.aicfo.personalcfo` then run, and it passes;
+     * run it a second time without clearing, and the wait for [RECURRING_HEADING] times out. Ruled
+     * out so far, each by evidence rather than reasoning:
+     *
+     *  - **Not the onboarding path.** The precondition below does not fire on the failing run —
+     *    onboarding is showing, the demo is entered, and the dashboard renders.
+     *  - **Not a timeout.** Raised from 20s to [SEED_TIMEOUT_MILLIS]; the failing run still spends
+     *    the whole budget.
+     *  - **Not a write on a read path.** Only three places write `recurring_rule`
+     *    (`DemoModeRepository.enter`, `QuickSetupRepository`, `RecurringRepository.confirm/dismiss`)
+     *    and none is on the render path, so nothing silently marks a proposal decided.
+     *  - **Not the demo's own seeded rules.** They are written with `name = null`, and
+     *    `RecurringRuleDao.observeDecidedNames` filters `name IS NOT NULL`, so they exclude nothing.
+     *  - **Not duplicated seed rows.** Demo ids are deterministic (`demo:txn:0001`) and upserted.
+     *
+     * What blocked going further is the app's own privacy design, which is working as intended:
+     * `uiautomator dump` returns an empty hierarchy because the window is secure, and the database
+     * is SQLCipher-encrypted, so neither the rendered screen nor the stored rows can be inspected
+     * from outside the process. Pinning this down needs a diagnostic from *inside* an instrumented
+     * build — read the candidate rows and the decided names through the repository at the point of
+     * failure and print the difference between the two runs.
      */
     @Test
     fun theRecurringSectionProposesASeriesFromTheRealLedger() {
         compose.waitUntilAtLeastOneExists(hasText(ONBOARDING_HEADLINE).or(hasText(DASHBOARD)), TIMEOUT_MILLIS)
-        if (compose.onAllNodesWithTextCount(ONBOARDING_HEADLINE) > 0) {
-            compose.onNodeWithText(ENTER_DEMO).performClick()
-            compose.waitUntilAtLeastOneExists(hasText(DASHBOARD), TIMEOUT_MILLIS)
-        }
+
+        // The demo's sample ledger IS this test's fixture, and the only way into it is the
+        // onboarding button. On a device whose app data already holds a real profile there is no
+        // seeded ledger, nothing will ever propose a series, and the old code walked straight past
+        // this branch into a twenty-second wait that failed with "condition still not satisfied" —
+        // which names the symptom and not one word of the cause.
+        //
+        // So the precondition is asserted where it is knowable. Not `assumeTrue`: a test that
+        // quietly skips itself when its fixture is missing is the vacuous gate this repo keeps
+        // finding, and a green run would then mean nothing.
+        assertTrue(
+            "This test needs a clean install: its fixture is the demo ledger, and the only way in " +
+                "is the onboarding screen, which is not showing. The app already holds a profile. " +
+                "Run `adb shell pm clear com.aicfo.personalcfo` and try again.",
+            compose.onAllNodesWithTextCount(ONBOARDING_HEADLINE) > 0,
+        )
+
+        compose.onNodeWithText(ENTER_DEMO).performClick()
+        // Its own budget, not TIMEOUT_MILLIS: this wait covers seeding three months of sample
+        // ledger into an encrypted database, which is real work and much slower than the screen
+        // transitions the shared timeout was sized for.
+        compose.waitUntilAtLeastOneExists(hasText(DASHBOARD), SEED_TIMEOUT_MILLIS)
 
         compose.onNodeWithText(VIEW_TRANSACTIONS).performClick()
-        compose.waitUntilAtLeastOneExists(hasText(RECURRING_HEADING), TIMEOUT_MILLIS)
+        // Also generous: the detector runs over every seeded row on first render.
+        compose.waitUntilAtLeastOneExists(hasText(RECURRING_HEADING), SEED_TIMEOUT_MILLIS)
 
         compose.onAllNodes(hasText(RECURRING_HEADING)).onFirst().assertExists()
         // The evidence, not just the heading: a card that named a merchant without saying which
         // payments it was built from would satisfy the requirement's letter and not P-02.
-        compose.waitUntilAtLeastOneExists(hasText(OCCURRENCES_SUFFIX, substring = true), TIMEOUT_MILLIS)
+        compose.waitUntilAtLeastOneExists(hasText(OCCURRENCES_SUFFIX, substring = true), SEED_TIMEOUT_MILLIS)
     }
 
     /**
@@ -118,5 +160,16 @@ class CfoSmokeTest {
 
         /** Generous: a cold start decrypts the database and runs the migration chain. */
         const val TIMEOUT_MILLIS = 20_000L
+
+        /**
+         * For the demo path, which is not a screen transition but a write.
+         *
+         * Seeding three months of sample ledger through SQLCipher and then running the recurring
+         * detector over all of it is genuinely slow on a cold emulator — the run that first exposed
+         * this test's state dependency spent 21.3s and died on a 20s budget, close enough to the
+         * line that the timeout would have gone on failing intermittently even after the real cause
+         * was fixed. Sized so a slow machine is not mistaken for a broken app.
+         */
+        const val SEED_TIMEOUT_MILLIS = 60_000L
     }
 }

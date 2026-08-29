@@ -223,6 +223,54 @@ baseline nothing compares against is a vacuous gate in a different costume.
 
 ---
 
+## 4.5 · Post-merge follow-ups
+
+### Issue 6.7 filed — the missing proxy
+
+`6.7 Market-data backend proxy (§22)` now exists in the backlog (86 issues), depending on 6.5. It
+carries the API contract the client already parses, the pinning and statelessness requirements, and
+an explicit scope note: **the deliverable is a service and its deployment, not Android code** — this
+repository is Android-only and has no server module, so the issue's first decision is where the
+service lives and who hosts it. Until it lands, 6.5's AC-1 stays undemonstrable.
+
+### A generator that destroyed completion records — the same half-applied guard, again
+
+Adding 6.7 meant regenerating the backlog, and `gen_issue_docs.py` **blanked the completion record of
+28 finished issues in one command** — the ticked acceptance criteria and the evidence under each one.
+Caught by reading the diff before committing, and reverted.
+
+The cause is written in the script's own comment: issue 2.5 hit this exact hazard, and the guard it
+added — "never overwrite a file that has recorded progress" — was applied **only to trackers**. Issue
+files get hand-annotated the same way and were left exposed. A guard applied to half of what it names
+reads as protection while protecting half.
+
+The fix is now content-based rather than marker-based, because a first attempt keyed on
+`**Status:** Todo` still clobbered six files that carried hand-written tables under an untouched
+status line. The generator renders the file, compares, and preserves anything that differs — 25 issue
+files and 42 trackers are now reported as preserved on every run. The cost is that a deliberate edit
+to a record no longer propagates silently; you delete the file to regenerate, exactly as trackers
+have worked since 2.5.
+
+### `CfoSmokeTest` — improved, and honestly **not** root-caused
+
+The instrumented failure reported earlier was real and reproduces reliably: clean install passes,
+a second run without `pm clear` fails. Two defensible fixes went in — the demo-seeding waits got
+their own 60s budget (the failing run died on a 20s budget at 21.3s, close enough that it would have
+gone on failing intermittently anyway), and the onboarding precondition is now asserted with a
+message naming the cause instead of timing out cryptically.
+
+**Neither fixed it.** The precondition does not fire on the failing run, and 60s is no more enough
+than 20s was. Four hypotheses were killed by evidence — a write on the render path, the demo's own
+seeded rules (`name = null`, and `observeDecidedNames` filters `name IS NOT NULL`), duplicated seed
+rows (ids are deterministic and upserted), and timing. Going further needs a diagnostic from inside
+an instrumented build, because the app's own privacy design blocks every external route:
+`uiautomator dump` returns an empty hierarchy on a secure window, and the database is SQLCipher.
+
+That is written into the test's KDoc so the next attempt starts from the eliminations rather than
+repeating them. **It is an open defect, not a fixed one.**
+
+---
+
 ## 5 · Quiz
 
 1. Why does revoking MARKET_DATA keep the price when revoking SMS consent deletes the drafts?
