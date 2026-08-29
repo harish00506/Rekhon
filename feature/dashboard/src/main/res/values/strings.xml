@@ -17,6 +17,7 @@
     <string name="dashboard_budgets_action">Your budgets</string>
     <string name="dashboard_accounts_action">Your accounts</string>
     <string name="dashboard_transactions_action">View transactions</string>
+    <string name="dashboard_settings_action">Settings</string>
     <string name="dashboard_refresh_action">Refresh</string>
     <string name="dashboard_loading">Working out your position…</string>
     <string name="dashboard_error">Something went wrong. Pull to refresh.</string>

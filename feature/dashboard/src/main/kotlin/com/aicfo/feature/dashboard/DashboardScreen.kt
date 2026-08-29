@@ -130,14 +130,7 @@ fun DashboardContent(
             text = stringResource(R.string.dashboard_budgets_action),
             onClick = actions.onNavigateToBudgets,
         )
-        CfoSecondaryButton(
-            text = stringResource(R.string.dashboard_accounts_action),
-            onClick = actions.onNavigateToAccounts,
-        )
-        CfoSecondaryButton(
-            text = stringResource(R.string.dashboard_transactions_action),
-            onClick = actions.onNavigateToTransactions,
-        )
+        DestinationButtons(actions = actions)
         // Issue 5.4: §5.10's portability, below the navigation actions — a thing the user does
         // occasionally, not a destination. Owns the file pickers, so the Uris stay in one file.
         ArchiveSection(state = uiState.archive, onEvent = onEvent, onPickArchive = onPickArchive)
@@ -457,7 +450,8 @@ private fun RecentActivitySection(uiState: DashboardUiState) {
  * Result: adding a fourth destination is a field here rather than a fourth parameter there.
  * Changelog: 2026-08-11 — Created for issue 4.4, when budgets became the third destination.
  *
- * Input:  [onNavigateToTransactions]; [onNavigateToAccounts]; [onNavigateToBudgets] — issue 4.4's
+ * Input:  [onNavigateToTransactions]; [onNavigateToAccounts]; [onNavigateToSettings] — FR-SET-001's
+ *         income, consents and app lock; [onNavigateToBudgets] — issue 4.4's
  *         per-category plan, behind the nature-level bar this screen already draws.
  * Output: an immutable value.
  */
@@ -466,4 +460,5 @@ data class DashboardActions(
     val onNavigateToTransactions: () -> Unit,
     val onNavigateToAccounts: () -> Unit,
     val onNavigateToBudgets: () -> Unit,
+    val onNavigateToSettings: () -> Unit,
 )

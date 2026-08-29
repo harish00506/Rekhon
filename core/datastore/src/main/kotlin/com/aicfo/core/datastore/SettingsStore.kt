@@ -84,6 +84,21 @@ interface SettingsStore {
     suspend fun completeOnboarding(profile: OnboardingProfile): Result<Unit, AppError>
 
     /**
+     * Rewrites the quick-setup seeds after onboarding (issue: Settings, FR-SET-001).
+     *
+     * Why:  the seeds were writable only by [completeOnboarding], so a user who skipped the optional
+     *       head-start step could never supply an income — and the dashboard's needs/wants/savings
+     *       split, which reads the envelopes derived from these, stayed empty for ever while telling
+     *       them to visit a Settings screen that did not exist. This is the setter that makes the
+     *       screen possible; it deliberately touches only the three seeds, leaving the completion
+     *       flag and the profile identity alone.
+     * Result: `Ok(Unit)` when the write lands, `Err(Storage)` otherwise. Absent seeds are stored as
+     *       zero, the same encoding [completeOnboarding] uses, and read back as `null`.
+     * Input:  [seeds] — what the user typed. Output: `Result<Unit, AppError>`.
+     */
+    suspend fun setQuickSetupSeeds(seeds: QuickSetupSeeds): Result<Unit, AppError>
+
+    /**
      * Turns demo mode on or off (issue 2.4; FR-ONB-004).
      *
      * Why:    a setter of its own rather than a field on [completeOnboarding], because demo mode is
@@ -168,6 +183,14 @@ internal class DataStoreSettingsStore(
         update { it.setPrivacyBlurEnabled(enabled) }
 
     override suspend fun setTheme(theme: ThemeSetting): Result<Unit, AppError> = update { it.setTheme(theme.toProto()) }
+
+    override suspend fun setQuickSetupSeeds(seeds: QuickSetupSeeds): Result<Unit, AppError> =
+        update { builder ->
+            builder
+                .setQuickSetupMonthlyIncomeMinor(seeds.monthlyIncome.orZero())
+                .setQuickSetupRentEmiMinor(seeds.rentOrEmi.orZero())
+                .setQuickSetupTypicalSavingsMinor(seeds.typicalSavings.orZero())
+        }
 
     override suspend fun completeOnboarding(profile: OnboardingProfile): Result<Unit, AppError> =
         update { builder ->

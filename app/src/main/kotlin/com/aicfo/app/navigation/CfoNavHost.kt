@@ -17,6 +17,7 @@ import com.aicfo.feature.categories.CategoriesScreen
 import com.aicfo.feature.dashboard.DashboardActions
 import com.aicfo.feature.dashboard.DashboardScreen
 import com.aicfo.feature.onboarding.OnboardingScreen
+import com.aicfo.feature.settings.SettingsScreen
 import com.aicfo.feature.transactions.AddTransactionScreen
 import com.aicfo.feature.transactions.ReceiptReviewScreen
 import com.aicfo.feature.transactions.SmsDraftsScreen
@@ -64,6 +65,7 @@ fun CfoNavHost(
                         onNavigateToTransactions = { navController.navigate(CfoRoute.Transactions) },
                         onNavigateToAccounts = { navController.navigate(CfoRoute.Accounts) },
                         onNavigateToBudgets = { navController.navigate(CfoRoute.Budgets) },
+                        onNavigateToSettings = { navController.navigate(CfoRoute.Settings) },
                     ),
             )
         }
@@ -126,6 +128,10 @@ private fun NavGraphBuilder.accountsDestinations(navController: NavHostControlle
                     onOpenAllocation = { navController.navigate(CfoRoute.Allocation) },
                 ),
         )
+    }
+    composable<CfoRoute.Settings> {
+        // popBackStack for the reason every pushed screen here gives: settings went on top.
+        SettingsScreen(onDone = { navController.popBackStack() })
     }
     composable<CfoRoute.Allocation> {
         // popBackStack for the reason holdings gives: allocation was pushed on top of the list.

@@ -83,6 +83,7 @@ include(":feature:accounts")    // FR-ACC-001/007 — CRUD for all eleven accoun
 include(":feature:budgets")     // FR-BUD-001/002/003 — per-category budgets and suggestions (4.4)
 include(":feature:categories")  // FR-SET-001 — the category taxonomy editor (issue 4.1)
 include(":feature:dashboard")
+include(":feature:settings")     // FR-SET-001 — income, consents and the app lock, after onboarding
 include(":feature:onboarding")
 include(":feature:transactions")
 

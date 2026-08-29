@@ -11,6 +11,7 @@ import com.aicfo.core.datastore.ConsentFeature
 import com.aicfo.core.datastore.ConsentState
 import com.aicfo.core.datastore.ConsentStore
 import com.aicfo.core.datastore.OnboardingProfile
+import com.aicfo.core.datastore.QuickSetupSeeds
 import com.aicfo.core.datastore.SettingsSnapshot
 import com.aicfo.core.datastore.SettingsStore
 import com.aicfo.core.datastore.ThemeSetting
@@ -83,6 +84,12 @@ internal class FakeSettingsStore(
     override suspend fun setDemoModeActive(active: Boolean): Result<Unit, AppError> = write { }
 
     override suspend fun setSmsScanCursor(smsId: Long): Result<Unit, AppError> = write { }
+
+    /**
+     * The FR-SET-001 setter. Result: records the seeds so a reader sees what the screen wrote.
+     * Input: [seeds]. Output: `Ok(Unit)`.
+     */
+    override suspend fun setQuickSetupSeeds(seeds: QuickSetupSeeds): Result<Unit, AppError> = Ok(Unit)
 
     override suspend fun completeOnboarding(profile: OnboardingProfile): Result<Unit, AppError> {
         completeCallCount++

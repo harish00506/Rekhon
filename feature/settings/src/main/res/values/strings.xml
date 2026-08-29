@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FR-SET-001's settings screen.
+
+  Why:  every user-visible string lives here, enforced by CfoHardcodedUiString on :feature:*
+        (§21.6). Several of these replace copy that used to promise "Settings" from screens that
+        could not reach one - this module is what makes that promise true.
+-->
+<resources>
+    <string name="settings_title">Settings</string>
+    <string name="settings_done">Done</string>
+    <string name="settings_error">Something did not save. Nothing was changed.</string>
+    <string name="settings_dismiss">Dismiss</string>
+
+    <!-- The money plan. These three seeds are what the quick-setup engine splits into the
+         needs/wants/savings envelopes the dashboard and Safe-to-Spend read. -->
+    <string name="settings_money_title">Your monthly money</string>
+    <string name="settings_money_body">We split this into needs, wants and savings, and use it to
+        work out what is safe to spend. You can change it whenever it changes.</string>
+    <string name="settings_monthly_income">Monthly income</string>
+    <string name="settings_rent_or_emi">Rent or EMI (optional)</string>
+    <string name="settings_typical_savings">What you usually save (optional)</string>
+    <string name="settings_money_save">Save monthly money</string>
+    <string name="settings_money_saved">Saved. Your dashboard has been updated.</string>
+    <string name="settings_income_required">Enter your monthly income as a number, for example
+        95000.</string>
+
+    <!-- Consents. P-01: explicit, revocable, per feature. -->
+    <string name="settings_consents_title">What the app may use</string>
+    <string name="settings_consents_body">Each of these is off until you turn it on, and you can
+        turn any of them back off here at any time. Nothing about your money leaves this device
+        unless one of these is on.</string>
+    <string name="consent_sms_parsing">Read bank messages on this device</string>
+    <string name="consent_market_data">Fetch gold, crypto and fund prices</string>
+    <string name="consent_cloud_llm">Ask a cloud assistant</string>
+    <string name="consent_cloud_backup">Back up to the cloud</string>
+
+    <!-- The app lock. -->
+    <string name="settings_lock_title">Lock the app</string>
+    <string name="settings_lock_body">Ask for a PIN or your fingerprint when the app opens.</string>
+    <string name="settings_lock_toggle">Require a PIN to open the app</string>
+    <string name="settings_pin">New PIN (at least 4 digits)</string>
+    <string name="settings_pin_required">Enter at least 4 digits before turning the lock on.</string>
+</resources>

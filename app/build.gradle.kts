@@ -46,6 +46,9 @@ dependencies {
     implementation(project(":feature:budgets"))
     implementation(project(":feature:categories"))
     implementation(project(":feature:dashboard"))
+    // FR-SET-001: income, consents and the app lock, reachable after onboarding. Without this edge
+    // the SMS consent stays unrevocable from the UI, which P-01 forbids.
+    implementation(project(":feature:settings"))
     implementation(project(":feature:onboarding"))
     implementation(project(":feature:transactions"))
 

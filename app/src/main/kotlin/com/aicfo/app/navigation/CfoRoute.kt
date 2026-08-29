@@ -104,6 +104,17 @@ sealed interface CfoRoute {
     data object Allocation : CfoRoute
 
     /**
+     * Income, consents and the app lock (FR-SET-001).
+     *
+     * **The route FR-SET-001 always specified and the app never had.** Five strings across three
+     * feature modules used to tell the user to change something "in Settings" while no such
+     * destination existed; worse, the SMS consent could be granted at onboarding and never revoked,
+     * which P-01 forbids. Reached from the dashboard.
+     */
+    @Serializable
+    data object Settings : CfoRoute
+
+    /**
      * The category taxonomy editor (issue 4.1; FR-SET-001).
      *
      * **No arguments, and it is reached from the transaction list rather than from Settings.**
