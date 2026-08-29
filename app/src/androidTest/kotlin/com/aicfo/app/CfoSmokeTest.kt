@@ -73,23 +73,27 @@ class CfoSmokeTest {
      * Output: asserts a proposal renders **with its evidence** (P-02) on the transactions list,
      *         computed by the real engine from rows read out of the real encrypted database.
      *
-     * **KNOWN DEFECT — this test is FLAKY. Do not trust a single green run of it.**
-     * Twelve runs on one emulator in one evening: six passed, six failed, on unchanged code. An
-     * earlier version of this note claimed the reproduction was reliable ("clean install passes, a
-     * second run fails"); that was wrong, and it is corrected here rather than quietly deleted,
-     * because a confident wrong lead costs the next person more than no lead at all.
+     * **KNOWN DEFECT — this test FAILS ABOUT 60% OF THE TIME. A green run means nothing.**
+     * Measured, not estimated: ten consecutive cold-install runs in one fixed configuration, on
+     * unchanged code, **failed six times** (runs 2, 3, 5, 7, 9, 10). Always this test, always the
+     * same signature — the wait for [RECURRING_HEADING] exhausts its budget. The other test in this
+     * class passed 10/10, so the app boots and opens its database every time; it is specifically the
+     * recurring proposal that does not appear.
      *
-     * The failure is always the same: the wait for [RECURRING_HEADING] exhausts its budget. What
-     * correlates — **not** determines — is how the app got onto the device. Five of the six passes
-     * followed `pm clear` on an already-installed app; most failures followed a cold install, which
-     * is what CI does. One cold install passed, which is what rules out determinism.
+     * Two earlier versions of this note were wrong and are corrected here rather than quietly
+     * deleted, because a confident wrong lead costs the next person more than no lead at all. The
+     * first blamed state left by a manual launch; the second claimed a reliable reproduction
+     * ("clean install passes, a second run fails") and read a discriminator into how the app reached
+     * the device. The ten-run measurement retires both: there is no clean-versus-cold discriminator,
+     * and the runs that looked like a pattern were simply the 40%.
      *
      * Ruled out, each by evidence rather than reasoning:
      *
      *  - **Not the onboarding path.** The precondition below does not fire on a failing run —
      *    onboarding shows, the demo is entered, and the dashboard renders.
      *  - **Not the timeout.** Raised from 20s to [SEED_TIMEOUT_MILLIS]; failing runs still spend the
-     *    whole budget, and 60s is no more enough than 20s was.
+     *    whole budget, and 60s is no more enough than 20s was. Whatever is awaited never arrives —
+     *    this is not a slow path being cut short.
      *  - **Not issue 6.5's `MarketPriceWorker`.** Disabling its scheduling still reproduces the
      *    failure, so the eighth worker is not necessary for it.
      *  - **Not a write on a read path.** Only three places write `recurring_rule`

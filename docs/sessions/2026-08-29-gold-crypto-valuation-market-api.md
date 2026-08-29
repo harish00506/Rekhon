@@ -266,11 +266,14 @@ rows (ids are deterministic and upserted), and timing. Going further needs a dia
 an instrumented build, because the app's own privacy design blocks every external route:
 `uiautomator dump` returns an empty hierarchy on a secure window, and the database is SQLCipher.
 
-**Correction, after twelve runs:** the "needs a clean install" story recorded above was wrong, and
-so was the state-pollution story before it. Twelve runs on one emulator in one evening, unchanged
-code: **six passed, six failed.** The test is flaky. Five of the six passes followed `pm clear` on an
-already-installed app and most failures followed a cold install — which is what CI does — but one
-cold install passed, which rules out determinism.
+**Measured, after ten controlled runs: it fails ~60% of the time.** Ten consecutive cold-install
+runs in one fixed configuration, unchanged code — **six failed** (runs 2, 3, 5, 7, 9, 10), always
+this test, always the same signature. The other test in the class passed 10/10, so the app boots and
+opens its database every time; it is specifically the recurring proposal that does not appear.
+
+Two earlier explanations recorded during the session were wrong: state left by a manual launch, and
+then a clean-versus-cold-install discriminator. The measurement retires both — the runs that looked
+like a pattern were the 40%.
 
 Also ruled out by evidence: **issue 6.5's `MarketPriceWorker` is not the cause.** Disabling its
 scheduling still reproduces the failure, so the eighth worker is not necessary for it.
