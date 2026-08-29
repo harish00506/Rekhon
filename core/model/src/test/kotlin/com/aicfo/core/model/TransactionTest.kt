@@ -165,12 +165,8 @@ class TransactionTest {
         assertNull(transaction().postedAtUtcMillis)
     }
 
-    @Test
-    fun `a category carries an id and a name`() {
-        val category = Category(id = "category:groceries", name = "Groceries")
-        assertEquals("category:groceries", category.id)
-        assertEquals("Groceries", category.name)
-    }
+    // `Category` moved to Category.kt in issue 4.1 and is covered by CategoryTest, which asserts the
+    // two fields this issue added as well as the two it started with.
 
     /**
      * Builds a transaction with everything but the field under test defaulted.

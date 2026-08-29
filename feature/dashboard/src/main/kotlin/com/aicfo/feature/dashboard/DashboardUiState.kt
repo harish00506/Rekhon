@@ -2,6 +2,12 @@ package com.aicfo.feature.dashboard
 
 import androidx.compose.runtime.Immutable
 import com.aicfo.core.model.Money
+import com.aicfo.data.repository.CashFlowSummary
+import com.aicfo.data.repository.CategoryBudget
+import com.aicfo.data.repository.CategoryBudgetAlert
+import com.aicfo.data.repository.FilteredTransaction
+import com.aicfo.domain.engines.nature.NatureBreakdown
+import com.aicfo.domain.engines.safetospend.SafeToSpend
 
 /**
  * Everything the dashboard renders, as one value (ARC-004).
@@ -15,24 +21,39 @@ import com.aicfo.core.model.Money
  * Result: the reference shape every other screen in this app copies.
  * Changelog: 2026-07-25 — Created for issue 1.10 as the ARC-004 reference implementation.
  *
- * **What is real and what is not, as of issue 2.6.** [spendSplit] comes from the budget envelopes
- * quick setup persisted (FR-ONB-002), and [netWorth] from the daily snapshot (FR-ACC-005) — both
- * derived by engines from the user's own data. [safeToSpend] is **the last placeholder**: it needs
- * the engine issue 5.2 owns, and no amount of wiring here can conjure it. Amounts are [Money]
- * (`Long` paise, MNY-001) either way, because a screen that starts out rendering a `Double` teaches
- * the wrong pattern to everything that copies it.
+ * **Every figure here is now engine-derived (issue 5.2).** [spendSplit] comes from the budget
+ * envelopes quick setup persisted (FR-ONB-002), [netWorth] from the daily snapshot (FR-ACC-005), and
+ * [safeToSpend] — the last literal on this screen, a hardcoded ₹12,500 from issue 1.10 until now —
+ * from `SafeToSpendEngine` (§5.2, AI-STS). Amounts are [Money] (`Long` paise, MNY-001) throughout,
+ * because a screen that renders a `Double` teaches the wrong pattern to everything that copies it.
  *
- * Input:  [isLoading], [safeToSpend], [netWorth]; [spendSplit] — **`null` when the user skipped
- *         quick setup**, which the screen renders as an empty state. Deliberately not a zeroed
- *         `SpendSplit`: a bar of three zeroes is indistinguishable from a real budget of nothing,
- *         and showing one to a user who has no budget is a number the app made up (P-03).
+ * Input:  [isLoading]; [safeToSpend] — **`null` until the first emission, and for a profile with no
+ *         income basis at all** (see `SafeToSpendRepository.observeSafeToSpend`), which the screen
+ *         renders as an absence rather than ₹0; [netWorth]; [spendSplit] — **`null` when the user
+ *         skipped quick setup**, which the screen renders as an empty state. Deliberately not a
+ *         zeroed `SpendSplit`: a bar of three zeroes is indistinguishable from a real budget of
+ *         nothing, and showing one to a user who has no budget is a number the app made up (P-03).
  *         [errorCode].
  * Output: an immutable snapshot for the composable.
  */
 @Immutable
 data class DashboardUiState(
     val isLoading: Boolean = true,
-    val safeToSpend: Money = Money.ZERO,
+    /**
+     * What is still safe to spend this month, with the breakdown that explains it (issue 5.2;
+     * §5.2, AI-STS).
+     *
+     * Carried whole rather than as a bare [Money], because §5.2's acceptance criterion is that the
+     * card shows "the breakdown/rule that produced it; never a black-box number" — and the only way
+     * the lines can be guaranteed to add up to the headline is for both to arrive from the engine
+     * together. A state holding only the amount would force the screen to re-derive the terms, and
+     * the two could then disagree.
+     *
+     * `null` before the first emission **and** for a profile with no income basis, which are
+     * rendered identically and deliberately: neither is a ₹0 anyone told this app about (P-03), the
+     * same rule [netWorth] follows.
+     */
+    val safeToSpend: SafeToSpend? = null,
     /**
      * The latest stored snapshot's net worth, or **`null` before the first one is taken** (2.6).
      *
@@ -43,11 +64,151 @@ data class DashboardUiState(
     val netWorth: Money? = null,
     val spendSplit: SpendSplit? = null,
     /**
+     * What this month's money actually became (issue 4.3; SRS §8.3).
+     *
+     * **Not the same number as [spendSplit], and the difference is the point.** That is the *budget*
+     * — what the user planned, from the quick-setup envelopes. This is what happened, classified by
+     * §8.3.1 from the ledger. A dashboard that showed only the plan would be a dashboard that never
+     * disagreed with the user.
+     *
+     * `null` until the first emission, and `NatureBreakdown.isEmpty` for a month with nothing in it
+     * — the screen renders an empty state for both rather than a row of zeroes, which is a figure
+     * the app made up (P-03), the same rule [spendSplit] follows.
+     */
+    val natureBreakdown: NatureBreakdown? = null,
+    /**
+     * This month's income, expense and net (issue 5.1; FR-DASH-*).
+     *
+     * `null` until the first emission — the same rule [netWorth] follows, and for the same reason:
+     * a zeroed card before the read has actually happened would be a figure the app made up (P-03).
+     */
+    val cashFlow: CashFlowSummary? = null,
+    /**
+     * Every category with its live status this month (issue 5.1; FR-DASH-*).
+     *
+     * `null` until the first emission; **not the same absence as "nothing budgeted"**, which is an
+     * empty list once [BudgetTotals] filters out the unbudgeted rows — see [budgetTotals]. Kept as
+     * the raw rows, not a total, so the getter is the one place that sums them (P-03: the state
+     * itself computes nothing, [BudgetsUiState] in `:feature:budgets` makes the same choice).
+     */
+    val budgets: List<CategoryBudget>? = null,
+    /**
+     * Budgets currently sitting in an alert band, for the "needs attention" line (issue 5.1;
+     * FR-DASH-*; FR-BUD-004).
+     *
+     * Empty by default rather than nullable: unlike [budgets], a bare list is never ambiguous here —
+     * "no alerts yet" and "genuinely nothing to warn about" render identically. Derived from
+     * [budgets] in the same update, via `BudgetRepository.alertFor` — not its own read, and not its
+     * own failure mode: a broken budgets read surfaces through [errorCode] exactly once, not once
+     * per figure it happens to affect.
+     */
+    val budgetAlerts: List<CategoryBudgetAlert> = emptyList(),
+    /**
+     * The newest few transactions, for the recent-activity preview (issue 5.1; FR-DASH-*).
+     *
+     * `null` until the first emission, for the reason [budgets] gives — the empty list is a real
+     * state (a brand-new profile) and must read differently from "not read yet".
+     */
+    val recentActivity: List<FilteredTransaction>? = null,
+    /**
+     * Where the export/import feature is right now (issue 5.4; §5.10).
+     *
+     * One field rather than four booleans, because the states are mutually exclusive and a screen
+     * showing a confirmation dialog *and* a success message at once would be a bug the type system
+     * should refuse. Absent by default — this is a thing the user does occasionally, not a
+     * permanent section of the dashboard.
+     */
+    val archive: ArchiveUiState = ArchiveUiState.Idle,
+    /**
      * An `AppError.code` when something failed, else `null`.
      * The **code**, not a message: the wording belongs in this feature's `strings.xml` (§21.6), so
      * the state stays free of user-visible copy and the screen can localise it.
      */
     val errorCode: String? = null,
+) {
+    /**
+     * The month's budgeted and spent totals across every **budgeted** category (issue 5.1).
+     *
+     * Why:    unbudgeted categories carry `budgeted = Money.ZERO` by construction (`CategoryBudget`'s
+     *         own doc comment) but real spend, and folding their spend into this total would make
+     *         "spent" exceed "budgeted" by exactly the amount nobody planned for — a card that reads
+     *         as a blown budget when nothing was ever budgeted. Excluding them is what
+     *         `:feature:budgets`' own `PlannedSection` does for the same reason.
+     * Result: the totals, or `null` when [budgets] has not loaded yet **or** nothing has been
+     *         budgeted this month — both render the same empty state, matching how the screen
+     *         already treats "not loaded" and "genuinely nothing" for [spendSplit].
+     * Input:  none — reads [budgets]. Output: `BudgetTotals?`.
+     */
+    val budgetTotals: BudgetTotals?
+        get() {
+            val planned = budgets?.filterNot { it.isUnbudgeted }
+            if (planned.isNullOrEmpty()) return null
+            return BudgetTotals(
+                budgeted = planned.fold(Money.ZERO) { running, row -> running + row.status.budgeted },
+                spent = planned.fold(Money.ZERO) { running, row -> running + row.status.spent },
+            )
+        }
+}
+
+/**
+ * Where the export/import archive feature is (issue 5.4; §5.10, §34).
+ *
+ * Why:  a sealed hierarchy rather than flags, because the interesting state — "an archive is
+ *       waiting to be applied and will destroy what is on this device" — carries data and must not
+ *       coexist with any other. [PendingImport] holding the JSON is what makes the confirmation
+ *       real: the file has been read and parsed nowhere yet, so backing out costs nothing and
+ *       confirming needs no second trip to the picker.
+ * Result: what the dashboard renders below the actions.
+ * Changelog: 2026-08-16 — Created for issue 5.4.
+ */
+@Immutable
+sealed interface ArchiveUiState {
+    /** Nothing to say — the ordinary state. */
+    data object Idle : ArchiveUiState
+
+    /** An export or import is in flight. Both can take a moment on a large ledger. */
+    data object Working : ArchiveUiState
+
+    /**
+     * The archive is ready and the screen must write it to the picked destination.
+     *
+     * Why: the ViewModel cannot write a file — that needs a `Uri` and a `ContentResolver`, which are
+     *      Android types the screen owns (ARC-004). So the text comes back up as state and the
+     *      screen does the writing, mirroring how `ReceiptCapture` hands bytes *down*.
+     */
+    data class ReadyToWrite(val json: String) : ArchiveUiState
+
+    /**
+     * A file has been picked and **nothing has been changed yet**.
+     * The screen shows the confirmation; only `ImportConfirmed` applies it.
+     */
+    data class PendingImport(val json: String) : ArchiveUiState
+
+    /** The export was written to the file the user named. */
+    data object Exported : ArchiveUiState
+
+    /** The import finished. [rows] and [exportedAtUtcMillis] say *what* was restored. */
+    data class Imported(val rows: Int, val exportedAtUtcMillis: Long) : ArchiveUiState
+
+    /**
+     * The archive was refused, or a read or write failed.
+     * [code] is an `AppError.code` or one of `ArchiveRepository`'s field codes — never a message,
+     * because the wording belongs in `strings.xml` (§21.6).
+     */
+    data class Failed(val code: String) : ArchiveUiState
+}
+
+/**
+ * The budget summary card's two figures, already folded (issue 5.1).
+ * Why:    the arithmetic lives in one place — [DashboardUiState.budgetTotals]'s getter — rather than
+ *         in the composable, so a screenshot test and a ViewModel test agree on what "the total" means.
+ * Result: what the card renders. Input: [budgeted]; [spent]. Output: an immutable value.
+ * Changelog: 2026-08-15 — Created for issue 5.1.
+ */
+@Immutable
+data class BudgetTotals(
+    val budgeted: Money,
+    val spent: Money,
 )
 
 /**
@@ -81,4 +242,37 @@ sealed interface DashboardEvent {
 
     /** The user dismissed the error banner. */
     data object DismissError : DashboardEvent
+
+    /**
+     * The user picked where to write their archive (issue 5.4; §5.10).
+     *
+     * The screen has already resolved the system file picker's `Uri`; this carries only the fact
+     * that a destination exists, and the ViewModel answers with the text to write. A `Uri` would be
+     * an Android type in a ViewModel event, and its grant does not survive process death — the
+     * argument `ReceiptCapture.readBytes` already records for photos.
+     */
+    data object ExportRequested : DashboardEvent
+
+    /**
+     * The user picked an archive to restore (issue 5.4).
+     * [json] — the file's text, read by the screen. **Not applied yet**: this opens the confirmation,
+     * because the import replaces everything on the device.
+     */
+    data class ImportPicked(val json: String) : DashboardEvent
+
+    /** The user confirmed the replace, having been told what it does. */
+    data object ImportConfirmed : DashboardEvent
+
+    /** The user backed out of the import. */
+    data object ImportCancelled : DashboardEvent
+
+    /**
+     * The screen finished writing the archive to the destination the user picked.
+     * [written] — false when the write failed or the user backed out of the picker. The screen
+     * reports this because it, not the ViewModel, owns the `Uri` and the `ContentResolver`.
+     */
+    data class ExportWritten(val written: Boolean) : DashboardEvent
+
+    /** The user dismissed the "exported"/"imported" confirmation. */
+    data object ArchiveMessageDismissed : DashboardEvent
 }

@@ -31,6 +31,11 @@ dependencies {
     // ARC-001's chain is feature -> domain -> data/core, so the repositories sit below this module.
     implementation(project(":data:repository"))
 
+    // Issue 3.8: FileProvider, so `TakePicture` can be handed a destination inside app-private
+    // storage (FR-OCR-001). Declared explicitly rather than leaned on transitively — a class that
+    // arrived by accident breaks the day an upstream library reorganises its api/implementation.
+    implementation(libs.androidx.core.ktx)
+
     // Issue 3.6: collectAsLazyPagingItems, the Compose half of FR-TXN-007's paged list.
     implementation(libs.androidx.paging.compose)
     // `asSnapshot` — how a ViewModel test asserts against a paged stream, which is otherwise a

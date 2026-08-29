@@ -38,6 +38,16 @@ import org.junit.Test
 class ReconcileViewModelTest {
     private val repository = FakeAccountRepository()
 
+    /**
+     * Result: the ViewModel, with fakes for the collaborators this file does not exercise.
+     * Why:    by issue 6.3 the constructor takes four repositories, and spelling all four out at
+     *         every call site put the lines past the 120-column limit while saying nothing.
+     * Input:  [loans] — the loan store, when a test cares what it holds. Output: the ViewModel.
+     * Changelog: 2026-08-24 — Created for issue 6.3.
+     */
+    private fun viewModel(loans: FakeLoanRepository = FakeLoanRepository()) =
+        AccountsViewModel(repository, FakeCreditCardRepository(), loans, FakeInvestmentRepository())
+
     /** Input: none. Output: pins `viewModelScope` to a test dispatcher so writes run inline. */
     @Before
     fun setUp() {
@@ -55,14 +65,16 @@ class ReconcileViewModelTest {
         runTest {
             repository.setAccounts(account())
 
-            assertNull(AccountsViewModel(repository).uiState.value.reconciling)
+            val viewModel = viewModel()
+
+            assertNull(viewModel.uiState.value.reconciling)
         }
 
     @Test
     fun `opening the panel carries the account and its derived balance`() =
         runTest {
             repository.setAccounts(account { copy(balance = Money(92_500_00L)) })
-            val viewModel = AccountsViewModel(repository)
+            val viewModel = viewModel()
 
             viewModel.onEvent(AccountsEvent.OpenReconcile("account:1"))
 
@@ -76,7 +88,7 @@ class ReconcileViewModelTest {
     fun `opening on an id that is not on screen does nothing`() =
         runTest {
             repository.setAccounts(account())
-            val viewModel = AccountsViewModel(repository)
+            val viewModel = viewModel()
 
             viewModel.onEvent(AccountsEvent.OpenReconcile("account:gone"))
 
@@ -89,7 +101,7 @@ class ReconcileViewModelTest {
             // Zero is a legitimate statement balance the user may genuinely type. An *empty* field
             // means they have not answered, and confirming it would offer to wipe the balance.
             repository.setAccounts(account())
-            val viewModel = AccountsViewModel(repository)
+            val viewModel = viewModel()
             viewModel.onEvent(AccountsEvent.OpenReconcile("account:1"))
 
             val panel = viewModel.uiState.value.reconciling!!
@@ -104,7 +116,7 @@ class ReconcileViewModelTest {
             // MNY-001. `MoneyFormatter.parse` returns null rather than guessing at a third decimal;
             // the panel's job is to stay disabled rather than to invent a figure (P-03).
             repository.setAccounts(account())
-            val viewModel = AccountsViewModel(repository)
+            val viewModel = viewModel()
             viewModel.onEvent(AccountsEvent.OpenReconcile("account:1"))
 
             viewModel.onEvent(AccountsEvent.StatementChanged("1,00,500.345"))
@@ -116,7 +128,7 @@ class ReconcileViewModelTest {
     fun `the previewed adjustment is the statement minus the app balance`() =
         runTest {
             repository.setAccounts(account { copy(balance = Money(92_500_00L)) })
-            val viewModel = AccountsViewModel(repository)
+            val viewModel = viewModel()
             viewModel.onEvent(AccountsEvent.OpenReconcile("account:1"))
 
             viewModel.onEvent(AccountsEvent.StatementChanged("93000"))
@@ -132,7 +144,7 @@ class ReconcileViewModelTest {
             // The direction a credit card moves in. Getting the sign backwards here would show the
             // user a correction that reads as the opposite of what is about to be written.
             repository.setAccounts(account { copy(balance = Money(-18_000_00L)) })
-            val viewModel = AccountsViewModel(repository)
+            val viewModel = viewModel()
             viewModel.onEvent(AccountsEvent.OpenReconcile("account:1"))
 
             viewModel.onEvent(AccountsEvent.StatementChanged("-19250"))
@@ -146,7 +158,7 @@ class ReconcileViewModelTest {
             // Disabling the button here would leave a user who typed the right figure staring at a
             // dead control with no explanation. The panel says nothing will be added instead.
             repository.setAccounts(account { copy(balance = Money(92_500_00L)) })
-            val viewModel = AccountsViewModel(repository)
+            val viewModel = viewModel()
             viewModel.onEvent(AccountsEvent.OpenReconcile("account:1"))
 
             viewModel.onEvent(AccountsEvent.StatementChanged("92500"))
@@ -163,7 +175,7 @@ class ReconcileViewModelTest {
             // against a balance it derives inside its own transaction — the ViewModel's figure is a
             // preview of a list that may be seconds old (P-03).
             repository.setAccounts(account { copy(balance = Money(92_500_00L)) })
-            val viewModel = AccountsViewModel(repository)
+            val viewModel = viewModel()
             viewModel.onEvent(AccountsEvent.OpenReconcile("account:1"))
             viewModel.onEvent(AccountsEvent.StatementChanged("93000"))
 
@@ -176,7 +188,7 @@ class ReconcileViewModelTest {
     fun `a successful adjustment closes the panel and the list shows the new balance`() =
         runTest {
             repository.setAccounts(account { copy(balance = Money(92_500_00L)) })
-            val viewModel = AccountsViewModel(repository)
+            val viewModel = viewModel()
             viewModel.onEvent(AccountsEvent.OpenReconcile("account:1"))
             viewModel.onEvent(AccountsEvent.StatementChanged("93000"))
 
@@ -191,7 +203,7 @@ class ReconcileViewModelTest {
     fun `confirming an unparseable amount writes nothing`() =
         runTest {
             repository.setAccounts(account())
-            val viewModel = AccountsViewModel(repository)
+            val viewModel = viewModel()
             viewModel.onEvent(AccountsEvent.OpenReconcile("account:1"))
             viewModel.onEvent(AccountsEvent.StatementChanged("not an amount"))
 
@@ -205,7 +217,7 @@ class ReconcileViewModelTest {
     fun `a failed write keeps the panel open with the typing intact`() =
         runTest {
             repository.setAccounts(account())
-            val viewModel = AccountsViewModel(repository)
+            val viewModel = viewModel()
             viewModel.onEvent(AccountsEvent.OpenReconcile("account:1"))
             viewModel.onEvent(AccountsEvent.StatementChanged("93000"))
             repository.failWith = AppError.Storage("disk")
@@ -223,7 +235,7 @@ class ReconcileViewModelTest {
     fun `cancelling closes the panel and writes nothing`() =
         runTest {
             repository.setAccounts(account())
-            val viewModel = AccountsViewModel(repository)
+            val viewModel = viewModel()
             viewModel.onEvent(AccountsEvent.OpenReconcile("account:1"))
             viewModel.onEvent(AccountsEvent.StatementChanged("93000"))
 
@@ -236,7 +248,7 @@ class ReconcileViewModelTest {
     @Test
     fun `typing when no panel is open is ignored rather than crashing`() =
         runTest {
-            val viewModel = AccountsViewModel(repository)
+            val viewModel = viewModel()
 
             viewModel.onEvent(AccountsEvent.StatementChanged("93000"))
             viewModel.onEvent(AccountsEvent.ConfirmReconcile)

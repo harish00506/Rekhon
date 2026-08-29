@@ -7,6 +7,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!--
+      Budget alerts (issue 4.5, FR-BUD-004). The app's only notification permission, and the only
+      thing it ever sends unprompted. Requested contextually from the budgets screen rather than at
+      launch, and a denial is a supported state: the in-app banner carries the same band, so the
+      feature works without it (P-01 — nothing leaves the device either way).
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:name=".CfoApplication"
         android:allowBackup="false"

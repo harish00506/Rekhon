@@ -1,0 +1,756 @@
+package com.aicfo.domain.engines.budget
+
+import com.aicfo.core.common.Ok
+import com.aicfo.core.model.Money
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * Behavioural tests for [BudgetEngine] — the boundaries, the invariants and the provenance.
+ *
+ * Why:  the golden file freezes a set of representative answers; this file attacks the edges around
+ *       them. The `add-rulebook-rule` skill asks specifically for a threshold to be tested **at, just
+ *       below and just above** its boundary, and to take the boundary **from the rules object rather
+ *       than a literal** — so that moving the rule moves the test with it instead of breaking it.
+ * What: boundary tests for every `RULE-BUD-*` threshold, the money-math edges of the median and the
+ *       rounding, and the provenance every result must carry.
+ * Result: the thresholds provably do something, and the arithmetic holds at its extremes.
+ * Changelog:
+ *   2026-08-11 — Created for issue 4.4.
+ *   2026-08-13 — Added RULE-BUD-ALERT's band boundaries for issue 4.5 (FR-BUD-004).
+ */
+class BudgetEngineTest {
+    private val engine = BudgetEngineFactory.create()
+    private val rules = BudgetRules()
+
+    // --- RULE-BUD-SUGGEST: min_months_required ------------------------------------------------
+
+    /**
+     * Input:  one month fewer than the rule requires.
+     * Output: asserts `Ok(null)` — no opinion is a legitimate answer, and the alternative (echoing
+     *         the single month back as a "median") would dress an observation up as advice.
+     */
+    @Test
+    fun `just below the history floor there is no suggestion`() {
+        val months = monthsOf(List(rules.minMonthsRequired - 1) { 500_000L })
+
+        assertNull(suggest(months)?.amount)
+    }
+
+    /** Input: exactly the floor. Output: asserts a suggestion is produced — the boundary is inclusive. */
+    @Test
+    fun `at the history floor a suggestion is produced`() {
+        val months = monthsOf(List(rules.minMonthsRequired) { 500_000L })
+
+        assertEquals(Money(500_000), suggest(months)?.amount)
+    }
+
+    /** Input: one month above the floor. Output: asserts a suggestion, and full-window confidence. */
+    @Test
+    fun `just above the history floor a suggestion is produced`() {
+        val months = monthsOf(List(rules.minMonthsRequired + 1) { 500_000L })
+
+        assertEquals(Money(500_000), suggest(months)?.amount)
+    }
+
+    /**
+     * Input:  more months than the lookback window.
+     * Output: asserts only the most recent [BudgetRules.lookbackMonths] are read — the older, much
+     *         larger months must not reach the median, or "3 months of history" (FR-BUD-002) would
+     *         be a comment rather than a behaviour.
+     */
+    @Test
+    fun `only the most recent months inside the lookback window are read`() {
+        val months = monthsOf(listOf(9_000_000L, 9_000_000L, 100_000L, 100_000L, 100_000L))
+
+        assertEquals(Money(100_000), suggest(months)?.medianAmount)
+    }
+
+    // --- RULE-BUD-PACE: min_elapsed_days_for_projection ---------------------------------------
+
+    /** Input: one day below the projection floor. Output: asserts the projection is withheld. */
+    @Test
+    fun `just below the projection floor no end-of-month figure is offered`() {
+        val status = status(daysElapsed = rules.minElapsedDaysForProjection - 1)
+
+        assertNull(status.projectedEndOfMonth)
+        // A withheld projection is an unknown, not a warning — turning it into one would light a
+        // red flag on day one of every month.
+        assertTrue("a withheld projection must not read as a predicted overspend", !status.isProjectedToOverspend)
+    }
+
+    /** Input: exactly the floor. Output: asserts a projection appears — the boundary is inclusive. */
+    @Test
+    fun `at the projection floor an end-of-month figure appears`() {
+        assertNotNull(status(daysElapsed = rules.minElapsedDaysForProjection).projectedEndOfMonth)
+    }
+
+    /** Input: one day above the floor. Output: asserts a projection. */
+    @Test
+    fun `just above the projection floor an end-of-month figure appears`() {
+        assertNotNull(status(daysElapsed = rules.minElapsedDaysForProjection + 1).projectedEndOfMonth)
+    }
+
+    /**
+     * Input:  a rules value with the floor moved.
+     * Output: asserts the engine follows the injected threshold rather than its own default —
+     *         the property that makes this a rulebook mirror rather than a hardcoded number, and the
+     *         seam the eventual `ai/` loader plugs into.
+     */
+    @Test
+    fun `the projection floor comes from the rules, not the engine`() {
+        val strict = BudgetRules(minElapsedDaysForProjection = 10)
+
+        assertNull(status(daysElapsed = 9, rules = strict).projectedEndOfMonth)
+        assertNotNull(status(daysElapsed = 10, rules = strict).projectedEndOfMonth)
+    }
+
+    // --- the median (money math: 100% coverage, MNY-001) --------------------------------------
+
+    /** Input: an odd-length window. Output: asserts the middle value, not the mean. */
+    @Test
+    fun `an odd window takes the middle value`() {
+        assertEquals(Money(600_000), suggest(monthsOf(listOf(500_000L, 4_000_000L, 600_000L)))?.medianAmount)
+    }
+
+    /**
+     * Input:  an even-length window whose two middle values differ by an odd number of paise.
+     * Output: asserts the midpoint, and that it is exact. `Money.split` distributes the odd paise
+     *         rather than discarding it, so the answer is 250 001, never 250 000.5 and never a
+     *         silently truncated 250 000.
+     */
+    @Test
+    fun `an even window takes the exact midpoint of the two middle values`() {
+        assertEquals(Money(250_001), suggest(monthsOf(listOf(200_001L, 300_001L)))?.medianAmount)
+    }
+
+    /** Input: a window of zeroes. Output: asserts a zero suggestion rather than a crash. */
+    @Test
+    fun `a category with no spending suggests nothing to spend`() {
+        assertEquals(Money.ZERO, suggest(monthsOf(listOf(0L, 0L, 0L)))?.amount)
+    }
+
+    // --- rounding (RULE-BUD-SUGGEST.round_to_minor) -------------------------------------------
+
+    /** Input: amounts either side of the rounding tie. Output: asserts down, up-at-the-tie, up. */
+    @Test
+    fun `suggestions round to the nearest step, with ties going up`() {
+        // The median is the number being rounded, so a three-month window of identical values makes
+        // the input exact and the expected output arithmetic rather than a guess.
+        assertEquals(Money(520_000), suggest(monthsOf(List(3) { 524_400L }))?.amount)
+        assertEquals(Money(530_000), suggest(monthsOf(List(3) { 525_000L }))?.amount)
+        assertEquals(Money(530_000), suggest(monthsOf(List(3) { 525_100L }))?.amount)
+    }
+
+    /** Input: an amount already on a step. Output: asserts rounding leaves it alone. */
+    @Test
+    fun `an amount already on a step is untouched`() {
+        assertEquals(Money(520_000), suggest(monthsOf(List(3) { 520_000L }))?.amount)
+    }
+
+    // --- seasonality ---------------------------------------------------------------------------
+
+    /**
+     * Input:  the same category and month, with seasonality switched off in the rules.
+     * Output: asserts the prior is not applied and no event is cited — the `seasonality_enabled`
+     *         param does something, rather than being a comment in the rulebook.
+     */
+    @Test
+    fun `seasonality can be switched off from the rules`() {
+        val months = monthsOf(List(3) { 380_000L })
+        val off = BudgetRules(seasonalityEnabled = false)
+
+        val plain = suggest(months, category = "Shopping", targetMonth = 10, rules = off)
+
+        assertEquals(Money(380_000), plain?.amount)
+        assertNull(plain?.seasonalEventId)
+        assertTrue("no event fired, so nothing should read as adjusted", !plain!!.isSeasonallyAdjusted)
+    }
+
+    /**
+     * Input:  a brand-new profile in a festival month.
+     * Output: asserts the prior is shrunk all the way to nothing. `k = 0/24 = 0`, so an install with
+     *         no history asserts no seasonal pattern — but still cites the event, because the reason
+     *         the number is *not* higher is itself worth showing (P-02).
+     */
+    @Test
+    fun `a profile with no history applies no seasonal adjustment`() {
+        val suggestion = suggest(monthsOf(List(3) { 380_000L }), category = "Shopping", targetMonth = 10, observed = 0)
+
+        assertEquals(Money(380_000), suggestion?.amount)
+        assertEquals(BPS_FULL, suggestion?.seasonalIndexBps)
+        assertTrue("an unshrunk-to-zero prior must not read as adjusted", !suggestion!!.isSeasonallyAdjusted)
+    }
+
+    /**
+     * Input:  a profile older than the shrinkage denominator.
+     * Output: asserts `k` is capped at 1, so more history never *amplifies* a prior past the value
+     *         the knowledge base actually claims.
+     */
+    @Test
+    fun `history beyond the shrinkage denominator does not amplify the prior`() {
+        val months = monthsOf(List(3) { 380_000L })
+        val atCap = suggest(months, category = "Shopping", targetMonth = 10, observed = 24)
+        val wellPast = suggest(months, category = "Shopping", targetMonth = 10, observed = 240)
+
+        assertEquals(atCap?.seasonalIndexBps, wellPast?.seasonalIndexBps)
+        assertEquals(13_800, wellPast?.seasonalIndexBps)
+    }
+
+    /** Input: a category name in a different case. Output: asserts the KB still matches it. */
+    @Test
+    fun `seasonal matching ignores case`() {
+        val suggestion = suggest(monthsOf(List(3) { 380_000L }), category = "shOPPing", targetMonth = 10)
+
+        assertEquals("diwali", suggestion?.seasonalEventId)
+    }
+
+    /** Input: a category the KB has never heard of. Output: asserts no event and no adjustment. */
+    @Test
+    fun `an unknown category is never seasonally adjusted`() {
+        val suggestion = suggest(monthsOf(List(3) { 380_000L }), category = "Aquarium upkeep", targetMonth = 10)
+
+        assertNull(suggestion?.seasonalEventId)
+        assertEquals(BPS_FULL, suggestion?.seasonalIndexBps)
+    }
+
+    // --- status arithmetic ----------------------------------------------------------------------
+
+    /** Input: a rollover amount. Output: asserts it raises the budget every other figure is against. */
+    @Test
+    fun `rollover raises the budget, the remaining and the safe pace together`() {
+        val without = status(planned = 500_000, carried = 0)
+        val with = status(planned = 500_000, carried = 100_000)
+
+        assertEquals(Money(600_000), with.budgeted)
+        assertEquals(without.remaining + Money(100_000), with.remaining)
+        assertTrue("a bigger budget must give a bigger safe pace", with.safePaceToDate > without.safePaceToDate)
+    }
+
+    /** Input: spend above the budget. Output: asserts remaining goes negative rather than clamping. */
+    @Test
+    fun `an overspend shows as a negative remaining, not a zero`() {
+        val status = status(planned = 500_000, spent = 700_000)
+
+        assertEquals(Money(-200_000), status.remaining)
+        assertTrue(status.isOverspent)
+    }
+
+    /** Input: spend exactly on the budget. Output: asserts it is not an overspend — the `<` boundary. */
+    @Test
+    fun `spending exactly the budget is not an overspend`() {
+        val status = status(planned = 500_000, spent = 500_000)
+
+        assertEquals(Money.ZERO, status.remaining)
+        assertTrue("landing on the budget must not nag a user who did everything right", !status.isOverspent)
+    }
+
+    /** Input: a zero budget. Output: asserts any spend against it is immediately an overspend. */
+    @Test
+    fun `a zero budget is overspent by the first rupee`() {
+        assertTrue(status(planned = 0, spent = 100).isOverspent)
+    }
+
+    // --- RULE-BUD-ALERT: warn_pct and exceeded_pct (FR-BUD-004) -------------------------------
+
+    /**
+     * Input:  spending one paise below the warn band, at the band, and one paise below the exceeded
+     *         band — every threshold read from [rules], never written as a literal.
+     * Output: asserts silence, then WARN, then still WARN.
+     *
+     * Why one test and not three: the three assertions are only meaningful *together*. A test that
+     * fires at the band proves nothing on its own — an engine that alerted at every rupee would pass
+     * it. The pair below-and-at is what proves the threshold does something.
+     */
+    @Test
+    fun `the warn band starts exactly at warn_pct and not a paise earlier`() {
+        val budgeted = 1_000_000L
+        val atBand = budgeted * rules.warnPct / 100
+
+        assertNull("below the band is silence", alert(budgeted, atBand - 1)?.band)
+        assertEquals(BudgetAlertBand.WARN, alert(budgeted, atBand)!!.band)
+        assertEquals(
+            "still short of the budget, so still only a warning",
+            BudgetAlertBand.WARN,
+            alert(budgeted, budgeted * rules.exceededPct / 100 - 1)!!.band,
+        )
+    }
+
+    /**
+     * Input:  spending exactly the budget, and one paise past it.
+     * Output: asserts both are EXCEEDED, and that the reported overspend is the real difference —
+     *         zero at the boundary, not absent. The band and the amount are separate facts, and
+     *         collapsing them would make "you have overspent by ₹0" a sentence the app could say.
+     */
+    @Test
+    fun `the exceeded band starts exactly at exceeded_pct and reports the true overspend`() {
+        val budgeted = 1_000_000L
+        val atBand = budgeted * rules.exceededPct / 100
+
+        val exactly = alert(budgeted, atBand)!!
+        assertEquals(BudgetAlertBand.EXCEEDED, exactly.band)
+        assertEquals(Money.ZERO, exactly.overspentBy)
+
+        val past = alert(budgeted, atBand + 25_000)!!
+        assertEquals(BudgetAlertBand.EXCEEDED, past.band)
+        assertEquals(Money(25_000), past.overspentBy)
+    }
+
+    /**
+     * Input:  a rules object with both bands moved.
+     * Output: asserts the engine follows the rule rather than the number it was written with. This
+     *         is the test that would fail if anyone reintroduced `80` as a literal in the engine
+     *         (CLAUDE.md §6), and it is also the seam the runtime loader will use unchanged.
+     */
+    @Test
+    fun `moving the bands in the rules moves the engine`() {
+        val moved = BudgetRules(warnPct = 50, exceededPct = 90)
+
+        assertNull(alert(1_000_000, 490_000, moved)?.band)
+        assertEquals(BudgetAlertBand.WARN, alert(1_000_000, 500_000, moved)!!.band)
+
+        // A band below 100% is reached while the budget still has money in it, so the amount past
+        // the budget is nothing — not a negative "overspend" the notification would render.
+        val exceeded = alert(1_000_000, 900_000, moved)!!
+        assertEquals(BudgetAlertBand.EXCEEDED, exceeded.band)
+        assertEquals(Money.ZERO, exceeded.overspentBy)
+
+        // And the default bands must now be wrong for the same inputs, or the rules were ignored.
+        assertNull(alert(1_000_000, 500_000)?.band)
+    }
+
+    /**
+     * Input:  an unset budget, and nothing spent.
+     * Output: asserts `null` for both. The zero budget is the division-by-zero guard; a category the
+     *         user never budgeted is not one they have overspent.
+     */
+    @Test
+    fun `a zero budget and a zero spend both cross nothing`() {
+        assertNull(alert(0, 500_000))
+        assertNull(alert(1_000_000, 0))
+    }
+
+    /**
+     * Input:  a one-paise budget with ₹10 crore spent against it.
+     * Output: asserts the band is still EXCEEDED. The ratio genuinely overflows an `Int` of basis
+     *         points here; saturating rather than wrapping is the difference between a loud overspend
+     *         and a negative bps value that would report no alert at all — silently, in the one case
+     *         where the user most needs to hear from the app.
+     */
+    @Test
+    fun `an absurd ratio saturates rather than wrapping into silence`() {
+        val absurd = alert(budgeted = 1, spent = 1_000_000_000_00)!!
+
+        assertEquals(BudgetAlertBand.EXCEEDED, absurd.band)
+        assertEquals(Int.MAX_VALUE, absurd.usedBps)
+    }
+
+    /** Input: an alert. Output: asserts it cites the alert rule alone — pace had no part in it. */
+    @Test
+    fun `an alert cites RULE-BUD-ALERT and nothing else`() {
+        val provenance = alert(1_000_000, 900_000)!!.provenance
+
+        assertEquals("budget-planner", provenance.engineId)
+        assertEquals(NOW, provenance.computedAtUtcMillis)
+        assertEquals(listOf("RULE-BUD-ALERT"), provenance.evidence.map { it.ruleId })
+        assertEquals("1.0", provenance.evidence.single().ruleVersion)
+    }
+
+    /** Input: 90% of a budget. Output: asserts the display percent the screen reads (MNY-002). */
+    @Test
+    fun `usedPercent is the whole percent behind the basis points`() {
+        assertEquals(90, alert(1_000_000, 900_000)!!.usedPercent)
+        assertEquals(99, alert(1_000_000, 999_900)!!.usedPercent)
+    }
+
+    // --- provenance (AI-ARC-003, AI-ARC-006) ---------------------------------------------------
+
+    /** Input: a suggestion. Output: asserts the engine identifies itself and states its window. */
+    @Test
+    fun `a suggestion carries its engine, instant, window and cited rule`() {
+        val suggestion = suggest(monthsOf(List(3) { 500_000L }))!!
+
+        assertEquals("budget-planner", suggestion.provenance.engineId)
+        assertEquals("1.0", suggestion.provenance.engineVersion)
+        assertEquals(NOW, suggestion.provenance.computedAtUtcMillis)
+        assertEquals("2026-01-01..2026-03-01", suggestion.provenance.inputWindow)
+        assertEquals(listOf("RULE-BUD-SUGGEST"), suggestion.provenance.evidence.map { it.ruleId })
+    }
+
+    /**
+     * Input:  a suggestion in a festival month.
+     * Output: asserts the seasonal event is cited **after** the rule, so the screen can render the
+     *         reason in the order it reads: the rule that fired, then what it claimed.
+     */
+    @Test
+    fun `a seasonal suggestion cites the rule then the calendar event`() {
+        val suggestion = suggest(monthsOf(List(3) { 380_000L }), category = "Shopping", targetMonth = 10)!!
+
+        assertEquals(listOf("RULE-BUD-SUGGEST", "diwali"), suggestion.provenance.evidence.map { it.ruleId })
+        assertTrue(suggestion.isSeasonallyAdjusted)
+    }
+
+    /** Input: a status. Output: asserts provenance, and a null window — a status reads one month. */
+    @Test
+    fun `a status carries its engine and cited rule, and states no window`() {
+        val provenance = status().provenance
+
+        assertEquals("budget-planner", provenance.engineId)
+        assertEquals(NOW, provenance.computedAtUtcMillis)
+        assertEquals(listOf("RULE-BUD-PACE"), provenance.evidence.map { it.ruleId })
+        assertNull("a status reads the month it was handed; there is no window to state", provenance.inputWindow)
+    }
+
+    // --- input invariants -----------------------------------------------------------------------
+
+    /** Input: nonsense the repository should never send. Output: asserts each is rejected loudly. */
+    @Test
+    fun `impossible inputs are rejected rather than answered`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            BudgetStatusInput("c", Money(1), spent = Money(1), daysInPeriod = 30, daysElapsed = 31, nowUtcMillis = NOW)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            BudgetStatusInput("c", Money(1), spent = Money(1), daysInPeriod = 45, daysElapsed = 1, nowUtcMillis = NOW)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            BudgetStatusInput("c", Money(1), spent = Money(-1), daysInPeriod = 30, daysElapsed = 1, nowUtcMillis = NOW)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            BudgetSuggestionInput("c", "C", emptyList(), targetMonth = 13, monthsObserved = 1, nowUtcMillis = NOW)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            MonthlySpend("2026-01", Money.ZERO)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            MonthlySpend("2026-01-01", Money(-1))
+        }
+    }
+
+    /**
+     * Input:  rule values that would disable the behaviour they configure.
+     * Output: asserts each is rejected at construction. A floor above the window could never be met,
+     *         and a zero projection floor divides by zero — both would fail silently in production
+     *         while every test asserting a *number* kept passing.
+     */
+    @Test
+    fun `rule values that would quietly disable a behaviour are rejected`() {
+        assertThrows(IllegalArgumentException::class.java) { BudgetRules(lookbackMonths = 2, minMonthsRequired = 3) }
+        assertThrows(IllegalArgumentException::class.java) { BudgetRules(minElapsedDaysForProjection = 0) }
+        assertThrows(IllegalArgumentException::class.java) { BudgetRules(roundToMinor = 0) }
+        assertThrows(IllegalArgumentException::class.java) { BudgetRules(lookbackMonths = 0) }
+        assertThrows(IllegalArgumentException::class.java) { BudgetRules(minMonthsRequired = 0) }
+        assertThrows(IllegalArgumentException::class.java) { BudgetRules(shrinkageDenominatorMonths = 0) }
+        // Inverted bands: the warn band would be unreachable, so the earlier warning would never
+        // fire while every test asserting a *band* kept passing.
+        assertThrows(IllegalArgumentException::class.java) { BudgetRules(warnPct = 101, exceededPct = 100) }
+        assertThrows(IllegalArgumentException::class.java) { BudgetRules(warnPct = 0) }
+        assertThrows(IllegalArgumentException::class.java) {
+            BudgetAlertInput("c", "C", budgeted = Money(-1), spent = Money.ZERO, nowUtcMillis = NOW)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            BudgetAlertInput("c", "C", budgeted = Money(1), spent = Money(-1), nowUtcMillis = NOW)
+        }
+        // A warn carrying an overspend figure would render "you have overspent by ₹0".
+        assertThrows(IllegalArgumentException::class.java) {
+            BudgetAlert(
+                band = BudgetAlertBand.WARN,
+                usedBps = 8_000,
+                budgeted = Money(1_000_000),
+                spent = Money(800_000),
+                overspentBy = Money.ZERO,
+                provenance = alert(1_000_000, 800_000)!!.provenance,
+            )
+        }
+    }
+
+    // --- §5.5: the monthly review (issue 4.6) ------------------------------------------------------
+
+    /**
+     * Input:  three categories straddling the materiality threshold, computed **from the rule**.
+     * Output: asserts the verdict flips exactly at `min_variance_pct` and not a paise earlier. The
+     *         threshold is read from [BudgetRules] rather than written as 15, so this test still
+     *         means something after the rulebook moves — and it is the test that fails if anyone
+     *         reintroduces the number as a literal in the engine (CLAUDE.md §6).
+     */
+    @Test
+    fun `a category is material exactly at the threshold, not a paise earlier`() {
+        val rules = BudgetRules()
+        val budgeted = 1_000_000L
+        // Spending that lands exactly on the threshold, and one paise short of it.
+        val atThreshold = budgeted + (budgeted * rules.minVariancePct / 100)
+        val justUnder = atThreshold - 1
+
+        assertEquals(VarianceDirection.OVER, reviewOne(budgeted, atThreshold).direction)
+        assertEquals(VarianceDirection.ON_PLAN, reviewOne(budgeted, justUnder).direction)
+        // Symmetrical on the other side: an underspend is just as material as an overspend.
+        assertEquals(VarianceDirection.UNDER, reviewOne(budgeted, budgeted - (atThreshold - budgeted)).direction)
+    }
+
+    /**
+     * Input:  a rules object with the threshold moved.
+     * Output: asserts the engine follows the rule. The same seam the runtime loader will use, and
+     *         the same argument `moving the bands in the rules moves the engine` makes for 4.5.
+     */
+    @Test
+    fun `moving the variance threshold in the rules moves the engine`() {
+        val strict = BudgetRules(minVariancePct = 5)
+
+        // 8% over: silent under the default 15%, a finding under the moved rule.
+        assertEquals(VarianceDirection.ON_PLAN, reviewOne(1_000_000, 1_080_000).direction)
+        assertEquals(VarianceDirection.OVER, reviewOne(1_000_000, 1_080_000, strict).direction)
+    }
+
+    /**
+     * Input:  an on-plan category, and a material one with too little history to price.
+     * Output: asserts neither carries a proposal, **for different reasons**. The on-plan row has
+     *         nothing to propose; the second has something to say and no number to say it with, and
+     *         must still report its variance rather than disappearing — a row that vanished because
+     *         it could not be priced would hide the finding behind the proposal.
+     */
+    @Test
+    fun `a proposal is absent when there is nothing to propose and when it cannot be priced`() {
+        val onPlan = reviewOne(1_000_000, 1_020_000)
+        assertEquals(VarianceDirection.ON_PLAN, onPlan.direction)
+        assertNull(onPlan.proposal)
+
+        val unpriceable = reviewOne(1_000_000, 1_500_000, months = listOf(1_500_000))
+        assertEquals(VarianceDirection.OVER, unpriceable.direction)
+        assertEquals(5_000, unpriceable.varianceBps)
+        assertNull("one month is not a median", unpriceable.proposal)
+    }
+
+    /**
+     * Input:  a review of two categories.
+     * Output: asserts the month totals are the engine's, and that both rules are cited — the review
+     *         for the decision to speak, the suggestion for the number spoken. A proposal attributed
+     *         only to the review would point the user's "why this figure?" at a rule that never
+     *         computed one.
+     */
+    @Test
+    fun `a review totals the month itself and cites both rules across its two levels`() {
+        val review =
+            review(
+                listOf(
+                    reviewedCategory("Groceries", 800_000, 1_124_000),
+                    reviewedCategory("Rent", 400_000, 410_000),
+                ),
+            )!!
+
+        assertEquals(Money(1_200_000), review.totalBudgeted)
+        assertEquals(Money(1_534_000), review.totalActual)
+        assertEquals(Money(334_000), review.totalVariance)
+        assertEquals(listOf("RULE-BUD-REVIEW"), review.provenance.evidence.map { it.ruleId })
+        // Every budgeted category is returned; only one of them is a finding.
+        assertEquals(2, review.categories.size)
+        assertEquals(1, review.materialCategories.size)
+        assertEquals(
+            listOf("RULE-BUD-SUGGEST"),
+            review.materialCategories.single().proposal!!.provenance.evidence.map { it.ruleId },
+        )
+    }
+
+    /**
+     * Input:  a review with no budgeted categories.
+     * Output: asserts `Ok(null)`. The state of a user who has not budgeted yet is not a review of
+     *         nothing — a screen rendering an empty review would claim a month was examined and
+     *         found to contain no categories, which is a different and untrue statement.
+     */
+    @Test
+    fun `a month with no budgets is no review at all`() {
+        assertNull(review(emptyList()))
+    }
+
+    /**
+     * Input:  a proposal priced for a month with a seasonal event.
+     * Output: asserts the prior applied is the **target** month's, not the reviewed month's. This is
+     *         the subtle one: reviewing November and proposing for December must use December's
+     *         calendar, and getting it backwards produces an entirely plausible wrong number.
+     */
+    @Test
+    fun `a proposal uses the calendar of the month it applies to`() {
+        // "Gifts" inflates under wedding_season, which runs Nov-Feb.
+        val december = giftsProposalFor(targetMonth = 12)
+        val july = giftsProposalFor(targetMonth = 7)
+
+        assertEquals("wedding_season", december.seasonalEventId)
+        assertNull("July is an ordinary month for Gifts", july.seasonalEventId)
+        assertTrue(
+            "the seasonal proposal must exceed the plain median, or the prior did nothing",
+            december.amount > july.amount,
+        )
+    }
+
+    /**
+     * Input:  review values a caller could plausibly supply and that must not be accepted.
+     * Output: asserts each is rejected at construction, for the same reason the alert equivalents
+     *         are: a value that is wrong here is wrong on a screen the user makes decisions from.
+     */
+    @Test
+    fun `review values that would misreport a month are rejected`() {
+        assertThrows(IllegalArgumentException::class.java) { BudgetRules(minVariancePct = 0) }
+        // The same category twice would double-count it in the month totals.
+        assertThrows(IllegalArgumentException::class.java) {
+            review(listOf(reviewedCategory("Groceries", 1, 1), reviewedCategory("Groceries", 2, 2)))
+        }
+        // A proposal on an on-plan row is the app arguing with a plan it just agreed with.
+        assertThrows(IllegalArgumentException::class.java) {
+            ReviewedCategory(
+                categoryId = "c",
+                categoryName = "C",
+                budgeted = Money(1_000_000),
+                actual = Money(1_000_000),
+                variance = Money.ZERO,
+                varianceBps = 0,
+                direction = VarianceDirection.ON_PLAN,
+                proposal = reviewOne(1_000_000, 1_500_000).proposal,
+            )
+        }
+    }
+
+    // --- helpers ---------------------------------------------------------------------------------
+
+    /** Result: one reviewed category. Input: [category]; [budgeted]; [actual]; [months] — history. */
+    private fun reviewedCategory(
+        category: String,
+        budgeted: Long,
+        actual: Long,
+        months: List<Long> = listOf(1_000_000, 1_100_000, 1_124_000),
+    ): ReviewedCategoryInput =
+        ReviewedCategoryInput(
+            categoryId = "category:$category",
+            categoryName = category,
+            budgeted = Money(budgeted),
+            actual = Money(actual),
+            monthlySpends = monthsOf(months),
+        )
+
+    /** Result: the review, or `null`. Input: [categories]; [targetMonth]; [rules]. */
+    private fun review(
+        categories: List<ReviewedCategoryInput>,
+        targetMonth: Int = 8,
+        rules: BudgetRules = BudgetRules(),
+    ): BudgetReview? =
+        (
+            engine.review(
+                BudgetReviewInput(
+                    monthStartIsoDate = "2026-07-01",
+                    categories = categories,
+                    targetMonth = targetMonth,
+                    monthsObserved = 24,
+                    nowUtcMillis = NOW,
+                    rules = rules,
+                ),
+            ) as Ok
+        ).value
+
+    /** Result: the single reviewed row, for the one-category cases. */
+    private fun reviewOne(
+        budgeted: Long,
+        actual: Long,
+        rules: BudgetRules = BudgetRules(),
+        months: List<Long> = listOf(1_000_000, 1_100_000, 1_124_000),
+    ): ReviewedCategory =
+        review(listOf(reviewedCategory("Groceries", budgeted, actual, months)), rules = rules)!!
+            .categories
+            .single()
+
+    /**
+     * Result: the proposal for a materially overspent "Gifts" budget in [targetMonth]. A separate
+     * helper because the seasonal case is the only one that varies the category *and* the month, and
+     * threading both through [reviewOne] would make its signature about this one test.
+     */
+    private fun giftsProposalFor(targetMonth: Int): BudgetSuggestion =
+        review(
+            listOf(reviewedCategory("Gifts", 500_000, 1_000_000, listOf(1_000_000, 1_000_000, 1_000_000))),
+            targetMonth = targetMonth,
+        )!!.categories.single().proposal!!
+
+    private fun monthsOf(amounts: List<Long>): List<MonthlySpend> =
+        amounts.mapIndexed { index, minor -> MonthlySpend("2026-0${index + 1}-01", Money(minor)) }
+
+    private fun suggest(
+        months: List<MonthlySpend>,
+        category: String = "Groceries",
+        targetMonth: Int = 7,
+        observed: Int = 24,
+        rules: BudgetRules = BudgetRules(),
+    ): BudgetSuggestion? =
+        (
+            engine.suggest(
+                BudgetSuggestionInput(
+                    categoryId = "category:test",
+                    categoryName = category,
+                    monthlySpends = months,
+                    targetMonth = targetMonth,
+                    monthsObserved = observed,
+                    nowUtcMillis = NOW,
+                    rules = rules,
+                ),
+            ) as Ok
+        ).value
+
+    private fun status(
+        planned: Long = 1_000_000,
+        carried: Long = 0,
+        spent: Long = 400_000,
+        daysInPeriod: Int = 30,
+        daysElapsed: Int = 15,
+    ): BudgetStatus = statusOf(planned, carried, spent, daysInPeriod, daysElapsed, BudgetRules())
+
+    /** The rules-varying overload, split out so neither helper trips detekt's parameter limit. */
+    private fun status(
+        daysElapsed: Int,
+        rules: BudgetRules,
+    ): BudgetStatus = statusOf(1_000_000, 0, 400_000, 30, daysElapsed, rules)
+
+    @Suppress("LongParameterList")
+    private fun statusOf(
+        planned: Long,
+        carried: Long,
+        spent: Long,
+        daysInPeriod: Int,
+        daysElapsed: Int,
+        rules: BudgetRules,
+    ): BudgetStatus =
+        (
+            engine.status(
+                BudgetStatusInput(
+                    categoryId = "category:test",
+                    plannedAmount = Money(planned),
+                    carriedOver = Money(carried),
+                    spent = Money(spent),
+                    daysInPeriod = daysInPeriod,
+                    daysElapsed = daysElapsed,
+                    nowUtcMillis = NOW,
+                    rules = rules,
+                ),
+            ) as Ok
+        ).value
+
+    private fun alert(
+        budgeted: Long,
+        spent: Long,
+        rules: BudgetRules = BudgetRules(),
+    ): BudgetAlert? =
+        (
+            engine.alert(
+                BudgetAlertInput(
+                    categoryId = "category:test",
+                    categoryName = "Groceries",
+                    budgeted = Money(budgeted),
+                    spent = Money(spent),
+                    nowUtcMillis = NOW,
+                    rules = rules,
+                ),
+            ) as Ok
+        ).value
+
+    private companion object {
+        /** Fixed instant so every run is byte-identical (P-08). */
+        const val NOW = 1_786_082_400_000L
+    }
+}

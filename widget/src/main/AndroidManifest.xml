@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The widget's receiver (issue 5.5; §35).
+
+  Why:  declared in this library's own manifest rather than in :app's, so the module that owns the
+        widget owns its registration too — the manifest merger folds it into the APK once :app
+        depends on :widget. Splitting them would let someone remove the module and leave a receiver
+        pointing at a class that no longer exists.
+  Note: this file adds no permission. The widget reads its own preference store and nothing else.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <receiver
+            android:name="com.aicfo.widget.CfoWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_title">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/cfo_widget_info" />
+        </receiver>
+    </application>
+
+</manifest>

@@ -16,6 +16,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import com.aicfo.core.designsystem.theme.CfoTheme
 import com.aicfo.core.model.Category
+import com.aicfo.core.model.CategoryNature
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -102,7 +103,9 @@ class AddTransactionFlowTest {
         var taps = 0
         val events = mutableListOf<AddTransactionEvent>()
         setContent(
-            state = loadedState(amountText = "1200").copy(categories = listOf(Category("category:fuel", "Fuel"))),
+            state =
+                loadedState(amountText = "1200")
+                    .copy(categories = listOf(Category("category:fuel", "Fuel", CategoryNature.NEED))),
             onEvent = { events += it },
         )
 
@@ -225,7 +228,7 @@ class AddTransactionFlowTest {
             twoAccountState(amountText = "5000")
                 .copy(
                     direction = TransactionDirection.TRANSFER,
-                    categories = listOf(Category("category:fuel", "Fuel")),
+                    categories = listOf(Category("category:fuel", "Fuel", CategoryNature.NEED)),
                 )
         setContent(state = state)
 
@@ -402,7 +405,7 @@ class AddTransactionFlowTest {
         setContent(
             state =
                 splitState(lines = listOf("600", "400"))
-                    .copy(categories = listOf(Category("category:fuel", "Fuel"))),
+                    .copy(categories = listOf(Category("category:fuel", "Fuel", CategoryNature.NEED))),
         )
 
         compose.onNodeWithText(text(R.string.add_txn_category)).assertDoesNotExist()
@@ -415,7 +418,7 @@ class AddTransactionFlowTest {
         setContent(
             state =
                 splitState(lines = listOf("600", "400"))
-                    .copy(categories = listOf(Category("category:fuel", "Fuel"))),
+                    .copy(categories = listOf(Category("category:fuel", "Fuel", CategoryNature.NEED))),
             onEvent = { events += it },
         )
 
@@ -519,7 +522,7 @@ class AddTransactionFlowTest {
             state =
                 loadedState(amountText = "250").copy(
                     isDatePickerOpen = true,
-                    earliestBookableDate = LocalDate.parse("2026-08-02"),
+                    todayInProfileZone = LocalDate.parse("2026-08-02"),
                 ),
         )
 
@@ -594,6 +597,67 @@ class AddTransactionFlowTest {
         compose.onNodeWithText(text(R.string.add_txn_time_confirm)).assertDoesNotExist()
     }
 
+    // --- Stage-1 auto-categorisation (issue 4.2; SRS §8.1, P-02, P-07) -----------------------------
+
+    /**
+     * P-02 on the screen that needs it most.
+     * Input:  a state carrying a suggestion for Fuel.
+     * Output: the chip is selected **and** the reason is on screen, naming the rule by its id. The
+     *         id is asserted verbatim because that is the point of it — a citation into the
+     *         knowledge base, not a paraphrase.
+     */
+    @Test
+    fun `a suggested category shows which rule proposed it`() {
+        setContent(state = suggestedState())
+
+        compose.onNodeWithText(text(R.string.add_txn_category_suggested).format("Fuel", "CLS-MER-008"))
+            .assertIsDisplayed()
+    }
+
+    /**
+     * P-07 on the screen that needs it most.
+     * Input:  a tap on the dismiss action beside the suggestion.
+     * Output: the event that withdraws it. A proposal the user cannot refuse is a decision, and this
+     *         is the control that makes it a proposal.
+     */
+    @Test
+    fun `the suggestion can be refused`() {
+        val events = mutableListOf<AddTransactionEvent>()
+        setContent(state = suggestedState(), onEvent = { events += it })
+
+        compose.onNodeWithText(text(R.string.add_txn_category_suggestion_dismiss)).performClick()
+
+        assertEquals(listOf<AddTransactionEvent>(AddTransactionEvent.SuggestionDismissed), events)
+    }
+
+    /**
+     * Input:  the ordinary state, where Stage 1 has proposed nothing.
+     * Output: no suggestion row at all. An unfamiliar merchant is the common case, so silence — not
+     *         an empty line reserving space — is what it has to look like.
+     */
+    @Test
+    fun `no suggestion renders no suggestion row`() {
+        setContent(
+            state =
+                loadedState(amountText = "1200")
+                    .copy(categories = listOf(Category("category:fuel", "Fuel", CategoryNature.NEED))),
+        )
+
+        compose.onNodeWithText(text(R.string.add_txn_category_suggestion_dismiss)).assertDoesNotExist()
+    }
+
+    /**
+     * Result: the state after Stage 1 proposed Fuel for a fuel merchant and pre-selected its chip.
+     *         Input: none. Output: [AddTransactionUiState].
+     */
+    private fun suggestedState() =
+        loadedState(amountText = "1200").copy(
+            categories = listOf(Category("category:fuel", "Fuel", CategoryNature.NEED)),
+            selectedCategoryId = "category:fuel",
+            merchant = "IOCL PETROL PUMP",
+            suggestion = CategorySuggestionUi("category:fuel", "Fuel", "CLS-MER-008"),
+        )
+
     /**
      * Result: the state a user sees after the screen loads with one account and no categories — what
      *         every real profile has today. Input: [amountText]. Output: [AddTransactionUiState].
@@ -606,6 +670,6 @@ class AddTransactionFlowTest {
             selectedAccountId = "account:1",
             // Issue 3.4: the bound the ViewModel supplies from the injected clock. Fixed here so the
             // date assertions cannot drift with the wall clock (P-08).
-            earliestBookableDate = LocalDate.parse("2026-08-02"),
+            todayInProfileZone = LocalDate.parse("2026-08-02"),
         )
 }

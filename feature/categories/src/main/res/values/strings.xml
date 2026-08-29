@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Why:  §21.6 puts every user-visible string in resources — a hardcoded one cannot be translated
+        and cannot be checked for length at 200% font. `CfoHardcodedUiString` (issue 1.5) fails the
+        build on a literal in a :feature:* composable, so this file is not optional.
+  What: the categories editor — the list, the add/edit sheet, the delete confirmation, the five
+        §8.3 nature labels, and the error messages.
+  Result: the whole feature's copy in one reviewable place.
+  Changelog: 2026-08-08 — Created for issue 4.1 (FR-SET-001).
+-->
+<resources>
+    <string name="categories_title">Categories</string>
+    <string name="categories_add">Add category</string>
+    <string name="categories_edit">Edit</string>
+    <string name="categories_delete">Delete</string>
+    <string name="categories_default_label">Default</string>
+
+    <string name="categories_empty_title">No categories yet</string>
+    <string name="categories_empty_body">Categories are how the app knows what a payment was for.
+        Add one and it becomes a choice when you record a transaction.</string>
+
+    <!-- The sheet serves add and edit; the title is what tells the two apart. -->
+    <string name="category_editor_title_add">New category</string>
+    <string name="category_editor_title_edit">Edit category</string>
+    <string name="category_editor_name">Name</string>
+    <string name="category_editor_nature">What this money becomes</string>
+    <string name="category_editor_parent">Group under</string>
+    <string name="category_editor_parent_none">Nothing — keep it top level</string>
+    <string name="category_editor_save">Save</string>
+    <string name="category_editor_cancel">Cancel</string>
+
+    <!-- §8.3's five natures. The wording says what the money *became*, which is the question the
+         50/30/20 view, true spend and the Purchase Advisor all branch on. -->
+    <string name="category_nature_need">Need</string>
+    <string name="category_nature_want">Want</string>
+    <string name="category_nature_invest">Investment</string>
+    <string name="category_nature_asset">Asset</string>
+    <string name="category_nature_liability">Debt repayment</string>
+
+    <!-- The delete confirmation states the consequence before it happens (P-02): the transactions
+         keep their category id and start reading as Uncategorised. -->
+    <string name="categories_delete_title">Delete “%1$s”?</string>
+    <string name="categories_delete_counting">Checking what uses this category…</string>
+    <string name="categories_delete_unknown_usage">We couldn\'t check what uses this category. It
+        will still be deleted, and anything using it will read as Uncategorised.</string>
+    <plurals name="categories_delete_usage">
+        <item quantity="one">%1$d transaction uses this category and will read as Uncategorised.
+            Nothing is deleted and no amount changes.</item>
+        <item quantity="other">%1$d transactions use this category and will read as Uncategorised.
+            Nothing is deleted and no amount changes.</item>
+    </plurals>
+    <string name="categories_delete_unused">Nothing uses this category yet.</string>
+    <!-- Deliberately not "Delete": the row that opened this dialog still has its own Delete button
+         on screen, and two identically-labelled buttons are ambiguous to read and worse to hear
+         announced. "Delete it" / "Keep it" also reads as the pair of answers to the title's question. -->
+    <string name="categories_delete_confirm">Delete it</string>
+    <string name="categories_delete_cancel">Keep it</string>
+
+    <string name="categories_error_dismiss">Dismiss</string>
+    <string name="categories_error_duplicate_name">Give it a name you haven\'t used yet.</string>
+    <string name="categories_error_bad_parent">Pick a top-level category to group this under.
+        Categories go two levels deep, no further.</string>
+    <string name="categories_error_has_children">Delete the categories inside this one first.</string>
+    <string name="categories_error_storage">We couldn\'t reach your saved categories. Try again.</string>
+    <string name="categories_error_not_found">That category is no longer there.</string>
+    <string name="categories_error_generic">Something went wrong. Try again.</string>
+</resources>

@@ -107,7 +107,9 @@ This aligns with test-driven-development: write the failing test first, then the
   colour/dimension from theme tokens. Indian digit grouping (₹1,23,456.78) via `MoneyFormatter`.
 - **Docs:** every engine module has an `ENGINE.md` (contract, formula, assumptions, version
   log) — template in `docs/templates/ENGINE.md`. Any deviation from the SRS needs an **ADR**
-  (`docs/adr/`).
+  (`docs/adr/`). **Adding, removing or swapping a dependency needs a row in `DECISIONS.md`**
+  naming what it was chosen over — no exceptions, including test-only libraries. **Changing a
+  runtime call path needs `FLOW.md` updated in the same commit** (§10).
 - **Doc comments (global rule):** every class and function gets a doc comment covering
   *why / what / result / changelog / inputs / outputs*. Match the surrounding code's density.
 
@@ -148,6 +150,8 @@ engine. Every row is versioned and cited by ID in evidence (AI-ARC-006). See `ai
 - [ ] Works offline; verified with an airplane-mode test case.
 - [ ] Accessibility scan passes; strings externalised; dark mode verified.
 - [ ] No new lint/detekt warnings; CI green; reviewed (or solo self-review checklist).
+- [ ] **Session file written** in `docs/sessions/`, and any new decision indexed in `DECISIONS.md` /
+      any changed call path reflected in `FLOW.md` (§10).
 
 ## 9. Where things live
 
@@ -155,9 +159,42 @@ engine. Every row is versioned and cited by ID in evidence (AI-ARC-006). See `ai
 docs/init/*.pdf         the SRS (master blueprint, source of truth)
 docs/templates/         ENGINE.md and other doc templates
 docs/adr/               Architecture Decision Records
+DECISIONS.md            project-wide decision index — why this approach, why this library (§10)
+FLOW.md                 how execution travels — entry points and call paths (§10)
+docs/sessions/          one file per working session — decisions, flow delta, quiz (§10)
 ai/                     runtime AI files the app LOADS (rules, workflow, tools, knowledge)
 .claude/skills/         project skills for recurring dev tasks (new-engine, add-rule, audit)
 .claude/commands/       slash-command dev workflows (/pre-merge, /new-feature)
 .github/workflows/      CI (build · test · lint · screenshot diff)
 :app :core:* :domain:* :data:* :ml:* :feature:* :sync:* :widget   (to be built, §21.2)
 ```
+
+---
+
+## 10. Session records
+
+> **Agent-followed, not build-enforced.** Nothing in Gradle or CI fails because a session file is
+> missing. This section says so plainly rather than implying a gate that does
+> not exist — this repo has already shipped one governance gate that nothing ever ran. If you want
+> it enforced, extend `scripts/check_issue_docs.py` and wire it into `ci.yml`.
+
+### 10.1 The three records
+
+| File | Scope | When it changes |
+|------|-------|-----------------|
+| **`DECISIONS.md`** (root) | The whole project | A new approach decision, or **any** dependency added/removed/swapped |
+| **`FLOW.md`** (root) | The whole project | A runtime call path changes — new entry point, new worker, reordered spine |
+| **`docs/sessions/YYYY-MM-DD-<slug>.md`** | One working session | Every session that changes code |
+
+`DECISIONS.md` is an **index**: when an ADR exists it gets one line and a link, never a restatement.
+The session file holds the full reasoning; the root file holds the pointer.
+
+**The session file has three sections, in this order:**
+
+1. **Decisions this session** — each decision with its full reasoning. The one-liners go up to
+   `DECISIONS.md`.
+2. **Flow changed this session** — the call chains added or altered, as arrow chains matching
+   `FLOW.md`'s style.
+3. **Code changed this session** — path → what it does now, one row each.
+
+Write it at the end of the session and commit it with the other docs. **No separate commit.**

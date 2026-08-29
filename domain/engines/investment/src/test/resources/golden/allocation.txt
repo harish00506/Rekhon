@@ -1,0 +1,142 @@
+Golden file for :domain:engines:investment's allocation (issue 6.4; FR-INV-002, RULE-GOLD-CAP v1.0,
+RULE-CRYPTO-CAP v1.0, RULE-CONC-15-70 v1.0).
+
+Every record is one whole portfolio. Amounts are PAISE (MNY-001), never rupees -- a fixture written
+in rupees is a fixture that silently passes at a hundredth of the amount it claims. Shares are
+integer BASIS POINTS (MNY-002): 1010 is 10.1%, not 1010%.
+
+WHERE THESE NUMBERS COME FROM: an independent Python implementation written from the specification
+-- largest-remainder apportionment over integer basis points -- and not from the Kotlin it guards.
+Agreement between the two is therefore evidence the shares are RIGHT, not merely unchanged. A golden
+file regenerated from the code it checks asserts only that the code has not moved, which is a
+different and much weaker claim.
+
+The first two records are the boundary pair, and they are the reason this file exists. The rulebook
+says "Gold <= 10%" and "Single holding <= 15%", so a portfolio sitting exactly on both lines has
+nothing to answer for and a portfolio one basis point past either one does. Off-by-one is the
+single most likely bug in a threshold engine and the least likely to be noticed, because both
+versions look correct in a screenshot.
+
+Record format -- one `# key=value` per line, then one payload row per position, records separated
+by a line of `===`:
+
+  label               what the case is for, quoted back in assertion failures
+  expect_total        paise across the priced positions -- the denominator
+  expect_slices       `class:paise:bps` comma-separated, largest first, or `none`
+  expect_flags        `KIND:subject:measured_bps:threshold_bps` comma-separated, in order, or `none`
+                      subject is the AssetClass storedValue for a class flag, the position's name
+                      for a SINGLE_HOLDING flag
+  expect_valued       positions that carried a price and were counted
+  expect_unvalued     positions excluded for having none (P-03)
+  expect_unavailable  an AllocationUnavailable name, or `none` when there is a split
+
+  payload row: holding_id|account_id|name|asset_class|value_minor
+               holding_id `none` means the position IS an account counted whole
+               value_minor `none` means never priced -- absent, which is NOT zero (P-03)
+
+Flags are ordered narrowest rule to broadest: the class caps first, then single-class, then
+single-holding, and within single-holding largest share first with ties broken by name. A user
+reading top-down should meet "gold is past its own ceiling" before "something is over 70%".
+
+The whole file is reproducible to the byte (P-08): no clock is read and no order is incidental.
+===
+# label=clean portfolio sitting exactly on both boundaries - 15% holdings, 10% gold, no flags
+# expect_total=1000000
+# expect_slices=equity:600000:6000,debt:300000:3000,gold:100000:1000
+# expect_flags=none
+# expect_valued=7
+# expect_unvalued=0
+# expect_unavailable=none
+Nifty Index|acc-1|Nifty Index|equity|150000
+Flexi Cap|acc-1|Flexi Cap|equity|150000
+Mid Cap|acc-1|Mid Cap|equity|150000
+Small Cap|acc-1|Small Cap|equity|150000
+Gilt Fund|acc-1|Gilt Fund|debt|150000
+Corp Bond|acc-1|Corp Bond|debt|150000
+SGB 2030|acc-1|SGB 2030|gold|100000
+===
+# label=one basis point past both boundaries - gold cap and a single holding
+# expect_total=1000000
+# expect_slices=equity:600000:6000,debt:299000:2990,gold:101000:1010
+# expect_flags=ASSET_CLASS_CAP:gold:1010:1000,SINGLE_HOLDING:Nifty Index:1501:1500
+# expect_valued=7
+# expect_unvalued=0
+# expect_unavailable=none
+Nifty Index|acc-1|Nifty Index|equity|150100
+Flexi Cap|acc-1|Flexi Cap|equity|149900
+Mid Cap|acc-1|Mid Cap|equity|150000
+Small Cap|acc-1|Small Cap|equity|150000
+Gilt Fund|acc-1|Gilt Fund|debt|150000
+Corp Bond|acc-1|Corp Bond|debt|149000
+SGB 2030|acc-1|SGB 2030|gold|101000
+===
+# label=all three flag kinds at once - crypto over 5%, equity over 70%, two holdings over 15%
+# expect_total=1000000
+# expect_slices=equity:800000:8000,debt:140000:1400,crypto:60000:600
+# expect_flags=ASSET_CLASS_CAP:crypto:600:500,SINGLE_CLASS:equity:8000:7000,SINGLE_HOLDING:Flexi Cap:4000:1500,SINGLE_HOLDING:Nifty Index:4000:1500
+# expect_valued=4
+# expect_unvalued=0
+# expect_unavailable=none
+Nifty Index|acc-1|Nifty Index|equity|400000
+Flexi Cap|acc-1|Flexi Cap|equity|400000
+Gilt Fund|acc-1|Gilt Fund|debt|140000
+Bitcoin|acc-1|Bitcoin|crypto|60000
+===
+# label=an unpriced holding is excluded from every share and counted separately (P-03)
+# expect_total=1000000
+# expect_slices=equity:1000000:10000
+# expect_flags=SINGLE_CLASS:equity:10000:7000,SINGLE_HOLDING:Flexi Cap:5000:1500,SINGLE_HOLDING:Nifty Index:5000:1500
+# expect_valued=2
+# expect_unvalued=1
+# expect_unavailable=none
+Nifty Index|acc-1|Nifty Index|equity|500000
+Flexi Cap|acc-1|Flexi Cap|equity|500000
+SGB 2030|acc-1|SGB 2030|gold|none
+===
+# label=an account counted whole, with no holdings of its own
+# expect_total=1000000
+# expect_slices=equity:900000:9000,gold:100000:1000
+# expect_flags=SINGLE_CLASS:equity:9000:7000,SINGLE_HOLDING:Nifty Index:9000:1500
+# expect_valued=2
+# expect_unvalued=0
+# expect_unavailable=none
+Nifty Index|acc-1|Nifty Index|equity|900000
+none|acc-gold|SBI Gold Deposit|gold|100000
+===
+# label=thirds - the leftover basis point is distributed, not dropped
+# expect_total=300000
+# expect_slices=equity:100000:3334,debt:100000:3333,gold:100000:3333
+# expect_flags=ASSET_CLASS_CAP:gold:3333:1000,SINGLE_HOLDING:Gilt Fund:3333:1500,SINGLE_HOLDING:Nifty Index:3333:1500,SINGLE_HOLDING:SGB 2030:3333:1500
+# expect_valued=3
+# expect_unvalued=0
+# expect_unavailable=none
+Nifty Index|acc-1|Nifty Index|equity|100000
+Gilt Fund|acc-1|Gilt Fund|debt|100000
+SGB 2030|acc-1|SGB 2030|gold|100000
+===
+# label=nothing priced - positions exist but no share can be computed
+# expect_total=0
+# expect_slices=none
+# expect_flags=none
+# expect_valued=0
+# expect_unvalued=2
+# expect_unavailable=NOTHING_PRICED
+Nifty Index|acc-1|Nifty Index|equity|none
+SGB 2030|acc-1|SGB 2030|gold|none
+===
+# label=a wholly exited portfolio is worth zero, which is not the same as unpriced
+# expect_total=0
+# expect_slices=none
+# expect_flags=none
+# expect_valued=1
+# expect_unvalued=0
+# expect_unavailable=NOTHING_PRICED
+Nifty Index|acc-1|Nifty Index|equity|0
+===
+# label=no positions at all - nothing to allocate
+# expect_total=0
+# expect_slices=none
+# expect_flags=none
+# expect_valued=0
+# expect_unvalued=0
+# expect_unavailable=NO_POSITIONS

@@ -43,7 +43,7 @@
     <string name="onboarding_consent_what_is_read">What it reads: the amount, the merchant, the date and the account — only from messages sent by banks and payment apps. It never reads personal messages.</string>
     <string name="onboarding_consent_on_device">All of this happens on this device. No message ever leaves your phone.</string>
     <string name="onboarding_consent_toggle">Read transaction messages</string>
-    <string name="onboarding_consent_optional">This is optional. You can skip it now and turn it on later in Settings — or turn it off again at any time.</string>
+    <string name="onboarding_consent_optional">This is optional, and nothing is read until you turn it on. Choose now — this build has no settings screen to change it in later.</string>
 
     <!-- Step 3 — profile, currency and time zone (FR-ONB-001, TIM-001) -->
     <string name="onboarding_profile_title">About you</string>
@@ -97,7 +97,7 @@
     <string name="onboarding_security_pin_label">Choose a PIN</string>
     <string name="onboarding_security_pin_confirm_label">Enter it again</string>
     <string name="onboarding_security_pin_help">4 to 6 digits. There is no way to recover it, so pick something you will remember.</string>
-    <string name="onboarding_security_optional">You can skip this and turn it on later in Settings.</string>
+    <string name="onboarding_security_optional">Choose now — this build has no settings screen to turn it on in later.</string>
     <string name="onboarding_security_error_pin_short">A PIN needs 4 to 6 digits.</string>
     <string name="onboarding_security_error_pin_mismatch">Those two PINs are different.</string>
 </resources>

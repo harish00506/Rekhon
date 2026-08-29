@@ -8,6 +8,8 @@
   `MoneyFormatter`, so Indian digit grouping (₹1,23,456.78) stays in one place (P-06).
 -->
 <resources>
+    <!-- Issue 4.1: the way into FR-SET-001's categories editor, which lives in :feature:categories. -->
+    <string name="transactions_manage_categories">Categories</string>
     <string name="transactions_title">Transactions</string>
     <string name="transactions_empty">No transactions yet. Tap + to add your first one.</string>
     <string name="transactions_uncategorised">Uncategorised</string>
@@ -232,8 +234,145 @@
       One line per AppError.code the add screen can surface. The state carries the code, never a
       message, so the wording is reviewable and translatable here rather than assembled in Kotlin.
     -->
+    <!--
+      Receipt scanning (issue 3.8, FR-OCR-001..006). The heading says what the screen *is asking* —
+      the parser proposes and the user confirms (P-07), so "Check the receipt" rather than
+      "Receipt", which would imply the app had already decided.
+    -->
+    <string name="receipt_title">Check the receipt</string>
+    <string name="receipt_capture_prompt">Take a photo of the receipt, or pick one you already have.</string>
+    <string name="receipt_take_photo">Take photo</string>
+    <string name="receipt_choose_photo">Choose photo</string>
+    <string name="receipt_scanning">Reading the receipt…</string>
+    <!--
+      FR-OCR-002, said plainly. Worded as a promise about the receipt rather than as a boast about
+      the technology: the user cares that the photo stays on the phone, not which library read it.
+    -->
+    <string name="receipt_on_device">Read on this phone. The photo never leaves it.</string>
+    <string name="receipt_amount">Amount</string>
+    <string name="receipt_date">Date</string>
+    <string name="receipt_date_hint">yyyy-mm-dd</string>
+    <string name="receipt_merchant">Merchant</string>
+    <string name="receipt_tax">GST</string>
+    <string name="receipt_account">Account</string>
+    <string name="receipt_save">Save</string>
+    <string name="receipt_cancel">Cancel</string>
+    <string name="receipt_retake">Use a different photo</string>
+    <!--
+      FR-OCR-004's flag. **A word, not only a colour** — a colour alone is invisible to a screen
+      reader and to a colour-blind user, and this is the one marker telling them which figure the app
+      is unsure about. Used as the field's supporting text and as its content description.
+    -->
+    <string name="receipt_low_confidence">Check this — we weren\'t sure</string>
+    <!--
+      FR-OCR-006. "Looks like you already have this" rather than "Duplicate found": the guard is a
+      heuristic on amount and date, and two identical coffees on one day are a real thing that
+      happens. The app says what it noticed; the user decides which it was.
+    -->
+    <string name="receipt_duplicate_title">Looks like you already have this</string>
+    <string name="receipt_duplicate_merge">Attach to this one</string>
+    <string name="receipt_duplicate_save_anyway">No, save a new one</string>
+
+    <!-- The detail sheet's receipt row (FR-OCR-005). -->
+    <string name="transactions_detail_receipt">Receipt</string>
+    <string name="transactions_detail_receipt_image">The scanned receipt</string>
+    <!--
+      FR-OCR-005's "delete image while keeping the transaction" — worded so the label itself says the
+      transaction survives, because a bare "Delete" beside a transaction reads as deleting the
+      transaction.
+    -->
+    <string name="transactions_detail_receipt_delete">Delete the photo, keep the transaction</string>
+
+    <string name="add_txn_scan">Scan a receipt</string>
+    <string name="add_txn_review_sms">From your bank messages</string>
+
     <string name="add_txn_error_validation">Check the amount and try again.</string>
     <string name="add_txn_error_not_found">That account is no longer available.</string>
     <string name="add_txn_error_storage">Couldn\'t save that. Please try again.</string>
     <string name="add_txn_error_unknown">Something went wrong. Please try again.</string>
+
+    <!--
+      Issue 3.9 — the SMS review screen (§18, §23; P-01, P-07).
+
+      The wording rule for this whole block: the app says what it READ, never what happened. A bank
+      alert is evidence, not a fact, so "Rs.1,250 debited" is something we were told rather than
+      something we know — and the user is the one who decides whether it becomes a row (P-07).
+      Hence "Looks like" and "Add it" rather than "Spent" and "Save".
+    -->
+    <string name="sms_title">From your bank messages</string>
+    <!--
+      FR-ONB-003's promise, repeated where the data actually is. Worded as a statement about the
+      messages rather than a boast about the app, because it is the messages the user is worried
+      about (P-01).
+    -->
+    <string name="sms_on_device">Read on this phone. Your messages never leave it, and we only keep what we worked out.</string>
+
+    <string name="sms_consent_off_title">SMS parsing is off</string>
+    <string name="sms_consent_off_body">Reading bank alerts is off, so nothing is read. It was chosen during setup and this build has no settings screen to change it in.</string>
+
+    <string name="sms_permission_title">One more step</string>
+    <!--
+      Shown BEFORE Android's own dialog, which says only "Allow app to send and view SMS messages?"
+      — broader than what this app does, and silent about why. A user shown that with no context
+      is being asked to guess.
+    -->
+    <string name="sms_permission_body">Android needs to let us read your messages. We only look at bank alerts, and only on this phone.</string>
+    <string name="sms_permission_grant">Allow</string>
+
+    <string name="sms_empty_title">Nothing to review</string>
+    <!-- "We have not looked yet" and "we looked and found nothing" feel identical on screen. -->
+    <string name="sms_empty_never_scanned">Check your messages for anything we can turn into a transaction.</string>
+    <string name="sms_empty_after_scan">No new bank alerts since we last looked.</string>
+    <string name="sms_scan">Check messages</string>
+
+    <string name="sms_account">Which account</string>
+    <string name="sms_direction_debit">Money out</string>
+    <string name="sms_direction_credit">Money in</string>
+    <!-- The sender and the date together are how a person recognises their own transaction (P-02). -->
+    <string name="sms_from_sender">%1$s · %2$s</string>
+    <string name="sms_account_tail">Account ending %1$s</string>
+    <!--
+      The flag is a WORD, not a colour (§21.6 accessibility) — the same choice the receipt review
+      screen makes for the identical reason.
+    -->
+    <string name="sms_low_confidence">Check this one — we weren\'t sure</string>
+    <string name="sms_amount">Amount</string>
+    <string name="sms_merchant">Paid to</string>
+    <string name="sms_accept">Add it</string>
+    <string name="sms_dismiss">Not this one</string>
+    <string name="sms_done">Done</string>
+    <string name="sms_error">Couldn\'t do that (%1$s). Please try again.</string>
+    <string name="sms_dismiss_error">OK</string>
+
+    <!--
+      Issue 4.2 — Stage-1 auto-categorisation (SRS §8.1, P-02, P-07).
+
+      The rule id is shown VERBATIM and on purpose. P-02 says every output names the rule that
+      fired, and `CLS-MER-001` is a citation into ai/knowledge/classification-kb.json that can
+      actually be looked up — a friendlier paraphrase would not be. The app has just filed the
+      user's money somewhere they did not ask it to; "why" has to have a checkable answer.
+
+      Worded as a proposal, never as a statement of fact: the user decides (P-07).
+    -->
+    <string name="add_txn_category_suggested">Suggested: %1$s · rule %2$s</string>
+    <string name="add_txn_category_suggestion_dismiss">Not this</string>
+
+    <!--
+      Issue 4.3 — nature classification (SRS §8.3, P-02, P-07).
+
+      The five names are the user's vocabulary for §8.3's five natures, not the enum's: "Kept &amp;
+      growing" rather than INVEST, because the point of the label is that someone can tell at a
+      glance which of their money is gone and which is still theirs.
+
+      The rule id is shown verbatim for the same reason the category suggestion shows one — it is a
+      citation into ai/knowledge/classification-kb.json, and a paraphrase is not checkable.
+    -->
+    <string name="transactions_detail_nature">What this became</string>
+    <string name="transactions_detail_nature_reason">Decided by rule %1$s — tap to change</string>
+    <string name="transactions_detail_nature_unsure">We\'re not sure about this one. Your answer is kept.</string>
+    <string name="nature_need">Need</string>
+    <string name="nature_want">Want</string>
+    <string name="nature_invest">Kept &amp; growing</string>
+    <string name="nature_asset">Turned into something</string>
+    <string name="nature_liability">Debt</string>
 </resources>

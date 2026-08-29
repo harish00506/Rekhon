@@ -13,8 +13,11 @@
     <string name="dashboard_safe_to_spend_label">Safe to spend</string>
     <string name="dashboard_net_worth_label">Net worth</string>
     <string name="dashboard_spend_split_label">This month</string>
+    <!-- Issue 4.4: the way from the nature-level bar above to the category-level plan behind it. -->
+    <string name="dashboard_budgets_action">Your budgets</string>
     <string name="dashboard_accounts_action">Your accounts</string>
     <string name="dashboard_transactions_action">View transactions</string>
+    <string name="dashboard_settings_action">Settings</string>
     <string name="dashboard_refresh_action">Refresh</string>
     <string name="dashboard_loading">Working out your position…</string>
     <string name="dashboard_error">Something went wrong. Pull to refresh.</string>
@@ -24,5 +27,97 @@
     <string name="dashboard_net_worth_pending">Not worked out yet — we\'ll have it after your first daily update.</string>
     <string name="dashboard_spend_split_description">Spending split between needs, wants and savings</string>
     <!-- Issue 2.3: shown when the user skipped quick setup, so there is no budget to chart. -->
-    <string name="dashboard_spend_split_empty">No budget yet. Add your monthly income in Settings and we\'ll suggest one.</string>
+    <string name="dashboard_spend_split_empty">No needs/wants/savings plan yet — this one comes from the head start during setup.</string>
+
+    <!--
+      Issue 5.2 — the Safe-to-Spend breakdown (§5.2, AI-STS).
+
+      One label per SafeToSpendComponent. They live here rather than in the engine because
+      :domain:* is pure Kotlin and must hold no user-visible copy (§21.6, ARC-002) — the engine
+      returns a component and an amount, and this file is where it becomes a sentence.
+
+      The labels are written from the user's side of the figure ("Already spent", not "SPENT"), and
+      each names the *reason* money is unavailable rather than the mechanism, because the whole
+      point of the breakdown is that someone can check it against their own memory (P-02).
+    -->
+    <string name="dashboard_safe_to_spend_pending">Not worked out yet — record this month as income and we will work it out.</string>
+    <string name="dashboard_safe_to_spend_line">%1$s %2$s</string>
+    <string name="dashboard_sts_income">Income</string>
+    <string name="dashboard_sts_buffer">Held back as a buffer</string>
+    <string name="dashboard_sts_spent">Already spent</string>
+    <string name="dashboard_sts_scheduled">Scheduled payments</string>
+    <string name="dashboard_sts_recurring">Bills still due</string>
+    <!--
+      "Planned", not "still to make": the term is the whole savings envelope every month, not the
+      part not yet transferred. §8.3's true spend excludes conversions, so a rupee already saved is
+      in no other line — netting it off here would leave it deducted from nothing at all. See
+      `savingsPlanned` in SafeToSpendRepository.
+    -->
+    <string name="dashboard_sts_goals">Planned savings</string>
+    <string name="dashboard_sts_shortfall">Beyond the plan</string>
+
+    <!--
+      Issue 4.3 — §8.3's true-spend split, beside the budget above it.
+
+      The debt note is not boilerplate: §8.3's formula is NEED + WANT + interest/fees, and this build
+      cannot split an EMI into principal and interest (no amortisation rows — ADR-0016), so the
+      figure is short by exactly that interest. P-02 says show the work, and a number the user is
+      told is incomplete is a different thing from one they are not.
+    -->
+    <string name="dashboard_actual_label">This month, actually</string>
+    <string name="dashboard_actual_values">Needs %1$s · Wants %2$s · Kept %3$s</string>
+    <string name="dashboard_actual_debt_note">Loan repayments are shown separately and aren\'t counted as spending yet.</string>
+
+    <!-- Issue 5.1 — this month's cash flow, beside the plan/actual pair above it. -->
+    <string name="dashboard_cash_flow_label">This month\'s cash flow</string>
+    <string name="dashboard_cash_flow_values">Received %1$s · Spent %2$s</string>
+
+    <!--
+      Issue 5.1 — the budget summary card. The alert line cites its rule (P-02), matching how
+      :feature:budgets' own banner does for the same alert — a figure the dashboard did not compute
+      and must not repeat without saying where it came from.
+    -->
+    <string name="dashboard_budget_status_label">Your budget this month</string>
+    <string name="dashboard_budget_status_values">%1$s of %2$s spent</string>
+    <string name="dashboard_budget_status_empty">No budgets set yet. Set one from Your budgets.</string>
+    <plurals name="dashboard_budget_alerts">
+        <item quantity="one">%1$d category needs attention</item>
+        <item quantity="other">%1$d categories need attention</item>
+    </plurals>
+    <string name="dashboard_reason_rule">Rule %1$s v%2$s</string>
+
+    <!-- Issue 5.1 — the recent-activity preview; the full ledger is "View transactions" above. -->
+    <string name="dashboard_recent_activity_label">Recent activity</string>
+    <string name="dashboard_recent_activity_empty">No transactions yet.</string>
+    <string name="dashboard_recent_activity_unnamed">Transaction</string>
+
+    <!--
+      Issue 5.4 — the local JSON export/import archive (§5.10, §34, P-01).
+
+      "Your data", not "backup", for the export: this is portability — the user's own copy, in a
+      file they can read — and calling it a backup would imply the app is keeping something safe
+      for them, which Epic 8's encrypted backup is for.
+
+      The import confirmation says what will actually happen in the words that matter. "Are you
+      sure?" tells someone nothing; "everything currently on this device is replaced" is the one
+      fact they need before tapping, and it is the only destructive action in the app.
+    -->
+    <string name="dashboard_export_action">Export your data</string>
+    <string name="dashboard_import_action">Import a backup</string>
+    <string name="dashboard_import_confirm_title">Replace everything on this device?</string>
+    <string name="dashboard_import_confirm_body">Importing replaces every account, transaction, budget
+        and category currently on this device with the contents of the file you picked. What is here
+        now cannot be recovered afterwards — export it first if you want to keep it.</string>
+    <string name="dashboard_import_confirm_action">Replace my data</string>
+    <string name="dashboard_import_cancel_action">Cancel</string>
+    <string name="dashboard_archive_working">Working…</string>
+    <string name="dashboard_archive_exported">Exported. Your data is in the file you chose.</string>
+    <!-- A count the user can check against the file they picked, rather than a bare "done" (P-02). -->
+    <string name="dashboard_archive_imported">Imported %1$d rows.</string>
+    <string name="dashboard_archive_dismiss">OK</string>
+    <string name="dashboard_archive_unreadable">That file isn\'t an AI Personal CFO backup.</string>
+    <string name="dashboard_archive_wrong_version">That backup was made by a different version of the
+        app. Nothing on this device has been changed.</string>
+    <string name="dashboard_archive_write_failed">Couldn\'t write to that location. Try somewhere else.</string>
+    <string name="dashboard_archive_failed">Something went wrong. Nothing on this device has been changed.</string>
 </resources>

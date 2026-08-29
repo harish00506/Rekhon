@@ -84,6 +84,21 @@ interface SettingsStore {
     suspend fun completeOnboarding(profile: OnboardingProfile): Result<Unit, AppError>
 
     /**
+     * Rewrites the quick-setup seeds after onboarding (issue: Settings, FR-SET-001).
+     *
+     * Why:  the seeds were writable only by [completeOnboarding], so a user who skipped the optional
+     *       head-start step could never supply an income — and the dashboard's needs/wants/savings
+     *       split, which reads the envelopes derived from these, stayed empty for ever while telling
+     *       them to visit a Settings screen that did not exist. This is the setter that makes the
+     *       screen possible; it deliberately touches only the three seeds, leaving the completion
+     *       flag and the profile identity alone.
+     * Result: `Ok(Unit)` when the write lands, `Err(Storage)` otherwise. Absent seeds are stored as
+     *       zero, the same encoding [completeOnboarding] uses, and read back as `null`.
+     * Input:  [seeds] — what the user typed. Output: `Result<Unit, AppError>`.
+     */
+    suspend fun setQuickSetupSeeds(seeds: QuickSetupSeeds): Result<Unit, AppError>
+
+    /**
      * Turns demo mode on or off (issue 2.4; FR-ONB-004).
      *
      * Why:    a setter of its own rather than a field on [completeOnboarding], because demo mode is
@@ -97,6 +112,24 @@ interface SettingsStore {
      * Input:  [active] — whether the sample dataset is being shown. Output: `Result<Unit, AppError>`.
      */
     suspend fun setDemoModeActive(active: Boolean): Result<Unit, AppError>
+
+    /**
+     * Records how far through the inbox the SMS scanner has read (issue 3.9; §18, P-01).
+     *
+     * Why:    the scanner must never re-read a message it has already judged — not for efficiency,
+     *         but because touching the user's private messages again for no new information is
+     *         exactly what P-01 asks this app not to do. Written **after** a batch is processed, so
+     *         a scan that fails halfway leaves the cursor behind the messages it did not handle and
+     *         the next scan picks them up rather than skipping them for ever.
+     *
+     *         Passing `0` resets it, which is what revoking the consent does: a later re-grant then
+     *         starts from a clean inbox rather than silently inheriting a position from a decision
+     *         the user has since withdrawn.
+     * Result: `Ok(Unit)` or `Err(Storage)`.
+     * Input:  [smsId] — the highest `Telephony.Sms._ID` processed, or `0` to reset.
+     * Output: `Result<Unit, AppError>`.
+     */
+    suspend fun setSmsScanCursor(smsId: Long): Result<Unit, AppError>
 }
 
 /**
@@ -151,6 +184,14 @@ internal class DataStoreSettingsStore(
 
     override suspend fun setTheme(theme: ThemeSetting): Result<Unit, AppError> = update { it.setTheme(theme.toProto()) }
 
+    override suspend fun setQuickSetupSeeds(seeds: QuickSetupSeeds): Result<Unit, AppError> =
+        update { builder ->
+            builder
+                .setQuickSetupMonthlyIncomeMinor(seeds.monthlyIncome.orZero())
+                .setQuickSetupRentEmiMinor(seeds.rentOrEmi.orZero())
+                .setQuickSetupTypicalSavingsMinor(seeds.typicalSavings.orZero())
+        }
+
     override suspend fun completeOnboarding(profile: OnboardingProfile): Result<Unit, AppError> =
         update { builder ->
             builder
@@ -166,6 +207,8 @@ internal class DataStoreSettingsStore(
 
     override suspend fun setDemoModeActive(active: Boolean): Result<Unit, AppError> =
         update { it.setDemoModeActive(active) }
+
+    override suspend fun setSmsScanCursor(smsId: Long): Result<Unit, AppError> = update { it.setSmsScanCursorId(smsId) }
 
     /**
      * Applies one field change atomically.
@@ -204,6 +247,9 @@ internal fun CfoSettingsProto.toSnapshot(): SettingsSnapshot =
         // An unset int64 reads as 0, which here means "onboarding never finished".
         onboardingCompletedAtUtcMillis = onboardingCompletedAtUtcMillis.takeIf { it > 0L },
         demoModeActive = demoModeActive,
+        // 0 is both proto3's default and this field's meaning of "nothing read yet", so unlike the
+        // quick-setup seeds there is nothing to disambiguate — there is no inbox row with _ID 0.
+        smsScanCursorId = smsScanCursorId,
         quickSetup =
             QuickSetupSeeds(
                 monthlyIncome = quickSetupMonthlyIncomeMinor.toSeed(),

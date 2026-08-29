@@ -84,4 +84,18 @@ message CfoSettingsProto {
   // Deliberately NOT paired with a timestamp, unlike onboarding and consent: nothing ever needs to
   // answer "when did the demo start?", and a demo profile is destroyed on exit anyway.
   bool demo_mode_active = 16;
+
+  // --- SMS parsing (issue 3.9; §18, §23, P-01) ---
+
+  // The highest inbox _ID this app has already read. 0 = nothing read yet, which is what the first
+  // scan after the consent is granted sees.
+  //
+  // A cursor rather than a "last scanned at" timestamp, because the identity of "already seen" has
+  // to survive a phone whose clock moved and a message that arrived out of order — and re-reading
+  // is not free here: it is the user's private messages being touched again for nothing.
+  //
+  // It lives beside the consent it depends on rather than in the database, because it is a setting
+  // about a scan, not financial data — and because it must be resettable to 0 without touching the
+  // ledger when the consent is revoked and re-granted.
+  int64 sms_scan_cursor_id = 17;
 }

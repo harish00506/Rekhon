@@ -1,10 +1,12 @@
 package com.aicfo.core.database.migration
 
+import android.database.sqlite.SQLiteConstraintException
 import androidx.room.testing.MigrationTestHelper
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.aicfo.core.database.CfoDatabase
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -49,6 +51,12 @@ import org.junit.runner.RunWith
  *            2026-08-04 — Issue 3.6: added the 8 → 9 case (`tags`, `transaction_tags`). Additive,
  *            so it asserts the *index* as well as the rows: a `UNIQUE` index a migration forgot to
  *            create is invisible until a user happens to have two of something.
+ *            2026-08-15 — Issue 4.6: added the 14 → 15 case (`budget_review`), the same
+ *            refusal-not-declaration shape `migrate13To14` uses, keyed one level coarser.
+ *            2026-08-19 — Issue 6.2: added the 16 → 17 case (`loan`). It asserts one thing the
+ *            others do not — that a table is *absent*: the amortisation schedule is derived from
+ *            `loan`'s columns and never stored (ADR-0026), so a schedule table appearing later is a
+ *            reversed decision rather than an addition, and this is where that gets noticed.
  */
 @RunWith(AndroidJUnit4::class)
 class MigrationRoundTripTest {
@@ -626,6 +634,565 @@ class MigrationRoundTripTest {
         }
         migrated.close()
     }
+
+    /**
+     * 10 → 11 adds `attachments` (issue 3.8; FR-OCR-005).
+     *
+     * Input:  a version-10 database holding a transaction with an exact paise amount.
+     * Output: asserts the transaction survives untouched, the new table exists and accepts a
+     *         receipt row, and — the half of FR-OCR-005 that matters — tombstoning that row leaves
+     *         the transaction alone.
+     *
+     * **Purely additive, so the failure this guards against is a migration that recreated an
+     * existing table on its way to adding a new one**: that would validate perfectly against
+     * `schemas/11.json` and lose the user's ledger. The amount is asserted byte for byte for the
+     * reason `migrate1To2` gives (MNY-001).
+     */
+    @Test
+    fun migrate10To11_preservesTransactionsAndAcceptsAttachments() {
+        helper.createDatabase(TEST_DB, 10).use { db ->
+            db.execSQL(
+                "INSERT INTO transactions (id, profile_id, account_id, amount_minor, currency_code, " +
+                    "occurred_at_utc_millis, booked_on_iso_date, source, type, " +
+                    "created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('t1','p1','a1',-36580,'INR',1767312000000,'2026-08-04','ocr','expense'," +
+                    "1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 11, true, Migrations.MIGRATION_10_11)
+
+        migrated.query("SELECT amount_minor FROM transactions WHERE id = 't1'").use { cursor ->
+            assertTrue("the pre-migration transaction must still be there", cursor.moveToFirst())
+            assertEquals("MNY-001: the amount must survive byte for byte", -36580L, cursor.getLong(0))
+        }
+
+        migrated.execSQL(
+            "INSERT INTO attachments (id, profile_id, transaction_id, kind, file_name, mime_type, " +
+                "byte_size, created_at_utc_millis, updated_at_utc_millis) " +
+                "VALUES ('at1','p1','t1','receipt','at1.bin','image/jpeg',48213," +
+                "1767312000000,1767312000000)",
+        )
+        migrated.query(
+            "SELECT COUNT(*) FROM attachments WHERE transaction_id = 't1' AND deleted_at_utc_millis IS NULL",
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("the receipt must be linked to its transaction", 1, cursor.getInt(0))
+        }
+
+        // FR-OCR-005's second half: the image goes, the transaction stays.
+        migrated.execSQL("UPDATE attachments SET deleted_at_utc_millis = 1767312000000 WHERE id = 'at1'")
+        migrated.query("SELECT COUNT(*) FROM transactions WHERE id = 't1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("deleting the image must not touch the transaction", 1, cursor.getInt(0))
+        }
+        migrated.close()
+    }
+
+    /**
+     * 12 → 13: `transactions.nature`, the user's nature override (issue 4.3; §8.3).
+     *
+     * Why:    additive and one column, so the structural risk is the small one — a migration that
+     *         recreated `transactions` on its way to altering it would validate against
+     *         `schemas/13.json` and lose the ledger. But the **semantic** claim is the one worth a
+     *         test, and it is the opposite of `migrate7To8`'s: there, the absent backfill *was* the
+     *         bug, because every pre-existing row read as unposted. Here `NULL` is the correct and
+     *         complete value for every existing transaction — nobody has overridden anything yet,
+     *         and the automatic nature is derived on read rather than stored.
+     *
+     *         So this asserts the column arrives **empty**, not merely present. A migration that
+     *         helpfully backfilled it with a guessed nature would pass a shape check and quietly
+     *         convert five engine-derived guesses into five user decisions, which is exactly the
+     *         distinction §8.3.1 step 4 learns from.
+     * Input:  a transaction written at version 12. Output: it survives, with a null override that
+     *         then accepts a value.
+     */
+    @Test
+    fun migrate12To13_preservesTransactionsAndLeavesTheNatureOverrideEmpty() {
+        helper.createDatabase(TEST_DB, 12).use { db ->
+            db.execSQL(
+                "INSERT INTO transactions (id, profile_id, account_id, amount_minor, currency_code, " +
+                    "occurred_at_utc_millis, booked_on_iso_date, category_id, source, type, " +
+                    "created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('t1','p1','a1',-940000,'INR',1767312000000,'2026-08-10','c1','manual','expense'," +
+                    "1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 13, true, Migrations.MIGRATION_12_13)
+
+        migrated.query("SELECT amount_minor, nature FROM transactions WHERE id = 't1'").use { cursor ->
+            assertTrue("the pre-migration transaction must still be there", cursor.moveToFirst())
+            assertEquals("MNY-001: the amount must survive byte for byte", -940000L, cursor.getLong(0))
+            assertTrue(
+                "the override column must arrive empty — a backfilled guess would read as the user's decision",
+                cursor.isNull(1),
+            )
+        }
+
+        // And it is writable: an override set after the upgrade is the one thing this column stores.
+        migrated.execSQL("UPDATE transactions SET nature = 'want' WHERE id = 't1'")
+        migrated.query("SELECT nature FROM transactions WHERE id = 't1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("want", cursor.getString(0))
+        }
+        migrated.close()
+    }
+
+    /**
+     * 13 → 14: `budget_alert`, the record of what the user has already been told (issue 4.5;
+     * FR-BUD-004).
+     *
+     * Why:    the structural claim is the usual one — an existing budget must survive an additive
+     *         migration. The **semantic** claim is the one this feature lives or dies on, and it is
+     *         a claim about the *index*, not the table: FR-BUD-004 promises one alert per band per
+     *         month, and that promise is only as good as the constraint behind it.
+     *
+     *         So this test does not assert the index exists. It tries to insert the duplicate and
+     *         requires the database to refuse — because "the index is declared" and "the second WARN
+     *         cannot be written" are different statements, and only the second one is the
+     *         requirement. It then inserts the *other* band for the same budget and month and
+     *         requires that to succeed, since crossing 80% and later 100% must produce two messages;
+     *         an over-wide unique key would pass the first half of this test and silently swallow the
+     *         message that mattered most.
+     * Input:  a budget written at version 13. Output: it survives; the duplicate band is rejected and
+     *         the second band is accepted.
+     */
+    @Test
+    fun migrate13To14_preservesBudgetsAndMakesASecondAlertForOneBandImpossible() {
+        helper.createDatabase(TEST_DB, 13).use { db ->
+            db.execSQL(
+                "INSERT INTO budget (id, profile_id, category_id, period_start_iso_date, amount_minor, " +
+                    "rollover_enabled, source, created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('b1','p1','c1','2026-08-01',1000000,0,'manual',1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 14, true, Migrations.MIGRATION_13_14)
+
+        migrated.query("SELECT amount_minor FROM budget WHERE id = 'b1'").use { cursor ->
+            assertTrue("the pre-migration budget must still be there", cursor.moveToFirst())
+            assertEquals("MNY-001: the amount must survive byte for byte", 1000000L, cursor.getLong(0))
+        }
+
+        migrated.execSQL(insertAlert(id = "a1", band = "WARN"))
+
+        // The requirement, tested as a refusal rather than as a declaration.
+        assertThrows(SQLiteConstraintException::class.java) {
+            migrated.execSQL(insertAlert(id = "a2", band = "WARN"))
+        }
+
+        // ...but the promotion to the second band must still get through.
+        migrated.execSQL(insertAlert(id = "a3", band = "EXCEEDED"))
+        migrated.query("SELECT COUNT(*) FROM budget_alert WHERE budget_id = 'b1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("80% then 100% is two alerts, not one", 2, cursor.getInt(0))
+        }
+        migrated.close()
+    }
+
+    /**
+     * Builds one `budget_alert` insert.
+     * Why:    the three inserts above differ in exactly two values, and spelling the column list out
+     *         three times would hide that.
+     * Result: the SQL. Input: [id]; [band]. Output: [String].
+     */
+    private fun insertAlert(
+        id: String,
+        band: String,
+    ): String =
+        "INSERT INTO budget_alert (id, profile_id, budget_id, category_id, month_start_iso_date, " +
+            "band, rule_id, rule_version, notified_at_utc_millis) " +
+            "VALUES ('$id','p1','b1','c1','2026-08-01','$band','RULE-BUD-ALERT','1.0',1767312000000)"
+
+    /**
+     * 14 → 15: `budget_review`, the record that a closed month's review has been shown (issue 4.6;
+     * §5.5).
+     *
+     * Why:    the structural claim is the usual one — an existing budget survives an additive
+     *         migration. The **semantic** claim, as with `migrate13To14`, is about the unique index
+     *         rather than the table: `RULE-BUD-REVIEW.review_once_per_month` promises one review
+     *         card per profile per closed month, keyed by month alone (ADR-0020) — unlike
+     *         `budget_alert`, which is keyed one level finer, by band too, because two different
+     *         bands are two different messages. Here there is only ever one card for a month, so a
+     *         second claim for the same month must be refused, and a claim for a *different* month
+     *         must succeed.
+     * Input:  a budget written at version 14. Output: it survives; a duplicate claim for the same
+     *         month is rejected and a claim for a different month is accepted.
+     */
+    @Test
+    fun migrate14To15_preservesBudgetsAndMakesASecondClaimForOneMonthImpossible() {
+        helper.createDatabase(TEST_DB, 14).use { db ->
+            db.execSQL(
+                "INSERT INTO budget (id, profile_id, category_id, period_start_iso_date, amount_minor, " +
+                    "rollover_enabled, source, created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('b1','p1','c1','2026-08-01',1000000,0,'manual',1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 15, true, Migrations.MIGRATION_14_15)
+
+        migrated.query("SELECT amount_minor FROM budget WHERE id = 'b1'").use { cursor ->
+            assertTrue("the pre-migration budget must still be there", cursor.moveToFirst())
+            assertEquals("MNY-001: the amount must survive byte for byte", 1000000L, cursor.getLong(0))
+        }
+
+        migrated.execSQL(insertReviewClaim(id = "rv1", monthStartIsoDate = "2026-07-01"))
+
+        // The requirement, tested as a refusal rather than as a declaration.
+        assertThrows(SQLiteConstraintException::class.java) {
+            migrated.execSQL(insertReviewClaim(id = "rv2", monthStartIsoDate = "2026-07-01"))
+        }
+
+        // ...but a different reviewed month must still get through.
+        migrated.execSQL(insertReviewClaim(id = "rv3", monthStartIsoDate = "2026-08-01"))
+        migrated.query("SELECT COUNT(*) FROM budget_review WHERE profile_id = 'p1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("two different months are two different claims", 2, cursor.getInt(0))
+        }
+        migrated.close()
+    }
+
+    /**
+     * 15 → 16 adds `credit_card` and `card_alert` (issue 6.1; FR-ACC-002, §17.1).
+     *
+     * Input:  a version-15 database holding an account with an exact paise balance.
+     * Output: asserts the account survives untouched, a card's terms round-trip, and the guarantee
+     *         `card_alert` was shaped around actually holds in SQL: **one cycle cannot be notified
+     *         about twice for the same kind, but the two kinds and the next cycle still get
+     *         through**.
+     *
+     * The unique index is exercised rather than assumed. It is the only thing standing between a
+     * worker that retries after a partial failure and a payment reminder that fires three days
+     * running — and an index present in `schemas/16.json` but never inserted against is a claim,
+     * not a guarantee. The key includes `kind` precisely so a card that is both due and over its
+     * limit produces two messages, so that is asserted too rather than left to the schema to imply.
+     *
+     * **Purely additive, so the failure this guards against is a migration that recreated an
+     * existing table on its way to adding new ones**: that would validate perfectly against
+     * `schemas/16.json` and lose the user's accounts. The balance is asserted byte for byte
+     * (MNY-001).
+     */
+    @Test
+    fun migrate15To16_preservesAccountsAndMakesASecondAlertForOneCycleImpossible() {
+        helper.createDatabase(TEST_DB, 15).use { db ->
+            db.execSQL(
+                "INSERT INTO account (id, profile_id, name, type, opening_balance_minor, " +
+                    "current_balance_minor, currency_code, include_in_networth, " +
+                    "created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('a1','p1','HDFC Card','credit_card',0,-7000000,'INR',1," +
+                    "1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 16, true, Migrations.MIGRATION_15_16)
+
+        migrated.query("SELECT current_balance_minor FROM account WHERE id = 'a1'").use { cursor ->
+            assertTrue("the pre-migration account must still be there", cursor.moveToFirst())
+            assertEquals("MNY-001: the balance must survive byte for byte", -7000000L, cursor.getLong(0))
+        }
+
+        migrated.execSQL(
+            "INSERT INTO credit_card (account_id, profile_id, credit_limit_minor, statement_day, " +
+                "due_day, last_statement_minor, last_statement_iso_date, minimum_due_minor, apr_bps, " +
+                "created_at_utc_millis, updated_at_utc_millis) " +
+                "VALUES ('a1','p1',20000000,5,25,7000000,'2026-03-05',350000,4200," +
+                "1767312000000,1767312000000)",
+        )
+        migrated.query("SELECT credit_limit_minor, apr_bps FROM credit_card WHERE account_id = 'a1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("MNY-001: the limit is paise", 20000000L, cursor.getLong(0))
+            assertEquals("MNY-002: the rate is integer basis points", 4200, cursor.getInt(1))
+        }
+
+        migrated.execSQL(insertCardClaim(id = "ca1", cycle = "2026-03-05", kind = "DUE_SOON"))
+
+        // The requirement, tested as a refusal rather than as a declaration.
+        assertThrows(SQLiteConstraintException::class.java) {
+            migrated.execSQL(insertCardClaim(id = "ca2", cycle = "2026-03-05", kind = "DUE_SOON"))
+        }
+
+        // ...but the other kind, and the next cycle, must still get through.
+        migrated.execSQL(insertCardClaim(id = "ca3", cycle = "2026-03-05", kind = "UTILISATION"))
+        migrated.execSQL(insertCardClaim(id = "ca4", cycle = "2026-04-05", kind = "DUE_SOON"))
+        migrated.query("SELECT COUNT(*) FROM card_alert WHERE profile_id = 'p1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("two kinds in one cycle and one in the next are three claims", 3, cursor.getInt(0))
+        }
+        migrated.close()
+    }
+
+    /**
+     * 16 → 17 adds `loan` (issue 6.2; FR-ACC-003, §5.8).
+     *
+     * Input:  a version-16 database holding a loan account with an exact paise balance.
+     * Output: asserts the account survives untouched and a loan's terms round-trip through SQL with
+     *         the paise and the basis points intact.
+     *
+     * **What is asserted by its absence: there is no schedule table.** The amortisation rows are
+     * derived from these five columns on every read (ADR-0026), so a `loan_amortization_rows`
+     * appearing here later would be a decision reversed, not a table added — the query below fails
+     * loudly if one ever shows up.
+     *
+     * Purely additive, so the failure this guards against is the same one 15 → 16 guards against: a
+     * migration that recreated `account` on its way to adding `loan` would validate perfectly
+     * against `schemas/17.json` and lose the user's accounts. The balance is asserted byte for byte
+     * (MNY-001).
+     */
+    @Test
+    fun migrate16To17_preservesAccountsAndRoundTripsLoanTermsWithoutStoringASchedule() {
+        helper.createDatabase(TEST_DB, 16).use { db ->
+            db.execSQL(
+                "INSERT INTO account (id, profile_id, name, type, opening_balance_minor, " +
+                    "current_balance_minor, currency_code, include_in_networth, " +
+                    "created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('a2','p1','SBI Home Loan','loan',0,-300000000,'INR',1," +
+                    "1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 17, true, Migrations.MIGRATION_16_17)
+
+        migrated.query("SELECT current_balance_minor FROM account WHERE id = 'a2'").use { cursor ->
+            assertTrue("the pre-migration account must still be there", cursor.moveToFirst())
+            assertEquals("MNY-001: the balance must survive byte for byte", -300000000L, cursor.getLong(0))
+        }
+
+        migrated.execSQL(
+            "INSERT INTO loan (account_id, profile_id, principal_minor, annual_rate_bps, " +
+                "tenure_months, first_emi_iso_date, emi_override_minor, " +
+                "created_at_utc_millis, updated_at_utc_millis) " +
+                "VALUES ('a2','p1',300000000,850,240,'2026-09-05',NULL," +
+                "1767312000000,1767312000000)",
+        )
+        migrated.query(
+            "SELECT principal_minor, annual_rate_bps, tenure_months, first_emi_iso_date, " +
+                "emi_override_minor FROM loan WHERE account_id = 'a2'",
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("MNY-001: the principal is paise", 300000000L, cursor.getLong(0))
+            assertEquals("MNY-002: the rate is integer basis points", 850, cursor.getInt(1))
+            assertEquals(240, cursor.getInt(2))
+            assertEquals("TIM-002: a date-only field is an ISO string", "2026-09-05", cursor.getString(3))
+            assertTrue("an absent override is NULL, never 0 — 0 would repay nothing", cursor.isNull(4))
+        }
+
+        // The schedule is derived, never stored (ADR-0026). If this ever finds a table, the decision
+        // was reversed somewhere and this test is the place that says so.
+        migrated.query(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name LIKE '%amorti%'",
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("no schedule table: the rows are a pure function of loan's columns", 0, cursor.getInt(0))
+        }
+        migrated.close()
+    }
+
+    /**
+     * 17 -> 18: the holdings and their lots arrive, and everything already there survives
+     * (issue 6.3; §11, DB-003).
+     *
+     * Why:    purely additive, so the failure this guards against is the one 16 -> 17 guards
+     *         against: a migration that recreated `account` on its way to adding the holdings would
+     *         validate perfectly against `schemas/18.json` and lose the user's accounts. The
+     *         balance is asserted byte for byte (MNY-001).
+     *
+     * **What is asserted by its absence: no stored value, quantity or cost.** A holding is worth
+     *         its lots times its unit price, computed on read (ADR-0027) - so a `current_value` or
+     *         `total_quantity` column appearing here later would be a decision reversed, not a
+     *         column added, and the query below fails loudly if one ever shows up.
+     */
+    @Test
+    fun migrate17To18_preservesAccountsAndRoundTripsHoldingsAndLotsWithoutStoringAValue() {
+        helper.createDatabase(TEST_DB, 17).use { db ->
+            db.execSQL(
+                "INSERT INTO account (id, profile_id, name, type, opening_balance_minor, " +
+                    "current_balance_minor, currency_code, include_in_networth, " +
+                    "created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('a3','p1','Zerodha','investment',0,4500000,'INR',1," +
+                    "1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 18, true, Migrations.MIGRATION_17_18)
+
+        migrated.query("SELECT current_balance_minor FROM account WHERE id = 'a3'").use { cursor ->
+            assertTrue("the pre-migration account must still be there", cursor.moveToFirst())
+            assertEquals("MNY-001: the balance must survive byte for byte", 4500000L, cursor.getLong(0))
+        }
+
+        migrated.execSQL(
+            "INSERT INTO investment_holding (id, profile_id, account_id, name, asset_class, " +
+                "unit_price_minor, priced_on_iso_date, created_at_utc_millis, updated_at_utc_millis) " +
+                "VALUES ('h1','p1','a3','Parag Parikh Flexi Cap','equity',7843,'2026-08-20'," +
+                "1767312000000,1767312000000)",
+        )
+        migrated.execSQL(
+            "INSERT INTO investment_lot (id, profile_id, holding_id, kind, transacted_on_iso_date, " +
+                "quantity_nano, amount_minor, created_at_utc_millis, updated_at_utc_millis) " +
+                "VALUES ('l1','p1','h1','buy','2026-01-15',100000000000,750000," +
+                "1767312000000,1767312000000)",
+        )
+
+        migrated.query(
+            "SELECT asset_class, unit_price_minor, priced_on_iso_date FROM investment_holding " +
+                "WHERE id = 'h1'",
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("the rulebook's own spelling of the class", "equity", cursor.getString(0))
+            assertEquals("MNY-001: the unit price is paise", 7843L, cursor.getLong(1))
+            assertEquals("TIM-002: a date-only field is an ISO string", "2026-08-20", cursor.getString(2))
+        }
+        migrated.query(
+            "SELECT kind, transacted_on_iso_date, quantity_nano, amount_minor FROM investment_lot " +
+                "WHERE id = 'l1'",
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("direction lives in the kind, never in a sign", "buy", cursor.getString(0))
+            assertEquals("TIM-002: a date-only field is an ISO string", "2026-01-15", cursor.getString(1))
+            assertEquals("units are scaled by 10^9", 100000000000L, cursor.getLong(2))
+            assertEquals("MNY-001: the cash moved is paise, a magnitude", 750000L, cursor.getLong(3))
+        }
+
+        // A holding whose price was never entered is NULL, not zero (P-03).
+        migrated.execSQL(
+            "INSERT INTO investment_holding (id, profile_id, account_id, name, asset_class, " +
+                "unit_price_minor, priced_on_iso_date, created_at_utc_millis, updated_at_utc_millis) " +
+                "VALUES ('h2','p1','a3','Unpriced','debt',NULL,NULL,1767312000000,1767312000000)",
+        )
+        migrated.query("SELECT unit_price_minor FROM investment_holding WHERE id = 'h2'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertTrue("an unentered price is NULL, never 0 - 0 would read as worthless", cursor.isNull(0))
+        }
+
+        // The value is derived, never stored (ADR-0027). If this ever finds a column, the decision
+        // was reversed somewhere and this test is the place that says so.
+        migrated.query("PRAGMA table_info(investment_holding)").use { cursor ->
+            val columns = mutableListOf<String>()
+            while (cursor.moveToNext()) columns += cursor.getString(1)
+            assertEquals(
+                "no stored value or quantity: both are a pure function of the lots and the price",
+                emptyList<String>(),
+                columns.filter {
+                    it.contains("value") || it.contains("quantity") || it.contains("cost")
+                },
+            )
+        }
+        migrated.close()
+    }
+
+    /**
+     * Builds one `card_alert` insert.
+     * Why:    the four inserts above differ in three values, and spelling the column list out four
+     *         times would hide that.
+     * Result: the SQL. Input: [id]; [cycle]; [kind]. Output: [String].
+     */
+    private fun insertCardClaim(
+        id: String,
+        cycle: String,
+        kind: String,
+    ): String =
+        "INSERT INTO card_alert (id, profile_id, account_id, cycle_start_iso_date, kind, rule_id, " +
+            "rule_version, notified_at_utc_millis) " +
+            "VALUES ('$id','p1','a1','$cycle','$kind','RULE-CC-DUE','1.0',1767312000000)"
+
+    /**
+     * Builds one `budget_review` insert.
+     * Why:    the three inserts above differ in exactly two values, and spelling the column list out
+     *         three times would hide that.
+     * Result: the SQL. Input: [id]; [monthStartIsoDate]. Output: [String].
+     */
+    private fun insertReviewClaim(
+        id: String,
+        monthStartIsoDate: String,
+    ): String =
+        "INSERT INTO budget_review (id, profile_id, month_start_iso_date, rule_id, rule_version, " +
+            "total_budgeted_minor, total_actual_minor, reviewed_at_utc_millis) " +
+            "VALUES ('$id','p1','$monthStartIsoDate','RULE-BUD-REVIEW','1.0',1000000,850000,1767312000000)"
+
+    /**
+     * 11 → 12 adds `sms_draft` (issue 3.9; §18, §23, P-01).
+     *
+     * Input:  a version-11 database holding a transaction with an exact paise amount.
+     * Output: asserts the transaction survives untouched, the new table exists and accepts a draft,
+     *         and the two guarantees the table was shaped around actually hold in SQL: **one alert
+     *         cannot become two drafts**, and **revoking the consent removes the pending inference
+     *         while leaving what the user already accepted**.
+     *
+     * The unique index is exercised rather than assumed. It is the only thing standing between an
+     * overlapping re-scan — a crash between reading a batch and advancing the cursor — and the same
+     * purchase being offered to the user twice, and an index that exists in `schemas/12.json` but
+     * was never inserted against is a claim rather than a guarantee.
+     *
+     * **Purely additive, so the failure this guards against is a migration that recreated an
+     * existing table on its way to adding a new one**: that would validate perfectly against
+     * `schemas/12.json` and lose the user's ledger. The amount is asserted byte for byte for the
+     * reason `migrate1To2` gives (MNY-001).
+     */
+
+    @Test
+    fun migrate11To12_preservesTransactionsAndEnforcesTheDraftGuarantees() {
+        helper.createDatabase(TEST_DB, 11).use { db ->
+            db.execSQL(
+                "INSERT INTO transactions (id, profile_id, account_id, amount_minor, currency_code, " +
+                    "occurred_at_utc_millis, booked_on_iso_date, source, type, " +
+                    "created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('t1','p1','a1',-125000,'INR',1767312000000,'2026-08-07','sms','expense'," +
+                    "1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 12, true, Migrations.MIGRATION_11_12)
+
+        migrated.query("SELECT amount_minor FROM transactions WHERE id = 't1'").use { cursor ->
+            assertTrue("the pre-migration transaction must still be there", cursor.moveToFirst())
+            assertEquals("MNY-001: the amount must survive byte for byte", -125000L, cursor.getLong(0))
+        }
+
+        migrated.execSQL(draftInsert(id = "d1", smsId = 71L, status = "pending"))
+        migrated.execSQL(draftInsert(id = "d2", smsId = 72L, status = "accepted"))
+
+        // One alert, one draft: an overlapping re-scan must not offer the same purchase twice.
+        migrated.execSQL("INSERT OR IGNORE INTO sms_draft " + draftValues(id = "d3", smsId = 71L, status = "pending"))
+        migrated.query("SELECT COUNT(*) FROM sms_draft WHERE profile_id = 'p1' AND sms_id = 71").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("the unique index must collapse a re-scanned alert to one draft", 1, cursor.getInt(0))
+        }
+
+        // Revoking the consent: the pending inference goes, the accepted transaction's provenance stays.
+        migrated.execSQL("DELETE FROM sms_draft WHERE profile_id = 'p1' AND status = 'pending'")
+        migrated.query("SELECT COUNT(*) FROM sms_draft WHERE profile_id = 'p1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("revocation must clear pending drafts and keep accepted ones", 1, cursor.getInt(0))
+        }
+        migrated.query("SELECT COUNT(*) FROM transactions WHERE id = 't1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("revoking the SMS consent must not touch the ledger", 1, cursor.getInt(0))
+        }
+        migrated.close()
+    }
+
+    /**
+     * Result: a full `INSERT` for one draft. Input: [id], [smsId], [status]. Output: SQL.
+     * Why:    three inserts differing in three values; spelling out sixteen columns each time would
+     *         bury what the test is actually varying.
+     */
+    private fun draftInsert(
+        id: String,
+        smsId: Long,
+        status: String,
+    ): String = "INSERT INTO sms_draft " + draftValues(id, smsId, status)
+
+    /** Result: the column list and values of [draftInsert], for reuse by an `INSERT OR IGNORE`. */
+    private fun draftValues(
+        id: String,
+        smsId: Long,
+        status: String,
+    ): String =
+        "(id, profile_id, sms_id, sender, amount_minor, direction, booked_on, confidence_bps, " +
+            "engine_version, rule_version, status, created_at_utc_millis, updated_at_utc_millis) " +
+            "VALUES ('$id','p1',$smsId,'VM-HDFCBK',125000,'debit','2026-08-07',9000," +
+            "'1.0','1.0','$status',1767312000000,1767312000000)"
 
     private companion object {
         const val TEST_DB = "migration-test.db"

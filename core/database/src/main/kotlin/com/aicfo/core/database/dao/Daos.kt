@@ -12,12 +12,21 @@ import androidx.room.Relation
 import androidx.room.Transaction
 import androidx.room.Update
 import com.aicfo.core.database.entity.AccountEntity
+import com.aicfo.core.database.entity.AttachmentEntity
 import com.aicfo.core.database.entity.AuditLogEntity
+import com.aicfo.core.database.entity.BudgetAlertEntity
 import com.aicfo.core.database.entity.BudgetEntity
+import com.aicfo.core.database.entity.BudgetReviewEntity
+import com.aicfo.core.database.entity.CardAlertEntity
 import com.aicfo.core.database.entity.CategoryEntity
+import com.aicfo.core.database.entity.CreditCardEntity
+import com.aicfo.core.database.entity.InvestmentHoldingEntity
+import com.aicfo.core.database.entity.InvestmentLotEntity
+import com.aicfo.core.database.entity.LoanEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
 import com.aicfo.core.database.entity.ProfileEntity
 import com.aicfo.core.database.entity.RecurringRuleEntity
+import com.aicfo.core.database.entity.SmsDraftEntity
 import com.aicfo.core.database.entity.TagEntity
 import com.aicfo.core.database.entity.TransactionEntity
 import com.aicfo.core.database.entity.TransactionSplitEntity
@@ -689,6 +698,78 @@ interface TransactionDao {
     ): Flow<List<RecurringCandidateRow>>
 
     /**
+     * Finds transactions that may already be this receipt (issue 3.8; FR-OCR-006).
+     *
+     * Why:    FR-OCR-006 is a MUST — *"if an SMS/manual transaction with same amount ±1% and date
+     *         ±1 day exists, MUST offer merge instead of creating a duplicate"* — and every clause of
+     *         it is in this `WHERE`:
+     *         - `source IN ('manual', 'sms')` is the requirement's own wording, not a simplification.
+     *           An existing **ocr** row is a different receipt someone scanned, not a duplicate of
+     *           this one; offering to merge two scans would quietly delete a real purchase.
+     *         - `ABS(amount_minor) BETWEEN :minMinor AND :maxMinor` — **the ±1% band is computed by
+     *           the caller, in integer paise** (MNY-001). Doing it here would mean
+     *           `amount_minor * 0.99` in SQL, which is floating-point arithmetic on money.
+     *           Compared on the magnitude, because a receipt's total is unsigned and the ledger's
+     *           spending is negative.
+     *         - `booked_on_iso_date BETWEEN :fromIso AND :toIso` — TIM-002 makes this a string
+     *           comparison that is also a date comparison, because ISO `yyyy-MM-dd` sorts
+     *           lexicographically.
+     *         - `transfer_id IS NULL` — money moved between your own accounts is not a purchase, so
+     *           it can never be the thing a receipt duplicates (FR-TXN-003).
+     * Result: the rows to offer as a merge, newest first. Empty is the common answer and means "save
+     *         a new transaction".
+     * Input:  [profileId]; [minMinor] and [maxMinor] — the magnitude band in paise, inclusive;
+     *         [fromIsoDate] and [toIsoDate] — the date window, inclusive.
+     * Output: `List<TransactionEntity>`.
+     */
+    @Query(
+        "SELECT * FROM transactions WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
+            "AND source IN ('manual', 'sms') AND transfer_id IS NULL " +
+            "AND ABS(amount_minor) BETWEEN :minMinor AND :maxMinor " +
+            "AND booked_on_iso_date BETWEEN :fromIsoDate AND :toIsoDate " +
+            "ORDER BY booked_on_iso_date DESC, id",
+    )
+    suspend fun findDuplicateCandidates(
+        profileId: String,
+        minMinor: Long,
+        maxMinor: Long,
+        fromIsoDate: String,
+        toIsoDate: String,
+    ): List<TransactionEntity>
+
+    /**
+     * Finds transactions that may already be this bank alert (issue 3.9; FR-OCR-006's mirror).
+     *
+     * Why:    the same event seen from the other side. FR-OCR-006 makes a receipt check for a
+     *         matching `manual` or `sms` row; an alert must check for a matching `manual` or **`ocr`**
+     *         row, because the receipt the user photographed at the till and the alert the bank sent
+     *         thirty seconds later are one purchase.
+     *
+     *         **A separate query rather than a `sources` parameter on
+     *         [findDuplicateCandidates].** The source set is not a caller's preference, it is each
+     *         requirement's own wording, and a shared query taking a list would let a call site pass
+     *         a set nobody argued for — including one containing its own source, which would offer
+     *         to merge two alerts and quietly delete a real transaction. Every other clause is
+     *         identical and documented on [findDuplicateCandidates].
+     * Result: the rows to offer as a merge, newest first. Empty is the common answer.
+     * Input:  as [findDuplicateCandidates]. Output: `List<TransactionEntity>`.
+     */
+    @Query(
+        "SELECT * FROM transactions WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
+            "AND source IN ('manual', 'ocr') AND transfer_id IS NULL " +
+            "AND ABS(amount_minor) BETWEEN :minMinor AND :maxMinor " +
+            "AND booked_on_iso_date BETWEEN :fromIsoDate AND :toIsoDate " +
+            "ORDER BY booked_on_iso_date DESC, id",
+    )
+    suspend fun findAlertDuplicateCandidates(
+        profileId: String,
+        minMinor: Long,
+        maxMinor: Long,
+        fromIsoDate: String,
+        toIsoDate: String,
+    ): List<TransactionEntity>
+
+    /**
      * Sets the category on many transactions at once (issue 3.6; FR-TXN-008).
      *
      * Why:    FR-TXN-008's "multi-select recategorise", as one statement — a loop of single updates
@@ -717,6 +798,401 @@ interface TransactionDao {
     suspend fun recategoriseAll(
         ids: List<String>,
         categoryId: String?,
+        updatedAtUtcMillis: Long,
+    ): Int
+
+    /**
+     * Counts what a category is currently attached to (issue 4.1; FR-SET-001).
+     *
+     * Why:    deleting a category does not delete the money spent in it — the rows keep their
+     *         `category_id` and, because `CategoryDao.observeForProfile` excludes soft-deleted rows,
+     *         they start reading as "Uncategorised". That is the right behaviour and a surprising
+     *         one, so the editor states the consequence before the user confirms it (P-02). This is
+     *         the number it states.
+     * Result: the count of live transactions plus live split lines carrying [categoryId].
+     * Input:  [categoryId]. Output: [Int].
+     * Changelog: 2026-08-08 — Created for issue 4.1.
+     *
+     * **Split lines are counted, and counting only `transactions` would under-report badly.** A
+     * split parent carries no category at all (FR-TXN-004 puts them on the lines), so a category
+     * used exclusively inside splits would report zero and the dialog would promise nothing was
+     * affected while every one of those lines went Uncategorised.
+     */
+    @Query(
+        "SELECT (SELECT COUNT(*) FROM transactions " +
+            "WHERE category_id = :categoryId AND deleted_at_utc_millis IS NULL) + " +
+            "(SELECT COUNT(*) FROM transaction_splits " +
+            "WHERE category_id = :categoryId AND deleted_at_utc_millis IS NULL)",
+    )
+    suspend fun countForCategory(categoryId: String): Int
+
+    /**
+     * How this profile has categorised one merchant before (issue 4.2; SRS §8.1(a)).
+     *
+     * Why:    §8.1's first precedence tier is "merchant-rule lookup from the user's **correction
+     *         history**", and this table already *is* that history — every categorised transaction
+     *         is a decision the user made or accepted. A separate `user_merchant_rule` table would
+     *         be a second copy of the same fact, able to disagree with the ledger it was derived
+     *         from, and it would need a migration to hold nothing new.
+     *
+     *         **The merchant is compared normalised on both sides.** `LOWER(TRIM(merchant))` is the
+     *         SQL half of `normaliseMerchant`; the caller applies the Kotlin half to the argument.
+     *         SQLite's `LOWER` folds ASCII only, so the two halves could differ on an accented Latin
+     *         merchant name — a case that costs a suggestion, never a wrong one, because a
+     *         mismatched key simply returns no rows.
+     * Result: one row per category the user has used for this merchant, with how many live
+     *         transactions carry it; empty when they have never categorised it. Ordered by count so
+     *         a caller reading only the first row still gets the settled answer.
+     * Input:  [profileId] — the active profile, so the demo's history never reaches a real one;
+     *         [normalisedMerchant] — trimmed and lower-cased by the caller. Output:
+     *         `List<MerchantCategoryCountRow>`.
+     * Changelog: 2026-08-10 — Created for issue 4.2.
+     *
+     * **Split lines are deliberately *not* counted here, and that is the opposite of
+     * [countForCategory]'s choice.** A split parent carries the merchant while its lines carry the
+     * categories, so one such transaction is the user saying "this merchant is several things at
+     * once" — evidence against a single suggestion, not for one. Joining the lines in would turn
+     * every split into votes for two or three categories and suppress the tier by diluting it,
+     * which is a worse answer than the honest one: a split contributes nothing.
+     *
+     * **Transfers are excluded** because they carry no merchant worth learning from — FR-TXN-003
+     * gives them no payee, and no category either.
+     */
+    @Query(
+        "SELECT category_id AS category_id, COUNT(*) AS occurrences FROM transactions " +
+            "WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
+            "AND transfer_id IS NULL AND category_id IS NOT NULL " +
+            "AND merchant IS NOT NULL AND LOWER(TRIM(merchant)) = :normalisedMerchant " +
+            "GROUP BY category_id ORDER BY occurrences DESC, category_id",
+    )
+    suspend fun categoryCountsForMerchant(
+        profileId: String,
+        normalisedMerchant: String,
+    ): List<MerchantCategoryCountRow>
+
+    /**
+     * How this profile has re-natured one merchant before (issue 4.3; SRS §8.3.1 step 4).
+     *
+     * Why:    §8.3 makes nature "auto-assigned, user-correctable, **learned**", and `nature` holds
+     *         nothing but corrections — the automatic value is derived on read and never written. So
+     *         `nature IS NOT NULL` is not a filter on incomplete rows, it *is* the definition of the
+     *         signal: every row this returns is a decision the user made on purpose.
+     *
+     *         The merchant is compared normalised on both sides, the SQL half of
+     *         `normaliseMerchant`, exactly as [categoryCountsForMerchant] does — the two learned
+     *         tiers must agree about what "the same merchant" means or one would fire where the
+     *         other did not.
+     * Result: one row per nature the user has chosen for this merchant, ordered by count so a caller
+     *         reading only the first still gets the settled answer; empty when they never have.
+     * Input:  [profileId]; [normalisedMerchant] — trimmed and lower-cased by the caller.
+     * Output: `List<MerchantNatureCountRow>`.
+     * Changelog: 2026-08-10 — Created for issue 4.3.
+     */
+    @Query(
+        "SELECT nature AS nature, COUNT(*) AS occurrences FROM transactions " +
+            "WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
+            "AND nature IS NOT NULL " +
+            "AND merchant IS NOT NULL AND LOWER(TRIM(merchant)) = :normalisedMerchant " +
+            "GROUP BY nature ORDER BY occurrences DESC, nature",
+    )
+    suspend fun natureCountsForMerchant(
+        profileId: String,
+        normalisedMerchant: String,
+    ): List<MerchantNatureCountRow>
+
+    /**
+     * Every nature override on this profile, by merchant (issue 4.3; SRS §8.3.1 step 4).
+     *
+     * Why:    the monthly breakdown classifies a whole month, and asking
+     *         [natureCountsForMerchant] per row would be one query per transaction on the screen the
+     *         user opens first. This is the same signal fetched once: the caller builds a map and
+     *         hands each row its own slice.
+     *
+     *         **Deliberately not scoped to the month.** A correction the user made in March is still
+     *         their decision about that merchant in August; scoping it would make a merchant's nature
+     *         depend on which month happened to be on screen.
+     * Result: one row per (merchant, nature) pair the user has chosen, merchant already normalised.
+     * Input:  [profileId]. Output: `List<MerchantNatureOverrideRow>`.
+     * Changelog: 2026-08-10 — Created for issue 4.3.
+     */
+    @Query(
+        "SELECT LOWER(TRIM(merchant)) AS merchant, nature AS nature, COUNT(*) AS occurrences " +
+            "FROM transactions " +
+            "WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
+            "AND nature IS NOT NULL AND merchant IS NOT NULL AND TRIM(merchant) <> '' " +
+            "GROUP BY LOWER(TRIM(merchant)), nature",
+    )
+    suspend fun natureOverridesByMerchant(profileId: String): List<MerchantNatureOverrideRow>
+
+    /**
+     * The typical size of a transaction in one category (issue 4.3; SRS §8.3.1 step 6).
+     *
+     * Why:    §8.3.1's context modifier asks whether an amount is "> 3× category median", and SQLite
+     *         has no median function. The lower median — the middle row of an ordered list, or the
+     *         earlier of the two middles — is one `ORDER BY … LIMIT 1 OFFSET n/2`, and picking the
+     *         *lower* middle deterministically matters more than picking the average of two: it makes
+     *         the flag reproducible (P-08) rather than dependent on a rounding choice.
+     *
+     *         **The count comes back with it, in one statement.** The rules require a minimum sample
+     *         before a median means anything, and fetching the two separately would let a caller use
+     *         a median it had not checked the size of — the second grocery run a user ever recorded
+     *         compared against the first.
+     *
+     *         The **median of magnitudes**, not of signed amounts: expenses are negative, so a signed
+     *         median would order them backwards and compare the largest spend against the smallest.
+     * Result: the sample size and the median magnitude in paise (MNY-001); the median is `null` when
+     *         the category has no transactions at all.
+     * Input:  [profileId]; [categoryId]. Output: [CategoryMedianRow].
+     * Changelog: 2026-08-10 — Created for issue 4.3.
+     */
+    @Query(
+        "SELECT (SELECT COUNT(*) FROM transactions " +
+            "WHERE profile_id = :profileId AND category_id = :categoryId " +
+            "AND deleted_at_utc_millis IS NULL AND transfer_id IS NULL) AS sample_size, " +
+            "(SELECT ABS(amount_minor) FROM transactions " +
+            "WHERE profile_id = :profileId AND category_id = :categoryId " +
+            "AND deleted_at_utc_millis IS NULL AND transfer_id IS NULL " +
+            "ORDER BY ABS(amount_minor) LIMIT 1 OFFSET " +
+            "(SELECT COUNT(*) FROM transactions " +
+            "WHERE profile_id = :profileId AND category_id = :categoryId " +
+            "AND deleted_at_utc_millis IS NULL AND transfer_id IS NULL) / 2) AS median_minor",
+    )
+    suspend fun categoryMedian(
+        profileId: String,
+        categoryId: String,
+    ): CategoryMedianRow
+
+    /**
+     * Everything §8.3.1 needs about one transaction, in one row (issue 4.3).
+     *
+     * Why:    the decision order branches on the account's type, the counterpart account's type and
+     *         the category's nature, which live in three tables. Fetching them per transaction would
+     *         be three queries per row; this is the same information as one join, so a month costs
+     *         one statement.
+     *
+     *         **The counterpart is found through `transfer_id`, not through a foreign key**, because
+     *         a transfer is two `transactions` rows rather than a row with a destination (issue 3.2,
+     *         DB-004). The subquery excludes the row itself and soft-deleted siblings; for anything
+     *         that is not a transfer, `transfer_id` is null, the comparison matches nothing, and the
+     *         column comes back null — which is exactly what "not a transfer leg" means to the engine.
+     *
+     *         **A split transaction is emitted as its lines, not as itself** (issue 4.4, ADR-0018).
+     *         The `UNION ALL` is what makes that true: the first leg takes transactions with no live
+     *         split lines, the second takes the lines. Each line carries its **own** amount and
+     *         category while inheriting the parent's type, merchant, nature override and account
+     *         types, because those are facts about the payment rather than about the line.
+     *
+     *         The first draft read `t.category_id` for every row, which for a split transaction is
+     *         almost always null — so ₹4,000 divided between groceries and a gift arrived at §8.3.1
+     *         with no category at all and fell to the low-confidence fallback. The natures were not
+     *         merely imprecise; a fixture that was two-thirds NEED was being counted as entirely
+     *         WANT, which inflates the true-spend figure Safe-to-Spend and the health score are
+     *         calibrated against.
+     * Result: the profile's rows in the date window, oldest first. **One row per unsplit transaction
+     *         and one per live split line**, so `id` is the row's own identity — a split line's `id`,
+     *         not its parent's. `transaction_id` is the parent either way.
+     * Input:  [profileId]; [fromIsoDate] and [toIsoDate] — inclusive ISO `yyyy-MM-dd` bounds derived
+     *         by the caller from the injected `Clock` (TIM-001/TIM-002).
+     * Output: `Flow<List<NatureCandidateRow>>`.
+     * Changelog: 2026-08-10 — Created for issue 4.3.
+     *            2026-08-11 — Issue 4.4: split-line aware; gained `transaction_id` and
+     *            `booked_on_iso_date` (the latter so the `UNION ALL` has an output column to order
+     *            by).
+     */
+    @Query(
+        "SELECT t.id AS id, t.id AS transaction_id, t.booked_on_iso_date AS booked_on_iso_date, " +
+            "t.type AS type, t.amount_minor AS amount_minor, " +
+            "t.nature AS override_nature, t.merchant AS merchant, t.category_id AS category_id, " +
+            "c.nature AS category_nature, a.type AS account_type, " +
+            "(SELECT a2.type FROM transactions t2 JOIN account a2 ON a2.id = t2.account_id " +
+            "WHERE t2.transfer_id = t.transfer_id AND t2.id <> t.id " +
+            "AND t2.deleted_at_utc_millis IS NULL LIMIT 1) AS counterpart_account_type " +
+            "FROM transactions t " +
+            "JOIN account a ON a.id = t.account_id " +
+            "LEFT JOIN category c ON c.id = t.category_id " +
+            "WHERE t.profile_id = :profileId AND t.deleted_at_utc_millis IS NULL " +
+            "AND t.booked_on_iso_date >= :fromIsoDate AND t.booked_on_iso_date <= :toIsoDate " +
+            "AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id " +
+            "AND s.deleted_at_utc_millis IS NULL) " +
+            "UNION ALL " +
+            "SELECT s.id AS id, t.id AS transaction_id, t.booked_on_iso_date AS booked_on_iso_date, " +
+            "t.type AS type, s.amount_minor AS amount_minor, " +
+            "t.nature AS override_nature, t.merchant AS merchant, s.category_id AS category_id, " +
+            "c.nature AS category_nature, a.type AS account_type, " +
+            "(SELECT a2.type FROM transactions t2 JOIN account a2 ON a2.id = t2.account_id " +
+            "WHERE t2.transfer_id = t.transfer_id AND t2.id <> t.id " +
+            "AND t2.deleted_at_utc_millis IS NULL LIMIT 1) AS counterpart_account_type " +
+            "FROM transaction_splits s " +
+            "JOIN transactions t ON t.id = s.transaction_id " +
+            "JOIN account a ON a.id = t.account_id " +
+            "LEFT JOIN category c ON c.id = s.category_id " +
+            "WHERE t.profile_id = :profileId AND t.deleted_at_utc_millis IS NULL " +
+            "AND s.deleted_at_utc_millis IS NULL " +
+            "AND t.booked_on_iso_date >= :fromIsoDate AND t.booked_on_iso_date <= :toIsoDate " +
+            "ORDER BY booked_on_iso_date, id",
+    )
+    fun observeNatureCandidates(
+        profileId: String,
+        fromIsoDate: String,
+        toIsoDate: String,
+    ): Flow<List<NatureCandidateRow>>
+
+    /**
+     * What each category actually cost in a date window (issue 4.4; FR-BUD-003).
+     *
+     * Why:    this is the first query in the app that totals spending **per category**, and it has
+     *         three things to get right that no existing aggregation does.
+     *
+     *         **It sums split lines, not their parent** (ADR-0009, ADR-0018). A ₹4,000 payment
+     *         divided between groceries and a gift belongs to two budgets, and the parent row's
+     *         `category_id` is null in that case — so reading the parent would credit ₹0 to both and
+     *         quietly make every split invisible to the feature whose whole job is to notice
+     *         spending. The `UNION ALL` takes transactions with **no live split lines** from the
+     *         first leg and the lines themselves from the second, so a payment is counted exactly
+     *         once whichever shape it has.
+     *
+     *         **Transfers are excluded in SQL** (`transfer_id IS NULL`), the same way `dayTotals`
+     *         and `categoryMedian` do it. Moving ₹50,000 from savings to current is not spending,
+     *         and a budget that counted it would be unusable in the month someone rebalances.
+     *
+     *         **Only `expense` rows count.** A refund arrives as `income` and would otherwise
+     *         subtract from a budget through `ABS`, which is the wrong sign and the wrong idea —
+     *         `ABS` is here to make an outflow positive, not to fold two directions together.
+     *
+     *         Future-dated rows (FR-TXN-010) are excluded by the **caller's window**, not here: the
+     *         repository passes today as `toIsoDate` for a live month, and a whole month for a
+     *         closed one. Putting a `date('now')` in this statement would be a wall-clock read in
+     *         SQL, which is TIM-001's whole complaint.
+     * Result: one row per category that had spending, plus one with a null `category_id` for
+     *         uncategorised spending. **Categories with no spending are absent** — the repository
+     *         fills them in as zero, because a `GROUP BY` cannot invent rows that do not exist.
+     * Input:  [profileId]; [fromIsoDate] and [toIsoDate] — inclusive ISO `yyyy-MM-dd` bounds derived
+     *         by the caller from the injected `Clock` (TIM-001/TIM-002).
+     * Output: `Flow<List<CategorySpendRow>>`.
+     * Changelog: 2026-08-11 — Created for issue 4.4.
+     */
+    @Query(
+        "SELECT category_id AS category_id, SUM(amount_minor) AS spent_minor FROM (" +
+            "SELECT t.category_id AS category_id, ABS(t.amount_minor) AS amount_minor " +
+            "FROM transactions t " +
+            "WHERE t.profile_id = :profileId AND t.deleted_at_utc_millis IS NULL " +
+            "AND t.transfer_id IS NULL AND t.type = 'expense' " +
+            "AND t.booked_on_iso_date >= :fromIsoDate AND t.booked_on_iso_date <= :toIsoDate " +
+            "AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id " +
+            "AND s.deleted_at_utc_millis IS NULL) " +
+            "UNION ALL " +
+            "SELECT s.category_id AS category_id, ABS(s.amount_minor) AS amount_minor " +
+            "FROM transaction_splits s " +
+            "JOIN transactions t ON t.id = s.transaction_id " +
+            "WHERE t.profile_id = :profileId AND t.deleted_at_utc_millis IS NULL " +
+            "AND s.deleted_at_utc_millis IS NULL " +
+            "AND t.transfer_id IS NULL AND t.type = 'expense' " +
+            "AND t.booked_on_iso_date >= :fromIsoDate AND t.booked_on_iso_date <= :toIsoDate" +
+            ") GROUP BY category_id",
+    )
+    fun observeCategorySpend(
+        profileId: String,
+        fromIsoDate: String,
+        toIsoDate: String,
+    ): Flow<List<CategorySpendRow>>
+
+    /**
+     * The same totals as [observeCategorySpend], broken down by calendar month (issue 4.4).
+     *
+     * Why:    FR-BUD-002's suggestion is a **median over months**, so it needs the months kept
+     *         apart. Running [observeCategorySpend] three times would be three statements and three
+     *         windows for the caller to get right; grouping by the ISO date's `yyyy-MM` prefix costs
+     *         one statement and cannot disagree with itself about where a month starts.
+     *
+     *         `substr(booked_on_iso_date, 1, 7)` works precisely because TIM-002 stores date-only
+     *         fields as ISO strings — a midnight timestamp would need a timezone to slice, and would
+     *         put a December 31st payment in January for anyone east of UTC.
+     * Result: one row per (category, month) that had spending, ordered oldest first so the caller
+     *         can take a window off the end without sorting.
+     * Input:  [profileId]; [fromIsoDate] and [toIsoDate] — inclusive bounds spanning the months
+     *         wanted, derived by the caller from the injected `Clock`.
+     * Output: `Flow<List<MonthlyCategorySpendRow>>`.
+     * Changelog: 2026-08-11 — Created for issue 4.4.
+     */
+    @Query(
+        "SELECT category_id AS category_id, month_key AS month_key, " +
+            "SUM(amount_minor) AS spent_minor FROM (" +
+            "SELECT t.category_id AS category_id, ABS(t.amount_minor) AS amount_minor, " +
+            "substr(t.booked_on_iso_date, 1, 7) AS month_key " +
+            "FROM transactions t " +
+            "WHERE t.profile_id = :profileId AND t.deleted_at_utc_millis IS NULL " +
+            "AND t.transfer_id IS NULL AND t.type = 'expense' " +
+            "AND t.booked_on_iso_date >= :fromIsoDate AND t.booked_on_iso_date <= :toIsoDate " +
+            "AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id " +
+            "AND s.deleted_at_utc_millis IS NULL) " +
+            "UNION ALL " +
+            "SELECT s.category_id AS category_id, ABS(s.amount_minor) AS amount_minor, " +
+            "substr(t.booked_on_iso_date, 1, 7) AS month_key " +
+            "FROM transaction_splits s " +
+            "JOIN transactions t ON t.id = s.transaction_id " +
+            "WHERE t.profile_id = :profileId AND t.deleted_at_utc_millis IS NULL " +
+            "AND s.deleted_at_utc_millis IS NULL " +
+            "AND t.transfer_id IS NULL AND t.type = 'expense' " +
+            "AND t.booked_on_iso_date >= :fromIsoDate AND t.booked_on_iso_date <= :toIsoDate" +
+            ") GROUP BY category_id, month_key ORDER BY month_key",
+    )
+    fun observeMonthlyCategorySpend(
+        profileId: String,
+        fromIsoDate: String,
+        toIsoDate: String,
+    ): Flow<List<MonthlyCategorySpendRow>>
+
+    /**
+     * The same row shape as [observeNatureCandidates], for one transaction (issue 4.3).
+     * Why:    the detail sheet classifies exactly one transaction, and re-using the month query with
+     *         a one-day window would be a date filter standing in for an id lookup — right today and
+     *         wrong the moment a row is back-dated (ADR-0012).
+     *
+     *         **This one is deliberately NOT split-aware**, unlike [observeNatureCandidates] since
+     *         issue 4.4. The detail sheet labels the *transaction* the user tapped, and it shows one
+     *         label; a split payment resolving to two natures would have to show two, which is a
+     *         screen nobody has designed (ADR-0018). A breakdown sums lines because a total must; a
+     *         label names the thing it is attached to.
+     * Result: the row, or `null` when the id names nothing live. `id` and `transaction_id` hold the
+     *         same value here, because the row *is* the transaction.
+     * Input:  [transactionId]. Output: `NatureCandidateRow?`.
+     * Changelog: 2026-08-10 — Created for issue 4.3.
+     *            2026-08-11 — Issue 4.4: projects the two columns [NatureCandidateRow] gained.
+     */
+    @Query(
+        "SELECT t.id AS id, t.id AS transaction_id, t.booked_on_iso_date AS booked_on_iso_date, " +
+            "t.type AS type, t.amount_minor AS amount_minor, " +
+            "t.nature AS override_nature, t.merchant AS merchant, t.category_id AS category_id, " +
+            "c.nature AS category_nature, a.type AS account_type, " +
+            "(SELECT a2.type FROM transactions t2 JOIN account a2 ON a2.id = t2.account_id " +
+            "WHERE t2.transfer_id = t.transfer_id AND t2.id <> t.id " +
+            "AND t2.deleted_at_utc_millis IS NULL LIMIT 1) AS counterpart_account_type " +
+            "FROM transactions t " +
+            "JOIN account a ON a.id = t.account_id " +
+            "LEFT JOIN category c ON c.id = t.category_id " +
+            "WHERE t.id = :transactionId AND t.deleted_at_utc_millis IS NULL",
+    )
+    suspend fun natureCandidate(transactionId: String): NatureCandidateRow?
+
+    /**
+     * Records or clears the user's nature override (issue 4.3; §8.3, P-07).
+     * Why:    a targeted `UPDATE` rather than a read-modify-write of the whole entity, for the reason
+     *         [softDelete] gives: two screens changing different fields of one transaction must not
+     *         overwrite each other's work.
+     * Result: the rows changed — `1`, or `0` when the id names nothing live, which the repository
+     *         turns into `NotFound` rather than a silent success.
+     * Input:  [transactionId]; [nature] — a `CategoryNature.storedValue`, or `null` to return the
+     *         transaction to whatever §8.3.1 currently decides; [updatedAtUtcMillis] — TIM-001.
+     * Output: [Int].
+     * Changelog: 2026-08-10 — Created for issue 4.3.
+     */
+    @Query(
+        "UPDATE transactions SET nature = :nature, updated_at_utc_millis = :updatedAtUtcMillis " +
+            "WHERE id = :transactionId AND deleted_at_utc_millis IS NULL",
+    )
+    suspend fun setNature(
+        transactionId: String,
+        nature: String?,
         updatedAtUtcMillis: Long,
     ): Int
 
@@ -783,7 +1259,85 @@ interface TransactionDao {
             "(SELECT transfer_id FROM transactions WHERE id IN (:ids) AND transfer_id IS NOT NULL)",
     )
     suspend fun findTransferSiblingIds(ids: List<String>): List<String>
+
+    /**
+     * The newest few transactions, unfiltered (issue 5.1; FR-DASH-*).
+     *
+     * Why:    the dashboard's recent-activity preview needs a handful of rows, not the whole ledger
+     *         [pagedFiltered] pages over. **Bounded by count, not by time** — unlike the fixed
+     *         30-day `observeRecent` issue 3.6 removed (see [TransactionRepository]'s doc comment),
+     *         this cannot strand old data: the full ledger stays one tap away through the
+     *         Transactions screen, and `LIMIT` costs the query nothing a time window would have
+     *         saved. Mirrors [pagedFiltered]'s column shape (the counterpart-account subquery
+     *         included) so the same [TransactionListRow] mapper serves both.
+     * Result: newest first by instant; soft-deleted rows excluded; future-dated rows excluded via
+     *         [toIsoDate] the same way [pagedFiltered]'s unfiltered case is (FR-TXN-010) — a
+     *         scheduled payment belongs to `observeUpcoming`, not a preview of what already happened.
+     * Input:  [profileId]; [toIsoDate] — today in the profile zone (TIM-001), from the caller's
+     *         injected `Clock`; [limit] — how many rows at most.
+     * Output: `Flow<List<TransactionListRow>>`.
+     * Changelog: 2026-08-15 — Created for issue 5.1.
+     */
+    @Transaction
+    @Query(
+        "SELECT *, (SELECT s.account_id FROM transactions s WHERE s.transfer_id = transactions.transfer_id " +
+            "AND s.id <> transactions.id AND s.deleted_at_utc_millis IS NULL LIMIT 1) " +
+            "AS counterpart_account_id " +
+            "FROM transactions WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
+            "AND booked_on_iso_date <= :toIsoDate " +
+            "ORDER BY occurred_at_utc_millis DESC, id DESC LIMIT :limit",
+    )
+    fun observeRecent(
+        profileId: String,
+        toIsoDate: String,
+        limit: Int,
+    ): Flow<List<TransactionListRow>>
+
+    /**
+     * This month's income and expense, summed in one statement (issue 5.1; FR-DASH-*).
+     *
+     * Why:    **one query, not two combined `Flow`s.** An earlier version called
+     *         [observeDayTotals] twice — once per [com.aicfo.core.model.TransactionType] — and
+     *         combined them; under `kotlinx.coroutines.test.UnconfinedTestDispatcher` two Room
+     *         query flows meeting inside `combine` threw "Detected use of different schedulers",
+     *         because Room's own invalidation-tracker coroutine and the test scheduler disagreed
+     *         about which one was live. A single `CASE WHEN` sum sidesteps the whole class of bug
+     *         and costs the database one pass over the same rows instead of two.
+     * Result: one row, always — `COALESCE(...,0)` so a month with nothing in it is a real zero
+     *         total, not an absent row the repository would have to invent one for.
+     * Input:  [profileId]; [fromIsoDate]/[toIsoDate] — inclusive ISO `yyyy-MM-dd` bounds (TIM-002),
+     *         the caller's current-month window. Output: `Flow<CashFlowTotalsRow>`.
+     * Changelog: 2026-08-15 — Created for issue 5.1.
+     */
+    @Query(
+        "SELECT " +
+            "COALESCE(SUM(CASE WHEN type = 'income' THEN amount_minor ELSE 0 END), 0) AS income_minor, " +
+            "COALESCE(SUM(CASE WHEN type = 'expense' THEN -amount_minor ELSE 0 END), 0) AS expense_minor " +
+            "FROM transactions WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
+            "AND transfer_id IS NULL " +
+            "AND booked_on_iso_date >= :fromIsoDate AND booked_on_iso_date <= :toIsoDate",
+    )
+    fun observeMonthCashFlow(
+        profileId: String,
+        fromIsoDate: String,
+        toIsoDate: String,
+    ): Flow<CashFlowTotalsRow>
 }
+
+/**
+ * This month's income and expense, as SQLite summed them (issue 5.1; FR-DASH-*).
+ *
+ * Why:  the projection [TransactionDao.observeMonthCashFlow] returns — both magnitudes
+ *       non-negative (the `-amount_minor` flip is in the SQL, not left for the repository to get
+ *       wrong), matching the convention [CategorySpendRow.spentMinor] already sets.
+ * Result: what [com.aicfo.data.repository.CashFlowSummary] is built from.
+ * Input:  [incomeMinor]; [expenseMinor] — paise (MNY-001). Output: a Room projection.
+ * Changelog: 2026-08-15 — Created for issue 5.1.
+ */
+data class CashFlowTotalsRow(
+    @ColumnInfo(name = "income_minor") val incomeMinor: Long,
+    @ColumnInfo(name = "expense_minor") val expenseMinor: Long,
+)
 
 /**
  * One day's net total, as SQLite computes it (issue 3.6; FR-TXN-007).
@@ -823,6 +1377,162 @@ data class RecurringCandidateRow(
     @ColumnInfo(name = "merchant") val merchant: String?,
     @ColumnInfo(name = "amount_minor") val amountMinor: Long,
     @ColumnInfo(name = "booked_on_iso_date") val bookedOnIsoDate: String,
+)
+
+/**
+ * How many times one merchant was filed under one category (issue 4.2; SRS §8.1(a)).
+ *
+ * Why:  two columns, not a whole [TransactionEntity]. The classifier's history tier decides on
+ *       nothing but "which category, how often", and a projection this narrow means it *cannot*
+ *       start deciding on an amount or a date — which is the same reason [RecurringCandidateRow] is
+ *       four columns wide.
+ * Result: mapped straight onto the engine's `MerchantHistoryRow` by the repository.
+ * Changelog: 2026-08-10 — Created for issue 4.2.
+ *
+ * Input:  [categoryId] — non-null by the query's `WHERE`, but typed nullable because the column is;
+ *         [occurrences] — live, non-transfer transactions with this merchant carrying it, always at
+ *         least one because the row exists.
+ * Output: a Room projection.
+ */
+data class MerchantCategoryCountRow(
+    @ColumnInfo(name = "category_id") val categoryId: String?,
+    @ColumnInfo(name = "occurrences") val occurrences: Int,
+)
+
+/**
+ * How many times one merchant was re-natured to one nature (issue 4.3; SRS §8.3.1 step 4).
+ *
+ * Why:  the nature twin of [MerchantCategoryCountRow], kept the same shape on purpose — §8.3.1's
+ *       learned step and §8.1's behave identically, and one reader should learn the rule once.
+ * Result: mapped straight onto the engine's `NatureHistoryRow` by the repository.
+ * Changelog: 2026-08-10 — Created for issue 4.3.
+ *
+ * Input:  [nature] — a `CategoryNature.storedValue`, non-null by the query's `WHERE` but typed
+ *         nullable because the column is; [occurrences] — always at least one, because the row exists.
+ * Output: a Room projection.
+ */
+data class MerchantNatureCountRow(
+    @ColumnInfo(name = "nature") val nature: String?,
+    @ColumnInfo(name = "occurrences") val occurrences: Int,
+)
+
+/**
+ * The same counts, carrying the merchant they belong to (issue 4.3; SRS §8.3.1 step 4).
+ *
+ * Why:  the monthly breakdown needs every merchant's overrides at once rather than one merchant's,
+ *       so this is [MerchantNatureCountRow] plus the key the caller groups by. Two projections
+ *       rather than one shared nullable-merchant shape, because a row whose merchant *could* be
+ *       null would push a null check into the grouping code for a case the query excludes.
+ * Result: grouped into a map by the repository.
+ * Changelog: 2026-08-10 — Created for issue 4.3.
+ *
+ * Input:  [merchant] — already trimmed and lower-cased by the query; [nature]; [occurrences].
+ * Output: a Room projection.
+ */
+data class MerchantNatureOverrideRow(
+    @ColumnInfo(name = "merchant") val merchant: String?,
+    @ColumnInfo(name = "nature") val nature: String?,
+    @ColumnInfo(name = "occurrences") val occurrences: Int,
+)
+
+/**
+ * A category's sample size and median magnitude (issue 4.3; SRS §8.3.1 step 6).
+ *
+ * Why:  the two travel together because using one without the other is the mistake — a median over
+ *       two transactions is not a typical amount, it is the two amounts. Carrying [sampleSize] here
+ *       means the caller cannot reach the median without having been handed the reason to distrust it.
+ * Result: the input to §8.3.1's `> 3x category median` comparison.
+ * Changelog: 2026-08-10 — Created for issue 4.3.
+ *
+ * Input:  [sampleSize] — live, non-transfer transactions in the category; [medianMinor] — the lower
+ *         median of their **magnitudes** in paise (MNY-001), `null` when the category has none.
+ * Output: a Room projection.
+ */
+data class CategoryMedianRow(
+    @ColumnInfo(name = "sample_size") val sampleSize: Int,
+    @ColumnInfo(name = "median_minor") val medianMinor: Long?,
+)
+
+/**
+ * One category's spending in a window (issue 4.4; FR-BUD-003).
+ *
+ * Why:  a projection rather than a `Map<String, Long>` so the null category — genuinely
+ *       uncategorised spending — is a value the caller has to handle rather than a key it may
+ *       forget. Budgets are per category, and the money that belongs to none of them is exactly the
+ *       money a budget screen must not silently drop.
+ * Result: the total, positive, already summed across split lines.
+ * Changelog: 2026-08-11 — Created for issue 4.4.
+ *
+ * Input:  [categoryId] — the category, or `null` for uncategorised; [spentMinor] — paise (MNY-001),
+ *         always positive because the query takes `ABS` of an outflow.
+ * Output: a Room projection.
+ */
+data class CategorySpendRow(
+    @ColumnInfo(name = "category_id") val categoryId: String?,
+    @ColumnInfo(name = "spent_minor") val spentMinor: Long,
+)
+
+/**
+ * One category's spending in one calendar month (issue 4.4; FR-BUD-002).
+ *
+ * Why:  the suggestion is a median **over months**, so the months have to arrive separated and
+ *       labelled — a flat total cannot be turned back into the series it came from.
+ * Result: a point in the history the median is taken over.
+ * Changelog: 2026-08-11 — Created for issue 4.4.
+ *
+ * Input:  [categoryId] — the category, or `null` for uncategorised; [monthKey] — ISO `yyyy-MM`,
+ *         sliced from `booked_on_iso_date` (TIM-002); [spentMinor] — paise, positive.
+ * Output: a Room projection.
+ */
+data class MonthlyCategorySpendRow(
+    @ColumnInfo(name = "category_id") val categoryId: String?,
+    @ColumnInfo(name = "month_key") val monthKey: String,
+    @ColumnInfo(name = "spent_minor") val spentMinor: Long,
+)
+
+/**
+ * One classifiable amount as §8.3.1's decision order sees it (issue 4.3).
+ *
+ * Why:  eleven columns across three tables, and not one more. The decision order branches on the
+ *       account, the counterpart account, the category's nature, the type, the amount and the
+ *       user's own override — a projection this narrow means the engine *cannot* start deciding on
+ *       a note, which is the same narrowing [RecurringCandidateRow] applies to the recurring
+ *       detector.
+ *
+ *       **A row is not always a transaction.** Since 4.4 the query emits one row per *live split
+ *       line* where a transaction has them, and one row per transaction where it does not, so a
+ *       payment split across two categories is classified as the two things it bought rather than
+ *       falling to the uncategorised fallback. [id] is therefore the row's own identity — a split
+ *       line's id, not its parent's — and [transactionId] is what the caller groups by when it needs
+ *       the payment back whole.
+ * Result: mapped onto the engine's `NatureInput` by the repository.
+ * Changelog: 2026-08-10 — Created for issue 4.3.
+ *            2026-08-11 — Issue 4.4: split-line aware; gained [transactionId] and [bookedOnIsoDate].
+ *
+ * Input:  [id] — the split line's id, or the transaction's when it has no lines; [transactionId] —
+ *         the parent either way; [bookedOnIsoDate] — ISO `yyyy-MM-dd` (TIM-002), the `UNION ALL`'s
+ *         sort key; [type] — a `TransactionType.storedValue`; [amountMinor] — signed paise
+ *         (MNY-001), the **line's** amount for a split line; [overrideNature] — the user's
+ *         correction, `null` when they have not made one, which is the ordinary case; [merchant] —
+ *         for the learned step, inherited from the parent; [categoryId] — the line's own category
+ *         for a split line; [categoryNature] — a `CategoryNature.storedValue`, `null` when the row
+ *         has no category or its category was deleted; [accountType] — an `AccountType.storedValue`;
+ *         [counterpartAccountType] — the other leg's account type, `null` for anything that is not
+ *         a transfer leg.
+ * Output: a Room projection.
+ */
+data class NatureCandidateRow(
+    @ColumnInfo(name = "id") val id: String,
+    @ColumnInfo(name = "transaction_id") val transactionId: String,
+    @ColumnInfo(name = "booked_on_iso_date") val bookedOnIsoDate: String,
+    @ColumnInfo(name = "type") val type: String,
+    @ColumnInfo(name = "amount_minor") val amountMinor: Long,
+    @ColumnInfo(name = "override_nature") val overrideNature: String?,
+    @ColumnInfo(name = "merchant") val merchant: String?,
+    @ColumnInfo(name = "category_id") val categoryId: String?,
+    @ColumnInfo(name = "category_nature") val categoryNature: String?,
+    @ColumnInfo(name = "account_type") val accountType: String,
+    @ColumnInfo(name = "counterpart_account_type") val counterpartAccountType: String?,
 )
 
 /**
@@ -1047,6 +1757,61 @@ interface CategoryDao {
             "AND deleted_at_utc_millis IS NULL ORDER BY name",
     )
     fun observeForProfile(profileId: String): Flow<List<CategoryEntity>>
+
+    /**
+     * Counts every category row a profile has, **including soft-deleted ones** (issue 4.1).
+     *
+     * Why:    this is what decides whether `ensureSeeded` writes. Counting only live rows would make
+     *         a user who deleted all fifteen defaults get them back on the next cold start — the app
+     *         overruling a decision they made on purpose (P-07). The question being asked is "has
+     *         this profile ever been seeded?", and a soft-deleted row is proof that it has.
+     * Result: the total, zero for a profile that has never been seeded.
+     * Input:  [profileId]. Output: [Int].
+     * Changelog: 2026-08-08 — Created for issue 4.1.
+     */
+    @Query("SELECT COUNT(*) FROM category WHERE profile_id = :profileId")
+    suspend fun countForProfile(profileId: String): Int
+
+    /**
+     * Reads one category, soft-deleted or not.
+     * Why:    every write in `CategoryRepository` reads the row first — to prove it exists, and to
+     *         keep the fields it is not changing. Excluding deleted rows here would turn "edit a row
+     *         that was deleted on another screen" into "row not found", which is the right outcome
+     *         but the wrong error; the repository decides that, not the query.
+     * Result: the row, or `null`. Input: [id]. Output: `CategoryEntity?`.
+     * Changelog: 2026-08-08 — Created for issue 4.1.
+     */
+    @Query("SELECT * FROM category WHERE id = :id")
+    suspend fun findById(id: String): CategoryEntity?
+
+    /**
+     * Reads a profile's live categories once, rather than observing them.
+     * Why:    the uniqueness and nesting checks in `CategoryRepository` need the current taxonomy
+     *         inside the same transaction as the write that depends on it. Collecting the Flow for
+     *         one value would read outside that transaction, which is the window where two saves
+     *         race into two categories with the same name.
+     * Result: the live rows. Input: [profileId]. Output: `List<CategoryEntity>`.
+     * Changelog: 2026-08-08 — Created for issue 4.1.
+     */
+    @Query("SELECT * FROM category WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL")
+    suspend fun liveForProfile(profileId: String): List<CategoryEntity>
+
+    /**
+     * Counts a category's live children (issue 4.1).
+     * Why:    §8's taxonomy is one level deep, so a category with children may not be deleted out
+     *         from under them — the alternative is orphan rows pointing at a `parent_id` that no
+     *         longer resolves, which no query would report and no screen would show.
+     * Result: the count. Input: [parentId]. Output: [Int].
+     * Changelog: 2026-08-08 — Created for issue 4.1.
+     */
+    @Query(
+        "SELECT COUNT(*) FROM category WHERE parent_id = :parentId AND deleted_at_utc_millis IS NULL",
+    )
+    suspend fun countLiveChildren(parentId: String): Int
+
+    /** Updates a category in place. Input: [category]. Output: none. */
+    @Update
+    suspend fun update(category: CategoryEntity)
 }
 
 /** Reads and writes budgets (issue 2.3; FR-BUD-001, FR-ONB-002). */
@@ -1106,6 +1871,176 @@ interface BudgetDao {
         id: String,
         deletedAtUtcMillis: Long,
     ): Int
+
+    /**
+     * Writes one budget (issue 4.4; FR-BUD-001).
+     * Why: [upsertAll] exists because quick setup writes three envelopes at once; the budget
+     *         editor writes exactly one, and passing a singleton list to say so reads as an
+     *         accident. `REPLACE` is safe here only because the id is **derived** from the profile,
+     *         category and period (`categoryBudgetId`), so saving the same budget twice updates one
+     *         row rather than minting a second (P-08).
+     * Result: the row is created or replaced. Input: [budget]. Output: none.
+     * Changelog: 2026-08-11 — Created for issue 4.4.
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(budget: BudgetEntity)
+
+    /**
+     * Reads one budget by id, **including tombstones** (issue 4.4).
+     * Why:    the same reasoning `CategoryDao.findById` gives — filtering the soft-deleted here would
+     *         turn "you are editing a budget someone deleted on another screen" into "row not
+     *         found", which is the right outcome but the wrong error. The repository decides that.
+     * Result: the row, or `null`. Input: [id]. Output: `BudgetEntity?`.
+     * Changelog: 2026-08-11 — Created for issue 4.4.
+     */
+    @Query("SELECT * FROM budget WHERE id = :id")
+    suspend fun findById(id: String): BudgetEntity?
+
+    /**
+     * Reads a profile's live per-category budgets for a period, once (issue 4.4; FR-BUD-001).
+     * Why:    rollover needs **last** month's budgets and last month's spend to work out what was
+     *         left over, and it needs them inside the same read as this month's — collecting a Flow
+     *         for one value would be a subscription standing in for a lookup.
+     *
+     *         `category_id IS NOT NULL` is the filter that separates these from quick setup's
+     *         nature-level envelopes, which share the table and are read by
+     *         `observeLatestEnvelopes` instead. One table, two shapes, and neither read sees the
+     *         other's rows (ADR-0004).
+     * Result: the live per-category rows for that period. Input: [profileId];
+     *         [periodStartIsoDate] — the first of the month, ISO (TIM-002).
+     * Output: `List<BudgetEntity>`.
+     * Changelog: 2026-08-11 — Created for issue 4.4.
+     */
+    @Query(
+        "SELECT * FROM budget WHERE profile_id = :profileId " +
+            "AND period_start_iso_date = :periodStartIsoDate " +
+            "AND category_id IS NOT NULL AND deleted_at_utc_millis IS NULL",
+    )
+    suspend fun categoryBudgetsForPeriod(
+        profileId: String,
+        periodStartIsoDate: String,
+    ): List<BudgetEntity>
+
+    /**
+     * Observes a profile's live per-category budgets for a period (issue 4.4; FR-BUD-001).
+     * Why:    the budget screen has to move when a transaction is added on another screen, which is
+     *         what makes this a Flow rather than the suspend read above.
+     * Result: the live per-category rows, re-emitted on every write.
+     * Input:  [profileId]; [periodStartIsoDate]. Output: `Flow<List<BudgetEntity>>`.
+     * Changelog: 2026-08-11 — Created for issue 4.4.
+     */
+    @Query(
+        "SELECT * FROM budget WHERE profile_id = :profileId " +
+            "AND period_start_iso_date = :periodStartIsoDate " +
+            "AND category_id IS NOT NULL AND deleted_at_utc_millis IS NULL " +
+            "ORDER BY category_id",
+    )
+    fun observeCategoryBudgets(
+        profileId: String,
+        periodStartIsoDate: String,
+    ): Flow<List<BudgetEntity>>
+}
+
+/**
+ * Records and reads what the user has already been told about their budgets (issue 4.5; FR-BUD-004).
+ *
+ * Why:  this DAO exists to answer one question — "has this person already heard about this?" — and
+ *       to make the answer binding. Every write goes through [insertIfNew], whose `IGNORE` leans on
+ *       the table's unique index rather than on the caller checking first, so a duplicate
+ *       notification is impossible even if two workers run at once.
+ * What: one guarded insert, one live read for the screen, one point read for the worker.
+ * Result: at most one notification per budget, per month, per band (`RULE-BUD-ALERT`).
+ * Changelog: 2026-08-13 — Created for issue 4.5.
+ */
+@Dao
+interface BudgetAlertDao {
+    /**
+     * Records that the user was notified, unless they already had been.
+     *
+     * Why:    `IGNORE`, and this is the whole design. The alternative — read the existing bands,
+     *         decide, then insert — has a window between the read and the write, and a worker that
+     *         retried after a partial failure would sit in exactly that window. Here the database
+     *         refuses the duplicate, so "told once" is a property of the schema rather than a
+     *         property of the code being careful. `REPLACE` would be the opposite of what is wanted:
+     *         it would happily overwrite the first alert and let the caller believe it was new.
+     * Result: `-1` when the row already existed (nothing was written, and nothing should be sent);
+     *         the new rowid otherwise.
+     * Input:  [alert]. Output: [Long] rowid, or `-1`.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfNew(alert: BudgetAlertEntity): Long
+
+    /**
+     * Observes every alert recorded for a profile's month.
+     * Why:    the in-app banner is not deduplicated the way the notification is — a band that has
+     *         been crossed stays true until the month ends, and a banner that vanished because the
+     *         notification had already been sent would hide the state it exists to show (P-02).
+     * Result: the month's rows, re-emitted on every write.
+     * Input:  [profileId]; [monthStartIsoDate] — TIM-002. Output: `Flow<List<BudgetAlertEntity>>`.
+     */
+    @Query(
+        "SELECT * FROM budget_alert WHERE profile_id = :profileId " +
+            "AND month_start_iso_date = :monthStartIsoDate ORDER BY budget_id, band",
+    )
+    fun observeForMonth(
+        profileId: String,
+        monthStartIsoDate: String,
+    ): Flow<List<BudgetAlertEntity>>
+
+    /**
+     * Reads the month's alerts once.
+     * Why:    the worker needs to know what has already been sent before it decides what to send,
+     *         and collecting a Flow for one value would be a subscription standing in for a lookup —
+     *         the same argument `BudgetDao.categoryBudgetsForPeriod` makes.
+     * Result: the month's rows. Input: [profileId]; [monthStartIsoDate]. Output: the list.
+     */
+    @Query(
+        "SELECT * FROM budget_alert WHERE profile_id = :profileId " +
+            "AND month_start_iso_date = :monthStartIsoDate",
+    )
+    suspend fun forMonth(
+        profileId: String,
+        monthStartIsoDate: String,
+    ): List<BudgetAlertEntity>
+}
+
+/**
+ * Records and reads whether a closed month's budget review has been shown (issue 4.6; §5.5).
+ *
+ * Why:  the same one-question shape as [BudgetAlertDao] — "has this been claimed?" — and the same
+ *       reason for [insertIfNew]: the table's unique index on (profile, month) is what makes
+ *       "reviewed once" true, not the caller checking first.
+ * What: one guarded insert, one live read the repository folds into `observeReview`.
+ * Result: at most one open review card per profile, per closed month (`RULE-BUD-REVIEW`).
+ * Changelog: 2026-08-15 — Created for issue 4.6.
+ */
+@Dao
+interface BudgetReviewDao {
+    /**
+     * Records that this month's review has been dismissed or acted on, unless it already was.
+     * Result: `-1` when a claim already existed; the new rowid otherwise.
+     * Input:  [review]. Output: [Long] rowid, or `-1`.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfNew(review: BudgetReviewEntity): Long
+
+    /**
+     * Observes whether a profile's reviewed month has been claimed.
+     * Why:    `observeReview` combines this with the freshly computed [BudgetReviewEntity] to decide
+     *         whether the card should still show — a non-null row collapses the result to `null`,
+     *         the same fold `pendingAlerts` does with `forMonth`'s rows.
+     * Result: the claim row, or `null` when nothing has been claimed yet.
+     * Input:  [profileId]; [monthStartIsoDate] — the reviewed month, TIM-002.
+     * Output: `Flow<BudgetReviewEntity?>`.
+     */
+    @Query(
+        "SELECT * FROM budget_review WHERE profile_id = :profileId " +
+            "AND month_start_iso_date = :monthStartIsoDate LIMIT 1",
+    )
+    fun observeForMonth(
+        profileId: String,
+        monthStartIsoDate: String,
+    ): Flow<BudgetReviewEntity?>
 }
 
 /** Reads and writes recurring rules (issue 2.3; FR-ONB-002, FR-TXN-006). */
@@ -1220,9 +2155,17 @@ interface RecurringRuleDao {
  * Changelog: 2026-07-28 — Created for issue 2.4.
  *
  * **Every query is scoped by `profile_id` and takes it as a parameter** — there is no
- * "delete everything" here. That is what keeps the real profile safe from a mistyped call: the
- * worst a bug can do is erase the profile it was handed, and the only id ever handed to it is the
- * demo one.
+ * "delete everything" here. That is what keeps a mistyped call survivable: the worst a bug can do is
+ * erase the profile it was handed.
+ *
+ * **Issue 5.4 gave it a second caller, and a real profile id.** Until then the only id ever handed
+ * to this DAO was the demo one, and this comment said so as part of the safety argument. That is no
+ * longer true: `ArchiveRepository.import` replaces the active profile's rows, and reusing this wipe
+ * is deliberate — a second "delete every table for a profile" written beside it is one that drifts
+ * from it, and the table this one forgets is the residue ADR-0006 forbids *and* the row a restore
+ * would silently keep. The safety now rests entirely on the parameterisation and on
+ * [countRowsFor], which is what it should have rested on all along; the caller being the demo was
+ * never the mechanism, only a fact about the day it was written.
  *
  * **`audit_log` is not touched.** It has no `profile_id` — the app lock gates the whole app before
  * any profile is chosen — and it is append-only by design (see [AuditLogDao]). Security events are
@@ -1236,6 +2179,75 @@ interface DemoDao {
     /** Result: rows removed from `budget`. Input: [profileId]. Output: the count. */
     @Query("DELETE FROM budget WHERE profile_id = :profileId")
     suspend fun deleteBudgets(profileId: String): Int
+
+    /**
+     * Result: rows removed from `budget_alert`. Input: [profileId]. Output: the count.
+     *
+     * Added by issue 4.5, which introduced the table. Called **before** [deleteBudgets]: an alert is
+     * a child of a budget, and clearing the parents first would orphan it if the caller failed in
+     * between — the ordering argument [deleteTransactionSplits] makes.
+     */
+    @Query("DELETE FROM budget_alert WHERE profile_id = :profileId")
+    suspend fun deleteBudgetAlerts(profileId: String): Int
+
+    /**
+     * Result: rows removed from `card_alert`. Input: [profileId]. Output: the count.
+     *
+     * Cleared with the profile like every other claim table, and before `credit_card` for the
+     * ordering argument [deleteTransactionSplits] makes: a claim is a child of a card.
+     */
+    @Query("DELETE FROM card_alert WHERE profile_id = :profileId")
+    suspend fun deleteCardAlerts(profileId: String): Int
+
+    /**
+     * Result: rows removed from `credit_card`. Input: [profileId]. Output: the count.
+     *
+     * A card's terms are a child of an account, so this runs before the accounts are cleared —
+     * otherwise a failure in between would leave card rows pointing at nothing, which the demo
+     * residue count would then report for ever.
+     */
+    @Query("DELETE FROM credit_card WHERE profile_id = :profileId")
+    suspend fun deleteCreditCards(profileId: String): Int
+
+    /**
+     * Result: rows removed from `loan`. Input: [profileId]. Output: the count.
+     *
+     * A loan's terms are a child of an account, like a card's, so this runs before the accounts are
+     * cleared. No companion wipe for a schedule: none is stored (ADR-0026).
+     */
+    @Query("DELETE FROM loan WHERE profile_id = :profileId")
+    suspend fun deleteLoans(profileId: String): Int
+
+    /**
+     * Result: rows removed from `investment_lot`. Input: [profileId]. Output: the count.
+     *
+     * Runs before [deleteInvestmentHoldings] for the reason [deleteBudgetAlerts] runs before its
+     * budgets: lots are children, and a wipe that clears the parents first leaves rows whose
+     * holding no longer exists - invisible to every screen and permanently counted by
+     * [countRowsFor].
+     */
+    @Query("DELETE FROM investment_lot WHERE profile_id = :profileId")
+    suspend fun deleteInvestmentLots(profileId: String): Int
+
+    /**
+     * Result: rows removed from `investment_holding`. Input: [profileId]. Output: the count.
+     *
+     * A holding is a child of an account, like a card's terms, so this runs before the accounts are
+     * cleared and after [deleteInvestmentLots].
+     */
+    @Query("DELETE FROM investment_holding WHERE profile_id = :profileId")
+    suspend fun deleteInvestmentHoldings(profileId: String): Int
+
+    /**
+     * Result: rows removed from `budget_review`. Input: [profileId]. Output: the count.
+     *
+     * Added by issue 4.6, which introduced the table. Unlike [deleteBudgetAlerts] there is no
+     * ordering requirement against [deleteBudgets] — `budget_review` carries no `budget_id`, since
+     * it claims a whole reviewed month rather than one budget (ADR-0020) — but it is still a
+     * profile-scoped table the wipe must reach, per [countRowsFor].
+     */
+    @Query("DELETE FROM budget_review WHERE profile_id = :profileId")
+    suspend fun deleteBudgetReviews(profileId: String): Int
 
     /**
      * Result: rows removed from `net_worth_snapshot`. Input: [profileId]. Output: the count.
@@ -1271,6 +2283,28 @@ interface DemoDao {
     @Query("DELETE FROM transaction_tags WHERE profile_id = :profileId")
     suspend fun deleteTransactionTags(profileId: String): Int
 
+    /**
+     * Removes the demo's attachment rows (issue 3.8; ADR-0006).
+     * Why:    a table the demo wipe cannot reach is residue, and this one is the worst kind — a
+     *         receipt row surviving a wipe would point at a blob the erase also has to remove.
+     *         **Deleting the ciphertext is the repository's job, not this query's**: a DAO cannot
+     *         touch the filesystem, so the wipe reads the file names first and erases them itself.
+     * Result: rows removed from `attachments`. Input: [profileId]. Output: the count.
+     */
+    @Query("DELETE FROM attachments WHERE profile_id = :profileId")
+    suspend fun deleteAttachments(profileId: String): Int
+
+    /**
+     * Lists the blob file names the wipe still has to erase (issue 3.8).
+     * Why:    read **before** [deleteAttachments], because after it there is nothing left to say
+     *         which files on disk belonged to this profile — and an orphaned ciphertext blob is data
+     *         a "delete everything" did not delete (P-01). Includes tombstoned rows: a row whose
+     *         blob failed to erase earlier is exactly the one this must catch.
+     * Result: the file names. Input: [profileId]. Output: `List<String>`.
+     */
+    @Query("SELECT file_name FROM attachments WHERE profile_id = :profileId")
+    suspend fun attachmentFileNames(profileId: String): List<String>
+
     /** Result: rows removed from `tags`. Input: [profileId]. Output: the count. */
     @Query("DELETE FROM tags WHERE profile_id = :profileId")
     suspend fun deleteTags(profileId: String): Int
@@ -1286,6 +2320,22 @@ interface DemoDao {
     /** Result: rows removed from `account`. Input: [profileId]. Output: the count. */
     @Query("DELETE FROM account WHERE profile_id = :profileId")
     suspend fun deleteAccounts(profileId: String): Int
+
+    /**
+     * Result: rows removed from `sms_draft`. Input: [profileId]. Output: the count.
+     *
+     * Issue 3.9: **not written by `enter()`**, but produced while the user browses — the daily scan
+     * writes drafts against whichever profile is active, so a demo session on a phone whose owner
+     * opted in accumulates inferences drawn from their *real* inbox under the demo profile. A
+     * profile-scoped table the wipe does not reach is the residue ADR-0006 forbids, and this one
+     * would be residue about the user's spending.
+     *
+     * **All statuses, not just pending.** `SmsRepository.onConsentRevoked` keeps accepted and
+     * dismissed rows because they are decisions the user made; the demo wipe keeps nothing, because
+     * the profile they belonged to is being destroyed.
+     */
+    @Query("DELETE FROM sms_draft WHERE profile_id = :profileId")
+    suspend fun deleteSmsDrafts(profileId: String): Int
 
     /**
      * Removes the profile row itself.
@@ -1305,7 +2355,7 @@ interface DemoDao {
      *         Deliberately **not** filtered by `deleted_at_utc_millis`: a soft-deleted row is
      *         precisely the residue being looked for, so it must count.
      * Result: `0` once the profile has been erased.
-     * Input:  [profileId]. Output: the total row count across all ten tables.
+     * Input:  [profileId]. Output: the total row count across all sixteen tables.
      */
     @Query(
         "SELECT (SELECT COUNT(*) FROM profile WHERE id = :profileId) + " +
@@ -1313,13 +2363,239 @@ interface DemoDao {
             "(SELECT COUNT(*) FROM transactions WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM transaction_splits WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM transaction_tags WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM attachments WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM tags WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM category WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM budget WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM budget_alert WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM budget_review WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM recurring_rule WHERE profile_id = :profileId) + " +
-            "(SELECT COUNT(*) FROM net_worth_snapshot WHERE profile_id = :profileId)",
+            "(SELECT COUNT(*) FROM net_worth_snapshot WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM sms_draft WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM credit_card WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM card_alert WHERE profile_id = :profileId)",
     )
     suspend fun countRowsFor(profileId: String): Int
+}
+
+/**
+ * Reads and restores every row of a profile, for §5.10's archive (issue 5.4).
+ *
+ * Why:  the reads that already exist cannot be reused for this, and the reason matters. They are
+ *       `Flow`s that filter tombstones (`deleted_at_utc_millis IS NULL`), because a screen must not
+ *       show a deleted row. An archive must carry it: a soft-deleted transaction that came back to
+ *       life on import would be a deletion the user made and the app quietly undid. So these are
+ *       one-shot, unfiltered, and ordered by primary key so two exports of unchanged data are
+ *       byte-identical (P-08).
+ * What: one `SELECT *` and one `@Insert(REPLACE)` per profile-scoped table — the read mirror of
+ *       [DemoDao]'s deletes, plus the writes that put them back.
+ * Result: `ArchiveRepository` can dump and restore a profile without touching a DAO of its own.
+ *
+ * **The inserts live here rather than reusing each table's own DAO, deliberately.** Those fourteen
+ * `upsertAll`s disagree about conflict strategy — `BudgetAlertDao` and `BudgetReviewDao` use
+ * `IGNORE`, correctly, because their rows are once-per-band and once-per-month *claims*. A restore
+ * that went through them would silently drop rows whenever a claim already existed, which is
+ * exactly the data loss an archive exists to prevent. Here every write is `REPLACE`, which is the
+ * right rule for restoring into a profile the import has just wiped.
+ * Changelog: 2026-08-16 — Created for issue 5.4.
+ *
+ * **`audit_log` is absent, and the schema forces it**: that table has no `profile_id` to scope by.
+ * See [com.aicfo.core.database.entity.AuditLogEntity] and ADR-0023.
+ *
+ * **A table missing from here is user data silently dropped from every export**, which is why the
+ * count tracks the schema exactly as [DemoDao]'s does — and why `ArchiveRoundTripTest` seeds every
+ * table rather than the interesting ones.
+ */
+@Dao
+// One read per profile-scoped table. The count is the schema's, not a design choice (as DemoDao).
+@Suppress("TooManyFunctions")
+interface ArchiveDao {
+    /** Result: the profile row itself. Input: [profileId]. Output: 0 or 1 rows. */
+    @Query("SELECT * FROM profile WHERE id = :profileId")
+    suspend fun profiles(profileId: String): List<ProfileEntity>
+
+    /** Result: every account, tombstones included. Input: [profileId]. */
+    @Query("SELECT * FROM account WHERE profile_id = :profileId ORDER BY id")
+    suspend fun accounts(profileId: String): List<AccountEntity>
+
+    /** Result: every transaction, tombstones and future-dated rows included. Input: [profileId]. */
+    @Query("SELECT * FROM transactions WHERE profile_id = :profileId ORDER BY id")
+    suspend fun transactions(profileId: String): List<TransactionEntity>
+
+    /** Result: every split line (ADR-0009). Input: [profileId]. */
+    @Query("SELECT * FROM transaction_splits WHERE profile_id = :profileId ORDER BY id")
+    suspend fun transactionSplits(profileId: String): List<TransactionSplitEntity>
+
+    /** Result: every tag. Input: [profileId]. */
+    @Query("SELECT * FROM tags WHERE profile_id = :profileId ORDER BY id")
+    suspend fun tags(profileId: String): List<TagEntity>
+
+    /**
+     * Result: every transaction↔tag link. Input: [profileId].
+     * Ordered by both halves of the composite key — the table has no single id column.
+     */
+    @Query("SELECT * FROM transaction_tags WHERE profile_id = :profileId ORDER BY transaction_id, tag_id")
+    suspend fun transactionTags(profileId: String): List<TransactionTagEntity>
+
+    /** Result: the whole category taxonomy, including the user's edits. Input: [profileId]. */
+    @Query("SELECT * FROM category WHERE profile_id = :profileId ORDER BY id")
+    suspend fun categories(profileId: String): List<CategoryEntity>
+
+    /** Result: every budget, nature-level and per-category. Input: [profileId]. */
+    @Query("SELECT * FROM budget WHERE profile_id = :profileId ORDER BY id")
+    suspend fun budgets(profileId: String): List<BudgetEntity>
+
+    /** Result: every alert already sent, so a restore does not re-notify (FR-BUD-004). Input: [profileId]. */
+    @Query("SELECT * FROM budget_alert WHERE profile_id = :profileId ORDER BY id")
+    suspend fun budgetAlerts(profileId: String): List<BudgetAlertEntity>
+
+    /** Result: every month-end review claim (ADR-0020). Input: [profileId]. */
+    @Query("SELECT * FROM budget_review WHERE profile_id = :profileId ORDER BY id")
+    suspend fun budgetReviews(profileId: String): List<BudgetReviewEntity>
+
+    /** Result: every card's terms, tombstones included (FR-ACC-002). Input: [profileId]. */
+    @Query("SELECT * FROM credit_card WHERE profile_id = :profileId ORDER BY account_id")
+    suspend fun creditCards(profileId: String): List<CreditCardEntity>
+
+    /** Result: every card alert already sent, so a restore does not re-notify. Input: [profileId]. */
+    @Query("SELECT * FROM card_alert WHERE profile_id = :profileId ORDER BY id")
+    suspend fun cardAlerts(profileId: String): List<CardAlertEntity>
+
+    /**
+     * Result: every loan's terms, tombstones included (FR-ACC-003). Input: [profileId].
+     *
+     * Five columns and no schedule — the rows are derived from them on read (ADR-0026), so an
+     * archive that carried a schedule would be carrying a cache of its own contents.
+     */
+    @Query("SELECT * FROM loan WHERE profile_id = :profileId ORDER BY account_id")
+    suspend fun loans(profileId: String): List<LoanEntity>
+
+    /**
+     * Result: every holding, tombstones included (§11). Input: [profileId].
+     *
+     * No quantity or value column to carry: both are sums of the lots exported beside them, so an
+     * archive holding either would be carrying a cache of its own contents.
+     */
+    @Query("SELECT * FROM investment_holding WHERE profile_id = :profileId ORDER BY id")
+    suspend fun investmentHoldings(profileId: String): List<InvestmentHoldingEntity>
+
+    /** Result: every lot, tombstones included - the flows XIRR needs (§11). Input: [profileId]. */
+    @Query("SELECT * FROM investment_lot WHERE profile_id = :profileId ORDER BY id")
+    suspend fun investmentLots(profileId: String): List<InvestmentLotEntity>
+
+    /** Result: every recurring rule, confirmed and dismissed alike (FR-TXN-006). Input: [profileId]. */
+    @Query("SELECT * FROM recurring_rule WHERE profile_id = :profileId ORDER BY id")
+    suspend fun recurringRules(profileId: String): List<RecurringRuleEntity>
+
+    /** Result: the whole net-worth series (FR-ACC-005, issue 6.6's chart). Input: [profileId]. */
+    @Query("SELECT * FROM net_worth_snapshot WHERE profile_id = :profileId ORDER BY id")
+    suspend fun netWorthSnapshots(profileId: String): List<NetWorthSnapshotEntity>
+
+    /**
+     * Result: the attachment **rows**, never the images. Input: [profileId].
+     *
+     * The blobs stay on the device: a plaintext archive that carried decrypted receipts would take
+     * them wherever the user sends the file (ADR-0023, P-01). The row keeps `file_name`, so an
+     * archive imported on the same device still finds its images.
+     */
+    @Query("SELECT * FROM attachments WHERE profile_id = :profileId ORDER BY id")
+    suspend fun attachments(profileId: String): List<AttachmentEntity>
+
+    /** Result: every SMS draft, in whatever state the user left it (§18, §23). Input: [profileId]. */
+    @Query("SELECT * FROM sms_draft WHERE profile_id = :profileId ORDER BY id")
+    suspend fun smsDrafts(profileId: String): List<SmsDraftEntity>
+
+    // --- restore: one write per table, REPLACE, into a profile the import has just wiped --------
+
+    /** Result: the profile row is present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertProfiles(rows: List<ProfileEntity>)
+
+    /** Result: the accounts are present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAccounts(rows: List<AccountEntity>)
+
+    /** Result: the taxonomy is present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCategories(rows: List<CategoryEntity>)
+
+    /** Result: the ledger is present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTransactions(rows: List<TransactionEntity>)
+
+    /** Result: the split lines are present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTransactionSplits(rows: List<TransactionSplitEntity>)
+
+    /** Result: the tags are present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTags(rows: List<TagEntity>)
+
+    /** Result: the tag links are present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTransactionTags(rows: List<TransactionTagEntity>)
+
+    /** Result: the budgets are present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBudgets(rows: List<BudgetEntity>)
+
+    /**
+     * Result: the alert claims are present. Input: [rows]. Output: none (suspends).
+     * REPLACE, unlike `BudgetAlertDao`'s IGNORE — see this interface's doc comment for why a
+     * restore must not go through the claim-shaped writer.
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBudgetAlerts(rows: List<BudgetAlertEntity>)
+
+    /** Result: the month-end review claims are present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBudgetReviews(rows: List<BudgetReviewEntity>)
+
+    /** Result: the cards' terms are present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCreditCards(rows: List<CreditCardEntity>)
+
+    /** Result: the loans' terms are present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertLoans(rows: List<LoanEntity>)
+
+    /** Result: the holdings are present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertInvestmentHoldings(rows: List<InvestmentHoldingEntity>)
+
+    /** Result: the lots are present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertInvestmentLots(rows: List<InvestmentLotEntity>)
+
+    /**
+     * Result: the card alerts already sent are present. Input: [rows]. Output: none (suspends).
+     *
+     * REPLACE, unlike `CardAlertDao`'s IGNORE — a restore is not a claim, and going through the
+     * claim-shaped writer would silently drop every row whose key already existed.
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCardAlerts(rows: List<CardAlertEntity>)
+
+    /** Result: the recurring rules are present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertRecurringRules(rows: List<RecurringRuleEntity>)
+
+    /** Result: the net-worth series is present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertNetWorthSnapshots(rows: List<NetWorthSnapshotEntity>)
+
+    /**
+     * Result: the attachment rows are present. Input: [rows]. Output: none (suspends).
+     * The rows only — the archive never carried the images (ADR-0023), so a restore on another
+     * device leaves `file_name` pointing at a blob that is not there. `AttachmentDao`'s reads
+     * already tolerate a missing file; the transaction keeps its record of having had a receipt.
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAttachments(rows: List<AttachmentEntity>)
+
+    /** Result: the SMS drafts are present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSmsDrafts(rows: List<SmsDraftEntity>)
 }
 
 /**
@@ -1387,6 +2663,37 @@ interface NetWorthSnapshotDao {
         profileId: String,
         asOfIsoDate: String,
     ): NetWorthSnapshotEntity?
+
+    /**
+     * The earliest stored day whose figure a later write has invalidated (ADR-0012).
+     *
+     * Why:    a snapshot is frozen on purpose — a *trend* must not move under the user (FR-ACC-005),
+     *         and `snapshotUpToToday` therefore never rewrites a day it has already recorded. That
+     *         is right for the ordinary case and wrong for exactly one: a transaction **booked into
+     *         a day that has already been snapshotted**. Back-dating a receipt, or deleting an old
+     *         row, changes what those days were worth, and without this nothing would ever correct
+     *         them.
+     *
+     *         **The staleness is derived, not tracked.** No flag, no queue, no "dirty" column a
+     *         write path could forget to set: a stored day is wrong iff some transaction booked on or
+     *         before it was written or removed *after* that day's figure was computed. Both halves
+     *         are needed — `updated_at` catches a row created or edited, and `deleted_at` catches one
+     *         removed, because `softDelete` deliberately does not touch `updated_at`. Tombstoned rows
+     *         are therefore **not** filtered out here, unlike every other query in this file: a
+     *         deleted transaction is precisely the change being looked for.
+     * Result: the earliest affected `as_of_iso_date`, or `null` when the stored history is correct —
+     *         which is the normal answer, and the one this returns on almost every run.
+     * Input:  [profileId]. Output: `String?` — ISO `yyyy-MM-dd` (TIM-002).
+     */
+    @Query(
+        "SELECT MIN(s.as_of_iso_date) FROM net_worth_snapshot s " +
+            "JOIN transactions t ON t.profile_id = s.profile_id " +
+            "AND t.booked_on_iso_date <= s.as_of_iso_date " +
+            "WHERE s.profile_id = :profileId AND s.deleted_at_utc_millis IS NULL " +
+            "AND (t.updated_at_utc_millis > s.computed_at_utc_millis " +
+            "OR t.deleted_at_utc_millis > s.computed_at_utc_millis)",
+    )
+    suspend fun findEarliestStaleDay(profileId: String): String?
 }
 
 /**
@@ -1432,5 +2739,549 @@ interface AuditLogDao {
     suspend fun countSince(
         event: String,
         sinceUtcMillis: Long,
+    ): Int
+}
+
+/**
+ * Reads and writes the files linked to a transaction (issue 3.8; FR-OCR-005).
+ *
+ * Why:  four queries, and the shape of two of them is the requirement. [softDelete] tombstones the
+ *       row while the caller erases the blob, which together are FR-OCR-005's "delete image while
+ *       keeping the transaction" — the transaction is never touched. And [findById] exists **without
+ *       a soft-delete filter**, because erasing a blob needs the file name of a row that may already
+ *       be tombstoned; every other read here filters, as §20 requires.
+ * Result: the receipt a transaction carries, and the ability to lose it on purpose.
+ * Changelog: 2026-08-06 — Created for issue 3.8.
+ */
+@Dao
+interface AttachmentDao {
+    /**
+     * Inserts an attachment, replacing any with the same id.
+     * Why:    REPLACE with a **derived** id, the mechanism `netWorthSnapshotId` and `recurringRuleId`
+     *         already use: re-scanning the same receipt onto the same transaction updates one row
+     *         rather than accumulating a second pointing at an orphaned blob.
+     * Result: the row is present. Input: [attachment]. Output: none.
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(attachment: AttachmentEntity)
+
+    /**
+     * Observes the live attachments on one transaction.
+     * Result: emits on every change; empty when the image was deleted or never existed — both real
+     *         answers rather than errors.
+     * Input:  [transactionId]. Output: `Flow<List<AttachmentEntity>>`, oldest first.
+     */
+    @Query(
+        "SELECT * FROM attachments WHERE transaction_id = :transactionId " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY created_at_utc_millis",
+    )
+    fun observeForTransaction(transactionId: String): Flow<List<AttachmentEntity>>
+
+    /**
+     * Finds one attachment by id, **tombstoned or not**.
+     * Why:    the one query here that does not filter `deleted_at_utc_millis`, deliberately. Erasing
+     *         a blob needs its file name, and a caller retrying a failed erase would otherwise be
+     *         unable to find the row it is trying to finish deleting — leaving ciphertext on disk
+     *         with nothing pointing at it, which is the opposite of what FR-OCR-005 asks for.
+     * Result: the row, or `null`. Input: [id]. Output: `AttachmentEntity?`.
+     */
+    @Query("SELECT * FROM attachments WHERE id = :id")
+    suspend fun findById(id: String): AttachmentEntity?
+
+    /**
+     * Tombstones one attachment (FR-OCR-005).
+     * Why:    the transaction is untouched — that is the requirement's whole second half. The blob
+     *         itself is erased by the caller; a row with no blob is recoverable-looking and wrong, so
+     *         the repository does both inside one operation.
+     * Result: the number of rows stamped, `0` when the id names nothing.
+     * Input:  [id]; [deletedAtUtcMillis] — from the injected `Clock` (TIM-001). Output: [Int].
+     */
+    @Query("UPDATE attachments SET deleted_at_utc_millis = :deletedAtUtcMillis WHERE id = :id")
+    suspend fun softDelete(
+        id: String,
+        deletedAtUtcMillis: Long,
+    ): Int
+}
+
+/**
+ * Reads and writes the drafts parsed from bank alerts (issue 3.9; §18, §23, P-01).
+ *
+ * Why:  the queries are shaped by two obligations rather than by convenience. **Revocation has to
+ *       bite** — [deletePending] is what makes the consent revocable in the sense P-01 means, which
+ *       is that the data goes, not merely that the toggle flips. And **a decision has to stick**:
+ *       [findBySmsId] is how a re-scan discovers that an alert has already been judged, so a
+ *       dismissed message is never proposed twice.
+ *
+ *       Nothing here selects a message body, because the table has no column for one — see
+ *       [com.aicfo.core.database.entity.SmsDraftEntity].
+ * Result: the review screen's list, and the guarantees around it.
+ * Changelog: 2026-08-07 — Created for issue 3.9.
+ */
+@Dao
+interface SmsDraftDao {
+    /**
+     * Inserts a draft, ignoring one whose alert is already recorded.
+     * Why:    **IGNORE, not REPLACE**, and it is the difference between a working dismissal and a
+     *         broken one. The unique index is `(profile_id, sms_id)`, so a re-scan of an already
+     *         judged alert conflicts — and REPLACE would overwrite the user's `dismissed` row with a
+     *         fresh `pending` one, re-proposing exactly what they said no to. IGNORE keeps the
+     *         decision. (Contrast `AttachmentDao.upsert`, where REPLACE is right because re-scanning
+     *         a receipt genuinely supersedes the previous read.)
+     * Result: the row is present, either newly inserted or as it already was.
+     * Input:  [draft]. Output: the new rowid, or `-1` when the insert was ignored.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfNew(draft: SmsDraftEntity): Long
+
+    /**
+     * Observes this profile's drafts awaiting a decision.
+     * Result: emits on every change; empty when nothing is pending, which is the ordinary state.
+     * Input:  [profileId]. Output: `Flow<List<SmsDraftEntity>>`, newest alert first — the order the
+     *         user thinks in, since the message that just arrived is the one they are looking for.
+     */
+    @Query(
+        "SELECT * FROM sms_draft WHERE profile_id = :profileId AND status = 'pending' " +
+            "ORDER BY sms_id DESC",
+    )
+    fun observePending(profileId: String): Flow<List<SmsDraftEntity>>
+
+    /**
+     * Finds a draft by id.
+     * Result: the row, or `null`. Input: [id]. Output: `SmsDraftEntity?`.
+     */
+    @Query("SELECT * FROM sms_draft WHERE id = :id")
+    suspend fun findById(id: String): SmsDraftEntity?
+
+    /**
+     * Finds the draft already recorded for one alert, whatever the user decided about it.
+     * Why:    **unfiltered by status on purpose.** A scan asks "have I judged this message?", not
+     *         "is this message pending?" — filtering would make a dismissed alert look unseen and
+     *         re-propose it on the next scan.
+     * Result: the row, or `null` when this alert has never been drafted.
+     * Input:  [profileId]; [smsId]. Output: `SmsDraftEntity?`.
+     */
+    @Query("SELECT * FROM sms_draft WHERE profile_id = :profileId AND sms_id = :smsId")
+    suspend fun findBySmsId(
+        profileId: String,
+        smsId: Long,
+    ): SmsDraftEntity?
+
+    /**
+     * Records what the user decided about one draft.
+     * Result: the number of rows changed, `0` when the id names nothing.
+     * Input:  [id]; [status] — `accepted` or `dismissed`; [transactionId] — the row it became, or
+     *         `null` for a dismissal; [updatedAtUtcMillis] — from the injected `Clock` (TIM-001).
+     * Output: [Int].
+     */
+    @Query(
+        "UPDATE sms_draft SET status = :status, transaction_id = :transactionId, " +
+            "updated_at_utc_millis = :updatedAtUtcMillis WHERE id = :id",
+    )
+    suspend fun setStatus(
+        id: String,
+        status: String,
+        transactionId: String?,
+        updatedAtUtcMillis: Long,
+    ): Int
+
+    /**
+     * Deletes every undecided draft for a profile — what revoking the consent does (P-01).
+     *
+     * Why:    a **hard** delete, and the only one in this schema. Everywhere else a tombstone is
+     *         right because the row is the user's financial history and a sync may need to know it
+     *         was removed. This row is not history: it is a proposal derived from a message the user
+     *         has just withdrawn permission to read. Leaving a tombstone would mean the app still
+     *         held what it inferred from their inbox after being told to stop — which is what P-01's
+     *         "revocable" exists to prevent.
+     *
+     *         **Only the pending ones.** An accepted draft has become a transaction the user
+     *         deliberately saved; deleting its provenance would leave a row in the ledger that could
+     *         no longer explain where it came from (AI-ARC-003). A dismissed one is kept for the
+     *         same reason `insertIfNew` ignores conflicts — so that if the consent is granted again,
+     *         a decision already made is not re-asked.
+     * Result: the number of rows deleted. Input: [profileId]. Output: [Int].
+     */
+    @Query("DELETE FROM sms_draft WHERE profile_id = :profileId AND status = 'pending'")
+    suspend fun deletePending(profileId: String): Int
+
+    /**
+     * Deletes every undecided draft, **for every profile** — what revoking the consent does (P-01).
+     *
+     * Why:    the **only unscoped query in this schema**, and it is unscoped on purpose. Every other
+     *         read and write here is bounded by `profile_id` so no query can span the demo and the
+     *         user's own data (ADR-0006). But the SMS consent is not per profile — there is one
+     *         `ConsentFeature.SMS_PARSING` for the device — so a revocation scoped to whichever
+     *         profile happened to be active would leave the other's inferences on disk. A user who
+     *         revoked while browsing the demo would keep every draft drawn from their real inbox,
+     *         which is precisely the outcome "revocable" is supposed to prevent.
+     *
+     *         Safe to leave unscoped because of what it deletes rather than where: only `pending`
+     *         rows, which are proposals the app made and nobody accepted. No row the user created,
+     *         confirmed or dismissed is reachable from here.
+     * Result: the number of rows deleted. Input: none. Output: [Int].
+     */
+    @Query("DELETE FROM sms_draft WHERE status = 'pending'")
+    suspend fun deleteAllPending(): Int
+}
+
+/**
+ * Reads and writes a credit card's terms (issue 6.1; FR-ACC-002, §5.7).
+ *
+ * Why:  a card's limit and dates change rarely and are read on every card screen, which is the
+ *       opposite shape from the ledger's DAOs. So there is no paging and no window here — one
+ *       upsert, one live read per profile, one point read.
+ * What: the CRUD `credit_card` needs and nothing more.
+ * Result: the card detail the engine turns into ratios and dates.
+ * Changelog: 2026-08-17 — Created for issue 6.1.
+ */
+@Dao
+interface CreditCardDao {
+    /**
+     * Writes the card's terms, replacing any that were there.
+     * Why:    `REPLACE` is right here where it is wrong for a claim table: the row is keyed by
+     *         `account_id` and describes the *current* terms, so a second write is an edit rather
+     *         than a duplicate. There is no history to lose — a changed credit limit is a new fact,
+     *         not an event.
+     * Result: the row is present with these values.
+     * Input:  [card]. Output: none.
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(card: CreditCardEntity)
+
+    /**
+     * Observes every live card for a profile.
+     * Why:    the accounts list renders a utilisation bar per card, so it needs them all at once and
+     *         needs to re-render when one is edited.
+     * Result: the profile's undeleted cards, re-emitted on every write.
+     * Input:  [profileId]. Output: `Flow<List<CreditCardEntity>>`.
+     */
+    @Query(
+        "SELECT * FROM credit_card WHERE profile_id = :profileId " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY account_id",
+    )
+    fun observeForProfile(profileId: String): Flow<List<CreditCardEntity>>
+
+    /**
+     * Reads every live card once.
+     * Why:    the alert worker needs one reading, and collecting a Flow for one value would be a
+     *         subscription standing in for a lookup.
+     * Result: the profile's undeleted cards. Input: [profileId]. Output: the list.
+     */
+    @Query("SELECT * FROM credit_card WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL")
+    suspend fun forProfile(profileId: String): List<CreditCardEntity>
+
+    /**
+     * Reads one card.
+     * Result: the row, or `null` when the account has no card detail — which is the ordinary state
+     *         of a credit-card account the user has not filled in yet, not an error.
+     * Input:  [accountId]. Output: [CreditCardEntity]?.
+     */
+    @Query("SELECT * FROM credit_card WHERE account_id = :accountId AND deleted_at_utc_millis IS NULL")
+    suspend fun find(accountId: String): CreditCardEntity?
+
+    /**
+     * Soft-deletes a card's detail.
+     * Why:    tombstoned rather than removed, like every other profile-scoped row — DB-003 and the
+     *         export format both assume nothing vanishes.
+     * Result: the number of rows changed, 0 or 1.
+     * Input:  [accountId]; [deletedAtUtcMillis] — from the injected `Clock`. Output: [Int].
+     */
+    @Query(
+        "UPDATE credit_card SET deleted_at_utc_millis = :deletedAtUtcMillis, " +
+            "updated_at_utc_millis = :deletedAtUtcMillis WHERE account_id = :accountId",
+    )
+    suspend fun softDelete(
+        accountId: String,
+        deletedAtUtcMillis: Long,
+    ): Int
+}
+
+/**
+ * Reads and writes a loan's terms (issue 6.2; FR-ACC-003, §5.8).
+ *
+ * Why:  the same shape as [CreditCardDao] and for the same reason — a loan's principal, rate and
+ *       tenure change almost never and are read on every accounts screen, which is the opposite of
+ *       the ledger's paged DAOs. So one upsert, one live read per profile, one point read.
+ * What: the CRUD `loan` needs and nothing more. **No schedule queries**, because no schedule is
+ *       stored — the engine derives it from these five columns (ADR-0026).
+ * Result: the terms the amortisation engine turns into an EMI and a principal/interest split.
+ * Changelog: 2026-08-19 — Created for issue 6.2.
+ */
+@Dao
+interface LoanDao {
+    /**
+     * Writes the loan's terms, replacing any that were there.
+     * Why:    `REPLACE` for the reason [CreditCardDao.upsert] gives — the row is keyed by
+     *         `account_id` and describes the *current* terms, so a second write is an edit and not a
+     *         duplicate. A restructured loan is a new fact, not an event with history to keep.
+     * Result: the row is present with these values.
+     * Input:  [loan]. Output: none.
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(loan: LoanEntity)
+
+    /**
+     * Observes every live loan for a profile.
+     * Why:    the accounts list shows the next instalment's split under each loan, so it needs them
+     *         all at once and needs to re-render when one is edited.
+     * Result: the profile's undeleted loans, re-emitted on every write.
+     * Input:  [profileId]. Output: `Flow<List<LoanEntity>>`.
+     */
+    @Query(
+        "SELECT * FROM loan WHERE profile_id = :profileId " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY account_id",
+    )
+    fun observeForProfile(profileId: String): Flow<List<LoanEntity>>
+
+    /**
+     * Reads every live loan once.
+     * Why:    the export archive needs one reading, and collecting a Flow for one value would be a
+     *         subscription standing in for a lookup.
+     * Result: the profile's undeleted loans. Input: [profileId]. Output: the list.
+     */
+    @Query("SELECT * FROM loan WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL")
+    suspend fun forProfile(profileId: String): List<LoanEntity>
+
+    /**
+     * Reads one loan.
+     * Result: the row, or `null` when the account has no loan detail — the ordinary state of a loan
+     *         account the user has not filled in yet, not an error.
+     * Input:  [accountId]. Output: [LoanEntity]?.
+     */
+    @Query("SELECT * FROM loan WHERE account_id = :accountId AND deleted_at_utc_millis IS NULL")
+    suspend fun find(accountId: String): LoanEntity?
+
+    /**
+     * Soft-deletes a loan's detail.
+     * Why:    tombstoned rather than removed, like every other profile-scoped row — DB-003 and the
+     *         export format both assume nothing vanishes.
+     * Result: the number of rows changed, 0 or 1.
+     * Input:  [accountId]; [deletedAtUtcMillis] — from the injected `Clock`. Output: [Int].
+     */
+    @Query(
+        "UPDATE loan SET deleted_at_utc_millis = :deletedAtUtcMillis, " +
+            "updated_at_utc_millis = :deletedAtUtcMillis WHERE account_id = :accountId",
+    )
+    suspend fun softDelete(
+        accountId: String,
+        deletedAtUtcMillis: Long,
+    ): Int
+}
+
+/**
+ * Records that the user has been told something about a card, at most once per cycle (issue 6.1).
+ *
+ * Why:  the same one-question shape as [BudgetAlertDao] — "has this been claimed?" — and the same
+ *       reason for [insertIfNew]: the unique index on (profile, account, cycle, kind) is what makes
+ *       "told once" true, not the caller checking first. A payment reminder that re-fires daily is
+ *       not three reminders, it is a muted channel.
+ * What: one guarded insert and one point read for the worker.
+ * Result: at most one notification per card, per cycle, per kind.
+ * Changelog: 2026-08-17 — Created for issue 6.1.
+ */
+@Dao
+interface CardAlertDao {
+    /**
+     * Records that the user was notified, unless they already had been.
+     * Why:    `IGNORE`, never `REPLACE` — see [BudgetAlertDao.insertIfNew]. The database refusing
+     *         the duplicate is what removes the read-then-write window a retrying worker sits in.
+     * Result: `-1` when the row already existed (send nothing); the new rowid otherwise.
+     * Input:  [alert]. Output: [Long] rowid, or `-1`.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfNew(alert: CardAlertEntity): Long
+
+    /**
+     * Reads what has already been claimed for a profile.
+     * Why:    the worker asks once per run and filters the engine's answer against it. Unbounded by
+     *         cycle deliberately: a profile has a handful of cards and a handful of cycles, so
+     *         narrowing the query would add a parameter and save nothing measurable.
+     * Result: every claim for the profile. Input: [profileId]. Output: the list.
+     */
+    @Query("SELECT * FROM card_alert WHERE profile_id = :profileId")
+    suspend fun forProfile(profileId: String): List<CardAlertEntity>
+}
+
+/**
+ * The holdings inside an investment account (issue 6.3; §11, FR-ACC-001).
+ *
+ * Why:  the shape [LoanDao] argues for, with one difference that changes every query: holdings are
+ *       1:N per account, so nothing here is keyed by `account_id` and every read is a list. The
+ *       accounts screen wants one live read per profile, the holdings screen wants one live read
+ *       per account, and the editor wants a point read — so that is exactly what this exposes.
+ * What: the CRUD `investment_holding` needs and nothing more. **No value or quantity queries**,
+ *       because neither is stored: both are derived from the lots and the unit price.
+ * Result: the holdings the investment engine turns into a value, a gain and an XIRR.
+ * Changelog: 2026-08-24 — Created for issue 6.3.
+ */
+@Dao
+interface InvestmentHoldingDao {
+    /**
+     * Writes a holding, replacing any row with the same id.
+     * Why:    `REPLACE` for the reason [LoanDao.upsert] gives — the row describes a holding's
+     *         *current* facts, so a second write with the same id is an edit, not a duplicate.
+     *         Unlike a loan, the id is a surrogate, so a genuinely new holding brings a new id and
+     *         cannot collide.
+     * Result: the row is present with these values.
+     * Input:  [holding]. Output: none.
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(holding: InvestmentHoldingEntity)
+
+    /**
+     * Observes every live holding for a profile.
+     * Why:    the accounts list shows a value and a return under each investment account, so it
+     *         needs them all at once and must re-render when a lot or a price is edited.
+     * Result: the profile's undeleted holdings, re-emitted on every write.
+     * Input:  [profileId]. Output: `Flow<List<InvestmentHoldingEntity>>`.
+     */
+    @Query(
+        "SELECT * FROM investment_holding WHERE profile_id = :profileId " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY name",
+    )
+    fun observeForProfile(profileId: String): Flow<List<InvestmentHoldingEntity>>
+
+    /**
+     * Observes the live holdings inside one account.
+     * Why:    the holdings screen is per-account, and filtering the profile-wide Flow in Kotlin
+     *         would re-render every account's screen whenever any other account changed.
+     * Result: that account's undeleted holdings, re-emitted on every write.
+     * Input:  [accountId]. Output: `Flow<List<InvestmentHoldingEntity>>`.
+     */
+    @Query(
+        "SELECT * FROM investment_holding WHERE account_id = :accountId " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY name",
+    )
+    fun observeForAccount(accountId: String): Flow<List<InvestmentHoldingEntity>>
+
+    /**
+     * Reads every live holding once.
+     * Why:    the export archive needs one reading, and collecting a Flow for one value would be a
+     *         subscription standing in for a lookup.
+     * Result: the profile's undeleted holdings. Input: [profileId]. Output: the list.
+     */
+    @Query(
+        "SELECT * FROM investment_holding WHERE profile_id = :profileId " +
+            "AND deleted_at_utc_millis IS NULL",
+    )
+    suspend fun forProfile(profileId: String): List<InvestmentHoldingEntity>
+
+    /**
+     * Reads one holding.
+     * Result: the row, or `null` when no live holding has that id — deleted or never written.
+     * Input:  [id]. Output: [InvestmentHoldingEntity]?.
+     */
+    @Query("SELECT * FROM investment_holding WHERE id = :id AND deleted_at_utc_millis IS NULL")
+    suspend fun find(id: String): InvestmentHoldingEntity?
+
+    /**
+     * Soft-deletes a holding.
+     * Why:    tombstoned rather than removed, like every other profile-scoped row — DB-003 and the
+     *         export format both assume nothing vanishes. The lots beneath it are tombstoned by
+     *         their own call: cascading here would need a foreign key, and this schema has none.
+     * Result: the number of rows changed, 0 or 1.
+     * Input:  [id]; [deletedAtUtcMillis] — from the injected `Clock`. Output: [Int].
+     */
+    @Query(
+        "UPDATE investment_holding SET deleted_at_utc_millis = :deletedAtUtcMillis, " +
+            "updated_at_utc_millis = :deletedAtUtcMillis WHERE id = :id",
+    )
+    suspend fun softDelete(
+        id: String,
+        deletedAtUtcMillis: Long,
+    ): Int
+}
+
+/**
+ * The dated cash movements inside a holding (issue 6.3; §11).
+ *
+ * Why:  XIRR is money-weighted, so the engine needs every lot of every holding it is asked about,
+ *       ordered by date. [observeForProfile] exists because the accounts screen prices every
+ *       holding at once, and N per-holding subscriptions would be N queries per render.
+ * What: the CRUD `investment_lot` needs, plus the profile-wide read the engine consumes.
+ * Result: the cash flows XIRR runs over.
+ * Changelog: 2026-08-24 — Created for issue 6.3.
+ */
+@Dao
+interface InvestmentLotDao {
+    /** Result: the lot is present with these values. Input: [lot]. Output: none. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(lot: InvestmentLotEntity)
+
+    /**
+     * Observes every live lot for a profile, oldest first.
+     * Why:    the ordering is the engine's, not the screen's: cash flows are weighted by date, and
+     *         sorting once in SQL beats sorting per holding in Kotlin on every emission.
+     * Result: the profile's undeleted lots, re-emitted on every write.
+     * Input:  [profileId]. Output: `Flow<List<InvestmentLotEntity>>`.
+     */
+    @Query(
+        "SELECT * FROM investment_lot WHERE profile_id = :profileId " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY transacted_on_iso_date, id",
+    )
+    fun observeForProfile(profileId: String): Flow<List<InvestmentLotEntity>>
+
+    /**
+     * Observes the live lots of one holding, oldest first.
+     * Result: that holding's undeleted lots, for the screen that lists them.
+     * Input:  [holdingId]. Output: `Flow<List<InvestmentLotEntity>>`.
+     */
+    @Query(
+        "SELECT * FROM investment_lot WHERE holding_id = :holdingId " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY transacted_on_iso_date, id",
+    )
+    fun observeForHolding(holdingId: String): Flow<List<InvestmentLotEntity>>
+
+    /**
+     * Reads every live lot once, for the export archive.
+     * Result: the profile's undeleted lots. Input: [profileId]. Output: the list.
+     */
+    @Query(
+        "SELECT * FROM investment_lot WHERE profile_id = :profileId " +
+            "AND deleted_at_utc_millis IS NULL",
+    )
+    suspend fun forProfile(profileId: String): List<InvestmentLotEntity>
+
+    /**
+     * Reads one lot.
+     * Why:    an edit must keep the row's original `created_at`, and this is the only way to know
+     *         it — the same reason [InvestmentHoldingDao.find] exists.
+     * Result: the row, or `null` when no live lot has that id.
+     * Input:  [id]. Output: [InvestmentLotEntity]?.
+     */
+    @Query("SELECT * FROM investment_lot WHERE id = :id AND deleted_at_utc_millis IS NULL")
+    suspend fun findRow(id: String): InvestmentLotEntity?
+
+    /**
+     * Soft-deletes one lot.
+     * Result: the number of rows changed, 0 or 1.
+     * Input:  [id]; [deletedAtUtcMillis] — from the injected `Clock`. Output: [Int].
+     */
+    @Query(
+        "UPDATE investment_lot SET deleted_at_utc_millis = :deletedAtUtcMillis, " +
+            "updated_at_utc_millis = :deletedAtUtcMillis WHERE id = :id",
+    )
+    suspend fun softDelete(
+        id: String,
+        deletedAtUtcMillis: Long,
+    ): Int
+
+    /**
+     * Soft-deletes every lot of a holding.
+     * Why:    a deleted holding whose lots stayed live would leave the engine summing cash flows
+     *         for something the user removed. There is no foreign key to cascade through — this
+     *         schema has none, by convention — so the repository calls this beside
+     *         [InvestmentHoldingDao.softDelete], in one transaction.
+     * Result: the number of rows changed.
+     * Input:  [holdingId]; [deletedAtUtcMillis]. Output: [Int].
+     */
+    @Query(
+        "UPDATE investment_lot SET deleted_at_utc_millis = :deletedAtUtcMillis, " +
+            "updated_at_utc_millis = :deletedAtUtcMillis " +
+            "WHERE holding_id = :holdingId AND deleted_at_utc_millis IS NULL",
+    )
+    suspend fun softDeleteForHolding(
+        holdingId: String,
+        deletedAtUtcMillis: Long,
     ): Int
 }

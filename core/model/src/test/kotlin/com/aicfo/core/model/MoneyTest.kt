@@ -87,6 +87,45 @@ class MoneyTest {
         assertThrows(ArithmeticException::class.java) { Money(Long.MAX_VALUE).percentOf(20_000) }
     }
 
+    /**
+     * Input: ₹30,00,000 at 850 bps a year, over 12 periods.
+     * Output: asserts one month of an annual rate is exact — ₹21,250.00, the first month's interest
+     *         on the canonical home loan in `:domain:engines:loan`'s golden file (issue 6.2).
+     */
+    @Test
+    fun `percentOf spreads an annual rate across periods`() {
+        assertEquals(Money(2_125_000), Money(300_000_000).percentOf(850, overPeriods = 12))
+    }
+
+    /**
+     * Input: amounts whose per-period share lands exactly on .5 of a paise.
+     * Output: asserts the period divisor rounds HALF_EVEN too, rather than truncating — the whole
+     *         reason the division happens inside `percentOf` instead of at the call site.
+     */
+    @Test
+    fun `percentOf breaks a per-period tie to even`() {
+        // 6p x 100% / 4 = 1.5p -> 2 (even); 2p x 100% / 4 = 0.5p -> 0 (even).
+        assertEquals(Money(2), Money(6).percentOf(10_000, overPeriods = 4))
+        assertEquals(Money.ZERO, Money(2).percentOf(10_000, overPeriods = 4))
+    }
+
+    /** Input: the default period count. Output: asserts it reproduces the single-argument form. */
+    @Test
+    fun `percentOf over one period is the whole rate`() {
+        assertEquals(Money(10_000).percentOf(150), Money(10_000).percentOf(150, overPeriods = 1))
+    }
+
+    /**
+     * Input: zero and a negative period count.
+     * Output: asserts both are refused — zero would divide by zero, and a negative one would return
+     *         a negative interest charge on a positive balance.
+     */
+    @Test
+    fun `percentOf rejects a non-positive period count`() {
+        assertThrows(IllegalArgumentException::class.java) { Money(100).percentOf(150, overPeriods = 0) }
+        assertThrows(IllegalArgumentException::class.java) { Money(100).percentOf(150, overPeriods = -12) }
+    }
+
     // --- T4, T5, T6 · split and allocate --------------------------------------------------
 
     /** Input: ₹1.00 into 3. Output: asserts the remainder lands on the earliest parts (34/33/33). */

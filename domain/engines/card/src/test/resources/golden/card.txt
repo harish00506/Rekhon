@@ -1,0 +1,298 @@
+Golden file for :domain:engines:card (issue 6.1; FR-ACC-002, RULE-CC-UTIL v1.0, RULE-CC-DUE v1.0).
+
+Every record is one card on one day. Amounts are PAISE (MNY-001), never rupees — a fixture written
+in rupees is a fixture that silently passes at a hundredth of the amount it claims. Ratios are
+integer BASIS POINTS (MNY-002): 3500 is 35%, not 35.
+
+The first block of records walks a single ₹2,00,000 card across a whole billing cycle, one
+significant day at a time — statement day, mid-cycle, the reminder window opening, the due day, the
+day after. That walk is what the acceptance criterion means by "a golden-file test on a billing
+cycle": the alerts are not asserted one at a time in isolation, they are asserted as a sequence, so
+a rule that fires a day early or stops a day late shows up as a diff rather than as a passing test
+somewhere else. The records after it are the edges that walk cannot reach.
+
+Record format — one `# key=value` per line, records separated by a line of `===`:
+
+  today            ISO yyyy-MM-dd, the date being asked about (TIM-002; the engine reads no clock)
+  limit            paise, the sanctioned credit limit — must be positive
+  statement_day    1..31
+  due_day          1..31
+  last_statement   paise, the amount on the most recent statement (optional; absent = none recorded)
+  minimum_due      paise (optional)
+  outstanding      paise, what is owed right now, as a positive magnitude
+  expect_statement ISO date, the cycle's statement date
+  expect_due       ISO date, when that statement must be paid
+  expect_days      whole days from `today` to the due date; negative once it has passed
+  expect_live_bps  live utilisation in bps (outstanding / limit), or `none`
+  expect_stmt_bps  statement utilisation in bps (last_statement / limit), or `none`
+  expect_unbilled  paise, spend since the statement was cut, floored at zero
+  expect_available paise, limit less outstanding, floored at zero
+  expect_alerts    comma-separated CardAlertKind names in order, or `none`
+
+Absent optional keys are unset, not zero — `last_statement` in particular, because a card with no
+statement recorded has no statement utilisation, and rendering that as 0% would tell the user they
+owe nothing (P-03).
+
+The whole file is reproducible to the byte (P-08): every date is an argument and no clock is read.
+
+===
+# label=cycle walk 1 of 5 - statement day, the new cycle opens and 35% is reported
+# today=2026-03-05
+# limit=20000000
+# statement_day=5
+# due_day=25
+# last_statement=7000000
+# minimum_due=350000
+# outstanding=7000000
+# expect_statement=2026-03-05
+# expect_due=2026-03-25
+# expect_days=20
+# expect_live_bps=3500
+# expect_stmt_bps=3500
+# expect_unbilled=0
+# expect_available=13000000
+# expect_alerts=UTILISATION
+
+===
+# label=cycle walk 2 of 5 - mid-cycle, spending has resumed so live and statement diverge
+# today=2026-03-15
+# limit=20000000
+# statement_day=5
+# due_day=25
+# last_statement=7000000
+# minimum_due=350000
+# outstanding=8500000
+# expect_statement=2026-03-05
+# expect_due=2026-03-25
+# expect_days=10
+# expect_live_bps=4250
+# expect_stmt_bps=3500
+# expect_unbilled=1500000
+# expect_available=11500000
+# expect_alerts=UTILISATION
+
+===
+# label=cycle walk 3 of 5 - the reminder window opens exactly three days out
+# today=2026-03-22
+# limit=20000000
+# statement_day=5
+# due_day=25
+# last_statement=7000000
+# minimum_due=350000
+# outstanding=8500000
+# expect_statement=2026-03-05
+# expect_due=2026-03-25
+# expect_days=3
+# expect_live_bps=4250
+# expect_stmt_bps=3500
+# expect_unbilled=1500000
+# expect_available=11500000
+# expect_alerts=DUE_SOON,UTILISATION
+
+===
+# label=cycle walk 4 of 5 - the due day itself, the second reminder
+# today=2026-03-25
+# limit=20000000
+# statement_day=5
+# due_day=25
+# last_statement=7000000
+# minimum_due=350000
+# outstanding=8500000
+# expect_statement=2026-03-05
+# expect_due=2026-03-25
+# expect_days=0
+# expect_live_bps=4250
+# expect_stmt_bps=3500
+# expect_unbilled=1500000
+# expect_available=11500000
+# expect_alerts=DUE_SOON,UTILISATION
+
+===
+# label=cycle walk 5 of 5 - one day late; the reminder stops, the utilisation fact does not
+# today=2026-03-26
+# limit=20000000
+# statement_day=5
+# due_day=25
+# last_statement=7000000
+# minimum_due=350000
+# outstanding=8500000
+# expect_statement=2026-03-05
+# expect_due=2026-03-25
+# expect_days=-1
+# expect_live_bps=4250
+# expect_stmt_bps=3500
+# expect_unbilled=1500000
+# expect_available=11500000
+# expect_alerts=UTILISATION
+
+===
+# label=paid in full inside the window - nothing owed, so nothing is said about the date
+# today=2026-03-24
+# limit=20000000
+# statement_day=5
+# due_day=25
+# last_statement=7000000
+# minimum_due=350000
+# outstanding=0
+# expect_statement=2026-03-05
+# expect_due=2026-03-25
+# expect_days=1
+# expect_live_bps=0
+# expect_stmt_bps=3500
+# expect_unbilled=0
+# expect_available=20000000
+# expect_alerts=UTILISATION
+
+===
+# label=a disciplined card - 20% of the limit, under the line, silent all cycle
+# today=2026-03-24
+# limit=20000000
+# statement_day=5
+# due_day=25
+# last_statement=4000000
+# minimum_due=200000
+# outstanding=4000000
+# expect_statement=2026-03-05
+# expect_due=2026-03-25
+# expect_days=1
+# expect_live_bps=2000
+# expect_stmt_bps=2000
+# expect_unbilled=0
+# expect_available=16000000
+# expect_alerts=DUE_SOON
+
+===
+# label=the boundary - exactly 30% of the limit is inside the band, not below it
+# today=2026-03-15
+# limit=20000000
+# statement_day=5
+# due_day=25
+# last_statement=6000000
+# outstanding=6000000
+# expect_statement=2026-03-05
+# expect_due=2026-03-25
+# expect_days=10
+# expect_live_bps=3000
+# expect_stmt_bps=3000
+# expect_unbilled=0
+# expect_available=14000000
+# expect_alerts=UTILISATION
+
+===
+# label=one paise under the boundary - truncation means never a rupee early
+# today=2026-03-15
+# limit=20000000
+# statement_day=5
+# due_day=25
+# last_statement=5999999
+# outstanding=5999999
+# expect_statement=2026-03-05
+# expect_due=2026-03-25
+# expect_days=10
+# expect_live_bps=2999
+# expect_stmt_bps=2999
+# expect_unbilled=0
+# expect_available=14000001
+# expect_alerts=none
+
+===
+# label=a brand-new card - no statement recorded, so no statement ratio and nothing to alert on
+# today=2026-03-22
+# limit=20000000
+# statement_day=5
+# due_day=25
+# outstanding=9000000
+# expect_statement=2026-03-05
+# expect_due=2026-03-25
+# expect_days=3
+# expect_live_bps=4500
+# expect_stmt_bps=none
+# expect_unbilled=9000000
+# expect_available=11000000
+# expect_alerts=none
+
+===
+# label=a day-31 card in February - the statement clamps to the 28th instead of throwing
+# today=2026-02-20
+# limit=10000000
+# statement_day=31
+# due_day=20
+# last_statement=2000000
+# outstanding=2500000
+# expect_statement=2026-01-31
+# expect_due=2026-02-20
+# expect_days=0
+# expect_live_bps=2500
+# expect_stmt_bps=2000
+# expect_unbilled=500000
+# expect_available=7500000
+# expect_alerts=DUE_SOON
+
+===
+# label=statement on the 25th, pay by the 5th - the payment belongs to the next month
+# today=2026-03-28
+# limit=15000000
+# statement_day=25
+# due_day=5
+# last_statement=9000000
+# minimum_due=450000
+# outstanding=9000000
+# expect_statement=2026-03-25
+# expect_due=2026-04-05
+# expect_days=8
+# expect_live_bps=6000
+# expect_stmt_bps=6000
+# expect_unbilled=0
+# expect_available=6000000
+# expect_alerts=UTILISATION
+
+===
+# label=year rollover - a December statement paid in January
+# today=2026-12-20
+# limit=10000000
+# statement_day=15
+# due_day=5
+# last_statement=3500000
+# outstanding=3500000
+# expect_statement=2026-12-15
+# expect_due=2027-01-05
+# expect_days=16
+# expect_live_bps=3500
+# expect_stmt_bps=3500
+# expect_unbilled=0
+# expect_available=6500000
+# expect_alerts=UTILISATION
+
+===
+# label=over the limit - available floors at zero and the ratio passes 100%
+# today=2026-03-15
+# limit=10000000
+# statement_day=5
+# due_day=25
+# last_statement=10500000
+# outstanding=11000000
+# expect_statement=2026-03-05
+# expect_due=2026-03-25
+# expect_days=10
+# expect_live_bps=11000
+# expect_stmt_bps=10500
+# expect_unbilled=500000
+# expect_available=0
+# expect_alerts=UTILISATION
+
+===
+# label=paid below the last statement - unbilled floors at zero rather than reading as negative spend
+# today=2026-03-15
+# limit=20000000
+# statement_day=5
+# due_day=25
+# last_statement=7000000
+# outstanding=1000000
+# expect_statement=2026-03-05
+# expect_due=2026-03-25
+# expect_days=10
+# expect_live_bps=500
+# expect_stmt_bps=3500
+# expect_unbilled=0
+# expect_available=19000000
+# expect_alerts=UTILISATION

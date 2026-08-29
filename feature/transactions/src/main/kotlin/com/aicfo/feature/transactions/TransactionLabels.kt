@@ -2,13 +2,12 @@ package com.aicfo.feature.transactions
 
 import androidx.annotation.StringRes
 import com.aicfo.core.common.AppError
+import com.aicfo.core.model.DateFormatter
 import com.aicfo.core.model.TransactionSource
 import com.aicfo.core.model.TransactionType
 import com.aicfo.domain.engines.recurring.Cadence
-import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
-import java.time.format.DateTimeParseException
 import java.time.format.FormatStyle
 
 /**
@@ -58,12 +57,7 @@ internal object TransactionLabels {
      *         — a header showing the raw value is better than a list that crashes on one bad row.
      * Input:  [isoDate] — ISO `yyyy-MM-dd`. Output: [String].
      */
-    fun dayHeader(isoDate: String): String =
-        try {
-            LocalDate.parse(isoDate).format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM))
-        } catch (_: DateTimeParseException) {
-            isoDate
-        }
+    fun dayHeader(isoDate: String): String = DateFormatter.day(isoDate)
 
     /**
      * Renders a time of day (FR-TXN-001's "date-time").

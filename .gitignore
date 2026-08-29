@@ -18,3 +18,7 @@ captures/
 
 # Kotlin compiler working directory and crash logs (governance audit G-23).
 .kotlin/
+
+# MSYS/Git Bash writes these when a native tool crashes. They are transient
+# debris from the developer's shell, never part of a build.
+*.stackdump

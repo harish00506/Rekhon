@@ -1,5 +1,7 @@
 package com.aicfo.feature.transactions
 
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -15,8 +17,11 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -24,7 +29,9 @@ import androidx.compose.ui.semantics.semantics
 import com.aicfo.core.designsystem.component.CfoAmountText
 import com.aicfo.core.designsystem.component.CfoSecondaryButton
 import com.aicfo.core.designsystem.theme.CfoDimens
+import com.aicfo.core.model.CategoryNature
 import com.aicfo.core.model.Transaction
+import com.aicfo.domain.engines.nature.NatureVerdict
 
 /*
  * Provenance on screen: the source filter and the detail sheet (issue 3.5; FR-TXN-009, P-02).
@@ -119,6 +126,10 @@ internal fun TransactionDetailSheet(
         TransactionDetailContent(
             transaction = transaction,
             accountNames = uiState.accountNames,
+            receipt = uiState.detailReceipt,
+            nature = uiState.detailNature,
+            onDeleteReceipt = { id -> onEvent(TransactionsEvent.ReceiptDeleted(id)) },
+            onOverrideNature = { chosen -> onEvent(TransactionsEvent.NatureOverridden(chosen)) },
             onClose = { onEvent(TransactionsEvent.DetailDismissed) },
         )
     }
@@ -134,15 +145,24 @@ internal fun TransactionDetailSheet(
  *
  *         Optional fields are omitted rather than rendered empty (FR-TXN-001 makes every field but
  *         the amount optional), so the sheet is as short as the row is simple.
- * Result: the composition. Input: [transaction]; [accountNames] — id → display name; [onClose].
+ * Result: the composition. Input: [transaction]; [accountNames] — id → display name; [receipt] —
+ *         the decrypted image, or `null` for a row that has none (issue 3.8); [onDeleteReceipt] —
+ *         FR-OCR-005's delete, defaulted to a no-op so a preview or a screenshot test needs neither;
+ *         [onClose].
  * Output: none.
  * Changelog: 2026-08-03 — Created for issue 3.5.
+ *            2026-08-06 — Issue 3.8: the receipt, and the action that deletes it (FR-OCR-005).
  */
+@Suppress("LongParameterList")
 @Composable
 internal fun TransactionDetailContent(
     transaction: Transaction,
     accountNames: Map<String, String>,
     onClose: () -> Unit,
+    receipt: ReceiptImage? = null,
+    nature: NatureVerdict? = null,
+    onDeleteReceipt: (String) -> Unit = {},
+    onOverrideNature: (CategoryNature?) -> Unit = {},
 ) {
     Column(
         modifier =
@@ -178,7 +198,59 @@ internal fun TransactionDetailContent(
             value = stringResource(TransactionLabels.sourceName(transaction.source)),
         )
 
+        // Issue 4.3: §8.3's "what did this money become?", above the receipt because it is a
+        // property of the transaction rather than an attachment to it.
+        NatureSection(verdict = nature, onOverride = onOverrideNature)
+
+        ReceiptSection(receipt = receipt, onDelete = onDeleteReceipt)
+
         CfoSecondaryButton(text = stringResource(R.string.transactions_detail_close), onClick = onClose)
+    }
+}
+
+/**
+ * The receipt attached to this transaction, and the way to be rid of it (issue 3.8; FR-OCR-005).
+ *
+ * Why:    FR-OCR-005's second half — *"user can delete image while keeping the transaction"* — needs
+ *         somewhere the user can actually do it, and this sheet is where a saved transaction is
+ *         already looked at. **The image is shown rather than merely named**, because a delete
+ *         button beside the words "Receipt attached" asks someone to destroy something they cannot
+ *         see.
+ *
+ *         Renders nothing at all when there is no receipt, which is every hand-typed row — the same
+ *         choice `OptionalDetailFields` makes, for the same reason: a blank "Receipt" line reads as
+ *         data the app lost.
+ * Result: the composition, or nothing. Input: [receipt] — the decrypted image; [onDelete] — takes
+ *         the attachment id, so the action names exactly what it removes. Output: none.
+ * Changelog: 2026-08-06 — Created for issue 3.8.
+ */
+@Composable
+private fun ReceiptSection(
+    receipt: ReceiptImage?,
+    onDelete: (String) -> Unit,
+) {
+    if (receipt == null) return
+    // `remember` keyed on the identity of the bytes: decoding a JPEG on every recomposition of an
+    // open sheet would drop frames while the user scrolled it.
+    val bitmap =
+        remember(receipt) {
+            BitmapFactory.decodeByteArray(receipt.bytes, 0, receipt.bytes.size)?.asImageBitmap()
+        } ?: return
+    Column(verticalArrangement = Arrangement.spacedBy(CfoDimens.spaceXs)) {
+        Text(
+            text = stringResource(R.string.transactions_detail_receipt),
+            style = MaterialTheme.typography.labelLarge,
+        )
+        Image(
+            bitmap = bitmap,
+            contentDescription = stringResource(R.string.transactions_detail_receipt_image),
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        CfoSecondaryButton(
+            text = stringResource(R.string.transactions_detail_receipt_delete),
+            onClick = { onDelete(receipt.attachmentId) },
+        )
     }
 }
 

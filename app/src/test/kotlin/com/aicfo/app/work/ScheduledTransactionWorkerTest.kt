@@ -10,17 +10,22 @@ import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
 import com.aicfo.core.crypto.SessionLock
 import com.aicfo.core.model.Category
+import com.aicfo.core.model.CategoryNature
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.Tag
 import com.aicfo.core.model.Transaction
 import com.aicfo.core.model.TransactionSource
 import com.aicfo.core.model.Transfer
+import com.aicfo.data.repository.CashFlowSummary
 import com.aicfo.data.repository.FilteredTransaction
 import com.aicfo.data.repository.SplitDraft
 import com.aicfo.data.repository.TransactionDraft
 import com.aicfo.data.repository.TransactionFilter
 import com.aicfo.data.repository.TransactionRepository
 import com.aicfo.data.repository.TransferDraft
+import com.aicfo.domain.engines.classification.CategorySuggestion
+import com.aicfo.domain.engines.nature.NatureBreakdown
+import com.aicfo.domain.engines.nature.NatureVerdict
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
@@ -154,11 +159,27 @@ private class RecordingTransactionRepository : TransactionRepository {
 
     override fun observeDayTotals(filter: TransactionFilter): Flow<Map<String, Money>> = flowOf(emptyMap())
 
+    override fun observeRecent(limit: Int): Flow<List<FilteredTransaction>> = flowOf(emptyList())
+
+    override fun observeMonthCashFlow(): Flow<CashFlowSummary> =
+        flowOf(CashFlowSummary(income = Money.ZERO, expense = Money.ZERO, net = Money.ZERO))
+
     override fun observeSources(): Flow<List<TransactionSource>> = flowOf(emptyList())
 
     override fun observeTags(): Flow<List<Tag>> = flowOf(emptyList())
 
     override fun observeCategories(): Flow<List<Category>> = flowOf(emptyList())
+
+    override suspend fun suggestCategory(merchant: String): Result<CategorySuggestion?, AppError> = unsupported()
+
+    override suspend fun natureOf(transactionId: String): Result<NatureVerdict, AppError> = unsupported()
+
+    override suspend fun setNature(
+        transactionId: String,
+        nature: CategoryNature?,
+    ): Result<Unit, AppError> = unsupported()
+
+    override fun observeNatureBreakdown(): Flow<NatureBreakdown> = unsupported()
 
     override suspend fun create(draft: TransactionDraft): Result<Transaction, AppError> = unsupported()
 

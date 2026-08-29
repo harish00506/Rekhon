@@ -5,9 +5,15 @@
     "what": "Seed rows for the rules_knowledge_base table (§29.1). RuleEngine.evaluate(ruleId, FeatureSnapshot) -> RuleResult{pass|warn|fail, measuredValue, threshold, evidence, ruleId, version}.",
     "result": "Changing a number here changes the app's advice everywhere that rule is cited, reproducibly and with an audit trail.",
     "source_section": "§29",
-    "version": "1.7.0",
+    "version": "1.13.0",
     "changelog": [
-      "2026-07-17 — Created from SRS v1.7 §29.2–§29.5; defaults are the floor, refined by user overrides at runtime."
+      "2026-07-17 — Created from SRS v1.7 §29.2–§29.5; defaults are the floor, refined by user overrides at runtime.",
+      "2026-08-07 — Added RULE-SMS-PARSE for issue 3.9's opt-in, on-device bank-alert parser (§18, §23).",
+      "2026-08-11 — Added RULE-BUD-SUGGEST and RULE-BUD-PACE for issue 4.4's per-category budgets (§5.5, FR-BUD-002, FR-BUD-003).",
+      "2026-08-13 — Added RULE-BUD-ALERT for issue 4.5's 80%/100% budget alerts (§5.5, FR-BUD-004). Minted as a NEW row at v1.0 rather than added to RULE-BUD-PACE's params: bumping a shipped row's version is ADR-0017's trigger 3, which would force the runtime rules loader before this issue could compile.",
+      "2026-08-14 — Added RULE-BUD-REVIEW for issue 4.6's monthly budget review (§5.5, FR-BUD-*). A new row again, for the same trigger-3 reason and on the same merits: materiality ('is this gap worth mentioning?') is a different question from the median ('what should this cost?'), and a review result cites both rows.",
+      "2026-08-16 — Added RULE-STS for issue 5.2's Safe-to-Spend card (§5.2, §14, AI-STS). The first row in this file that defines a headline figure rather than a threshold to compare one against: its params fix the income basis, the horizon and the buffer, and the engine's arithmetic is fully determined by them. `buffer_pct` is the only genuinely new number here — RULE-IDLE-CASH has named a 'Safe-to-Spend needs + buffer' since this file was created, so the term was already the rulebook's, without a value.",
+      "2026-08-17 — Added RULE-CC-DUE for issue 6.1's credit-card payment reminder (FR-ACC-002, §17.1). RULE-CC-UTIL was deliberately NOT touched: it already named `card_alerts` in consumed_by, so the utilisation alert reads its shipped 30% threshold exactly as it stands, and only the date question needed a row. A new row again for ADR-0017's trigger 3, and on the merits too - scoring how much of a limit is used and deciding when to wake someone about a date are different jobs with different severities and, per §17.1, different notification channels."
     ],
     "schema": {
       "rule_id": "stable public ID cited in evidence — never rename, deprecate instead",
@@ -36,6 +42,77 @@
       "rationale": "Simple, memorable budget frame; flexes so high metro rents do not force a permanent fail.",
       "source_note": "Classic 50/30/20; India metro flex added.",
       "consumed_by": ["budget_suggester", "AI-FHS.spending_discipline"],
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "rule_id": "RULE-BUD-SUGGEST",
+      "domain": "saving",
+      "name": "Suggest a per-category budget from the median of the last 3 months, adjusted by the seasonal prior for the target month; offered, never applied.",
+      "formula_id": "median_seasonal_budget",
+      "params_json": { "lookback_months": 3, "min_months_required": 2, "seasonality_enabled": true, "shrinkage_denominator_months": 24, "round_to_minor": 10000 },
+      "severity": "info",
+      "rationale": "The median ignores the one-off ticket that would drag a mean upward, so a suggestion reflects a typical month rather than the worst one. Seasonality is what stops a December suggestion built from monsoon months reading as a cut. Suggested numbers are rounded to the nearest INR 100 because a budget is a decision a person has to remember, not a measurement.",
+      "source_note": "FR-BUD-002 (median + seasonality adjustment over 3 months of history). Seasonal priors and the shrinkage rule come from ai/knowledge/calendar-seasonality.json; the denominator mirrors that file's k = months_observed/24.",
+      "consumed_by": ["budget_suggester", "AI-BUD.suggest"],
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "rule_id": "RULE-BUD-PACE",
+      "domain": "saving",
+      "name": "Budget pace: safe pace is the budget spread evenly across the month; the projected end-of-month figure extrapolates the run rate to date, and is withheld until 3 days have elapsed.",
+      "formula_id": "budget_pace",
+      "params_json": { "projection_basis": "run_rate", "min_elapsed_days_for_projection": 3 },
+      "severity": "info",
+      "rationale": "Spent-vs-remaining alone cannot tell an on-track month from one that will overshoot on the 20th; pace can. The elapsed-days floor exists because a run rate taken on day 1 turns one grocery run into an implausible month and would train the user to ignore the figure.",
+      "source_note": "FR-BUD-003 (spent, remaining, daily pace vs safe pace, projected end-of-month). The 80%/100% alert thresholds are deliberately NOT here — they live on RULE-BUD-ALERT, permanently: pace answers 'am I on track?', alerting answers 'should the user be interrupted?', and the two are edited by different people for different reasons. See ADR-0019.",
+      "consumed_by": ["AI-BUD.status", "AI-FHS.spending_discipline"],
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "rule_id": "RULE-BUD-ALERT",
+      "domain": "saving",
+      "name": "Budget threshold bands: warn once when spending reaches 80% of a category budget, and once again when it reaches 100%; at most one notification per band per budget per month.",
+      "formula_id": "budget_threshold_bands",
+      "params_json": { "warn_pct": 80, "exceeded_pct": 100, "notify_once_per_band_per_month": true },
+      "severity": "warn",
+      "rationale": "80% is early enough that the rest of the month can still be changed and late enough that the warning is not noise; 100% is the fact that the plan has been spent. One notification per band per month is the difference between an alert and a nag — a user who is told every time they buy coffee after the 80% mark learns to dismiss the channel, which costs them the 100% message that mattered.",
+      "source_note": "FR-BUD-004 (alerts at 80% and 100% of a category budget). Split from RULE-BUD-PACE deliberately; see ADR-0019. The once-per-band guarantee is enforced structurally by a UNIQUE(profile_id, budget_id, month_start, band) index on `budget_alert`, not by this flag alone.",
+      "consumed_by": ["budget_planner", "AI-BUD.alert", "AI-NTF"],
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "rule_id": "RULE-BUD-REVIEW",
+      "domain": "saving",
+      "name": "Monthly budget review: for the last closed month, compare each budgeted category's plan against its actual, and propose an adjustment only where the variance is material; the proposed amount is RULE-BUD-SUGGEST's median. Reviewed once per month.",
+      "formula_id": "budget_month_review",
+      "params_json": { "min_variance_pct": 15, "proposal_basis": "median", "review_once_per_month": true },
+      "severity": "info",
+      "rationale": "A budget nobody revisits becomes a number the user set once and quietly stopped believing, so the review exists to reopen the decision with evidence. The 15% floor is what keeps it worth reading: below that the gap is usually timing rather than habit — a grocery run landing on the 1st instead of the 31st moves a month by more than 10% without anything about the household changing — and a screen that proposes a change for noise teaches the user that its proposals are noise. Materiality is a different question from 'what should this cost', which is why it is a different row: this one decides whether to speak, RULE-BUD-SUGGEST decides what to say.",
+      "source_note": "FR-BUD-* / §5.5 (month-end summary of budget vs actual with proposed next-month adjustments). Minted as a new row rather than added to RULE-BUD-SUGGEST's params for the reason ADR-0019 records: a params change bumps a shipped row's version, which is ADR-0017's trigger 3. The proposed amount is not computed here — it is RULE-BUD-SUGGEST's median, and a review result cites both rows. `review_once_per_month` documents the intent only; the guarantee is a UNIQUE(profile_id, month_start) index on `budget_review`, exactly as RULE-BUD-ALERT's flag is documentation and its index is the mechanism.",
+      "consumed_by": ["budget_planner", "AI-BUD.review"],
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "rule_id": "RULE-STS",
+      "domain": "saving",
+      "name": "Safe-to-Spend for the current month: income for the period, less a safety buffer, less what has already been spent on needs and wants, less the bills and scheduled payments still due before month end, less the unmet part of the month's savings envelope.",
+      "formula_id": "safe_to_spend",
+      "params_json": {
+        "income_basis": "budget_envelopes_then_actual",
+        "horizon": "month_end",
+        "buffer_pct": 5,
+        "include_goal_contributions": true,
+        "floor_at_zero": false
+      },
+      "severity": "info",
+      "rationale": "Safe-to-Spend answers 'what can I spend today without breaking the month', so every term is something the month has already claimed. The income basis is the declared budget rather than the ledger's month-to-date income because a figure that reads deeply negative for twenty-seven days and then jumps on payday is not a figure anyone can plan against — it measures the salary calendar, not the user's position; the actual income is the fallback only for a profile that never declared one. The buffer exists because the deductions are the commitments the app knows about, and the ones it does not know about are exactly the ones that ruin a month; holding back a twentieth of income is small enough not to make the headline useless and large enough to absorb one ordinary surprise. It is deliberately not floored at zero: a user who is already past the plan needs to be told by how much, and a clamped zero would read identically to a month with nothing left and nothing wrong.",
+      "source_note": "§5.2 / §14 (AI-STS): income minus commitments, bills and goal contributions across the period. `income_basis` and `horizon` are stated as params rather than assumed in code so the engine's contract is readable from this row alone. `include_goal_contributions` is on because §5.2 names goal contributions as a term; until the goals engine (issue 7.1) exists the contribution is the quick-setup INVEST envelope net of what has already been invested this month — ENGINE.md records that substitution as a stated limitation. RULE-IDLE-CASH already refers to a 'Safe-to-Spend needs + buffer', so the buffer is this rulebook's own concept; `buffer_pct` gives it a value for the first time.",
+      "consumed_by": ["AI-STS", "AI-PA.affordability", "AI-FHS"],
       "enabled": true,
       "version": "1.0"
     },
@@ -114,6 +191,32 @@
       "rationale": "Subscriptions and bills are the spending a user forgets they authorised; naming them is the precondition for forecasting and for cancelling them. Proposes only - the user confirms (P-07, FR-TXN-006).",
       "source_note": "FR-TXN-006 (SRS 5.3). Tolerances chosen so a bill that moves for a weekend or a short month still matches.",
       "consumed_by": ["recurring_detector"],
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "rule_id": "RULE-RECEIPT-PARSE",
+      "domain": "purchase",
+      "name": "Read a receipt's total, date, merchant and GST from recognised text, and flag a field below the confidence floor for review.",
+      "formula_id": "receipt_field_extract",
+      "params_json": { "total_keywords": ["total", "grand", "amount", "payable"], "tax_keywords": ["gst", "cgst", "sgst"], "low_confidence_bps": 6000, "merchant_top_region_bps": 3000, "same_row_bps": 200, "duplicate_amount_tolerance_pct": 1, "duplicate_date_tolerance_days": 1 },
+      "severity": "info",
+      "rationale": "A scanned receipt is a proposal, not a fact: the parser says what it read and how sure it is, and the user corrects it before anything is saved (P-02, P-07, FR-OCR-003/004). The duplicate band is what stops one purchase being recorded twice when the bank SMS already logged it (FR-OCR-006).",
+      "source_note": "FR-OCR-003..006 and SRS 18.1's pipeline. Keywords are the ones printed on Indian retail receipts; the confidence floor is where a field is worth flagging rather than silently accepting. same_row_bps is how close two recognised blocks must sit vertically to be the same printed row, which is how a label in one column is paired with its amount in another.",
+      "consumed_by": ["receipt_parser"],
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "rule_id": "RULE-SMS-PARSE",
+      "domain": "purchase",
+      "name": "Read an amount, a direction and a counterparty out of a bank alert SMS, and propose it as a draft only when the message clears every false-positive gate.",
+      "formula_id": "sms_transaction_parse",
+      "params_json": { "debit_keywords": ["debited", "spent", "withdrawn", "paid", "purchase", "sent"], "credit_keywords": ["credited", "received", "deposited", "refund"], "ignore_keywords": ["otp", "one time password", "will be debited", "will be credited", "will be deducted", "pre-approved", "loan offer", "apply now", "offer ends", "congratulations", "declined", "failed", "unsuccessful"], "account_marker_keywords": ["a/c", "acct", "account", "ending", "xx"], "balance_keywords": ["bal", "balance", "limit", "lmt", "due", "outstanding"], "reject_numeric_senders": true, "low_confidence_bps": 6000, "duplicate_amount_tolerance_pct": 1, "duplicate_date_tolerance_days": 1 },
+      "severity": "info",
+      "rationale": "A bank alert is evidence that money moved, but the inbox it arrives in is full of messages that merely mention money - OTPs, loan offers, balance summaries, reminders about a payment due next week, alerts about a payment that was declined. A missed alert costs the user one manual entry; a false positive silently invents a transaction they never made, so every gate here exists to refuse rather than to guess. What survives is a proposal the user confirms (P-07, P-02, FR-TXN-009).",
+      "source_note": "SRS 18, 23; P-01. Every keyword here is matched as a WHOLE WORD, not as a substring - which is what lets 'bal' cover 'Avl Bal', 'Bal:' and 'A/c Bal' in one row without a merchant named GLOBAL turning its own amount into a balance, and what stops 'paid' firing inside 'unpaid'. debit/credit keywords and the account markers are the wording Indian bank, card and UPI alerts actually print; 'sent' is how every UPI app words an outgoing payment. ignore_keywords carry the refusals: 'otp' because an OTP message quotes the amount it is authorising, 'will be debited' because a mandate reminder is not a debit, and 'declined'/'failed' because a rejected payment alert quotes the amount that did NOT move. balance_keywords stop 'Avl Bal Rs.45,320' or a card's 'Avl Lmt' being read as the amount spent. reject_numeric_senders because a bank sends from an alphabetic DLT header, never from a ten-digit personal number. The duplicate band matches RULE-RECEIPT-PARSE so an alert for a receipt already scanned offers a merge (FR-OCR-006).",
+      "consumed_by": ["sms_parser"],
       "enabled": true,
       "version": "1.0"
     },
@@ -272,6 +375,23 @@
       "rationale": "Revolving card debt (36-42% APR) is the most expensive money in the system.",
       "source_note": "Credit discipline.",
       "consumed_by": ["AI-FHS.debt_pillar", "card_alerts"],
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "rule_id": "RULE-CC-DUE",
+      "domain": "debt",
+      "name": "Remind about a credit-card payment 3 days before the due date, and again on the due day; only when something is actually owed, and at most once per reminder per billing cycle.",
+      "formula_id": "cc_due_reminder",
+      "params_json": {
+        "remind_days_before": 3,
+        "remind_on_due_day": true,
+        "skip_when_nothing_due": true
+      },
+      "severity": "warn",
+      "rationale": "A missed card payment is the most expensive ordinary mistake a person can make with this app open: a late fee, interest on the whole statement at 36-42% APR, and a credit-report mark that outlasts the debt. Three days is the smallest window that still leaves time to move money on a working day; the due-day reminder exists because the three-day one can be dismissed on a Friday and forgotten by Monday. Both are suppressed when nothing is owed, because a reminder to pay a zero balance is exactly the notification that teaches a user to swipe this channel away - and this is the channel that must still work in eleven months.",
+      "source_note": "FR-ACC-002 (statement day, due day) and SRS 17.1, which classes 'card due with amount' as a Critical money event: exempt from NTF-001's daily budget and allowed to bypass quiet hours. Minted as a NEW row rather than added to RULE-CC-UTIL's params, for the reason RULE-BUD-ALERT records: bumping a shipped row's version is ADR-0017's trigger 3. It is also the honest split - RULE-CC-UTIL scores how much of a limit is used (AI-FHS), while this row decides when to interrupt someone about a date. The once-per-cycle guarantee is enforced structurally by a UNIQUE(profile_id, account_id, cycle_start_iso_date, kind) index on card_alert, not by these params.",
+      "consumed_by": ["card_alerts", "AI-NTF"],
       "enabled": true,
       "version": "1.0"
     },

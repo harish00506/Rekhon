@@ -10,6 +10,7 @@ import com.aicfo.core.common.Result
 import com.aicfo.core.model.Account
 import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Category
+import com.aicfo.core.model.CategoryNature
 import com.aicfo.core.model.EngineProvenance
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.Reconciliation
@@ -21,13 +22,24 @@ import com.aicfo.core.model.TransactionType
 import com.aicfo.core.model.Transfer
 import com.aicfo.data.repository.AccountDraft
 import com.aicfo.data.repository.AccountRepository
+import com.aicfo.data.repository.CashFlowSummary
 import com.aicfo.data.repository.FilteredTransaction
+import com.aicfo.data.repository.ReceiptAttachment
+import com.aicfo.data.repository.ReceiptRepository
+import com.aicfo.data.repository.ReceiptScan
 import com.aicfo.data.repository.RecurringRepository
+import com.aicfo.data.repository.SmsAccess
+import com.aicfo.data.repository.SmsDraft
+import com.aicfo.data.repository.SmsRepository
 import com.aicfo.data.repository.SplitDraft
 import com.aicfo.data.repository.TransactionDraft
 import com.aicfo.data.repository.TransactionFilter
 import com.aicfo.data.repository.TransactionRepository
 import com.aicfo.data.repository.TransferDraft
+import com.aicfo.domain.engines.classification.CategorySuggestion
+import com.aicfo.domain.engines.nature.NatureBreakdown
+import com.aicfo.domain.engines.nature.NatureVerdict
+import com.aicfo.domain.engines.receipt.ReceiptFields
 import com.aicfo.domain.engines.recurring.Cadence
 import com.aicfo.domain.engines.recurring.RecurringOccurrence
 import com.aicfo.domain.engines.recurring.RecurringRules
@@ -35,6 +47,7 @@ import com.aicfo.domain.engines.recurring.RecurringSeries
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
+import java.time.LocalDate
 
 /**
  * An in-memory [TransactionRepository] for the ViewModel tests (issue 3.1).
@@ -103,9 +116,15 @@ internal class FakeTransactionRepository(
     /**
      * Seeds the **scheduled** list (issue 3.4; FR-TXN-010).
      *
-     * Separate from [setTransactions] because the real store keeps them separate: `observeRecent`
-     * stops at today and `observeUpcoming` starts tomorrow, so a fake that served one list to both
-     * would let a ViewModel test pass while the screen showed a scheduled payment among its actuals.
+     * Separate from [setTransactions] because the real store keeps them separate: the real
+     * `observeFiltered`'s unfiltered case stops at today and `observeUpcoming` starts tomorrow, so a
+     * fake that served one list to both would let a ViewModel test pass while the screen showed a
+     * scheduled payment among its actuals.
+     *
+     * **This fake does not enforce that bound itself, on this list or on [observeRecent] below** —
+     * here, unlike the real repository, "what's recent" and "what's upcoming" are exactly what a
+     * test chooses to seed into each list, not something a date comparison decides. A test that
+     * wants to prove the *real* boundary belongs in `TransactionRepositoryTest`, against real dates.
      *
      * Input: [seed] — the future-dated transactions to hold. Output: none.
      */
@@ -172,6 +191,37 @@ internal class FakeTransactionRepository(
                 .mapValues { (_, rows) -> rows.fold(Money.ZERO) { running, row -> running + row.amount } }
         }
 
+    /**
+     * Sorted and bounded by [limit] — **not date-bounded** (issue 5.1 review, 2026-08-16). The real
+     * `TransactionRepository.observeRecent` excludes future-dated rows; this fake does not, matching
+     * every other read here — a test that seeds a future-dated row into [setTransactions] and needs
+     * it excluded should use [setUpcoming] instead, or assert the real bound in
+     * `TransactionRepositoryTest`.
+     */
+    override fun observeRecent(limit: Int): Flow<List<FilteredTransaction>> =
+        transactions.map { list ->
+            failOnObserve?.let { throw IllegalStateException(it.code) }
+            list.sortedByDescending { it.occurredAtUtcMillis }.take(limit).map { FilteredTransaction(it) }
+        }
+
+    /**
+     * Sums whatever [setTransactions] holds — **not month-bounded** (issue 5.1 review, 2026-08-16),
+     * for the same reason [observeRecent] above isn't: the real `MonthWindow`-bound query is
+     * `TransactionRepositoryTest`'s to prove, not this fake's to re-derive.
+     */
+    override fun observeMonthCashFlow(): Flow<CashFlowSummary> =
+        transactions.map { list ->
+            failOnObserve?.let { throw IllegalStateException(it.code) }
+            val income =
+                list.filter { it.type == TransactionType.INCOME }
+                    .fold(Money.ZERO) { running, row -> running + row.amount }
+            val expenseSigned =
+                list.filter { it.type == TransactionType.EXPENSE }
+                    .fold(Money.ZERO) { running, row -> running + row.amount }
+            val expense = Money.ZERO - expenseSigned
+            CashFlowSummary(income = income, expense = expense, net = income - expense)
+        }
+
     override fun observeSources(): Flow<List<TransactionSource>> =
         transactions.map { list ->
             failOnObserve?.let { throw IllegalStateException(it.code) }
@@ -234,6 +284,57 @@ internal class FakeTransactionRepository(
             failOnObserve?.let { throw IllegalStateException(it.code) }
             list
         }
+
+    /**
+     * What [suggestCategory] should answer, keyed by the merchant asked about (issue 4.2).
+     *
+     * Why:    a map rather than a single value, because the assertions that matter are about which
+     *         merchant was asked about — a debounce that fired on a stale keystroke would return the
+     *         *right* suggestion for the *wrong* merchant and look correct in a one-value fake.
+     * Result: an unlisted merchant answers `Ok(null)`, which is Stage 1's ordinary "I don't know".
+     */
+    val suggestions: MutableMap<String, CategorySuggestion> = mutableMapOf()
+
+    /** Every merchant [suggestCategory] was asked about, in order (issue 4.2). */
+    val suggestionQueries: MutableList<String> = mutableListOf()
+
+    override suspend fun suggestCategory(merchant: String): Result<CategorySuggestion?, AppError> {
+        suggestionQueries += merchant
+        failWith?.let { return Err(it) }
+        return Ok(suggestions[merchant])
+    }
+
+    /**
+     * What [natureOf] should answer, keyed by transaction id (issue 4.3).
+     *
+     * An unlisted id answers `Err(NotFound)` rather than a plausible nature: a test that opened a
+     * sheet for a row it never classified should say so loudly, not render a Want.
+     */
+    val natures: MutableMap<String, NatureVerdict> = mutableMapOf()
+
+    /** Every `(id, nature)` pair passed to [setNature], in order — `null` meaning "withdrawn". */
+    val natureOverrides: MutableList<Pair<String, CategoryNature?>> = mutableListOf()
+
+    override suspend fun natureOf(transactionId: String): Result<NatureVerdict, AppError> =
+        natures[transactionId]?.let { Ok(it) } ?: Err(AppError.NotFound)
+
+    override suspend fun setNature(
+        transactionId: String,
+        nature: CategoryNature?,
+    ): Result<Unit, AppError> {
+        natureOverrides += transactionId to nature
+        failWith?.let { return Err(it) }
+        // Mirrors the real store closely enough for a ViewModel test: the next read reflects the
+        // write, which is what lets a test assert the sheet **re-reads** rather than assuming the
+        // answer. A withdrawal (`null`) leaves the derived verdict alone, exactly as the real store
+        // does — what the rules then say is the repository's to decide, not this fake's.
+        natures[transactionId]?.let { existing ->
+            if (nature != null) natures[transactionId] = existing.copy(nature = nature)
+        }
+        return Ok(Unit)
+    }
+
+    override fun observeNatureBreakdown(): Flow<NatureBreakdown> = MutableStateFlow(NatureBreakdown())
 
     override suspend fun create(draft: TransactionDraft): Result<Transaction, AppError> {
         created += draft
@@ -620,3 +721,232 @@ internal fun series(
                 evidence = listOf(RecurringRules.SERIES_MATCH),
             ),
     )
+
+/**
+ * A [ReceiptRepository] whose scans and attachments the test decides (issue 3.8; FR-OCR-*).
+ *
+ * Why:  the real one needs ML Kit, a Keystore and a camera. Faking it is what lets the review
+ *       screen's two rules — FR-OCR-004's save gate and FR-OCR-006's merge offer — be asserted on
+ *       the JVM, which is where the requirements can actually be pinned.
+ * What: an injectable scan result, a recorded save/merge/delete, and one attachment per transaction.
+ * Result: every branch of the review screen and the detail sheet's receipt row is reachable.
+ * Changelog: 2026-08-06 — Created for issue 3.8.
+ *
+ * **[saved] records the draft, not just the fact of a save.** The claim worth checking is what the
+ * ViewModel *hands over* — a screen that saved the parser's reading rather than the user's
+ * correction would be a real bug that recording only a count would hide.
+ *
+ * Input:  [failWith] — when non-null, every operation returns `Err` with it.
+ * Output: a fake repository.
+ */
+internal class FakeReceiptRepository(
+    var failWith: AppError? = null,
+) : ReceiptRepository {
+    /** What the next [scan] returns. */
+    var nextScan: ReceiptScan = ReceiptScan(emptyFields(), emptyList())
+
+    /** What [findDuplicates] returns. */
+    var duplicates: List<Transaction> = emptyList()
+
+    /** Every draft passed to [save], in order, with the bytes it was given. */
+    val saved: MutableList<Pair<TransactionDraft, ByteArray?>> = mutableListOf()
+
+    /** Every transaction id passed to [mergeInto], in order. */
+    val merged: MutableList<String> = mutableListOf()
+
+    /** Every attachment id passed to [deleteImage], in order. */
+    val deleted: MutableList<String> = mutableListOf()
+
+    private val attachments = MutableStateFlow<Map<String, ReceiptAttachment>>(emptyMap())
+
+    /** Result: the transaction now has a receipt. Input: [transactionId]; [attachment]. Output: none. */
+    fun attach(
+        transactionId: String,
+        attachment: ReceiptAttachment,
+    ) {
+        attachments.value = attachments.value + (transactionId to attachment)
+    }
+
+    override suspend fun scan(bytes: ByteArray): Result<ReceiptScan, AppError> {
+        failWith?.let { return Err(it) }
+        return Ok(nextScan)
+    }
+
+    override suspend fun findDuplicates(
+        amount: Money,
+        bookedOn: LocalDate,
+    ): Result<List<Transaction>, AppError> {
+        failWith?.let { return Err(it) }
+        return Ok(duplicates)
+    }
+
+    override suspend fun save(
+        draft: TransactionDraft,
+        imageBytes: ByteArray?,
+    ): Result<Transaction, AppError> {
+        failWith?.let { return Err(it) }
+        saved += draft to imageBytes
+        return Ok(
+            Transaction(
+                id = "txn:receipt",
+                accountId = draft.accountId,
+                amount = draft.amount,
+                occurredAtUtcMillis = 0L,
+                bookedOn = draft.bookedOn?.toString().orEmpty(),
+                categoryId = draft.categoryId,
+                merchant = draft.merchant,
+                note = draft.note,
+                source = TransactionSource.OCR,
+                type = TransactionType.EXPENSE,
+            ),
+        )
+    }
+
+    override suspend fun mergeInto(
+        transactionId: String,
+        imageBytes: ByteArray,
+    ): Result<Unit, AppError> {
+        failWith?.let { return Err(it) }
+        merged += transactionId
+        return Ok(Unit)
+    }
+
+    override fun observeAttachment(transactionId: String): Flow<ReceiptAttachment?> =
+        attachments.map { it[transactionId] }
+
+    override suspend fun readImage(attachment: ReceiptAttachment): Result<ByteArray, AppError> {
+        failWith?.let { return Err(it) }
+        return Ok(byteArrayOf(1, 2, 3))
+    }
+
+    override suspend fun deleteImage(attachmentId: String): Result<Unit, AppError> {
+        failWith?.let { return Err(it) }
+        deleted += attachmentId
+        attachments.value = attachments.value.filterValues { it.id != attachmentId }
+        return Ok(Unit)
+    }
+}
+
+/**
+ * A parse that read nothing — the default [FakeReceiptRepository.nextScan] (issue 3.8).
+ * Why:    the honest default. Most tests care about one field, and a fake that pre-filled all four
+ *         would let a ViewModel that ignored the scan entirely still look correct.
+ * Result: [ReceiptFields] with every field null. Input: none. Output: the fields.
+ * Changelog: 2026-08-06 — Created for issue 3.8.
+ */
+internal fun emptyFields(): ReceiptFields =
+    ReceiptFields(
+        total = null,
+        date = null,
+        merchant = null,
+        tax = null,
+        provenance =
+            EngineProvenance(
+                engineId = "receipt-parser",
+                engineVersion = "1.0",
+                computedAtUtcMillis = 0L,
+                confidenceBps = 0,
+            ),
+    )
+
+/**
+ * An [SmsRepository] a test can drive (issue 3.9; §18, §23, P-01).
+ *
+ * Why:  the ViewModel's job is entirely about *which* of four faces to show and *what* the user's
+ *       taps do — and both depend on the two permission flags moving independently. So this exposes
+ *       them as separate switches rather than one "ready" boolean, which is what lets a test assert
+ *       the privacy ordering: consent before permission, always.
+ *
+ *       [accepted] records the draft ids **and the transaction drafts** they produced, because the
+ *       sign is derived by the ViewModel and there is nowhere else to check it.
+ * Result: a fake covering every call `SmsDraftsViewModel` makes.
+ * Changelog: 2026-08-07 — Created for issue 3.9.
+ */
+internal class FakeSmsRepository : SmsRepository {
+    private val access = MutableStateFlow(SmsAccess())
+    private val pending = MutableStateFlow<List<SmsDraft>>(emptyList())
+
+    /** What [scan] will return; a failure models an inbox that refused the query. */
+    var scanResult: Result<Int, AppError> = Ok(0)
+
+    /** What [accept] will return for every call; a failure leaves the draft pending. */
+    var acceptFails: Boolean = false
+
+    /** Every accepted draft, with the transaction the ViewModel built from it. */
+    val accepted: MutableList<Pair<String, TransactionDraft>> = mutableListOf()
+
+    /** Every dismissed draft id. */
+    val dismissed: MutableList<String> = mutableListOf()
+
+    /** How many times [scan] was called, so a test can assert an automatic scan after a grant. */
+    var scanCount: Int = 0
+        private set
+
+    /** Sets the two permissions. Input: [consent], [permission]. Output: none. */
+    fun setAccess(
+        consent: Boolean,
+        permission: Boolean,
+    ) {
+        access.value = SmsAccess(consentGranted = consent, permissionGranted = permission)
+    }
+
+    /** Seeds the review list. Input: [drafts]. Output: none. */
+    fun setDrafts(vararg drafts: SmsDraft) {
+        pending.value = drafts.toList()
+    }
+
+    override fun observeAccess(): Flow<SmsAccess> = access
+
+    override fun observePending(): Flow<List<SmsDraft>> = pending
+
+    override suspend fun scan(): Result<Int, AppError> {
+        scanCount++
+        return scanResult
+    }
+
+    override suspend fun accept(
+        draftId: String,
+        draft: TransactionDraft,
+    ): Result<Transaction, AppError> {
+        if (acceptFails) return Err(AppError.Storage("FakeSmsRepository"))
+        accepted += draftId to draft
+        pending.value = pending.value.filterNot { it.id == draftId }
+        return Ok(
+            Transaction(
+                id = "t-$draftId",
+                accountId = draft.accountId,
+                amount = draft.amount,
+                occurredAtUtcMillis = 0L,
+                bookedOn = (draft.bookedOn ?: LocalDate.of(2026, 8, 7)).toString(),
+                categoryId = draft.categoryId,
+                merchant = draft.merchant,
+                note = draft.note,
+                source = TransactionSource.SMS,
+                type = if (draft.amount < Money.ZERO) TransactionType.EXPENSE else TransactionType.INCOME,
+            ),
+        )
+    }
+
+    override suspend fun dismiss(draftId: String): Result<Unit, AppError> {
+        dismissed += draftId
+        pending.value = pending.value.filterNot { it.id == draftId }
+        return Ok(Unit)
+    }
+
+    // Nothing in :feature:transactions calls these two: the merge offer is issue 3.9's repository
+    // concern and revocation belongs to the settings screen. Throwing rather than returning a
+    // plausible value means a test that starts to depend on one fails loudly.
+    override suspend fun findDuplicates(
+        amount: Money,
+        bookedOn: LocalDate,
+    ): Result<List<Transaction>, AppError> = smsUnsupported()
+
+    override suspend fun onConsentRevoked(): Result<Unit, AppError> = smsUnsupported()
+
+    /**
+     * Result: never returns. Input: none. Output: [Nothing].
+     * Why:    a fake that answered these would let a test prove something that belongs to
+     *         `SmsRepositoryTest`, where they are exercised against real SQL.
+     */
+    private fun smsUnsupported(): Nothing = error("SmsDraftsViewModel does not call this — see FakeSmsRepository")
+}

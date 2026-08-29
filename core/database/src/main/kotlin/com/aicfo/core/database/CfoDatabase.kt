@@ -3,23 +3,42 @@ package com.aicfo.core.database
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import com.aicfo.core.database.dao.AccountDao
+import com.aicfo.core.database.dao.ArchiveDao
+import com.aicfo.core.database.dao.AttachmentDao
 import com.aicfo.core.database.dao.AuditLogDao
+import com.aicfo.core.database.dao.BudgetAlertDao
 import com.aicfo.core.database.dao.BudgetDao
+import com.aicfo.core.database.dao.BudgetReviewDao
+import com.aicfo.core.database.dao.CardAlertDao
 import com.aicfo.core.database.dao.CategoryDao
+import com.aicfo.core.database.dao.CreditCardDao
 import com.aicfo.core.database.dao.DemoDao
+import com.aicfo.core.database.dao.InvestmentHoldingDao
+import com.aicfo.core.database.dao.InvestmentLotDao
+import com.aicfo.core.database.dao.LoanDao
 import com.aicfo.core.database.dao.NetWorthSnapshotDao
 import com.aicfo.core.database.dao.ProfileDao
 import com.aicfo.core.database.dao.RecurringRuleDao
+import com.aicfo.core.database.dao.SmsDraftDao
 import com.aicfo.core.database.dao.TagDao
 import com.aicfo.core.database.dao.TransactionDao
 import com.aicfo.core.database.dao.TransactionSplitDao
 import com.aicfo.core.database.entity.AccountEntity
+import com.aicfo.core.database.entity.AttachmentEntity
 import com.aicfo.core.database.entity.AuditLogEntity
+import com.aicfo.core.database.entity.BudgetAlertEntity
 import com.aicfo.core.database.entity.BudgetEntity
+import com.aicfo.core.database.entity.BudgetReviewEntity
+import com.aicfo.core.database.entity.CardAlertEntity
 import com.aicfo.core.database.entity.CategoryEntity
+import com.aicfo.core.database.entity.CreditCardEntity
+import com.aicfo.core.database.entity.InvestmentHoldingEntity
+import com.aicfo.core.database.entity.InvestmentLotEntity
+import com.aicfo.core.database.entity.LoanEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
 import com.aicfo.core.database.entity.ProfileEntity
 import com.aicfo.core.database.entity.RecurringRuleEntity
+import com.aicfo.core.database.entity.SmsDraftEntity
 import com.aicfo.core.database.entity.TagEntity
 import com.aicfo.core.database.entity.TransactionEntity
 import com.aicfo.core.database.entity.TransactionSplitEntity
@@ -53,10 +72,19 @@ import com.aicfo.core.database.entity.TransactionTagEntity
         CategoryEntity::class,
         AuditLogEntity::class,
         BudgetEntity::class,
+        BudgetAlertEntity::class,
+        BudgetReviewEntity::class,
         RecurringRuleEntity::class,
         NetWorthSnapshotEntity::class,
         TagEntity::class,
         TransactionTagEntity::class,
+        AttachmentEntity::class,
+        SmsDraftEntity::class,
+        CreditCardEntity::class,
+        CardAlertEntity::class,
+        LoanEntity::class,
+        InvestmentHoldingEntity::class,
+        InvestmentLotEntity::class,
     ],
     version = CfoDatabase.VERSION,
     exportSchema = true,
@@ -84,6 +112,12 @@ abstract class CfoDatabase : RoomDatabase() {
     /** Input: none. Output: the budget DAO (issue 2.3, FR-BUD-001). */
     abstract fun budgetDao(): BudgetDao
 
+    /** Input: none. Output: the budget-alert DAO (issue 4.5, FR-BUD-004). */
+    abstract fun budgetAlertDao(): BudgetAlertDao
+
+    /** Input: none. Output: the budget-review DAO (issue 4.6, §5.5). */
+    abstract fun budgetReviewDao(): BudgetReviewDao
+
     /** Input: none. Output: the recurring-rule DAO (issue 2.3, FR-TXN-006). */
     abstract fun recurringRuleDao(): RecurringRuleDao
 
@@ -93,6 +127,27 @@ abstract class CfoDatabase : RoomDatabase() {
     /** Input: none. Output: the tag DAO (issue 3.6, FR-TXN-007/FR-TXN-008). */
     abstract fun tagDao(): TagDao
 
+    /** Input: none. Output: the attachment DAO (issue 3.8, FR-OCR-005). */
+    abstract fun attachmentDao(): AttachmentDao
+
+    /** Input: none. Output: the SMS-draft DAO (issue 3.9, §18/§23). */
+    abstract fun smsDraftDao(): SmsDraftDao
+
+    /** Input: none. Output: the credit-card DAO (issue 6.1, FR-ACC-002). */
+    abstract fun creditCardDao(): CreditCardDao
+
+    /** Input: none. Output: the card-alert claim DAO (issue 6.1, §17.1). */
+    abstract fun cardAlertDao(): CardAlertDao
+
+    /** Input: none. Output: the loan DAO (issue 6.2, FR-ACC-003). */
+    abstract fun loanDao(): LoanDao
+
+    /** Input: none. Output: the holdings DAO (issue 6.3, §11). */
+    abstract fun investmentHoldingDao(): InvestmentHoldingDao
+
+    /** Input: none. Output: the holding-lot DAO (issue 6.3, §11). */
+    abstract fun investmentLotDao(): InvestmentLotDao
+
     /**
      * Input:  none. Output: the demo wipe DAO (issue 2.4, FR-ONB-004).
      *
@@ -100,6 +155,12 @@ abstract class CfoDatabase : RoomDatabase() {
      * exist, and Room's exported schema describes tables, not queries. It did not move [VERSION].
      */
     abstract fun demoDao(): DemoDao
+
+    /**
+     * Input: none. Output: the archive DAO.
+     * Reads and restores every row of a profile, for §5.10's export archive (issue 5.4).
+     */
+    abstract fun archiveDao(): ArchiveDao
 
     companion object {
         /**
@@ -113,9 +174,20 @@ abstract class CfoDatabase : RoomDatabase() {
          * (`transaction_splits`; FR-TXN-004) · 8 — issue 3.4
          * (`transactions.posted_at_utc_millis`; FR-TXN-010) · 9 — issue 3.6 (`tags`,
          * `transaction_tags`; FR-TXN-007, FR-TXN-008) · 10 — issue 3.7
-         * (`recurring_rule.dismissed_at_utc_millis`; FR-TXN-006).
+         * (`recurring_rule.dismissed_at_utc_millis`; FR-TXN-006) · 11 — issue 3.8 (`attachments`;
+         * FR-OCR-005) · 12 — issue 3.9 (`sms_draft`; §18, §23) · 13 — issue 4.3
+         * (`transactions.nature`, the user's nature override; §8.3) · 14 — issue 4.5
+         * (`budget_alert`, the record of what the user has already been told; FR-BUD-004) · 15 —
+         * issue 4.6 (`budget_review`, the record that a closed month's review has been shown; §5.5)
+         * · 16 — issue 6.1 (`credit_card`, a card's limit and billing days; `card_alert`, the
+         * record of what the user has already been told about one; FR-ACC-002, §17.1) · 17 — issue
+         * 6.2 (`loan`, a loan's principal, rate, tenure and first-EMI date; the amortisation
+         * schedule is derived from those and deliberately **not** stored — ADR-0026; FR-ACC-003)
+         * · 18 — issue 6.3 (`investment_holding`, an instrument's asset class and last observed
+         * unit price; `investment_lot`, its dated cash movements — the value, the cost and the
+         * XIRR are all derived from those two, ADR-0027; §11).
          */
-        const val VERSION = 10
+        const val VERSION = 18
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"

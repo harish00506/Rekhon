@@ -15,6 +15,8 @@ import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.TransactionSource
 import com.aicfo.core.model.TransactionType
+import com.aicfo.domain.engines.classification.ClassificationEngineFactory
+import com.aicfo.domain.engines.nature.NatureEngineFactory
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -72,7 +74,11 @@ class TransactionRepositoryTest {
                 CfoDatabase::class.java,
             ).allowMainThreadQueries().build()
         val dispatchers = TestDispatchers(UnconfinedTestDispatcher())
-        repository = RepositoryFactory.transactions(database, clock, ids, dispatchers, activeProfileId)
+        repository =
+            RepositoryFactory.transactions(
+                database, clock, ids, dispatchers, activeProfileId, ClassificationEngineFactory.create(),
+                NatureEngineFactory.create(),
+            )
         // The real AccountRepository rather than a stub: the claim under test is that a transaction
         // moves the balance the accounts screen actually renders, and a stub could not make it.
         accounts = RepositoryFactory.accounts(database, clock, ids, dispatchers, activeProfileId)
@@ -432,6 +438,105 @@ class TransactionRepositoryTest {
             )
 
             assertEquals(listOf("Dining", "Fuel"), repository.observeCategories().first().map { it.name })
+        }
+
+    // --- observeMonthCashFlow (issue 5.1) -----------------------------------------------------------
+
+    @Test
+    fun `income and expense are summed separately, and net is their difference`() =
+        runTest {
+            val account = newAccount()
+            repository.create(TransactionDraft(account.id, Money(85_000_00L))).expectOk()
+            repository.create(TransactionDraft(account.id, Money(-32_450_00L))).expectOk()
+
+            val flow = repository.observeMonthCashFlow().first()
+
+            assertEquals(Money(85_000_00L), flow.income)
+            // Expense is a positive magnitude, matching BudgetStatus.spent's convention — the sign
+            // lives in `net`, not in the two halves that produced it.
+            assertEquals(Money(32_450_00L), flow.expense)
+            assertEquals(Money(52_550_00L), flow.net)
+        }
+
+    @Test
+    fun `a transaction from last month is excluded from this month's cash flow`() =
+        runTest {
+            val account = newAccount()
+            repository.create(
+                TransactionDraft(account.id, Money(-1_000_00L), bookedOn = clock.today().minusMonths(1)),
+            ).expectOk()
+
+            val flow = repository.observeMonthCashFlow().first()
+
+            assertEquals(Money.ZERO, flow.income)
+            assertEquals(Money.ZERO, flow.expense)
+        }
+
+    @Test
+    fun `a transfer contributes nothing to cash flow`() =
+        runTest {
+            val from = newAccount()
+            val to =
+                accounts.create(
+                    AccountDraft(
+                        name = "Cash Wallet",
+                        type = AccountType.CASH,
+                        openingBalance = Money.ZERO,
+                        currencyCode = "INR",
+                    ),
+                ).expectOk()
+
+            repository.createTransfer(TransferDraft(from.id, to.id, Money(5_000_00L))).expectOk()
+
+            val flow = repository.observeMonthCashFlow().first()
+
+            assertEquals(Money.ZERO, flow.income)
+            assertEquals(Money.ZERO, flow.expense)
+        }
+
+    // --- observeRecent (issue 5.1) -------------------------------------------------------------------
+
+    @Test
+    fun `observeRecent returns the newest rows first, bounded by limit`() =
+        runTest {
+            val account = newAccount()
+            repository.create(TransactionDraft(account.id, Money(-100_00L), merchant = "First")).expectOk()
+            clock.advanceBy(Duration.ofMinutes(1))
+            repository.create(TransactionDraft(account.id, Money(-200_00L), merchant = "Second")).expectOk()
+            clock.advanceBy(Duration.ofMinutes(1))
+            repository.create(TransactionDraft(account.id, Money(-300_00L), merchant = "Third")).expectOk()
+
+            val recent = repository.observeRecent(limit = 2).first()
+
+            assertEquals(listOf("Third", "Second"), recent.map { it.transaction.merchant })
+        }
+
+    @Test
+    fun `observeRecent excludes a future-dated transaction`() =
+        runTest {
+            val account = newAccount()
+            repository.create(
+                TransactionDraft(account.id, Money(-500_00L), bookedOn = clock.today().plusDays(1)),
+            ).expectOk()
+
+            // A scheduled payment belongs to observeUpcoming, not a preview of what already
+            // happened (FR-TXN-010) — the same bound observeFiltered's unfiltered case applies.
+            assertTrue(repository.observeRecent(limit = 10).first().isEmpty())
+        }
+
+    @Test
+    fun `observeRecent excludes a soft-deleted transaction`() =
+        runTest {
+            val account = newAccount()
+            val deleted = repository.create(TransactionDraft(account.id, Money(-500_00L))).expectOk()
+            repository.create(TransactionDraft(account.id, Money(-250_00L), merchant = "Still here")).expectOk()
+
+            repository.delete(deleted.id).expectOk()
+
+            val recent = repository.observeRecent(limit = 10).first()
+
+            assertEquals(1, recent.size)
+            assertEquals("Still here", recent.first().transaction.merchant)
         }
 
     // --- profile isolation -------------------------------------------------------------------------

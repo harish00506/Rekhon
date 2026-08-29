@@ -22,6 +22,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -39,6 +40,7 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
 import com.aicfo.core.designsystem.component.CfoAmountText
 import com.aicfo.core.designsystem.component.CfoListRow
+import com.aicfo.core.designsystem.component.CfoSecondaryButton
 import com.aicfo.core.designsystem.theme.CfoDimens
 import com.aicfo.core.model.Money
 
@@ -66,6 +68,7 @@ import com.aicfo.core.model.Money
  */
 @Composable
 fun TransactionsScreen(
+    onManageCategories: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: TransactionsViewModel = hiltViewModel(),
 ) {
@@ -78,6 +81,7 @@ fun TransactionsScreen(
         uiState = uiState,
         items = items,
         onEvent = viewModel::onEvent,
+        onManageCategories = onManageCategories,
         modifier = modifier,
     )
 }
@@ -95,6 +99,7 @@ fun TransactionsContent(
     uiState: TransactionsUiState,
     items: LazyPagingItems<TransactionListItem>,
     onEvent: (TransactionsEvent) -> Unit = {},
+    onManageCategories: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
@@ -105,7 +110,12 @@ fun TransactionsContent(
             modifier = Modifier.fillMaxWidth().padding(CfoDimens.spaceMd),
             verticalArrangement = Arrangement.spacedBy(CfoDimens.spaceSm),
         ) {
-            ListHeader(uiState = uiState, items = items, onEvent = onEvent)
+            ListHeader(
+                uiState = uiState,
+                items = items,
+                onEvent = onEvent,
+                onManageCategories = onManageCategories,
+            )
 
             LazyColumn(verticalArrangement = Arrangement.spacedBy(CfoDimens.spaceSm)) {
                 // Issue 3.7, above the scheduled rows: a question the app is asking is the one thing
@@ -167,14 +177,28 @@ private fun ListHeader(
     uiState: TransactionsUiState,
     items: LazyPagingItems<TransactionListItem>,
     onEvent: (TransactionsEvent) -> Unit,
+    onManageCategories: () -> Unit,
 ) {
     if (uiState.isSelecting) {
         BulkActionBar(uiState = uiState, onEvent = onEvent)
     } else {
-        Text(
-            text = stringResource(R.string.transactions_title),
-            style = MaterialTheme.typography.headlineSmall,
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = stringResource(R.string.transactions_title),
+                style = MaterialTheme.typography.headlineSmall,
+            )
+            // Issue 4.1: the way into FR-SET-001's taxonomy editor. It belongs in Settings, which
+            // does not exist yet — this is where categories are actually used, so this is where the
+            // entry point goes until the settings shell lands (see `CfoRoute.Categories`).
+            CfoSecondaryButton(
+                text = stringResource(R.string.transactions_manage_categories),
+                onClick = onManageCategories,
+            )
+        }
     }
 
     uiState.errorCode?.let { code ->
@@ -327,16 +351,18 @@ private fun DayHeader(item: TransactionListItem.DayHeader) {
  *         without deciding how it renders. Both kinds carry the same delete action, and neither
  *         passes a transfer id to it — the row hands over the transaction it was built from and the
  *         repository works out whether a sibling goes too.
- * Result: the composition. Input: [row], [accountNames], [onDelete], [onClick]. Output: none.
+ * Result: the composition. Input: [row], [names], [onDelete], [onClick]. Output: none.
  * Changelog: 2026-08-02 — Created for issue 3.2, replacing issue 3.1's single-row composable.
  *            2026-08-03 — Issue 3.5: the source label, and [onClick] to open the detail sheet.
  *            2026-08-04 — Issue 3.6: [isSelected] and [showDelete], and the click handling moved out
  *            to the caller — the list needs long-press while the scheduled section does not.
+ *            2026-08-08 — Issue 4.1: the account and category name maps merged into [RowNames], so
+ *            a categorised row can name itself without this function taking a seventh parameter.
  */
 @Composable
 internal fun ListRow(
     row: TransactionRow,
-    accountNames: Map<String, String>,
+    names: RowNames,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
     selection: RowSelection = RowSelection(),
@@ -352,12 +378,20 @@ internal fun ListRow(
     when (row) {
         is TransactionRow.Single ->
             CfoListRow(
-                // Falls back through note → merchant → "Uncategorised" rather than rendering a blank
-                // line: every field but the amount is optional (FR-TXN-001), and a row a user cannot
-                // identify is a row they cannot decide to delete.
+                // Falls back through note → merchant → category → "Uncategorised" rather than
+                // rendering a blank line: every field but the amount is optional (FR-TXN-001), and a
+                // row a user cannot identify is a row they cannot decide to delete.
+                //
+                // **The category step was missing until issue 4.1, and the omission was invisible
+                // until it landed.** No real profile had a category to attach, so a row with neither
+                // note nor merchant genuinely was uncategorised. The moment the taxonomy was seeded,
+                // a transaction saved against "Fuel" still rendered as "Uncategorised" — a label
+                // that had quietly become a false statement about the row. Found on the emulator by
+                // saving one, not by reading this.
                 title =
                     row.transaction.note
                         ?: row.transaction.merchant
+                        ?: row.transaction.categoryId?.let { names.categories[it] }
                         ?: stringResource(R.string.transactions_uncategorised),
                 supporting = supportingLine(row),
                 trailing = {
@@ -371,7 +405,7 @@ internal fun ListRow(
                 // The two account names carry the direction, because a collapsed pair has no single
                 // sign to colour. An id that no longer resolves to a name falls back to the id
                 // rather than rendering an empty arrow.
-                title = transferTitle(row = row, accountNames = accountNames),
+                title = transferTitle(row = row, accountNames = names.accounts),
                 // `showSign = false`: the amount is the size of the movement, and a leading "+" would
                 // claim the user gained money they only moved.
                 trailing = {
@@ -381,6 +415,27 @@ internal fun ListRow(
             )
     }
 }
+
+/**
+ * The name lookups a row needs to describe itself (issue 4.1).
+ *
+ * Why:  a transfer row names its two accounts and a plain row may need its category's name, so
+ *       [ListRow] needed two maps — and a sixth parameter put it past detekt's limit. Bundling them
+ *       is not only appeasement: they are the same kind of thing (an id the row holds, resolved to
+ *       words the user recognises), and a caller that has one almost always has the other.
+ * Result: one argument instead of two.
+ * Changelog: 2026-08-08 — Created for issue 4.1.
+ *
+ * Input:  [accounts] — account names by id; [categories] — category names by id. Both default to
+ *         empty, which resolves nothing and falls back to the id or to "Uncategorised" — the
+ *         behaviour every caller had before this issue.
+ * Output: an immutable value.
+ */
+@Immutable
+internal data class RowNames(
+    val accounts: Map<String, String> = emptyMap(),
+    val categories: Map<String, String> = emptyMap(),
+)
 
 /**
  * A transfer row's title: "Transfer · HDFC Savings → Cash Wallet" (issue 3.2; FR-TXN-003).

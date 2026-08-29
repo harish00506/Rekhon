@@ -6,7 +6,7 @@
   compliance is on us — which is why the lock screen's copy is here rather than inline.
 -->
 <resources>
-    <string name="app_name">AI Personal CFO</string>
+    <string name="app_name">Rekhon</string>
 
     <!--
       Demo mode (issue 2.4, FR-ONB-004). The banner sits above the nav graph, so this copy is what
@@ -20,6 +20,17 @@
       reader announces — without it the button reads as "button" and is unusable.
     -->
     <string name="add_transaction">Add transaction</string>
+
+    <!--
+      Issue 5.3 — the one-tap privacy blur (§23, FR-PRIV-*).
+
+      The button is named for what it *does*, and its state is announced separately through
+      `stateDescription` — so TalkBack says "Hide amounts, on" rather than leaving a blind user to
+      infer from a changed icon whether their figures are currently covered.
+    -->
+    <string name="privacy_blur_toggle">Hide amounts</string>
+    <string name="privacy_blur_state_on">on</string>
+    <string name="privacy_blur_state_off">off</string>
 
     <!-- App lock (issue 2.2, SEC-002) -->
     <string name="lock_title">Locked</string>
@@ -38,6 +49,54 @@
     <string name="lock_error_wrong_pin">That PIN is not right.</string>
     <string name="lock_error_biometric">Couldn\'t verify you. Try your PIN.</string>
     <string name="lock_error_dismiss">Dismiss</string>
+
+    <!--
+      Budget alerts (issue 4.5, FR-BUD-004). Every figure in these is a placeholder filled from an
+      engine result and then checked by `NumericGuardrail` before the notification is posted
+      (AI-ARC-004) — so no number may be written into the copy itself, here or in a translation.
+    -->
+    <string name="notification_channel_budget_alerts">Budget alerts</string>
+    <string name="notification_channel_budget_alerts_description">Tells you once when a category
+        reaches 80%% of its budget, and once when it reaches 100%%.</string>
+    <string name="budget_alert_warn_title">%1$s is at %2$d%% of budget</string>
+    <string name="budget_alert_warn_body">You have spent %1$s of %2$s this month.</string>
+    <string name="budget_alert_exceeded_title">%1$s is over budget</string>
+    <string name="budget_alert_exceeded_body">You have spent %1$s of %2$s this month — %3$s over.</string>
+    <!--
+      Issue 5.3 — the figure-free variants, used while the privacy blur is on (§23, FR-PRIV-*).
+
+      A lock-screen notification renders without the app lock, to anyone who glances at a phone
+      face-up on a table. So these carry no digits at all — not the amounts and not the percentage,
+      which would still say how deep into the budget the user is. The category and the band survive,
+      because a warning nobody can act on is not worth sending. The exceeded *title* needs no blurred
+      twin: it never carried a figure.
+    -->
+    <string name="budget_alert_warn_title_blurred">%1$s is near its budget</string>
+    <string name="budget_alert_body_blurred">Open the app to see where you stand.</string>
+
+    <!-- Issue 6.1: credit-card alerts (FR-ACC-002, SRS 17.1). Two channels, not one, because
+         NTF-006 maps a channel to a taxonomy row and a payment due is a Critical money event while
+         a utilisation warning is discipline. The `_blurred` variants carry NO digits at all, per
+         NTF-004: a lock screen is the most exposed surface the app has, and the privacy blur must
+         reach it (issue 5.3). Note the tone rule from SRS 24.1 - these state a fact and an amount,
+         they do not scold. -->
+    <string name="notification_channel_critical_money">Critical money events</string>
+    <string name="notification_channel_critical_money_description">Payments that are about to be
+        due. The only notifications that can interrupt quiet hours.</string>
+    <string name="notification_channel_debt_discipline">Card &amp; debt</string>
+    <string name="notification_channel_debt_discipline_description">Tells you once per statement
+        when a card is using a large share of its limit.</string>
+
+    <string name="card_due_title">%1$s payment due in %2$d days</string>
+    <string name="card_due_title_today">%1$s payment due today</string>
+    <string name="card_due_body">%1$s is due. The minimum is %2$s.</string>
+    <string name="card_due_body_no_minimum">%1$s is due on this statement.</string>
+    <string name="card_due_title_blurred">%1$s payment is due soon</string>
+    <string name="card_due_body_blurred">Open the app to see the amount.</string>
+    <string name="card_utilisation_title">%1$s is at %2$d%% of its limit</string>
+    <string name="card_utilisation_body">This statement used %1$s of %2$s.</string>
+    <string name="card_utilisation_title_blurred">%1$s is using a lot of its limit</string>
+    <string name="card_utilisation_body_blurred">Open the app to see where you stand.</string>
 
     <!-- ICU plurals: "1 attempt" must not read as "1 attempts" (§21.6). -->
     <plurals name="lock_attempts_remaining">

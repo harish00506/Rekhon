@@ -16,12 +16,17 @@ import com.aicfo.data.repository.TransactionDraft
 import com.aicfo.data.repository.TransactionRepository
 import com.aicfo.data.repository.TransferDraft
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -68,7 +73,7 @@ class AddTransactionViewModel
         private val _uiState =
             MutableStateFlow(
                 AddTransactionUiState(
-                    earliestBookableDate = clock.today(),
+                    todayInProfileZone = clock.today(),
                     nowInProfileZone = clock.timeOfDay(),
                 ),
             )
@@ -79,8 +84,18 @@ class AddTransactionViewModel
          */
         val uiState: StateFlow<AddTransactionUiState> = _uiState.asStateFlow()
 
+        /**
+         * The merchant text, as its own stream (issue 4.2).
+         *
+         * Why:    a `StateFlow` rather than reading [uiState] because the suggestion has to be
+         *         *debounced*, and debouncing the whole UI state would delay every keystroke's
+         *         echo on screen. This carries only the field the classifier reads.
+         */
+        private val merchantQuery = MutableStateFlow("")
+
         init {
             observeChoices()
+            observeSuggestions()
         }
 
         /**
@@ -118,7 +133,7 @@ class AddTransactionViewModel
                             // Re-read on every emission (issue 3.4): a form left open across
                             // midnight would otherwise keep offering yesterday as selectable, and
                             // the repository would refuse the save the picker had just allowed.
-                            earliestBookableDate = clock.today(),
+                            todayInProfileZone = clock.today(),
                             nowInProfileZone = clock.timeOfDay(),
                         )
                     }
@@ -128,6 +143,41 @@ class AddTransactionViewModel
                 .catch { failure ->
                     _uiState.update { it.copy(isLoading = false, errorCode = failure.toAppError().code) }
                 }
+                .launchIn(viewModelScope)
+        }
+
+        /**
+         * Keeps the category suggestion in step with the merchant field (issue 4.2; SRS §8.1).
+         *
+         * Why:    three operators, each load-bearing.
+         *         - **`debounce`** because [TransactionRepository.suggestCategory] reads the
+         *           database, and asking on every keystroke would run a query per character on the
+         *           app's most-used screen for an answer that is thrown away a character later.
+         *         - **`distinctUntilChanged`** because the field re-emits on edits that do not
+         *           change the trimmed text.
+         *         - **`mapLatest`** because it *cancels* the in-flight query when the next pause
+         *           arrives. Without it a slow read for `SWIG` could land after a fast one for
+         *           `SWIGGY` and pre-select the older answer — a race that is invisible in a test
+         *           with an instant repository and reproducible on a real device.
+         *
+         *         **A failure is swallowed on purpose**, which is the opposite of what
+         *         [observeChoices] does with the same kind of error. An empty account list makes the
+         *         screen unusable and must be reported; a missing *suggestion* changes nothing the
+         *         user cannot do by hand, and an error banner over an optional convenience would
+         *         teach them to dismiss banners.
+         * Result: sets or clears [AddTransactionUiState.suggestion], and pre-selects the proposed
+         *         category **only while the user has not chosen one themselves** (P-07).
+         * Input:  none. Output: none (collects on `viewModelScope`).
+         * Changelog: 2026-08-10 — Created for issue 4.2.
+         */
+        @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
+        private fun observeSuggestions() {
+            merchantQuery
+                .debounce(SUGGESTION_DEBOUNCE_MILLIS)
+                .distinctUntilChanged()
+                .mapLatest { merchant -> transactions.suggestCategory(merchant) }
+                .onEach { outcome -> _uiState.update { it.withSuggestion(outcome) } }
+                .catch { _uiState.update { it.copy(suggestion = null) } }
                 .launchIn(viewModelScope)
         }
 
@@ -143,8 +193,26 @@ class AddTransactionViewModel
                 is AddTransactionEvent.DirectionChanged -> _uiState.update { it.withDirection(event.direction) }
                 is AddTransactionEvent.AccountSelected -> _uiState.update { it.withSource(event.id) }
                 is AddTransactionEvent.DestinationSelected -> _uiState.update { it.copy(toAccountId = event.id) }
-                is AddTransactionEvent.CategorySelected -> _uiState.update { it.copy(selectedCategoryId = event.id) }
-                is AddTransactionEvent.MerchantChanged -> _uiState.update { it.copy(merchant = event.value) }
+                // isCategoryUserChosen, not just the id: from here on the suggestion stops
+                // re-applying itself, whether they picked a category or cleared one (issue 4.2, P-07).
+                is AddTransactionEvent.CategorySelected ->
+                    _uiState.update { it.copy(selectedCategoryId = event.id, isCategoryUserChosen = true) }
+
+                is AddTransactionEvent.SuggestionDismissed ->
+                    _uiState.update {
+                        it.copy(
+                            suggestion = null,
+                            isCategoryUserChosen = true,
+                            // Clears the chip the suggestion pre-selected — dismissing a proposal
+                            // that left its answer behind would dismiss nothing.
+                            selectedCategoryId = it.selectedCategoryId.takeIf { id -> id != it.suggestion?.categoryId },
+                        )
+                    }
+
+                is AddTransactionEvent.MerchantChanged -> {
+                    merchantQuery.value = event.value
+                    _uiState.update { it.copy(merchant = event.value) }
+                }
                 is AddTransactionEvent.NoteChanged -> _uiState.update { it.copy(note = event.value) }
                 is SplitEvent -> _uiState.update { it.applySplit(event) }
                 is ScheduleEvent -> _uiState.update { it.applySchedule(event) }

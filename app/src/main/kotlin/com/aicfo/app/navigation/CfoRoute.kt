@@ -40,11 +40,33 @@ sealed interface CfoRoute {
      * whole graph and would then survive navigation it should not. A destination gets the back stack,
      * Back, and process-death restoration for free — and it costs the same one tap.
      *
-     * No arguments: everything the screen needs it reads from the active profile. Issue 3.8's
-     * "review this scanned receipt" is the case that will need one, and it can add it then.
+     * No arguments: everything the screen needs it reads from the active profile.
      */
     @Serializable
     data object AddTransaction : CfoRoute
+
+    /**
+     * Scan a receipt and confirm what it says (issue 3.8; FR-OCR-001..006).
+     *
+     * **No arguments, and that is the design rather than a simplification.** The obvious shape would
+     * have been `ReceiptReview(imageUri: String)` — capture on the previous screen, pass the URI.
+     * But a content URI's read grant belongs to the activity that received it and does not survive
+     * process death, so a route carrying one would work until the day Android killed the app behind
+     * the camera. The screen launches the picker itself, so there is no URI to carry.
+     */
+    @Serializable
+    data object ReceiptReview : CfoRoute
+
+    /**
+     * Review what the app read from bank alerts (issue 3.9; §18, §23, P-01).
+     *
+     * **No arguments, and the screen requests the OS permission itself.** A route that carried
+     * "already granted" would be a claim made at navigation time about something Android can change
+     * a moment later — from Settings, while this screen is open. The screen observes the two
+     * permissions instead, so revoking either one empties it rather than leaving a stale list.
+     */
+    @Serializable
+    data object SmsDrafts : CfoRoute
 
     /** The accounts list (issue 2.5; FR-ACC-001). */
     @Serializable
@@ -60,4 +82,64 @@ sealed interface CfoRoute {
      */
     @Serializable
     data class AccountEditor(val accountId: String? = null) : CfoRoute
+
+    /**
+     * What one investment account holds (issue 6.3; §11).
+     *
+     * A typed property rather than a string template, like every route here (ARC-001). [accountId]
+     * is required, unlike [AccountEditor]'s: there is no "holdings in general" screen — a holding
+     * only means anything inside the account that holds it.
+     */
+    @Serializable
+    data class Holdings(val accountId: String) : CfoRoute
+
+    /**
+     * How the whole portfolio is spread across asset classes (issue 6.4; FR-INV-002).
+     *
+     * A `data object` and not a `data class`, unlike [Holdings]: allocation is a question about
+     * every investable account at once, so there is no id to scope it by. Reached from the accounts
+     * list rather than from an account, for the same reason.
+     */
+    @Serializable
+    data object Allocation : CfoRoute
+
+    /**
+     * Income, consents and the app lock (FR-SET-001).
+     *
+     * **The route FR-SET-001 always specified and the app never had.** Five strings across three
+     * feature modules used to tell the user to change something "in Settings" while no such
+     * destination existed; worse, the SMS consent could be granted at onboarding and never revoked,
+     * which P-01 forbids. Reached from the dashboard.
+     */
+    @Serializable
+    data object Settings : CfoRoute
+
+    /**
+     * The category taxonomy editor (issue 4.1; FR-SET-001).
+     *
+     * **No arguments, and it is reached from the transaction list rather than from Settings.**
+     * FR-SET-001 files this editor under Settings, but no settings screen exists — the requirement's
+     * other items are separate issues (11.3 consents, 11.4 erase-all) and the shell itself has none.
+     * Hanging the editor off the list where categories are actually used gets it in front of the
+     * user now; moving the entry point when the shell lands is a one-line change here, and the
+     * destination itself does not move.
+     */
+    @Serializable
+    data object Categories : CfoRoute
+
+    /**
+     * The per-category budget screen (issue 4.4; FR-BUD-001/002/003).
+     *
+     * **No arguments, and no month in the route.** The obvious shape would have been
+     * `Budgets(month: String)` — but a month in a route is a claim made at navigation time about
+     * *now*, and the app is expected to survive midnight with the screen open. The screen resolves
+     * the current month from the injected `Clock` on every emission instead, so a month boundary
+     * moves the figures rather than leaving a stale route arguing with them.
+     *
+     * Reached from the dashboard, beside the 50/30/20 bar: the bar is the plan at the nature level
+     * and this is the plan at the category level, so a user who wants to change what the bar shows
+     * is one tap from the place to do it.
+     */
+    @Serializable
+    data object Budgets : CfoRoute
 }

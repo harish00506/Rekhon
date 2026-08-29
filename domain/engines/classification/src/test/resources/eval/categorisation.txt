@@ -1,0 +1,273 @@
+# =============================================================================
+# Frozen evaluation set for Stage-1 auto-categorisation (issue 4.2; SRS §8, §21.5).
+#
+# Why a text file and not JSON: this module is pure Kotlin with no serialisation
+# dependency by design (ARC-002), so the set is parsed by the test that reads it
+# — the same bargain `:domain:engines:sms`'s eval/sms.txt struck.
+#
+# Format: records separated by a line of `===`. Each record is
+#     # merchant=<the descriptor, exactly as a bank or a user would write it>
+#     # expect=<a category_defaults display name, or `none`>
+# Any other line beginning with `#` is a comment, including this block.
+#
+# `expect=none` means Stage 1 MUST propose nothing. That half is scored at zero
+# tolerance: a merchant the app declines to classify costs the user one tap on a
+# chip row already on screen, while a merchant it classifies WRONGLY files money
+# under a category they never chose, into a budget they will later read as fact.
+#
+# The labelled half is scored at ≥ 92 % (SRS §8). It is NOT 100 %, and the two
+# misses are left in on purpose — see `# KNOWN MISS` below. A set curated until
+# it scores perfectly measures the curation, not the engine.
+# =============================================================================
+
+===
+# merchant=SWIGGY*ORDER 7781
+# expect=Dining
+===
+# merchant=UPI/ZOMATO ONLINE/9876543210
+# expect=Dining
+===
+# merchant=POS SWIGGY BANGALORE
+# expect=Dining
+===
+# merchant=ZOMATO LTD
+# expect=Dining
+===
+# merchant=SWIGGY INSTAMART
+# expect=Dining
+===
+# merchant=IRCTC ETICKET
+# expect=Travel
+===
+# merchant=IRCTC WEB BOOKING
+# expect=Travel
+===
+# The descriptor names IRCTC twice: once glued to a suffix (IRCTCUTS) where the
+# word boundary does not open, and once standing alone. Finding the second is
+# what a whole-word scan must do rather than giving up at the first near-miss.
+# merchant=UPI-IRCTCUTS-IRCTC@SBI
+# expect=Travel
+===
+# merchant=BESCOM BILL PAYMENT
+# expect=Utilities
+===
+# merchant=UPI/BESCOM/BILLDESK
+# expect=Utilities
+===
+# merchant=ADANI ELECTRICITY MUMBAI LTD
+# expect=Utilities
+===
+# merchant=TNEB EB BILL JUL
+# expect=Utilities
+===
+# merchant=KSEB ONLINE PAYMENT
+# expect=Utilities
+===
+# merchant=BIGBASKET
+# expect=Groceries
+===
+# merchant=BLINKIT ORDER 4421
+# expect=Groceries
+===
+# merchant=ZEPTO NOW
+# expect=Groceries
+===
+# merchant=DMART AVENUE SUPERMARTS
+# expect=Groceries
+===
+# merchant=JIOMART RELIANCE RETAIL
+# expect=Groceries
+===
+# merchant=AMAZON.IN
+# expect=Shopping
+===
+# merchant=FLIPKART INTERNET PVT LTD
+# expect=Shopping
+===
+# merchant=MYNTRA DESIGNS PVT LTD
+# expect=Shopping
+===
+# merchant=AJIO RELIANCE RETAIL
+# expect=Shopping
+===
+# merchant=AMAZON PAY INDIA
+# expect=Shopping
+===
+# KNOWN MISS. `amazon` glued to `pay` opens no word boundary, so this scores as
+# a miss rather than as Shopping. The fix is a knowledge-base row (`amazonpay`),
+# not a looser boundary — loosening it is what files Licious under Insurance.
+# merchant=AMAZONPAY MERCHANT
+# expect=Shopping
+===
+# merchant=UBER INDIA SYSTEMS
+# expect=Transport
+===
+# merchant=OLA CABS
+# expect=Transport
+===
+# merchant=RAPIDO BIKE TAXI
+# expect=Transport
+===
+# merchant=UBER RIDES 8829
+# expect=Transport
+===
+# merchant=IOCL PETROL PUMP NO 4
+# expect=Fuel
+===
+# merchant=INDIANOIL RETAIL OUTLET
+# expect=Fuel
+===
+# merchant=BHARAT PETROLEUM CORP LTD
+# expect=Fuel
+===
+# merchant=HPCL FUEL STATION
+# expect=Fuel
+===
+# merchant=BPCL SWAGAT HIGHWAY
+# expect=Fuel
+===
+# merchant=NETFLIX.COM
+# expect=Subscriptions
+===
+# merchant=SPOTIFY INDIA
+# expect=Subscriptions
+===
+# merchant=DISNEY+ HOTSTAR
+# expect=Subscriptions
+===
+# merchant=JIO CINEMA PREMIUM
+# expect=Subscriptions
+===
+# merchant=LIC OF INDIA PREMIUM
+# expect=Insurance
+===
+# merchant=HDFC LIFE INSURANCE CO
+# expect=Insurance
+===
+# merchant=SBI LIFE SMART SHIELD
+# expect=Insurance
+===
+# merchant=ICICI PRU LIFE
+# expect=Insurance
+===
+# merchant=GROWW INVEST TECH
+# expect=Investment
+===
+# merchant=ZERODHA BROKING LTD
+# expect=Investment
+===
+# merchant=NEFT-ZERODHA BROKING
+# expect=Investment
+===
+# merchant=KUVERA FINTECH
+# expect=Investment
+===
+# merchant=INDMONEY
+# expect=Investment
+===
+# merchant=APOLLO PHARMACY
+# expect=Health
+===
+# merchant=PHARMEASY ORDER 22841
+# expect=Health
+===
+# merchant=TATA 1MG TECHNOLOGIES
+# expect=Health
+===
+# merchant=NETMEDS INDIA
+# expect=Health
+===
+# merchant=MEDPLUS MART
+# expect=Health
+===
+# merchant=UNACADEMY SUBSCRIPTION
+# expect=Education
+===
+# merchant=VEDANTU INNOVATIONS
+# expect=Education
+===
+# merchant=SCHOOL FEE PAYMENT TERM 2
+# expect=Education
+===
+# KNOWN MISS. The rule's literal is `byju`; the company writes itself `BYJU'S`
+# and its descriptor `BYJUS`, where the trailing S closes the word boundary.
+# Same shape as AMAZONPAY above, same fix: a row, not a looser rule.
+# merchant=BYJUS THINK AND LEARN
+# expect=Education
+===
+#
+# --- the refusal half: Stage 1 must propose nothing for any of these ---------
+#
+# merchant=LICIOUS
+# expect=none
+# `lic` starting a longer word. Licious is a meat-delivery service; filed under
+# Insurance it becomes a NEED, joins the emergency-fund essentials, and is the
+# last place anyone would look for a food spend.
+===
+# merchant=DELICIOUS BAKES
+# expect=none
+===
+# merchant=PUBLICIS SAPIENT INDIA
+# expect=none
+===
+# merchant=GARLIC & GREENS KITCHEN
+# expect=none
+# `lic` ending a longer word — the opposite boundary from LICIOUS.
+===
+# merchant=COIN LAUNDRY SERVICES
+# expect=none
+# This one refuses only because CLS-MER-011 was fixed in this issue. Shipped as
+# it stood in 4.1, `coin` matched here as a whole word and filed a laundromat
+# under Investment.
+===
+# merchant=COCA COLA BOTTLING CO
+# expect=none
+===
+# merchant=SOLAR POWER SERVICES
+# expect=none
+===
+# merchant=MAX HOSPITAL SAKET
+# expect=none
+# The insurance rule's literal is `max life`, two words. Matching the `max` of
+# it alone would file a hospital bill under Insurance.
+===
+# merchant=HP INDIA SALES PVT LTD
+# expect=none
+# The fuel rule's literals are `hpcl` and `hp petrol`; a computer manufacturer
+# is neither.
+===
+# merchant=AMAZON PAY NETFLIX BUNDLE
+# expect=none
+# Shopping and Subscriptions match at identical confidence. Taking the first
+# would let the knowledge base's file order decide where the money goes.
+===
+# merchant=SHARMA GENERAL STORE
+# expect=none
+===
+# merchant=UPI/9876543210@YBL
+# expect=none
+===
+# merchant=ATM CASH WITHDRAWAL
+# expect=none
+===
+# merchant=NEFT TRANSFER TO SELF
+# expect=none
+===
+# merchant=HDFC BANK CHARGES GST
+# expect=none
+===
+# merchant=RELIANCE FRESH STORE
+# expect=none
+===
+# merchant=PAYTM WALLET LOAD
+# expect=none
+===
+# merchant=PHONEPE RECHARGE
+# expect=none
+===
+# merchant=SALARY CREDIT ACME PVT
+# expect=none
+===
+# merchant=LOCAL KIRANA SHOP
+# expect=none
+===

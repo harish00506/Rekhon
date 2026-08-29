@@ -2,8 +2,6 @@ package com.aicfo.feature.accounts
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,14 +24,10 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.aicfo.core.designsystem.component.CfoAmountText
 import com.aicfo.core.designsystem.component.CfoButton
 import com.aicfo.core.designsystem.component.CfoCard
-import com.aicfo.core.designsystem.component.CfoListRow
 import com.aicfo.core.designsystem.component.CfoSecondaryButton
 import com.aicfo.core.designsystem.theme.CfoDimens
-import com.aicfo.core.model.Account
-import com.aicfo.core.model.MoneyFormatter
 
 /**
  * The accounts list (issue 2.5; FR-ACC-001, FR-ACC-007, ARC-004).
@@ -46,13 +40,13 @@ import com.aicfo.core.model.MoneyFormatter
  * Result: create, read, archive and delete are reachable in one screen.
  * Changelog: 2026-07-28 — Created for issue 2.5.
  *
- * Input:  [onAddAccount], [onEditAccount] — where the editor lives; [modifier]; [viewModel].
+ * Input:  [onAddAccount], [onEditAccount] — where the editor lives; [onOpenHoldings] — the
+ *         holdings screen for one account (issue 6.3); [modifier]; [viewModel].
  * Output: the rendered screen.
  */
 @Composable
 fun AccountsScreen(
-    onAddAccount: () -> Unit,
-    onEditAccount: (String) -> Unit,
+    actions: AccountsActions,
     modifier: Modifier = Modifier,
     viewModel: AccountsViewModel = hiltViewModel(),
 ) {
@@ -61,8 +55,7 @@ fun AccountsScreen(
     AccountsContent(
         uiState = uiState,
         onEvent = viewModel::onEvent,
-        onAddAccount = onAddAccount,
-        onEditAccount = onEditAccount,
+        actions = actions,
         modifier = modifier,
     )
 }
@@ -72,7 +65,8 @@ fun AccountsScreen(
  * Why:    stateless, so a preview or a test can render any state — loading, empty, populated,
  *         error — without constructing a ViewModel.
  * Result: the rendered content.
- * Input:  [uiState]; [onEvent] — events up (ARC-004); [onAddAccount]; [onEditAccount]; [modifier].
+ * Input:  [uiState]; [onEvent] — events up (ARC-004); [onAddAccount]; [onEditAccount];
+ *         [onOpenHoldings]; [modifier].
  * Output: the composition.
  * Changelog: 2026-07-28 — Created for issue 2.5.
  */
@@ -80,8 +74,7 @@ fun AccountsScreen(
 fun AccountsContent(
     uiState: AccountsUiState,
     onEvent: (AccountsEvent) -> Unit,
-    onAddAccount: () -> Unit,
-    onEditAccount: (String) -> Unit,
+    actions: AccountsActions,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -97,7 +90,17 @@ fun AccountsContent(
             ErrorBanner(code = code, onDismiss = { onEvent(AccountsEvent.DismissError) })
         }
 
-        CfoButton(text = stringResource(R.string.accounts_add), onClick = onAddAccount)
+        CfoButton(text = stringResource(R.string.accounts_add), onClick = actions.onAddAccount)
+
+        // Only once something investable exists. Offering "see allocation" to a user whose only
+        // account is a savings account is offering a screen that can only say "nothing invested
+        // yet" — the button would be the question and the screen the shrug.
+        if (uiState.accounts.any { it.type in INVESTABLE_TYPES }) {
+            CfoSecondaryButton(
+                text = stringResource(R.string.allocation_open),
+                onClick = actions.onOpenAllocation,
+            )
+        }
 
         ArchivedToggle(
             checked = uiState.showArchived,
@@ -110,98 +113,42 @@ fun AccountsContent(
             ReconcilePanel(state = reconciling, onEvent = onEvent)
         }
 
-        if (uiState.isEmpty) {
-            EmptyState()
-        } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(CfoDimens.spaceSm)) {
-                items(uiState.accounts, key = { it.id }) { account ->
-                    AccountRow(
-                        account = account,
-                        onEdit = { onEditAccount(account.id) },
-                        onEvent = onEvent,
-                    )
-                }
-            }
-        }
+        AccountsList(uiState = uiState, actions = actions, onEvent = onEvent)
     }
 }
 
 /**
- * One account in the list.
- * Why:    the balance shown is the **derived** one (DB-001), and the opening balance is relegated to
- *         the supporting line — those are two different facts and a row that showed only one would
- *         make the other unverifiable (P-02).
- * Result: a tappable row with its archive and delete actions.
- * Input:  [account]; [onEdit]; [onEvent]. Output: the composition.
- * Changelog: 2026-07-28 — Created for issue 2.5.
+ * The accounts themselves, or the invitation when there are none.
+ * Why:    split from [AccountsContent] when issue 6.3's holdings lookup took that function past the
+ *         40-line limit (§21.6). The seam is the one the screen already had: everything above is
+ *         chrome, this is the list.
+ * Result: the list. Input: [uiState]; [actions]; [onEvent]. Output: none.
+ * Changelog: 2026-08-24 — Created for issue 6.3.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun AccountRow(
-    account: Account,
-    onEdit: () -> Unit,
+private fun AccountsList(
+    uiState: AccountsUiState,
+    actions: AccountsActions,
     onEvent: (AccountsEvent) -> Unit,
 ) {
-    CfoCard {
-        Column(verticalArrangement = Arrangement.spacedBy(CfoDimens.spaceSm)) {
-            CfoListRow(
-                title = account.rowTitle(),
-                supporting = account.rowSupporting(),
-                trailing = { CfoAmountText(amount = account.balance) },
+    if (uiState.isEmpty) {
+        EmptyState()
+        return
+    }
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(CfoDimens.spaceSm)) {
+        items(uiState.accounts, key = { it.id }) { account ->
+            AccountRow(
+                account = account,
+                figures =
+                    AccountFigures(
+                        card = uiState.cards[account.id],
+                        instalment = uiState.loans[account.id],
+                        holdings = uiState.investments[account.id],
+                    ),
+                actions = actions,
+                onEvent = onEvent,
             )
-            // FlowRow, not Row: three buttons do not fit one line once the archive action reads
-            // "Reopen account" rather than "Close account", and a plain Row pushes Delete off the
-            // right edge with nothing to scroll. Found on a device, not in a test — at 200% font
-            // even the shorter labels wrap. Issue 2.7's Reconcile makes it four, so the wrapping
-            // this already did is now load-bearing rather than a precaution.
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(CfoDimens.spaceSm),
-                verticalArrangement = Arrangement.spacedBy(CfoDimens.spaceXs),
-            ) {
-                CfoSecondaryButton(text = stringResource(R.string.account_editor_title_edit), onClick = onEdit)
-                CfoSecondaryButton(
-                    // Offered on a closed account too: recording its final statement balance is
-                    // exactly when a user reaches for this (FR-ACC-006 with FR-ACC-007).
-                    text = stringResource(R.string.accounts_reconcile),
-                    onClick = { onEvent(AccountsEvent.OpenReconcile(account.id)) },
-                )
-                CfoSecondaryButton(
-                    text =
-                        stringResource(
-                            if (account.isArchived) R.string.accounts_unarchive else R.string.accounts_archive,
-                        ),
-                    onClick = { onEvent(AccountsEvent.SetArchived(account.id, !account.isArchived)) },
-                )
-                CfoSecondaryButton(
-                    text = stringResource(R.string.accounts_delete),
-                    onClick = { onEvent(AccountsEvent.Delete(account.id)) },
-                )
-            }
         }
-    }
-}
-
-/** Result: the row's title — the name, marked when closed (FR-ACC-007). Output: a [String]. */
-@Composable
-private fun Account.rowTitle(): String =
-    if (isArchived) {
-        "$name · ${stringResource(R.string.accounts_archived_label)}"
-    } else {
-        name
-    }
-
-/**
- * Result: the row's second line — the type, the institution when there is one, and what the account
- *         opened with. Output: a [String].
- */
-@Composable
-private fun Account.rowSupporting(): String {
-    val typeLabel = stringResource(AccountLabels.typeLabel(type))
-    val opened = MoneyFormatter.format(openingBalance)
-    return if (institution.isNullOrBlank()) {
-        "$typeLabel · ${stringResource(R.string.accounts_row_supporting_no_institution, opened)}"
-    } else {
-        "$typeLabel · ${stringResource(R.string.accounts_row_supporting, institution!!, opened)}"
     }
 }
 
@@ -269,7 +216,7 @@ private fun EmptyState() {
  * Changelog: 2026-07-28 — Created for issue 2.5.
  */
 @Composable
-private fun ErrorBanner(
+internal fun ErrorBanner(
     code: String,
     onDismiss: () -> Unit,
 ) {

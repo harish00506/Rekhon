@@ -2,11 +2,15 @@ package com.aicfo.feature.dashboard
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.aicfo.core.common.Clock
+import com.aicfo.core.common.AppError
+import com.aicfo.core.common.fold
 import com.aicfo.core.common.toAppError
-import com.aicfo.core.model.Money
+import com.aicfo.data.repository.ArchiveRepository
+import com.aicfo.data.repository.BudgetRepository
 import com.aicfo.data.repository.NetWorthRepository
 import com.aicfo.data.repository.QuickSetupRepository
+import com.aicfo.data.repository.SafeToSpendRepository
+import com.aicfo.data.repository.TransactionRepository
 import com.aicfo.domain.engines.quicksetup.BudgetEnvelope
 import com.aicfo.domain.engines.quicksetup.BudgetNature
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -33,25 +37,41 @@ import javax.inject.Inject
  *
  * Changelog: 2026-07-27 — Issue 2.3: the spending split is real, read from the persisted budget.
  *            2026-08-01 — Issue 2.6: net worth is real, read from the daily snapshot (FR-ACC-005).
+ *            2026-08-16 — Issue 5.2: Safe-to-Spend is real, and this ViewModel now computes nothing.
  *
- * **Safe-to-Spend is the last placeholder** — it needs the engine issue 5.2 owns. The other two are
- * real: the spending split since issue 2.3 (FR-ONB-002), and net worth since issue 2.6 (FR-ACC-005),
- * both observed as Flows so they update the moment the underlying data changes. What was *never*
- * placeholder is the shape: state in one immutable value, events in through one function, `Clock`
- * injected rather than read from the wall (TIM-001), and work on `viewModelScope` so it is
- * cancelled with the screen (ARC-006).
+ * **Nothing on this screen is a placeholder any more.** Safe-to-Spend was the last one — a literal
+ * `Money(12_500_00L + today.dayOfMonth)` that had been on the app's home screen since issue 1.10, in
+ * plain breach of P-03. It now arrives from `SafeToSpendEngine` through `SafeToSpendRepository` like
+ * every other figure here, observed as a Flow so it updates the moment the ledger, the budget or a
+ * recurring rule changes. What was *never* placeholder is the shape: state in one immutable value,
+ * events in through one function, and work on `viewModelScope` so it is cancelled with the screen
+ * (ARC-006).
  *
- * Input:  [clock] — injected time, so a test can fix "now"; [quickSetupRepository] — the persisted
- *         budget envelopes; [netWorthRepository] — the stored daily snapshot (issue 2.6).
+ * Input:  [quickSetupRepository] — the persisted budget envelopes; [netWorthRepository] — the stored
+ *         daily snapshot (issue 2.6); [budgetRepository] — per-category status and alerts (issue
+ *         5.1); [safeToSpendRepository] — the headline figure and its breakdown (issue 5.2).
  *         Output: an observable screen state.
+ *
+ * **No `Clock` any more** (issue 5.2). It was injected in 1.10 for the placeholder to vary by day,
+ * and kept in 2.6 and 5.1 so the injected clock stayed genuinely on this path rather than
+ * decorative. With the placeholder gone this ViewModel has no calendar question left to ask: every
+ * window is resolved inside the repository that owns the query (TIM-001), which is where it always
+ * belonged.
  */
 @HiltViewModel
+// One private collector per figure the dashboard shows, plus issue 5.4's two archive actions. The
+// count is the number of things on the screen, not a design choice — splitting it would mean two
+// ViewModels for one screen and two StateFlows for one UiState, which ARC-004 exists to prevent.
+@Suppress("TooManyFunctions")
 class DashboardViewModel
     @Inject
     constructor(
-        private val clock: Clock,
         private val quickSetupRepository: QuickSetupRepository,
         private val netWorthRepository: NetWorthRepository,
+        private val transactionRepository: TransactionRepository,
+        private val budgetRepository: BudgetRepository,
+        private val safeToSpendRepository: SafeToSpendRepository,
+        private val archiveRepository: ArchiveRepository,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(DashboardUiState())
 
@@ -64,8 +84,40 @@ class DashboardViewModel
 
         init {
             load()
+            observeSafeToSpend()
             observeBudget()
             observeNetWorth()
+            observeNature()
+            observeCashFlow()
+            observeBudgetStatus()
+            observeRecentActivity()
+        }
+
+        /**
+         * Keeps the headline figure in step with everything that claims the month (issue 5.2;
+         * §5.2, §14, AI-STS).
+         *
+         * Why:    **the collector that ends the placeholder.** Every term moves under this screen —
+         *         an expense added, a bill scheduled, a budget edited, a recurring rule confirmed —
+         *         so a snapshot taken at construction would show a figure that was true when the app
+         *         opened, which for the number the user is expected to act on is worse than showing
+         *         none.
+         *
+         *         A failure raises the error banner rather than clearing the section, following
+         *         [observeNetWorth] and not [observeCashFlow]. This is the screen's headline figure:
+         *         if it cannot be read, the user needs to know, not to be shown a quiet blank where
+         *         the most important number on the app used to be.
+         * Result: [uiState] carries the figure and its breakdown, or `null` — which the screen
+         *         renders as "not worked out yet" rather than as ₹0, because a profile with no
+         *         income basis has told the app nothing to compute from (P-03).
+         * Input:  none. Output: none (launches a collector).
+         * Changelog: 2026-08-16 — Created for issue 5.2.
+         */
+        private fun observeSafeToSpend() {
+            safeToSpendRepository.observeSafeToSpend()
+                .onEach { figure -> _uiState.update { it.copy(safeToSpend = figure) } }
+                .catch { failure -> _uiState.update { it.copy(errorCode = failure.toAppError().code) } }
+                .launchIn(viewModelScope)
         }
 
         /**
@@ -113,6 +165,98 @@ class DashboardViewModel
         }
 
         /**
+         * Observes what this month's money actually became (issue 4.3; SRS §8.3).
+         *
+         * Why:    a **second** stream beside [observeBudget], not a replacement for it. The budget is
+         *         the plan and this is the outcome, and putting them on one screen is the only way
+         *         the user finds out they disagree — which is the entire reason §8.3 separates
+         *         "spent" from "converted".
+         *
+         *         A failure clears the section rather than raising a banner. The dashboard's other
+         *         figures are still true, and a month's classification is the newest and least
+         *         load-bearing thing on the screen.
+         * Result: [uiState] carries the breakdown, or `null`.
+         * Input:  none. Output: none (launches a collector).
+         * Changelog: 2026-08-10 — Created for issue 4.3.
+         */
+        private fun observeNature() {
+            transactionRepository.observeNatureBreakdown()
+                .onEach { breakdown -> _uiState.update { it.copy(natureBreakdown = breakdown) } }
+                .catch { _uiState.update { it.copy(natureBreakdown = null) } }
+                .launchIn(viewModelScope)
+        }
+
+        /**
+         * Keeps this month's cash flow in step with the ledger (issue 5.1; FR-DASH-*).
+         *
+         * Why:    a raw ledger aggregation, not an engine result — see
+         *         [TransactionRepository.observeMonthCashFlow]'s own doc comment for why it carries
+         *         no provenance to show.
+         * Result: [uiState] carries the figure, or `null`, following [natureBreakdown]'s rule: a
+         *         failed read clears the section rather than raising a banner, because the newest
+         *         card on the screen must not be able to obscure the others.
+         * Input:  none. Output: none (launches a collector).
+         * Changelog: 2026-08-15 — Created for issue 5.1.
+         */
+        private fun observeCashFlow() {
+            transactionRepository.observeMonthCashFlow()
+                .onEach { summary -> _uiState.update { it.copy(cashFlow = summary) } }
+                .catch { _uiState.update { it.copy(cashFlow = null) } }
+                .launchIn(viewModelScope)
+        }
+
+        /**
+         * Keeps the budget summary and its alert line in step with the stored budgets (issue 5.1;
+         * FR-DASH-*, FR-BUD-004).
+         *
+         * Why:    **one collector, not two.** An earlier version ran a second, independent
+         *         subscription to `BudgetRepository.observeAlerts()` beside this one — but
+         *         `observeAlerts()` is itself `observeBudgets().map { ... }`, so the dashboard was
+         *         opening `BudgetRepository`'s three-Room-query `combine()` twice per load for data
+         *         that comes from the same read. It also meant one failure could show two different
+         *         faces: an error banner from this collector and a silently-emptied alert line from
+         *         the other, for the same underlying cause. [BudgetRepository.alertFor] derives the
+         *         alert for each row **synchronously, from rows this collector already has** — no
+         *         second subscription, and one `.catch` now covers both figures honestly.
+         * Result: [uiState] carries the rows [DashboardUiState.budgetTotals] folds and the alerts
+         *         (each with the rule that fired, P-02) in the same update; a read failure sets
+         *         [DashboardUiState.errorCode], matching how `:feature:budgets` treats its own
+         *         budgets stream.
+         * Input:  none. Output: none (launches a collector).
+         * Changelog: 2026-08-15 — Created for issue 5.1.
+         *            2026-08-16 — Merged with the separate alerts collector this issue also added,
+         *            after a review found the double subscription and the failure-handling split.
+         */
+        private fun observeBudgetStatus() {
+            budgetRepository.observeBudgets()
+                .onEach { rows ->
+                    val alerts = rows.mapNotNull(budgetRepository::alertFor)
+                    _uiState.update { it.copy(budgets = rows, budgetAlerts = alerts) }
+                }
+                .catch { failure -> _uiState.update { it.copy(errorCode = failure.toAppError().code) } }
+                .launchIn(viewModelScope)
+        }
+
+        /**
+         * Keeps the recent-activity preview in step with the ledger (issue 5.1; FR-DASH-*).
+         *
+         * Why:    bounded to [RECENT_ACTIVITY_LIMIT] rows — a preview, not the list. The full ledger
+         *         is one tap away through `DashboardActions.onNavigateToTransactions`, which is the
+         *         same "view all" the reason [TransactionRepository.observeRecent]'s own doc comment
+         *         gives for why this is not a re-run of the window issue 3.6 removed.
+         * Result: [uiState] carries the rows, or a failure clears the section — the same choice
+         *         [observeCashFlow] makes, since this too is advisory beside the figures above it.
+         * Input:  none. Output: none (launches a collector).
+         * Changelog: 2026-08-15 — Created for issue 5.1.
+         */
+        private fun observeRecentActivity() {
+            transactionRepository.observeRecent(RECENT_ACTIVITY_LIMIT)
+                .onEach { rows -> _uiState.update { it.copy(recentActivity = rows) } }
+                .catch { _uiState.update { it.copy(recentActivity = null) } }
+                .launchIn(viewModelScope)
+        }
+
+        /**
          * Handles something the user did.
          * Why:    one entry point, so the sealed interface's exhaustiveness guarantees no
          *         interaction is silently unhandled.
@@ -122,36 +266,133 @@ class DashboardViewModel
             when (event) {
                 DashboardEvent.Refresh -> load()
                 DashboardEvent.DismissError -> _uiState.update { it.copy(errorCode = null) }
+                DashboardEvent.ExportRequested -> export()
+                // Deliberately does NOT import — it only opens the confirmation. The file has been
+                // read and nothing has been touched, so backing out here costs the user nothing.
+                is DashboardEvent.ImportPicked -> setArchive(ArchiveUiState.PendingImport(event.json))
+                DashboardEvent.ImportConfirmed -> confirmImport()
+                DashboardEvent.ImportCancelled -> setArchive(ArchiveUiState.Idle)
+                // The write happened in the screen, which owns the Uri; this only records how it
+                // went, so the user is told rather than left looking at a picker that closed.
+                is DashboardEvent.ExportWritten ->
+                    setArchive(
+                        if (event.written) ArchiveUiState.Exported else ArchiveUiState.Failed(EXPORT_WRITE_FAILED),
+                    )
+                DashboardEvent.ArchiveMessageDismissed -> setArchive(ArchiveUiState.Idle)
             }
         }
 
         /**
-         * Loads the dashboard figures.
-         * Why:    emits the loading state first so the UI has something honest to show while work
-         *         is in flight — a screen that jumps straight to numbers cannot show a spinner, and
-         *         the loading state is part of what §21.5 asks tests to assert.
-         * Result: updates [uiState]. Input: none. Output: none (launches on `viewModelScope`).
+         * Serialises the profile so the screen can write it (issue 5.4; §5.10).
+         *
+         * Why:    the text comes back as **state** rather than being written here, because writing
+         *         needs the `Uri` the system picker returned and a `ContentResolver` — Android types
+         *         a ViewModel must not hold (ARC-004). The screen owns the file; this owns the data.
+         * Result: [ArchiveUiState.ReadyToWrite] with the JSON, or [ArchiveUiState.Failed].
+         * Input:  none. Output: none (launches on `viewModelScope`).
+         * Changelog: 2026-08-16 — Created for issue 5.4.
          */
-        private fun load() {
-            _uiState.update { it.copy(isLoading = true, errorCode = null) }
+        private fun export() {
+            setArchive(ArchiveUiState.Working)
             viewModelScope.launch {
-                // One placeholder left. Issue 5.2 replaces Safe-to-Spend with its engine; the state
-                // shape stays the same. Net worth is no longer here: issue 2.6 made it real, and it
-                // arrives through observeNetWorth(). The spending split went the same way in 2.3.
-                // `clock.today()` is still read so the injected Clock stays genuinely on this path
-                // rather than decorative (TIM-001).
-                val today = clock.today()
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        safeToSpend = Money(SAMPLE_SAFE_TO_SPEND_MINOR + today.dayOfMonth),
-                    )
-                }
+                setArchive(
+                    archiveRepository.export().fold(
+                        onOk = { ArchiveUiState.ReadyToWrite(it) },
+                        onErr = { ArchiveUiState.Failed(it.archiveCode()) },
+                    ),
+                )
             }
         }
 
+        /**
+         * Applies the archive the user confirmed (issue 5.4).
+         *
+         * Why:    reached only from [DashboardEvent.ImportConfirmed], never from picking a file —
+         *         this replaces every row on the device, and a one-tap path to that would be
+         *         indefensible however clearly the button was labelled.
+         * Result: [ArchiveUiState.Imported] with what was restored, or [ArchiveUiState.Failed]. The
+         *         dashboard's own figures need no refresh: every section observes the database, so
+         *         they re-emit as the import commits.
+         * Input:  none — the pending archive. Output: none (launches on `viewModelScope`).
+         * Changelog: 2026-08-16 — Created for issue 5.4.
+         */
+        private fun confirmImport() {
+            val pending = _uiState.value.archive as? ArchiveUiState.PendingImport ?: return
+            setArchive(ArchiveUiState.Working)
+            viewModelScope.launch {
+                setArchive(
+                    archiveRepository.import(pending.json).fold(
+                        onOk = { ArchiveUiState.Imported(it.rowsImported, it.exportedAtUtcMillis) },
+                        onErr = { ArchiveUiState.Failed(it.archiveCode()) },
+                    ),
+                )
+            }
+        }
+
+        /**
+         * Result: [uiState] carries [state]. Input: [state]. Output: none.
+         * Why: one writer, so no path can leave two archive states visible at once.
+         */
+        private fun setArchive(state: ArchiveUiState) {
+            _uiState.update { it.copy(archive = state) }
+        }
+
+        /**
+         * Opens the screen, and clears any stale error.
+         *
+         * Why:    **it computes nothing** (issue 5.2). Until this issue it minted Safe-to-Spend from
+         *         a literal inside a coroutine; every figure now arrives through its own collector,
+         *         so all that is left here is the transition out of loading — which is also exactly
+         *         what `DashboardEvent.Refresh` should do, since the collectors are already live and
+         *         there is nothing to re-fetch.
+         *
+         *         **`isLoading` is not gated on any one stream, deliberately.** An earlier draft of
+         *         this issue cleared the flag from [observeSafeToSpend]'s first emission, so the
+         *         "loading" state would be genuinely observable. That is worse behaviour and it
+         *         broke `CfoSmokeTest`: `DashboardContent` returns early while loading, so the whole
+         *         screen — net worth, budgets, recent activity, **and every navigation button** —
+         *         stayed hidden until five Room flows had each emitted, and anything that reasonably
+         *         treats the visible "Dashboard" title as "the screen is up" found no buttons to
+         *         press. Every section already renders its own absence, including the Safe-to-Spend
+         *         card, so there is nothing for the screen-wide flag to protect.
+         * Result: updates [uiState]. Input: none. Output: none.
+         * Changelog: 2026-08-16 — Issue 5.2: the last computed figure left this function.
+         */
+        private fun load() {
+            _uiState.update { it.copy(isLoading = false, errorCode = null) }
+        }
+
+        /**
+         * The code the screen looks a message up by (issue 5.4).
+         *
+         * Why:    `AppError.Validation`'s own `code` is the constant `"validation"`, the same for
+         *         every rejected field in the app — so mapping it straight through meant the two
+         *         archive-specific messages ("that isn't a backup", "that backup is from another
+         *         version") could never be reached, and every refusal showed the generic line.
+         *         **Found by running it, not by a test**: the test asserted only that a failure
+         *         surfaced, which it did, wearing the wrong words.
+         * Result: the field for a validation failure, the error's code otherwise.
+         * Input:  the receiver. Output: [String].
+         * Changelog: 2026-08-16 — Created for issue 5.4.
+         */
+        private fun AppError.archiveCode(): String = if (this is AppError.Validation) field else code
+
         private companion object {
-            const val SAMPLE_SAFE_TO_SPEND_MINOR = 12_500_00L
+            /**
+             * The file could not be written where the user pointed.
+             * Not an `AppError`: nothing failed inside the app — the destination did, which is a
+             * different thing to tell someone and a different thing for them to do about it.
+             */
+            const val EXPORT_WRITE_FAILED = "archive.writeFailed"
+
+            /**
+             * How many rows [observeRecentActivity] shows (issue 5.1).
+             *
+             * Not a financial threshold, so §29's data-not-code rule does not reach it — it is the
+             * size of a preview. Small enough to read at a glance on the screen the app opens to;
+             * the Transactions screen is where "how many" stops being a question.
+             */
+            const val RECENT_ACTIVITY_LIMIT = 5
         }
     }
 

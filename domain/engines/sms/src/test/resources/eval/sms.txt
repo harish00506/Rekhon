@@ -1,0 +1,378 @@
+# =============================================================================
+# Frozen bank-alert evaluation set (issue 3.9; SRS §18, §23, §21.5).
+#
+# Why:  §21.5 says AI evaluation runs against frozen labelled datasets whose regression thresholds
+#       block merges. SmsEvalTest is that gate. Unlike the receipt parser, **the SRS puts no number
+#       on SMS parsing** — the two thresholds this set enforces are ours, and they are deliberately
+#       lopsided:
+#
+#         - amount + direction accuracy >= 95% on the transactional half;
+#         - **100% rejection** of the non-transactional half.
+#
+#       The asymmetry is the whole point. A missed alert costs the user one manual entry, which is
+#       what they were doing before this feature existed. A false positive puts money in their
+#       ledger that never moved. So the second gate has no budget at all: one OTP, one loan advert
+#       or one declined-payment notice becoming a draft fails the build.
+# What: fifty anonymised messages in the templates Indian banks, cards and UPI apps actually send —
+#       thirty real movements and twenty that merely mention money.
+# Result: a keyword edit that starts admitting adverts, or stops reading UPI payments, fails CI.
+# Changelog: 2026-08-07 — Created for issue 3.9.
+#
+# **What this set does and does not prove.** It was written alongside the parser, so its score is
+# *not* an independent estimate of how the app performs against a real inbox — it is regression
+# protection. Bank wording also drifts: a template that changes next year is not covered by any
+# fixture written this year. The independent measurement is the emulator run against messages
+# injected with `adb emu sms send`, and, in the end, the user's own review screen — which is why
+# nothing here is ever saved without a tap (P-07).
+#
+# **A text file, not JSON, on purpose.** `:domain:*` is pure Kotlin with no serialisation dependency
+# (ARC-002), so a JSON fixture would mean hand-rolling a parser in a test. This format is read by
+# six lines of `split`, exactly as `eval/receipts.txt` is.
+#
+# **Every message here is invented.** No real person's inbox is in this repository, and no real
+# account number, reference or phone number appears (P-01).
+#
+# Format: `# key=value` header lines, then the message body, then `===` on its own line.
+#         expect = debit | credit | none.  amount = paise, empty when expect=none.
+# =============================================================================
+
+# sender=VM-HDFCBK
+# expect=debit
+# amount=125000
+Rs.1250.00 debited from A/c XX4521 on 07-08-26 to SWIGGY. Ref 522100123456. Avl Bal Rs.45320.10. Not you? Call 18002586161
+===
+
+# sender=AD-ICICIB
+# expect=debit
+# amount=245000
+INR 2,450.00 debited from A/c XX8890 on 06-Aug-26. Info: UPI/ZOMATO. Avl Bal INR 88,120.55
+===
+
+# sender=JD-SBIINB
+# expect=debit
+# amount=49900
+Dear Customer, Rs.499.00 spent on your SBI Card ending 1234 at BIG BAZAAR on 06-08-26. Avl Lmt Rs.1,12,000.00
+===
+
+# sender=VK-AXISBK
+# expect=debit
+# amount=35000
+Rs 350 debited from A/c no XX9012 on 07-08-26 to UPI/522100/ZOMATO. Bal Rs 8450.00
+===
+
+# sender=AX-KOTAKB
+# expect=debit
+# amount=20000
+Sent Rs.200.00 from Kotak A/c XX1234 to merchant@okaxis on 07-08-26. UPI Ref 812345678901.
+===
+
+# sender=TM-PAYTMB
+# expect=debit
+# amount=15000
+Rs.150 paid to CHAI POINT from your Paytm Wallet A/c XX5566. Bal Rs.850.00
+===
+
+# sender=VM-HDFCBK
+# expect=debit
+# amount=500000
+Rs.5,000.00 withdrawn from A/c XX4521 at ATM ID BLR0012 on 06-08-26. Avl Bal Rs.40,320.10
+===
+
+# sender=VM-HDFCBK
+# expect=debit
+# amount=2500000
+Rs.25,000.00 debited from your A/c XX4521 towards NEFT to ACME PVT LTD. Ref N123456789. Bal Rs.15,320.10
+===
+
+# sender=AD-ICICIB
+# expect=debit
+# amount=1249900
+Rs.12,499.00 debited from A/c XX4521 for EMI of Loan XX7788. Bal Rs.2,821.10
+===
+
+# sender=JD-SBIINB
+# expect=debit
+# amount=329900
+Rs.3,299.00 spent on Card ending 8890 at AMAZON on 05-08-26. Avl Lmt Rs.1,46,701.00
+===
+
+# sender=VK-AXISBK
+# expect=debit
+# amount=200000
+Rs.2,000.00 debited from A/c XX9012 at INDIAN OIL PETROL PUMP. Bal Rs.6,450.00
+===
+
+# sender=VM-HDFCBK
+# expect=debit
+# amount=19900
+Rs.199.00 debited from A/c XX4521 for GOOGLE ONE subscription. Bal Rs.5,000.00
+===
+
+# sender=AM-IDFCFB
+# expect=debit
+# amount=750000
+Rs.7,500.00 sent from A/c XX4521 to RAHUL S via IMPS. Ref 512345. Bal Rs.9,000.00
+===
+
+# sender=VM-PHONPE
+# expect=debit
+# amount=8500
+Rs.85 paid to AUTO DRIVER from A/c XX3344. UPI Ref 923456789012.
+===
+
+# sender=VM-HDFCBK
+# expect=debit
+# amount=1475000
+Rs.14,750.00 debited from A/c XX4521 towards LIC PREMIUM. Bal Rs.30,000.00
+===
+
+# sender=VM-HDFCBK
+# expect=debit
+# amount=12345678
+₹1,23,456.78 debited from A/c XX4521 to LANDLORD RENT. Bal ₹50,000.00
+===
+
+# sender=VK-AXISBK
+# expect=debit
+# amount=900
+Rs.9.00 debited from A/c XX4521 to BUS TICKET. Bal Rs.4,991.00
+===
+
+# sender=JD-FEDBNK
+# expect=debit
+# amount=184750
+Rs.1,847.50 spent using Card ending 4521 at RELIANCE FRESH. Avl Lmt Rs.98,152.50
+===
+
+# sender=VM-PNBSMS
+# expect=debit
+# amount=29900
+Rs.299.00 debited from A/c XX9012 for AIRTEL RECHARGE. Bal Rs.7,701.00
+===
+
+# sender=AD-BOBSMS
+# expect=debit
+# amount=64000
+Rs.640.00 paid at APOLLO PHARMACY from A/c XX4521. Bal Rs.3,000.00
+===
+
+# sender=VM-INDUSB
+# expect=debit
+# amount=110000
+Rs.1,100.00 debited from A/c XX7788 at UBER INDIA. Avl Bal Rs.14,900.00
+===
+
+# sender=AD-AUBANK
+# expect=debit
+# amount=45000
+Rs.450.00 spent on Card ending 6677 at DOMINOS PIZZA. Avl Lmt Rs.55,550.00
+===
+
+# sender=JM-CANBNK
+# expect=debit
+# amount=1800000
+Rs.18,000.00 debited from A/c XX2233 towards SCHOOL FEES. Bal Rs.42,000.00
+===
+
+# sender=VK-YESBNK
+# expect=debit
+# amount=27550
+Rs.275.50 paid to BLINKIT from A/c XX9911. Bal Rs.8,724.50
+===
+
+# sender=AD-ICICIB
+# expect=credit
+# amount=8500000
+INR 85,000.00 credited to A/c XX8890 on 01-08-26 by ACME PAYROLL. Avl Bal INR 1,45,320.10
+===
+
+# sender=VM-HDFCBK
+# expect=credit
+# amount=129900
+Refund of Rs.1,299.00 credited to A/c XX4521 from AMAZON. Bal Rs.6,299.00
+===
+
+# sender=VK-AXISBK
+# expect=credit
+# amount=50000
+Rs.500.00 credited to A/c XX4521 from PRIYA K via UPI. Ref 812345. Bal Rs.6,799.00
+===
+
+# sender=JD-SBIINB
+# expect=credit
+# amount=123400
+Rs.1,234.00 credited to A/c XX4521 as interest for Q1. Avl Bal Rs.51,234.00
+===
+
+# sender=TM-PAYTMB
+# expect=credit
+# amount=5000
+Rs.50.00 credited to your Wallet A/c XX5566 as cashback. Bal Rs.900.00
+===
+
+# sender=AD-ICICIB
+# expect=credit
+# amount=240000
+Rs.2,400.00 credited to A/c XX8890 towards dividend from ACME LTD. Bal Rs.1,47,720.10
+===
+
+# sender=VM-HDFCBK
+# expect=credit
+# amount=300000
+Rs.3,000.00 received in A/c XX4521 from MOM. Avl Bal Rs.9,299.00
+===
+
+# sender=JM-CANBNK
+# expect=credit
+# amount=2000000
+Rs.20,000.00 deposited in A/c XX9012 at BRANCH BLR. Bal Rs.28,450.00
+===
+
+# sender=VM-PNBSMS
+# expect=credit
+# amount=4500000
+Rs.45,000.00 credited to A/c XX4521 by NEFT from ACME PVT LTD. Bal Rs.51,000.00
+===
+
+# sender=JD-SBIINB
+# expect=credit
+# amount=49900
+Rs.499.00 credited to Card ending 1234 as a reversal. Avl Lmt Rs.1,12,499.00
+===
+
+# sender=AM-IDFCFB
+# expect=credit
+# amount=150000
+Rs.1,500.00 received in A/c XX3344 from FREELANCE CLIENT. Bal Rs.10,500.00
+===
+
+# sender=VK-YESBNK
+# expect=credit
+# amount=75000
+Rs.750.00 refund credited to A/c XX9911 for a cancelled IRCTC booking. Bal Rs.9,474.50
+===
+
+# --- the twenty that must be refused ----------------------------------------
+# Each of these mentions money and most of them name an account, a card or a merchant. Every one
+# of them would become a transaction the user never made under a parser that looked for an amount
+# first and filtered afterwards.
+
+# sender=VM-HDFCBK
+# expect=none
+# amount=
+Your OTP for a transaction of Rs 5,000 on Card XX4521 is 448210. Do not share it with anyone.
+===
+
+# sender=AD-ICICIB
+# expect=none
+# amount=
+448210 is your one time password to authorise Rs.12,000.00 on A/c XX4521. Valid for 10 minutes.
+===
+
+# sender=VM-HDFCBK
+# expect=none
+# amount=
+Rs.1,499.00 will be debited from A/c XX4521 on 12-08-26 towards NETFLIX SUBSCRIPTION.
+===
+
+# sender=VK-AXISBK
+# expect=none
+# amount=
+Congratulations! You have a pre-approved loan offer of Rs 5,00,000 on your A/c XX4521. Apply now.
+===
+
+# sender=VM-HDFCBK
+# expect=none
+# amount=
+Dear Customer, the available balance in your A/c XX4521 is Rs.45,320.10 as on 07-08-26.
+===
+
+# sender=JD-SBIINB
+# expect=none
+# amount=
+Statement for A/c XX4521 is ready. Total spends Rs.12,400.00 this cycle.
+===
+
+# sender=JD-SBIINB
+# expect=none
+# amount=
+Your Card ending 1234 bill of Rs.8,450.00 is due on 15-08-26. Pay now to avoid late charges.
+===
+
+# sender=AD-AUBANK
+# expect=none
+# amount=
+Flat Rs.500 off on your next purchase above Rs.2,000 with Card ending 1234. Offer ends 31-08-26.
+===
+
+# sender=9876543210
+# expect=none
+# amount=
+Rs.1,250.00 debited from A/c XX4521 to SWIGGY. Bal Rs.45,320.10
+===
+
+# sender=VM-HDFCBK
+# expect=none
+# amount=
+Rs.2,000.00 debited towards your monthly plan. Thank you for banking with us.
+===
+
+# sender=AD-ICICIB
+# expect=none
+# amount=
+Reminder: Rs.3,500.00 will be deducted from A/c XX4521 for your SIP on 10-08-26.
+===
+
+# sender=TM-PAYTMB
+# expect=none
+# amount=
+Get up to Rs.10,000 cashback! Spend Rs.5,000 on Card ending 1234 this month.
+===
+
+# sender=VM-HDFCBK
+# expect=none
+# amount=
+Never share your OTP or A/c details. Bank staff will never ask for your PIN.
+===
+
+# sender=VK-AXISBK
+# expect=none
+# amount=
+Your KYC for A/c XX4521 is pending. Please update it to avoid restrictions on your account.
+===
+
+# sender=JD-SBIINB
+# expect=none
+# amount=
+Your credit limit on Card ending 1234 has been increased to Rs.2,00,000. Enjoy!
+===
+
+# sender=VM-INDUSB
+# expect=none
+# amount=
+Your policy premium of Rs.14,750.00 is due for renewal on 20-08-26 for A/c XX4521.
+===
+
+# sender=AD-DELVRY
+# expect=none
+# amount=
+Your order worth Rs.1,299.00 is out for delivery and will arrive by 6 PM today.
+===
+
+# sender=AD-ICICIB
+# expect=none
+# amount=
+Your SIP of Rs.5,000.00 will be debited from A/c XX4521 on 10-08-26. Ensure sufficient funds.
+===
+
+# sender=TM-PAYTMB
+# expect=none
+# amount=
+Add Rs.500 to your Wallet A/c XX5566 and get Rs.50 cashback. Apply now.
+===
+
+# sender=JD-SBIINB
+# expect=none
+# amount=
+Card ending 1234 blocked. Last purchase of Rs.2,499.00 at AMAZON was declined.
+===

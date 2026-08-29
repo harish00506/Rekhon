@@ -51,12 +51,17 @@ import com.aicfo.core.designsystem.theme.CfoDimens
  * Result: a transaction is captured in two taps, and the third is spare for a category or income.
  * Changelog: 2026-08-02 — Created for issue 3.1.
  *
- * Input:  [onDone] — where to go once saved or cancelled; [modifier]; [viewModel].
+ * Input:  [onDone] — where to go once saved or cancelled; [onScanReceipt] — opens issue 3.8's
+ *         receipt scanner, a *different destination* rather than a mode of this screen, because
+ *         capture has its own three-stage flow and its own back behaviour; [onReviewSms] — issue
+ *         3.9's bank-alert review, a separate destination for the same reason; [modifier]; [viewModel].
  * Output: the rendered screen.
  */
 @Composable
 fun AddTransactionScreen(
     onDone: () -> Unit,
+    onScanReceipt: () -> Unit,
+    onReviewSms: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: AddTransactionViewModel = hiltViewModel(),
 ) {
@@ -72,18 +77,43 @@ fun AddTransactionScreen(
         uiState = uiState,
         onEvent = viewModel::onEvent,
         onCancel = onDone,
+        captureRoutes = CaptureRoutes(onScanReceipt = onScanReceipt, onReviewSms = onReviewSms),
         modifier = modifier,
     )
 }
+
+/**
+ * Where the add screen's two automated alternatives go (issues 3.8, 3.9).
+ *
+ * Why:    one value rather than two more lambdas, because the second one took
+ *         [AddTransactionContent] past detekt's six-parameter ceiling (§21.6) — and the grouping is
+ *         real: both are "leave this form for a capture path that fills it in for you", both are
+ *         separate destinations, and a screen adding a third would add it here rather than widening
+ *         the signature again. Defaulted to no-ops so the existing call sites and previews are
+ *         unchanged.
+ * Result: the argument to [AddTransactionContent].
+ * Changelog: 2026-08-07 — Created for issue 3.9.
+ *
+ * Input:  [onScanReceipt] — issue 3.8's scanner; [onReviewSms] — issue 3.9's bank-alert review.
+ * Output: an immutable value.
+ */
+data class CaptureRoutes(
+    val onScanReceipt: () -> Unit = {},
+    val onReviewSms: () -> Unit = {},
+)
 
 /**
  * The add screen's body, with no dependencies of its own.
  * Why:    stateless so the tap-count test can drive it without Hilt, a database or a navigator —
  *         FR-TXN-002's budget is asserted against this function.
  * Result: the rendered content.
- * Input:  [uiState]; [onEvent] — events up (ARC-004); [onCancel]; [modifier].
+ * Input:  [uiState]; [onEvent] — events up (ARC-004); [onCancel]; [onScanReceipt] — issue 3.8's
+ *         [captureRoutes] — where the two automated alternatives go, defaulted to no-ops so the
+ *         thirty existing call sites and previews are unchanged; [modifier].
  * Output: the composition.
  * Changelog: 2026-08-02 — Created for issue 3.1.
+ *            2026-08-06 — Issue 3.8: the "Scan a receipt" action.
+ *            2026-08-07 — Issue 3.9: the "From your bank messages" action.
  */
 @Composable
 fun AddTransactionContent(
@@ -91,6 +121,7 @@ fun AddTransactionContent(
     onEvent: (AddTransactionEvent) -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
+    captureRoutes: CaptureRoutes = CaptureRoutes(),
 ) {
     Column(
         modifier =
@@ -137,7 +168,23 @@ fun AddTransactionContent(
         SplitToggle(uiState = uiState, onEvent = onEvent)
         SplitEditor(uiState = uiState, onEvent = onEvent)
         NoteFieldAndActions(uiState = uiState, onEvent = onEvent, onCancel = onCancel)
+        CaptureAlternatives(captureRoutes)
     }
+}
+
+/**
+ * The two ways to have the form filled in for you (issues 3.8, 3.9).
+ * Why:    **last on purpose, and together.** FR-TXN-002 budgets the typed path at three taps, and an
+ *         action above the amount field would put a choice in front of the user before the thing
+ *         they came here to do. Both of these are the alternative, not the default. Extracted so
+ *         [AddTransactionContent] stays inside detekt's forty-line ceiling (§21.6).
+ * Result: the composition. Input: [routes]. Output: the rendered actions.
+ * Changelog: 2026-08-07 — Created for issue 3.9.
+ */
+@Composable
+private fun CaptureAlternatives(routes: CaptureRoutes) {
+    CfoSecondaryButton(text = stringResource(R.string.add_txn_scan), onClick = routes.onScanReceipt)
+    CfoSecondaryButton(text = stringResource(R.string.add_txn_review_sms), onClick = routes.onReviewSms)
 }
 
 /**
@@ -365,8 +412,7 @@ private fun AccountPicker(
 
 /**
  * FR-TXN-002's middle step — the category chips.
- * Why:    **hidden when the profile has no categories**, which is every real profile until issue 4.1
- *         seeds a taxonomy; only demo mode has any today. An empty picker reads as a broken one, and
+ * Why:    **hidden when the profile has no categories.** An empty picker reads as a broken one, and
  *         a control with no options must not sit in the tap budget. Tapping the selected chip again
  *         clears it, because a category chosen by mistake would otherwise be unclearable without
  *         leaving the screen.
@@ -375,6 +421,7 @@ private fun AccountPicker(
  *         and reachable without opening anything. `FlowRow` wraps them at any font scale.
  * Result: the composition, or nothing. Input: [uiState], [onEvent]. Output: none.
  * Changelog: 2026-08-02 — Created for issue 3.1.
+ *            2026-08-10 — Issue 4.2: gained the suggestion line under the chips.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -398,6 +445,7 @@ private fun CategoryPicker(
                 )
             }
         }
+        SuggestionNote(uiState.suggestion, onEvent)
     }
 }
 
@@ -408,9 +456,12 @@ private fun CategoryPicker(
  *         anything the throwable said (P-01).
  * Result: the composition. Input: [code] — an `AppError.code`; [onDismiss]. Output: none.
  * Changelog: 2026-08-02 — Created for issue 3.1.
+ *            2026-08-06 — Issue 3.8: made `internal` so the receipt review screen renders failures
+ *            identically. One banner rather than two: the two screens surface the same
+ *            `AppError.code`s and a second copy would drift in wording and in accessibility.
  */
 @Composable
-private fun AddTransactionErrorBanner(
+internal fun AddTransactionErrorBanner(
     code: String,
     onDismiss: () -> Unit,
 ) {

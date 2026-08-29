@@ -60,6 +60,42 @@ class NetWorthSnapshotWorkerTest {
         }
 
     @Test
+    fun `the repair runs before the backfill`() =
+        runTest {
+            // The order is the claim (ADR-0012). `snapshotUpToToday` will not rewrite a day it has
+            // already recorded, so correcting the past *after* extending it would leave one run's
+            // gap between the two halves of the same series.
+            sessionLock.unlock()
+
+            worker().doWork()
+
+            assertEquals(listOf("repair", "snapshot"), repository.calls)
+        }
+
+    @Test
+    fun `a locked app does not repair either`() =
+        runTest {
+            // The repair reads the same gated database, so it must sit behind the same guard.
+            worker().doWork()
+
+            assertEquals(emptyList<String>(), repository.calls)
+        }
+
+    @Test
+    fun `a failed repair retries and does not go on to write a new day`() =
+        runTest {
+            // Extending a series whose past could not be corrected would bake the wrong figure into
+            // one more day, and the next run would have two problems instead of one.
+            sessionLock.unlock()
+            repository.repairResult = Err(AppError.Storage("disk"))
+
+            val result = worker().doWork()
+
+            assertTrue(result is ListenableWorker.Result.Retry)
+            assertEquals(listOf("repair"), repository.calls)
+        }
+
+    @Test
     fun `today already recorded is a success, not a failure`() =
         runTest {
             // The repository returns 0 days written. That is the normal outcome of a second run in
@@ -122,8 +158,14 @@ private class RecordingNetWorthRepository : NetWorthRepository {
     var callCount: Int = 0
         private set
 
+    /** What the worker did, in order — so a test can assert the repair ran *before* the backfill. */
+    val calls: MutableList<String> = mutableListOf()
+
     /** What [snapshotUpToToday] returns; one day written unless a test says otherwise. */
     var result: Result<Int, AppError> = Ok(1)
+
+    /** What [repairStaleHistory] returns; nothing stale unless a test says otherwise. */
+    var repairResult: Result<Int, AppError> = Ok(0)
 
     override fun observeLatest(): Flow<NetWorthResult?> = flowOf(null)
 
@@ -133,6 +175,12 @@ private class RecordingNetWorthRepository : NetWorthRepository {
 
     override suspend fun snapshotUpToToday(): Result<Int, AppError> {
         callCount++
+        calls += "snapshot"
         return result
+    }
+
+    override suspend fun repairStaleHistory(): Result<Int, AppError> {
+        calls += "repair"
+        return repairResult
     }
 }

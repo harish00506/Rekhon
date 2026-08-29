@@ -44,10 +44,13 @@ internal data class BookingStamps(
  *         This function is where a date the user picked becomes that exclusion, and it makes three
  *         decisions that are each easy to get wrong at a call site:
  *
- *         **A past date is refused.** Back-dating is not what this issue is for, and it is not
- *         harmless: `net_worth_snapshot` already holds one written row per past day, and nothing
- *         recomputes them, so a row inserted into last week would make the sparkline disagree with
- *         today's figure. Issue 3.6 owns editing, and can revisit it with the recompute it needs.
+ *         **Any day is accepted, past or future.** Issue 3.4 refused the past, because
+ *         `net_worth_snapshot` holds one frozen row per past day and nothing recomputed them — a row
+ *         inserted into last week left those days' stored figures behind. That was true until
+ *         `NetWorthRepository.repairStaleHistory` was written, which corrects exactly the days a
+ *         back-dated row invalidates. With the consequence fixed, the refusal was the only thing
+ *         left, and a rule with no remaining reason is a rule to delete. **ADR-0012** records it and
+ *         supersedes ADR-0011's narrower provenance-based version.
  *
  *         **A future row's instant is the start of its own day, not now.** The recent list orders by
  *         `occurred_at_utc_millis`, so stamping "now" would sort a payment scheduled for next month
@@ -64,9 +67,10 @@ internal data class BookingStamps(
  *         `ZoneId` rather than by adding milliseconds to a midnight — `ZonedDateTime` moves to the
  *         first valid instant on a day whose local clock skips the chosen hour, where arithmetic on
  *         an offset would silently land an hour earlier or on the previous day.
- * Result: the stamps, or `null` when [bookedOn] is before today — which the caller reports as
- *         `AppError.Validation("bookedOn")`. `null` rather than an exception because §5 forbids
- *         exceptions across a layer boundary.
+ * Result: the stamps. Non-null today — the signature stays nullable because `create`,
+ *         `createTransfer` and `createSplit` all report a `null` as
+ *         `AppError.Validation("bookedOn")`, and keeping the seam costs one `?:` at three call
+ *         sites while leaving somewhere for a future refusal to live.
  * Input:  the receiver — the injected [Clock] (TIM-001, never the wall clock); [bookedOn] — the day
  *         the user picked, or `null` to mean today, which is what every caller before issue 3.4
  *         meant implicitly; [atTime] — the time of day (FR-TXN-001's "date-time"), or `null` to
@@ -75,6 +79,8 @@ internal data class BookingStamps(
  * Changelog: 2026-08-03 — Created for issue 3.4 (FR-TXN-010).
  *            2026-08-03 — [atTime], so FR-TXN-001's "date-time" is a thing the user can state
  *            rather than one the app always assumes.
+ *            2026-08-06 — [allowPast] for issue 3.8 (FR-OCR-003), then removed with the refusal
+ *            itself once `repairStaleHistory` made back-dating safe for every path; see ADR-0012.
  */
 internal fun Clock.stampsFor(
     bookedOn: LocalDate?,
@@ -82,9 +88,11 @@ internal fun Clock.stampsFor(
 ): BookingStamps? {
     val today = today()
     val date = bookedOn ?: today
-    if (date.isBefore(today)) return null
     val now = nowUtcMillis()
     val isToday = date == today
+    // A back-dated row is *already* posted: the day has arrived and the money has moved, so
+    // `postDue` must never pick it up again (ADR-0011). Only a future row is left unposted.
+    val hasArrived = !date.isAfter(today)
     return BookingStamps(
         bookedOnIsoDate = date.toString(),
         occurredAtUtcMillis =
@@ -96,7 +104,7 @@ internal fun Clock.stampsFor(
         // Unchanged by the time: **posting is a property of the day, not the hour** (ADR-0010). A
         // row booked for later today is already in today's balance, so it is posted now; one booked
         // for tomorrow at 09:00 is not posted at all until tomorrow, whatever hour was chosen.
-        postedAtUtcMillis = now.takeIf { isToday },
+        postedAtUtcMillis = now.takeIf { hasArrived },
         nowUtcMillis = now,
     )
 }

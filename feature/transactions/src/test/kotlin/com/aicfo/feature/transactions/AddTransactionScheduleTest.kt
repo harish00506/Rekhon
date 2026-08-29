@@ -79,7 +79,7 @@ class AddTransactionScheduleTest {
             accounts.setAccounts(account())
 
             viewModel().uiState.test {
-                assertEquals(TODAY, awaitItem().earliestBookableDate)
+                assertEquals(TODAY, awaitItem().todayInProfileZone)
                 cancelAndIgnoreRemainingEvents()
             }
         }

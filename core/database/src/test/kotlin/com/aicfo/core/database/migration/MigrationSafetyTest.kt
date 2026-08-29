@@ -222,13 +222,210 @@ class MigrationSafetyTest {
 
     /**
      * Input:  the exemption list itself.
-     * Output: asserts it is exactly the one table that has been argued for. The exemption above is
+     * Output: asserts it is exactly the tables that have been argued for. The exemption above is
      *         a hole in an invariant that protects user data, so it must not be possible to widen
      *         it by adding a string — this test makes that a deliberate, reviewed edit.
      */
     @Test
-    fun `only audit_log is exempt from the per-row invariants`() {
-        assertEquals(setOf("audit_log"), INVARIANT_EXEMPT_TABLES.keys)
+    fun `only the five argued-for tables are exempt from the per-row invariants`() {
+        assertEquals(
+            setOf("audit_log", "sms_draft", "budget_alert", "budget_review", "card_alert"),
+            INVARIANT_EXEMPT_TABLES.keys,
+        )
+    }
+
+    /**
+     * Input:  the `card_alert` table's columns.
+     * Output: asserts it keeps profile scoping and deliberately has no tombstone.
+     *
+     * The same argument `budget_alert` makes below, and it is repeated rather than shared because
+     * the exemption is a hole in an invariant that protects user data: each hole should have to be
+     * argued on its own table, in its own test, by whoever opened it. What differs here is the
+     * stake. §17.1 classes a card payment as a Critical money event — the notification that must
+     * still work in eleven months — so a claim that could be "deleted" and re-fire is the direct
+     * road to a user muting the channel that matters most.
+     */
+    @Test
+    fun `card_alert keeps profile scoping and deliberately has no tombstone`() {
+        val columns =
+            SchemaFixtures.load(CfoDatabase.VERSION)
+                .database
+                .entitiesByTableName()
+                .getValue("card_alert")
+                .fieldsByColumnName()
+                .keys
+
+        assertTrue("card_alert must carry profile_id so no query can span profiles", "profile_id" in columns)
+        assertTrue(
+            "card_alert must NOT have deleted_at_utc_millis — a row records that a person was " +
+                "notified, which cannot be undone, and the unique index counts tombstones anyway",
+            "deleted_at_utc_millis" !in columns,
+        )
+    }
+
+    /**
+     * Input:  the `credit_card` table's columns.
+     * Output: asserts it is NOT exempt — it carries both a tombstone and a profile id.
+     *
+     * The mirror of the exemption tests: `credit_card` arrived in the same migration as
+     * `card_alert` and it would have been easy to wave both through together. It is ordinary user
+     * data — terms the user typed and can delete — so it obeys the invariants in full, and this
+     * pins that rather than leaving it to the general sweep, which only proves the absence of a
+     * complaint.
+     */
+    @Test
+    fun `credit_card is ordinary user data and obeys both invariants`() {
+        val columns =
+            SchemaFixtures.load(CfoDatabase.VERSION)
+                .database
+                .entitiesByTableName()
+                .getValue("credit_card")
+                .fieldsByColumnName()
+                .keys
+
+        assertTrue("credit_card must carry profile_id", "profile_id" in columns)
+        assertTrue(
+            "credit_card must have deleted_at_utc_millis — a card's terms are user data (DB-003)",
+            "deleted_at_utc_millis" in columns,
+        )
+        assertTrue("credit_card must be exempt from nothing", "credit_card" !in INVARIANT_EXEMPT_TABLES)
+    }
+
+    /**
+     * Input:  the `investment_holding` and `investment_lot` columns.
+     * Output: asserts neither is exempt - both carry a tombstone and a profile id.
+     *
+     * The same mirror `credit_card` is, for the same reason. Two tables landing in one migration is
+     * exactly when a quiet exemption gets waved through, and these are the plainest user data in
+     * the schema: instruments the user named and cash movements they entered, both of which an
+     * undo has to be able to bring back (DB-003). `investment_lot` carries `profile_id` even though
+     * it could be reached through its holding, because the demo wipe and the export both address
+     * every table by profile alone (ADR-0006) and a table reachable only by a join is one they will
+     * eventually miss.
+     */
+    @Test
+    fun `the investment tables are ordinary user data and obey both invariants`() {
+        val entities = SchemaFixtures.load(CfoDatabase.VERSION).database.entitiesByTableName()
+
+        for (table in listOf("investment_holding", "investment_lot")) {
+            val columns = entities.getValue(table).fieldsByColumnName().keys
+
+            assertTrue("$table must carry profile_id", "profile_id" in columns)
+            assertTrue(
+                "$table must have deleted_at_utc_millis - holdings and lots are user data (DB-003)",
+                "deleted_at_utc_millis" in columns,
+            )
+            assertTrue("$table must be exempt from nothing", table !in INVARIANT_EXEMPT_TABLES)
+        }
+    }
+
+    /**
+     * Input:  the `budget_alert` table's columns.
+     * Output: asserts it keeps profile scoping and deliberately has no tombstone.
+     *
+     * Same shape of argument as `sms_draft` below, opposite reason. The exemption lifts both
+     * invariants and this table only needs relief from one: it is still profile-scoped, and the demo
+     * wipe still reaches it (ADR-0006). What it does not need is a tombstone, because a row here is
+     * not a thing the user made — it is the record that the app interrupted them, and that is not
+     * undoable. A soft-delete column would also be actively misleading: the unique index counts
+     * tombstoned rows, so "deleting" an alert would not let it fire again, and the only thing the
+     * column could do is make a reader think it would.
+     */
+    @Test
+    fun `budget_alert keeps profile scoping and deliberately has no tombstone`() {
+        val columns =
+            SchemaFixtures.load(CfoDatabase.VERSION)
+                .database
+                .entitiesByTableName()
+                .getValue("budget_alert")
+                .fieldsByColumnName()
+                .keys
+
+        assertTrue("budget_alert must carry profile_id so no query can span profiles", "profile_id" in columns)
+        assertTrue(
+            "budget_alert must NOT have deleted_at_utc_millis — a row records that a person was " +
+                "notified, which cannot be undone, and the unique index counts tombstones anyway",
+            "deleted_at_utc_millis" !in columns,
+        )
+    }
+
+    /**
+     * Input:  the `budget_review` table's columns.
+     * Output: asserts it keeps profile scoping and deliberately has no tombstone.
+     *
+     * Same argument as `budget_alert` above, one level coarser: a row here is not something the
+     * user made, it is the record that a review card was shown and dismissed, and the unique index
+     * that guarantees one review per profile per month counts soft-deleted rows too — a "deleted"
+     * claim would not let the card come back, only make a reader think it would.
+     */
+    @Test
+    fun `budget_review keeps profile scoping and deliberately has no tombstone`() {
+        val columns =
+            SchemaFixtures.load(CfoDatabase.VERSION)
+                .database
+                .entitiesByTableName()
+                .getValue("budget_review")
+                .fieldsByColumnName()
+                .keys
+
+        assertTrue("budget_review must carry profile_id so no query can span profiles", "profile_id" in columns)
+        assertTrue(
+            "budget_review must NOT have deleted_at_utc_millis — a row records that a review was " +
+                "shown, which cannot be undone, and the unique index counts tombstones anyway",
+            "deleted_at_utc_millis" !in columns,
+        )
+    }
+
+    /**
+     * Input:  the `sms_draft` table's columns.
+     * Output: asserts it carries `profile_id` and, deliberately, no `deleted_at_utc_millis`.
+     *
+     * The exemption above is coarse — it lifts *both* invariants — but `sms_draft` only needs
+     * relief from one of them. Without this test, adding it to the map would silently drop the
+     * profile-scoping guarantee too, and a query could then span the demo profile and the user's
+     * own (ADR-0006). The absent soft-delete column is asserted as well as the present one, because
+     * a well-meaning later edit that "fixes" the inconsistency by adding it would quietly turn
+     * revocation into a tombstone, which is what ADR-0013 argues it must not be.
+     */
+    @Test
+    fun `sms_draft keeps profile scoping and deliberately has no tombstone`() {
+        val columns =
+            SchemaFixtures.load(CfoDatabase.VERSION)
+                .database
+                .entitiesByTableName()
+                .getValue("sms_draft")
+                .fieldsByColumnName()
+                .keys
+
+        assertTrue("sms_draft must carry profile_id so no query can span profiles", "profile_id" in columns)
+        assertTrue(
+            "sms_draft must NOT have deleted_at_utc_millis — revoking the SMS consent deletes the " +
+                "inference rather than tombstoning it (P-01, ADR-0013)",
+            "deleted_at_utc_millis" !in columns,
+        )
+    }
+
+    /**
+     * Input:  the `sms_draft` table's columns.
+     * Output: asserts there is nowhere in the table to store a message body.
+     *
+     * Issue 3.9's acceptance criterion is that "no raw SMS [is] stored beyond what is needed", and
+     * this is that criterion made checkable. The row holds a conclusion and the inbox id it was
+     * drawn from; the text stays in the provider that already owns it. A column added later called
+     * `body`, `text`, `message` or `snippet` would turn a financial database into a copy of the
+     * user's messages, and no other test would notice.
+     */
+    @Test
+    fun `sms_draft has no column that could hold a message body`() {
+        val columns =
+            SchemaFixtures.load(CfoDatabase.VERSION)
+                .database
+                .entitiesByTableName()
+                .getValue("sms_draft")
+                .fieldsByColumnName()
+                .keys
+
+        assertEquals(emptySet<String>(), columns.intersect(setOf("body", "text", "message", "snippet", "content")))
     }
 
     /**
@@ -270,6 +467,38 @@ private val INVARIANT_EXEMPT_TABLES =
             "append-only security log (issue 2.2, §21.6): no profile exists at unlock time, and " +
             "a security log that can be soft-deleted proves nothing. Rows leave only with " +
             "erase-all (SEC-006).",
+        "budget_alert" to
+            "the record that the app interrupted the user (issue 4.5, FR-BUD-004): a row is not " +
+            "something the user created and can lose, it is the fact that a notification was sent. " +
+            "That is not recoverable because it was never destroyed, and a tombstone would be " +
+            "worse than absent — the unique index that guarantees one alert per band per month " +
+            "counts soft-deleted rows, so a 'deleted' alert would still not fire again. Deleting " +
+            "and recreating a budget inside one month therefore does not re-notify, which is the " +
+            "side of that trade this feature should err on. Rows leave with the profile.",
+        "card_alert" to
+            "the record that the app interrupted the user about a card (issue 6.1, FR-ACC-002, " +
+            "§17.1): the same argument as budget_alert, one domain over. A row is the fact that " +
+            "a payment reminder or a utilisation warning was sent, which is not something the user " +
+            "created and can lose. A tombstone would be worse than absent for the same mechanical " +
+            "reason — the unique index that guarantees one alert per cycle per kind counts " +
+            "soft-deleted rows, so a 'deleted' claim would not let the reminder fire again. It also " +
+            "matters more here than for a budget: this is the channel §17.1 classes as a " +
+            "Critical money event, and the failure a re-firing claim causes is a muted card " +
+            "reminder. Rows leave with the profile.",
+        "budget_review" to
+            "the record that a closed month's review card was shown (issue 4.6, §5.5): a row is " +
+            "not something the user created and can lose, it is the fact that a review was " +
+            "presented — one level coarser than budget_alert, keyed by month alone rather than " +
+            "month and band (ADR-0020). A tombstone would be worse than absent for the same " +
+            "reason: the unique index that guarantees one review per profile per month counts " +
+            "soft-deleted rows, so a 'deleted' claim would not bring the card back. Rows leave " +
+            "with the profile.",
+        "sms_draft" to
+            "unconfirmed proposals parsed from the inbox (issue 3.9, ADR-0013): a pending draft is " +
+            "not user data, it is an inference drawn from messages the user can withdraw " +
+            "permission to read — and P-01's 'revocable' means the inference goes, not that a " +
+            "tombstone of it is kept. Revoking the consent hard-deletes every pending row. " +
+            "**Exempt from soft delete only** — it carries profile_id, pinned below.",
     )
 
 // --- synthetic-schema builders, used only to prove the detector bites --------------------------

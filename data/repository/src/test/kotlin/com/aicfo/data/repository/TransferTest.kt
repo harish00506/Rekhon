@@ -12,6 +12,8 @@ import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.TransactionType
+import com.aicfo.domain.engines.classification.ClassificationEngineFactory
+import com.aicfo.domain.engines.nature.NatureEngineFactory
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -68,7 +70,11 @@ class TransferTest {
                 CfoDatabase::class.java,
             ).allowMainThreadQueries().build()
         val dispatchers = TestDispatchers(UnconfinedTestDispatcher())
-        repository = RepositoryFactory.transactions(database, clock, ids, dispatchers, activeProfileId)
+        repository =
+            RepositoryFactory.transactions(
+                database, clock, ids, dispatchers, activeProfileId, ClassificationEngineFactory.create(),
+                NatureEngineFactory.create(),
+            )
         // The real AccountRepository: the claim under test is that both balances the accounts screen
         // renders actually move, and a stub could not make it.
         accounts = RepositoryFactory.accounts(database, clock, ids, dispatchers, activeProfileId)

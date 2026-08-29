@@ -5,6 +5,9 @@ import com.aicfo.core.model.Account
 import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.MoneyFormatter
+import com.aicfo.domain.engines.card.CardStatus
+import com.aicfo.domain.engines.investment.HoldingPerformance
+import com.aicfo.domain.engines.loan.AmortisationRow
 
 /**
  * Everything the accounts list renders, as one value (ARC-004).
@@ -39,6 +42,35 @@ data class AccountsUiState(
      * is open — the balance it shows is the one the delta is measured against.
      */
     val reconciling: ReconcileState? = null,
+    /**
+     * The computed figures for every credit card, keyed by account id (issue 6.1; FR-ACC-002).
+     *
+     * A map rather than a field on [Account], because a card's status is derived — it is the engine's
+     * answer about a row, not part of the row. An account of type `CREDIT_CARD` that is **absent**
+     * here is a card whose terms have not been entered, which the row renders as a prompt rather
+     * than as a 0% bar (P-03).
+     */
+    val cards: Map<String, CardStatus> = emptyMap(),
+    /**
+     * The **next** instalment due on every loan, keyed by account id (issue 6.2; FR-ACC-003).
+     *
+     * One row, not a schedule: the list shows a single line per loan and building 240 rows to
+     * render it would be waste that only appears on somebody else's phone. Which instalment is
+     * "next" is decided in the repository, where the clock is (TIM-001).
+     *
+     * A `LOAN` account **absent** here has either no terms entered yet — rendered as a prompt
+     * rather than a ₹0 EMI (P-03) — or is repaid, and a repaid loan has no next EMI to name.
+     */
+    val loans: Map<String, AmortisationRow> = emptyMap(),
+    /**
+     * Every holding inside each investment account, priced, keyed by account id (issue 6.3; §11).
+     *
+     * A map of lists rather than a field on [Account], for the reason [cards] gives: these are the
+     * engine's answers about a row, not part of the row. An `INVESTMENT`, `GOLD` or `CRYPTO`
+     * account **absent** here holds nothing yet, which the row renders as a prompt rather than as
+     * ₹0 across 0 holdings (P-03).
+     */
+    val investments: Map<String, List<HoldingPerformance>> = emptyMap(),
 ) {
     /**
      * Whether to show the "no accounts yet" invitation rather than a list.
@@ -167,9 +199,81 @@ data class AccountEditorUiState(
     val isSaving: Boolean = false,
     val isSaved: Boolean = false,
     val errorCode: String? = null,
+    // --- Issue 6.1: credit-card terms (FR-ACC-002) -------------------------------------------
+    //
+    // The first type-specific fields in this state, and the module's first type branch anywhere.
+    // Held as text like the opening balance is, for the same reason: a half-typed "2,00,0" is a
+    // real intermediate state and parsing on every keystroke would fight the user. They are parsed
+    // once, on Save.
+    //
+    // Nullable-by-blank rather than a nested `CardFields?`: the ten other types simply leave them
+    // empty, and a nested object would need creating the moment the user picked CREDIT_CARD and
+    // discarding the moment they changed their mind — state that exists only to be thrown away.
+    val creditLimitText: String = "",
+    val statementDayText: String = "",
+    val dueDayText: String = "",
+    val lastStatementText: String = "",
+    val minimumDueText: String = "",
+    // --- Issue 6.2: loan terms (FR-ACC-003) ---------------------------------------------------
+    //
+    // The second type branch, held as text for the reason the card fields are: a half-typed "8." is
+    // a real intermediate state. Parsed once, on Save.
+    //
+    // [annualRateText] is typed in **percent** ("8.5") and stored in basis points (850) — the
+    // conversion is one line in `toLoan`, and it is the only place in this module that knows it.
+    val principalText: String = "",
+    val annualRateText: String = "",
+    val tenureMonthsText: String = "",
+    val firstEmiDateText: String = "",
+    val emiOverrideText: String = "",
 ) {
     /** Whether this is an edit of an existing account rather than a new one. */
     val isEditing: Boolean get() = id != null
+
+    /**
+     * Whether the card section is on screen (issue 6.1).
+     *
+     * A limit and a statement day mean nothing on a savings account, and showing them would invite
+     * a user to fill in fields the app would then ignore. Issue 6.2 added [showsLoanFields] beside
+     * this one.
+     */
+    val showsCardFields: Boolean get() = type == AccountType.CREDIT_CARD
+
+    /**
+     * Whether the loan section is on screen (issue 6.2; FR-ACC-003).
+     *
+     * The same argument [showsCardFields] makes, and deliberately the same **shape**: an exact type
+     * match rather than `type.isLiability`, which would hand a credit card a tenure in months and a
+     * loan a statement day.
+     */
+    val showsLoanFields: Boolean get() = type == AccountType.LOAN
+
+    /**
+     * Whether the card's terms are complete enough to store (issue 6.1).
+     *
+     * All three or none. A card row with a limit and no statement day cannot produce a cycle, and
+     * one with days and no limit cannot produce a ratio — either way the screen would show a card
+     * that computes nothing, which is worse than a card that has not been set up. Leaving all three
+     * blank is the supported state: a credit-card account with no terms yet.
+     */
+    val hasCardTerms: Boolean
+        get() = creditLimitText.isNotBlank() && statementDayText.isNotBlank() && dueDayText.isNotBlank()
+
+    /**
+     * Whether the loan's terms are complete enough to store (issue 6.2).
+     *
+     * All four or none, for the reason [hasCardTerms] gives: there is no schedule without every one
+     * of principal, rate, tenure and a first EMI date — three of four produces nothing at all, not
+     * a partial answer. **The rate is required even at zero**: an interest-free family loan is a
+     * real case the engine handles, and a blank field cannot be told apart from an unanswered one,
+     * so the user types `0` and means it.
+     *
+     * The EMI override is not here. It is genuinely optional — its absence means "derive it".
+     */
+    val hasLoanTerms: Boolean
+        get() =
+            principalText.isNotBlank() && annualRateText.isNotBlank() &&
+                tenureMonthsText.isNotBlank() && firstEmiDateText.isNotBlank()
 
     /**
      * Whether Save may proceed.
@@ -202,9 +306,82 @@ sealed interface AccountEditorEvent {
     /** The user toggled whether this account counts towards net worth (issue 2.6, FR-ACC-005). */
     data class IncludeInNetWorthChanged(val value: Boolean) : AccountEditorEvent
 
+    /**
+     * The user typed in one of the credit-card fields (issue 6.1, FR-ACC-002).
+     *
+     * One event with a [field] rather than five events, unusually for this codebase — because the
+     * five are the same action on the same section and the ViewModel handles them identically. Five
+     * cases in the `when` would be five identical bodies differing only in which `copy` argument
+     * they name.
+     */
+    data class CardFieldChanged(val field: CardField, val value: String) : AccountEditorEvent
+
+    /**
+     * The user typed in one of the loan fields (issue 6.2, FR-ACC-003).
+     *
+     * A second event rather than widening [CardFieldChanged] to a shared field enum: the two
+     * sections are never on screen together, and one enum spanning both would make every `when`
+     * over it carry five cases that cannot happen.
+     */
+    data class LoanFieldChanged(val field: LoanField, val value: String) : AccountEditorEvent
+
     /** The user tapped Save. */
     data object Save : AccountEditorEvent
 
     /** The user dismissed the error banner. */
     data object DismissError : AccountEditorEvent
+}
+
+/**
+ * Which credit-card field an edit was for (issue 6.1; FR-ACC-002).
+ *
+ * Why:  a closed set rather than a string key, so a typo is a compile error and the `when` that
+ *       applies the edit has to stay exhaustive when 6.2 or a later issue adds a term.
+ * Changelog: 2026-08-17 — Created for issue 6.1.
+ */
+enum class CardField {
+    /** The sanctioned limit, in rupees as typed. */
+    LIMIT,
+
+    /** Day of the month the statement is cut, 1..31. */
+    STATEMENT_DAY,
+
+    /** Day of the month the payment is due, 1..31. May precede the statement day. */
+    DUE_DAY,
+
+    /** The amount on the most recent statement. Optional — a new card has none. */
+    LAST_STATEMENT,
+
+    /** The minimum payment on that statement. Optional. */
+    MINIMUM_DUE,
+}
+
+/**
+ * Which loan field an edit was for (issue 6.2; FR-ACC-003).
+ *
+ * Why:  a closed set rather than a string key, the reason [CardField] gives — a typo becomes a
+ *       compile error, and the `when` that applies the edit must stay exhaustive when a later
+ *       issue adds a term (a moratorium, say, or a floating-rate reset).
+ * Changelog: 2026-08-20 — Created for issue 6.2.
+ */
+enum class LoanField {
+    /** The sanctioned amount, in rupees as typed. */
+    PRINCIPAL,
+
+    /** The annual interest rate, typed in **percent** — `8.5`, not `850` (MNY-002 converts at save). */
+    ANNUAL_RATE,
+
+    /** How many monthly instalments the loan runs for, 1..600. */
+    TENURE_MONTHS,
+
+    /** The first EMI's date, ISO `yyyy-MM-dd` (TIM-002). Every later one steps a month from it. */
+    FIRST_EMI_DATE,
+
+    /**
+     * The lender's own EMI, in rupees. Optional — blank means "work it out from the terms above".
+     *
+     * Offered because banks round the closed form their own way, and a schedule that disagrees with
+     * the borrower's statement by ₹2 a month is a schedule they stop trusting.
+     */
+    EMI_OVERRIDE,
 }

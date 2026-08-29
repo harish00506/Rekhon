@@ -11,6 +11,8 @@ import com.aicfo.core.common.TestDispatchers
 import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Money
+import com.aicfo.domain.engines.classification.ClassificationEngineFactory
+import com.aicfo.domain.engines.nature.NatureEngineFactory
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -87,7 +89,11 @@ class FutureDatedTransactionTest {
                 CfoDatabase::class.java,
             ).allowMainThreadQueries().build()
         val dispatchers = TestDispatchers(UnconfinedTestDispatcher())
-        repository = RepositoryFactory.transactions(database, clock, ids, dispatchers, activeProfileId)
+        repository =
+            RepositoryFactory.transactions(
+                database, clock, ids, dispatchers, activeProfileId, ClassificationEngineFactory.create(),
+                NatureEngineFactory.create(),
+            )
         // The real AccountRepository, not a stub: the claim under test is about the balance the
         // accounts screen renders, and a stub could not make it.
         accounts = RepositoryFactory.accounts(database, clock, ids, dispatchers, activeProfileId)
@@ -204,36 +210,52 @@ class FutureDatedTransactionTest {
             assertEquals(Money(1_00_000_00L), accounts.find(account.id).expectOk().balance)
         }
 
-    // --- refusing a past date ----------------------------------------------------------------------
+    // --- back-dating (ADR-0012) --------------------------------------------------------------------
 
     @Test
-    fun `a date in the past is refused, and nothing is written`() =
+    fun `a date in the past is accepted and moves the balance straight away`() =
         runTest {
-            // Back-dating is not merely out of scope: `net_worth_snapshot` already holds one written
-            // row per past day and nothing recomputes them, so a row inserted into last week would
-            // make the sparkline disagree with today's figure. Issue 3.6 owns editing.
+            // Issue 3.4 refused this, because `net_worth_snapshot` holds one frozen row per past day
+            // and nothing recomputed them. `NetWorthRepository.repairStaleHistory` corrects exactly
+            // those days now, so the refusal went with the reason for it (ADR-0012). The *balance* is
+            // right immediately either way — it is derived from the ledger, never stored (ADR-0007).
             val account = newAccount(opening = Money(1_00_000_00L))
+            val yesterday = clock.today().minusDays(1)
 
-            val refused =
+            val created =
                 repository.create(
-                    TransactionDraft(account.id, Money(-250_00L), bookedOn = clock.today().minusDays(1)),
-                )
+                    TransactionDraft(account.id, Money(-250_00L), bookedOn = yesterday),
+                ).expectOk()
 
-            assertTrue(refused is Err)
-            assertEquals("bookedOn", ((refused as Err).error as AppError.Validation).field)
-            assertTrue("a refused draft must write nothing", allRows().isEmpty())
-            assertEquals(Money(1_00_000_00L), accounts.find(account.id).expectOk().balance)
+            assertEquals("the day the user chose, not today", yesterday.toString(), created.bookedOn)
+            assertEquals(Money(99_750_00L), accounts.find(account.id).expectOk().balance)
         }
 
     @Test
-    fun `a past date is refused on every write path`() =
+    fun `a back-dated row is already posted, so the worker cannot post it twice`() =
+        runTest {
+            // `postedAtUtcMillis` is `postDue`'s idempotence key: the day has arrived and the money
+            // has moved, so a null here would leave the rollover job trying to post it every run.
+            val account = newAccount()
+
+            repository.create(
+                TransactionDraft(account.id, Money(-250_00L), bookedOn = clock.today().minusDays(3)),
+            ).expectOk()
+
+            assertEquals(1, allRows().count { it.postedAtUtcMillis != null })
+        }
+
+    @Test
+    fun `every write path accepts a past date`() =
         runTest {
             val from = newAccount(name = "Savings")
             val to = newAccount(name = "Cash")
             val yesterday = clock.today().minusDays(1)
 
             val transfer =
-                repository.createTransfer(TransferDraft(from.id, to.id, Money(1_000_00L), bookedOn = yesterday))
+                repository.createTransfer(
+                    TransferDraft(from.id, to.id, Money(1_000_00L), bookedOn = yesterday),
+                ).expectOk()
             val split =
                 repository.createSplit(
                     SplitDraft(
@@ -242,11 +264,14 @@ class FutureDatedTransactionTest {
                         lines = listOf(SplitLineDraft(Money(-600_00L)), SplitLineDraft(Money(-400_00L))),
                         bookedOn = yesterday,
                     ),
-                )
+                ).expectOk()
 
-            assertTrue(transfer is Err)
-            assertTrue(split is Err)
-            assertTrue("neither path may write a row", allRows().isEmpty())
+            assertEquals(
+                "both legs of a transfer share one booked day (FR-TXN-003)",
+                yesterday.toString(),
+                transfer.bookedOn,
+            )
+            assertEquals(yesterday.toString(), split.bookedOn)
         }
 
     // --- the two read windows ----------------------------------------------------------------------

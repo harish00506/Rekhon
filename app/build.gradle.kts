@@ -14,7 +14,7 @@ android {
 
     defaultConfig {
         applicationId = "com.aicfo.personalcfo"
-        versionCode = 16
+        versionCode = 25
         versionName = rootProject.file("VERSION").readText().trim()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -43,7 +43,12 @@ tasks.withType<Test>()
 dependencies {
     implementation(project(":core:designsystem"))
     implementation(project(":feature:accounts"))
+    implementation(project(":feature:budgets"))
+    implementation(project(":feature:categories"))
     implementation(project(":feature:dashboard"))
+    // FR-SET-001: income, consents and the app lock, reachable after onboarding. Without this edge
+    // the SMS consent stays unrevocable from the UI, which P-01 forbids.
+    implementation(project(":feature:settings"))
     implementation(project(":feature:onboarding"))
     implementation(project(":feature:transactions"))
 
@@ -76,6 +81,19 @@ dependencies {
     implementation(project(":data:repository"))
     implementation(libs.androidx.biometric)
 
+    // Issue 3.8: the DI graph binds the on-device recogniser (FR-OCR-002) and the receipt parser
+    // (FR-OCR-003) by name, so :app compiles against both. Declared explicitly rather than relying
+    // on :data:repository's `api` to leak them in — a binding whose type arrived by accident breaks
+    // the day that module reorganises its dependencies.
+    implementation(project(":ml:ocr"))
+    implementation(project(":domain:engines:receipt"))
+
+    // Issue 5.5: the home-screen widget. This edge is what makes the widget ship at all — its
+    // `<receiver>` lives in :widget's own manifest and only merges into the APK from here. :app also
+    // names `CfoWidget` directly: the widget renders from a cache it cannot fill itself (ADR-0024),
+    // so `WidgetRefreshWorker` and `WidgetBlurWatcher` on this side are the only writers.
+    implementation(project(":widget"))
+
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
     // Issue 2.6: the snapshot worker runs on Robolectric so its locked path — the one that would
@@ -98,6 +116,11 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.test.junit)
     androidTestImplementation(libs.androidx.test.runner)
+    // Issue 5.5: WidgetDeviceTest inflates the widget's RemoteViews on a device — the step between
+    // a composed Glance tree and what a launcher actually draws, which has no JVM equivalent and is
+    // why the widget carries no Paparazzi baselines (ADR-0024).
+    androidTestImplementation(project(":widget"))
+    androidTestImplementation(libs.glance.appwidget)
     // FakeClock (issue 1.3) — the app lock's timeout and lockout are clock-driven.
     testImplementation(testFixtures(project(":core:common")))
 }

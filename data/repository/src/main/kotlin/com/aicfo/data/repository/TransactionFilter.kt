@@ -236,6 +236,25 @@ data class FilteredTransaction(
 )
 
 /**
+ * This month's income, expense and net, as three already-summed figures (issue 5.1; FR-DASH-*).
+ *
+ * Why:  the dashboard's cash-flow card needs all three at once, and computing [net] on the screen
+ *       from the other two would be one Money subtraction happening twice if a second reader ever
+ *       needed it. Carrying it pre-folded means every consumer sees the same number.
+ * What: [income] and [expense] as non-negative magnitudes (the convention `BudgetStatus.spent`
+ *       already uses); [net] signed — negative for a month spent into savings.
+ * Result: [TransactionRepository.observeMonthCashFlow]'s output.
+ * Changelog: 2026-08-15 — Created for issue 5.1.
+ *
+ * Input:  [income]; [expense]; [net] — `income - expense`. Output: an immutable value.
+ */
+data class CashFlowSummary(
+    val income: Money,
+    val expense: Money,
+    val net: Money,
+)
+
+/**
  * Converts a tag row into the domain model (issue 3.6).
  * Why:    ARC-005, the same reason `CategoryEntity.toCategory` exists. The timestamps are dropped:
  *         nothing above the data layer asks when a label was created.

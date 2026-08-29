@@ -5,6 +5,7 @@ import com.aicfo.core.common.Err
 import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
 import com.aicfo.core.datastore.OnboardingProfile
+import com.aicfo.core.datastore.QuickSetupSeeds
 import com.aicfo.core.datastore.SettingsSnapshot
 import com.aicfo.core.datastore.SettingsStore
 import com.aicfo.core.datastore.ThemeSetting
@@ -57,6 +58,12 @@ internal class FakeSettingsStore : SettingsStore {
     override suspend fun setTheme(theme: ThemeSetting): Result<Unit, AppError> =
         Ok(Unit).also { state.update { current -> current.copy(theme = theme) } }
 
+    /**
+     * The FR-SET-001 setter. Result: records the seeds so a reader sees what the screen wrote.
+     * Input: [seeds]. Output: `Ok(Unit)`.
+     */
+    override suspend fun setQuickSetupSeeds(seeds: QuickSetupSeeds): Result<Unit, AppError> = Ok(Unit)
+
     override suspend fun completeOnboarding(profile: OnboardingProfile): Result<Unit, AppError> =
         Ok(Unit).also {
             state.update { current ->
@@ -72,6 +79,15 @@ internal class FakeSettingsStore : SettingsStore {
         demoWriteCount++
         if (failDemoWrites) return Err(AppError.Storage("FakeSettingsStore"))
         state.update { current -> current.copy(demoModeActive = active) }
+        return Ok(Unit)
+    }
+
+    /** Every value [setSmsScanCursor] was given, in order, so a test can assert *when* it moved. */
+    val smsCursorWrites: MutableList<Long> = mutableListOf()
+
+    override suspend fun setSmsScanCursor(smsId: Long): Result<Unit, AppError> {
+        smsCursorWrites += smsId
+        state.update { current -> current.copy(smsScanCursorId = smsId) }
         return Ok(Unit)
     }
 

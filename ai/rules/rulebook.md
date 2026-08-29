@@ -33,6 +33,10 @@ evaluate: RuleEngine.evaluate(ruleId, FeatureSnapshot)
 | Rule ID | Definition (default) | Consumed by |
 |---------|----------------------|-------------|
 | RULE-50-30-20 | Needs ≤ 50%, wants ≤ 30%, savings ≥ 20% of income; auto-flexes to fixed load (metro 60/20/20) | Budget suggester, FHS |
+| RULE-BUD-SUGGEST | Per-category budget suggested from the median of the last 3 months (≥ 2 required), adjusted by the seasonal prior for the target month and rounded to ₹100 | Budget suggester |
+| RULE-BUD-PACE | Safe pace = budget spread evenly across the month; projected end-of-month extrapolates the run rate, withheld until 3 days elapsed | Budget status, FHS |
+| RULE-BUD-ALERT | Warn at 80% of a category budget and again at 100%; at most one notification per band, per budget, per month | Budget planner, notifications |
+| RULE-BUD-REVIEW | Month-end review of budget vs actual per category; an adjustment is proposed only where the variance is ≥ 15%, and the amount proposed is RULE-BUD-SUGGEST's median | Budget planner |
 | RULE-PAY-FIRST | Contributions scheduled on salary-credit day, not month-end | Goal engine, notifications |
 | RULE-SAVE-RATE | Savings rate ≥ 20% good, ≥ 30% excellent, < 10% flag | FHS, monthly review |
 | RULE-COOL-OFF | Discretionary buy > 1% of annual income → Purchase Advisor + optional 24h cool-off | Purchase Advisor |
@@ -61,8 +65,11 @@ evaluate: RuleEngine.evaluate(ruleId, FeatureSnapshot)
 | RULE-20-4-10 | Vehicle: ≥ 20% down, loan ≤ 4y, transport cost ≤ 10% | Purchase Advisor (vehicle) |
 | RULE-HOME-EMI | Home: EMI ≤ 35%; price ≤ 5× annual income; rent ≤ 30% | Purchase Advisor (property) |
 | RULE-CC-UTIL | Card utilisation ≤ 30%; never revolve (severe) | FHS debt pillar, card alerts |
+| RULE-CC-DUE | Remind 3 days before a card's due date and again on the day, only when something is owed | Card alerts, AI-NTF |
 | RULE-PAYOFF-ORDER | Avalanche vs snowball with interest delta | Debt simulator |
 | RULE-PREPAY-VS-INVEST | Loan rate vs after-tax expected return; show breakeven | Loan simulator, AI-FOO |
+| RULE-RECEIPT-PARSE | Total = the currency amount nearest {total, grand, amount, payable}; GST from lines naming {gst, cgst, sgst}; merchant = text in the top 3 000 bps of the image; a field under 6 000 bps confidence is flagged for review; a manual/SMS row within 1% and 1 day is offered as a merge | Receipt parser |
+| RULE-SMS-PARSE | A bank alert becomes a draft only if it clears every gate: an alphabetic sender, a {debited, spent, withdrawn, paid, purchase, sent} or {credited, received, deposited, refund} word, an account marker, a currency amount that is not the balance, and no ignore word ({otp, will be debited, loan offer, declined, failed, …}). Every keyword matches as a whole word. Direction = the earliest keyword; the amount is the first ₹/Rs/INR figure with no {bal, limit, due, …} label since the previous figure; a draft under 6 000 bps confidence is flagged; a manual/OCR row within 1% and 1 day is offered as a merge | SMS parser |
 
 ## §29.5 Protection
 

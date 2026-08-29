@@ -289,6 +289,39 @@ class CfoLintDetectorsTest {
             .expectClean()
     }
 
+    /**
+     * Input:  `Text("Safe to spend")` in the Glance widget module.
+     * Output: asserts one error (issue 5.5).
+     *
+     * `:widget` is not a `:feature:*` module — no ViewModel, no nav graph — so it sat outside this
+     * rule entirely while it was a placeholder, and would have stayed outside it the moment it grew
+     * real text. The home screen is the app's most-read surface and the least likely to be
+     * translated by anyone who forgot it existed, which makes it the worst place for the rule to
+     * have a hole.
+     */
+    @Test
+    fun `flags a hardcoded string in the widget module`() {
+        lint()
+            .files(
+                kotlin(
+                    "src/main/kotlin/CfoWidgetContent.kt",
+                    """
+                    package com.aicfo.widget
+
+                    fun Content() {
+                        Text("Safe to spend")
+                    }
+
+                    fun Text(text: String) = text
+                    """,
+                ).indented(),
+            ).issues(HardcodedUiStringDetector.ISSUE)
+            .allowMissingSdk()
+            .run()
+            .expectErrorCount(1)
+            .expectContains("strings.xml")
+    }
+
     /** Input: a literal in a non-feature module. Output: asserts the rule is scoped to UI. */
     @Test
     fun `does not flag a string literal outside a feature module`() {

@@ -206,6 +206,50 @@ class DemoModeRepositoryTest {
         }
 
     /**
+     * Input:  a demo session during which the SMS scanner drafted a transaction, then `exit()`.
+     * Output: asserts the draft goes too.
+     *
+     * A separate test for the reason the snapshot one below states, and it is the same failure
+     * repeating: `enter()` does not write `sms_draft`, the daily scan does — against whichever
+     * profile is active. So a demo session on a phone whose owner opted in accumulates inferences
+     * drawn from their **real inbox** under the demo profile, and a wipe that could not reach them
+     * would leave behind a record of the user's spending belonging to a profile that no longer
+     * exists (P-01, ADR-0006).
+     *
+     * **This was a real gap, found by the issue 3.9 security review rather than by a test.** The
+     * "no residue" assertion above uses `countRowsFor`, which enumerates the same table list
+     * `DemoDao` deletes — so a table missing from the DAO is also missing from the count, and the
+     * assertion passes vacuously. Adding a profile-scoped table means adding it to **both**.
+     * Changelog: 2026-08-07 — Added for issue 3.9 (`sms_draft`).
+     */
+    @Test
+    fun `a draft parsed during the demo is erased on the way out`() =
+        runTest {
+            assertTrue(repository.enter() is Ok)
+            database.smsDraftDao().insertIfNew(
+                com.aicfo.core.database.entity.SmsDraftEntity(
+                    id = "d1",
+                    profileId = DemoModeRepository.DEMO_PROFILE_ID,
+                    smsId = 71L,
+                    sender = "VM-HDFCBK",
+                    amountMinor = 125_000L,
+                    direction = "debit",
+                    bookedOn = "2026-08-07",
+                    confidenceBps = 9_000,
+                    engineVersion = "1.0",
+                    ruleVersion = "1.0",
+                    status = "pending",
+                    createdAtUtcMillis = 1_786_082_400_000L,
+                    updatedAtUtcMillis = 1_786_082_400_000L,
+                ),
+            )
+
+            assertTrue(repository.exit() is Ok)
+
+            assertEquals(0, database.demoDao().countRowsFor(DemoModeRepository.DEMO_PROFILE_ID))
+        }
+
+    /**
      * Input:  a demo session that produced a net-worth snapshot, then `exit()`.
      * Output: asserts the snapshot goes too.
      *
@@ -243,6 +287,81 @@ class DemoModeRepositoryTest {
             assertEquals(0, database.demoDao().countRowsFor(DemoModeRepository.DEMO_PROFILE_ID))
             assertNull(
                 database.netWorthSnapshotDao().findForDate(DemoModeRepository.DEMO_PROFILE_ID, "2026-03-17"),
+            )
+        }
+
+    /**
+     * Input:  a demo session during which a budget crossed an alert band, then `exit()`.
+     * Output: asserts the alert goes too.
+     *
+     * **This was a real gap, the same shape as the one `a draft parsed during the demo` documents.**
+     * `DemoDao.deleteBudgetAlerts` existed since issue 4.5 but `DemoModeRepository.exit()` never
+     * called it, so `budget_alert` rows from a demo session survived every wipe since 4.5 shipped —
+     * invisible to `countRowsFor`'s "no residue" assertion for the same reason: a call missing from
+     * `exit()` alongside a table present in the count still passes, because the demo dataset never
+     * wrote to `budget_alert` in the first place. Found and fixed while wiring the analogous
+     * `budget_review` table for issue 4.6, below.
+     * Changelog: 2026-08-15 — Added for issue 4.6, covering the issue 4.5 gap it found.
+     */
+    @Test
+    fun `an alert recorded during the demo is erased on the way out`() =
+        runTest {
+            assertTrue(repository.enter() is Ok)
+            database.budgetAlertDao().insertIfNew(
+                com.aicfo.core.database.entity.BudgetAlertEntity(
+                    id = "demo:alert:groceries:warn",
+                    profileId = DemoModeRepository.DEMO_PROFILE_ID,
+                    budgetId = "demo:budget:cat:groceries:2026-08-01",
+                    categoryId = "groceries",
+                    monthStartIsoDate = "2026-08-01",
+                    band = "WARN",
+                    ruleId = "RULE-BUD-ALERT",
+                    ruleVersion = "1.0",
+                    notifiedAtUtcMillis = clock.nowUtcMillis(),
+                ),
+            )
+
+            assertTrue(repository.exit() is Ok)
+
+            assertEquals(0, database.demoDao().countRowsFor(DemoModeRepository.DEMO_PROFILE_ID))
+            assertTrue(
+                database.budgetAlertDao().forMonth(DemoModeRepository.DEMO_PROFILE_ID, "2026-08-01").isEmpty(),
+            )
+        }
+
+    /**
+     * Input:  a demo session during which a closed month's budget review was dismissed, then `exit()`.
+     * Output: asserts the claim goes too.
+     *
+     * Same reasoning as the alert case above and the snapshot case before it: the demo dataset never
+     * dismisses a review, so this table only ever gains a row while the user is actually browsing —
+     * and a profile-scoped table the wipe cannot reach is the residue ADR-0006 forbids.
+     * Changelog: 2026-08-15 — Added for issue 4.6 (`budget_review`).
+     */
+    @Test
+    fun `a review dismissed during the demo is erased on the way out`() =
+        runTest {
+            assertTrue(repository.enter() is Ok)
+            database.budgetReviewDao().insertIfNew(
+                com.aicfo.core.database.entity.BudgetReviewEntity(
+                    id = "demo:review:2026-07-01",
+                    profileId = DemoModeRepository.DEMO_PROFILE_ID,
+                    monthStartIsoDate = "2026-07-01",
+                    ruleId = "RULE-BUD-REVIEW",
+                    ruleVersion = "1.0",
+                    totalBudgetedMinor = 30_000_00L,
+                    totalActualMinor = 28_000_00L,
+                    reviewedAtUtcMillis = clock.nowUtcMillis(),
+                ),
+            )
+
+            assertTrue(repository.exit() is Ok)
+
+            assertEquals(0, database.demoDao().countRowsFor(DemoModeRepository.DEMO_PROFILE_ID))
+            assertNull(
+                database.budgetReviewDao()
+                    .observeForMonth(DemoModeRepository.DEMO_PROFILE_ID, "2026-07-01")
+                    .first(),
             )
         }
 

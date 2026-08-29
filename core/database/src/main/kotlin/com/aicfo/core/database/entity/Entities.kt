@@ -4,6 +4,7 @@ import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import kotlinx.serialization.Serializable
 
 /*
  * The base schema: profile, account, transaction, category (SRS §20; MNY-001, TIM-001/002, DB-003).
@@ -18,6 +19,19 @@ import androidx.room.PrimaryKey
  *       money as `Long` paise, timestamps as UTC epoch millis with date-only fields as ISO
  *       strings, and soft delete plus per-profile scoping on every row.
  * Result: an encrypted schema later features extend rather than rewrite.
+ *
+ * **Why every profile-scoped entity carries `@Serializable` (issue 5.4).** §5.10's export is a
+ * lossless dump of these tables, so the archive's shape *is* the schema — and the obvious
+ * alternative, a parallel set of hand-written DTOs with mappers both ways, is less safe rather than
+ * more. Fifteen tables and 156 columns of mapper have exactly one failure mode: somebody adds a
+ * column, forgets the DTO, and every future export silently drops that data with no test able to
+ * notice. Serialising the entities makes that unrepresentable — a new column is in the archive the
+ * moment it is in the table.
+ *
+ * The cost is that a **Kotlin property rename changes the archive format**, because kotlinx
+ * serialises by property name. `ArchiveFormatTest` pins every field name for exactly that reason:
+ * the format is a contract with files already on users' phones, and it should take a red build to
+ * change it. `AuditLogEntity` is deliberately *not* serialisable — see [AuditLogEntity].
  * Changelog: 2026-07-25 — Created for issue 1.6 (profile, account, transaction, category).
  *
  * **Invariants, enforced by review and by the `:lint` detectors from issue 1.5:**
@@ -39,6 +53,7 @@ import androidx.room.PrimaryKey
  * Input:  see the constructor. Output: a Room row in `profile`.
  * Changelog: 2026-07-25 — Created for issue 1.6.
  */
+@Serializable
 @Entity(tableName = "profile")
 data class ProfileEntity(
     @PrimaryKey
@@ -70,6 +85,7 @@ data class ProfileEntity(
  *            2026-07-28 — Issue 2.5: `institution` and `archived_at_utc_millis` added at schema
  *            version 4; the type list moved to `AccountType`, which is now its only definition.
  */
+@Serializable
 @Entity(
     tableName = "account",
     indices = [Index("profile_id"), Index("profile_id", "deleted_at_utc_millis")],
@@ -158,6 +174,7 @@ data class AccountEntity(
  *
  * Table named `transactions`: `transaction` is a reserved SQL keyword.
  */
+@Serializable
 @Entity(
     tableName = "transactions",
     indices = [
@@ -253,6 +270,23 @@ data class TransactionEntity(
      */
     @ColumnInfo(name = "posted_at_utc_millis")
     val postedAtUtcMillis: Long? = null,
+    /**
+     * The user's nature override, or `null` (issue 4.3; §8.3, `CategoryNature.storedValue`).
+     *
+     * **`null` does not mean "unknown".** §8.3 makes nature "auto-assigned, user-correctable,
+     * learned", and only the middle word needs a column: the automatic nature is derived on read by
+     * `:domain:engines:nature` from the account, the category and the user's past corrections. So
+     * `null` means "whatever §8.3.1's decision order currently says", and a value here means "the
+     * user disagreed, and this is what they said instead".
+     *
+     * Storing the *resolved* nature would put a derived value on disk, where a rulebook edit leaves
+     * it stale and needs a recompute job — the shape that already bit the net-worth series in issue
+     * 3.10. It would also make this column's meaning ambiguous: there would be no way to tell a
+     * value the engine wrote from one the user chose, and the learned tier (§8.3.1 step 4) reads
+     * exactly that distinction.
+     */
+    @ColumnInfo(name = "nature")
+    val nature: String? = null,
     @ColumnInfo(name = "created_at_utc_millis")
     val createdAtUtcMillis: Long,
     @ColumnInfo(name = "updated_at_utc_millis")
@@ -283,6 +317,7 @@ data class TransactionEntity(
  * (ADR-0006), and a table they cannot reach by `profile_id` alone would leave residue behind when a
  * demo is exited. `MigrationSafetyTest` enforces the same rule on every table but `audit_log`.
  */
+@Serializable
 @Entity(
     tableName = "transaction_splits",
     indices = [
@@ -347,6 +382,7 @@ data class TransactionSplitEntity(
  * demo — may each have a `travel` tag, and they are different rows; a global unique index would make
  * entering the demo fail on the second profile's first collision.
  */
+@Serializable
 @Entity(
     tableName = "tags",
     indices = [Index(value = ["profile_id", "name"], unique = true)],
@@ -393,6 +429,7 @@ data class TagEntity(
  * and a hard `DELETE` in a bulk retag would be the one irreversible step in an otherwise reversible
  * feature.
  */
+@Serializable
 @Entity(
     tableName = "transaction_tags",
     indices = [
@@ -430,6 +467,7 @@ data class TransactionTagEntity(
  * Input:  see the constructor. Output: a Room row.
  * Changelog: 2026-07-25 — Created for issue 1.6.
  */
+@Serializable
 @Entity(
     tableName = "category",
     indices = [Index("profile_id"), Index("parent_id")],
@@ -478,6 +516,7 @@ data class CategoryEntity(
  * able to say which rule proposed it and at what version, or the user's drill-down shows a number
  * with no derivation (AI-ARC-006). A budget the user typed carries `source = manual` and no rule.
  */
+@Serializable
 @Entity(
     tableName = "budget",
     indices = [
@@ -523,6 +562,122 @@ data class BudgetEntity(
 )
 
 /**
+ * A record that the user has already been told about one budget crossing one band (issue 4.5;
+ * FR-BUD-004).
+ *
+ * Why:    "alert at 80% and 100%" is only half a requirement — the other half is *not* alerting
+ *         again on the next transaction, and the one after that. A user notified every time they
+ *         spend a rupee past 80% learns to dismiss the channel, which costs them the 100% message
+ *         that mattered. Something therefore has to remember what has been said.
+ *
+ *         **The unique index is that memory, not a flag on `budget`.** `UNIQUE(profile_id,
+ *         budget_id, month_start, band)` makes re-notification structurally impossible rather than
+ *         conditionally avoided: the insert of a second WARN for the same month fails, whatever the
+ *         calling code believes. A boolean column would have needed a read-then-write that two
+ *         concurrent workers could interleave, and would have had no room for the *second* band —
+ *         crossing 80% and later 100% must produce two messages, and does, because the band is part
+ *         of the key.
+ *
+ *         It doubles as the §29 audit row: it records which rule fired, at which version, and when
+ *         the user was told (AI-ARC-006, P-02).
+ * What:   one row per (budget, month, band) the app has notified.
+ * Result: a Room row in `budget_alert`, added at schema version 14 by issue 4.5.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-08-13 — Created for issue 4.5 (FR-BUD-004).
+ *
+ * **No amounts are stored.** The figures the notification quoted are derivable from the budget and
+ * the transactions at any time, and a copy here would be a second version of the truth that could
+ * disagree with the screen. What cannot be re-derived — that a person was interrupted — is what the
+ * row holds.
+ */
+@Serializable
+@Entity(
+    tableName = "budget_alert",
+    indices = [
+        Index("profile_id", "budget_id", "month_start_iso_date", "band", unique = true),
+        Index("profile_id", "month_start_iso_date"),
+    ],
+)
+data class BudgetAlertEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** The `budget` row this alert is about. */
+    @ColumnInfo(name = "budget_id")
+    val budgetId: String,
+    /** Denormalised from the budget so the banner can group without a join. Null for an envelope. */
+    @ColumnInfo(name = "category_id")
+    val categoryId: String? = null,
+    /** TIM-002: the first day of the budget month, ISO `yyyy-MM-dd`. Part of the unique key. */
+    @ColumnInfo(name = "month_start_iso_date")
+    val monthStartIsoDate: String,
+    /** `WARN` | `EXCEEDED` — `BudgetAlertBand.name`. Part of the unique key, so both can fire. */
+    @ColumnInfo(name = "band")
+    val band: String,
+    /** The rulebook row that set this band, and its version (AI-ARC-006, P-02). */
+    @ColumnInfo(name = "rule_id")
+    val ruleId: String,
+    @ColumnInfo(name = "rule_version")
+    val ruleVersion: String,
+    /** TIM-001: when the user was actually told, UTC epoch millis. */
+    @ColumnInfo(name = "notified_at_utc_millis")
+    val notifiedAtUtcMillis: Long,
+)
+
+/**
+ * The record that a closed month's budget review has been shown to the user (issue 4.6; §5.5).
+ *
+ * Why:    `RULE-BUD-REVIEW.review_once_per_month` is documentation, not enforcement — the same
+ *         split `BudgetAlertEntity` draws. Without a persisted claim, reopening the budgets screen
+ *         after dismissing last month's review would compute the identical `BudgetReview` again
+ *         and show the card straight back, since the engine is pure and the closed month's data
+ *         does not change. **Keyed by (profile, month) alone, not per category** — this is a
+ *         review-and-move-on card, not a persistent per-finding status like the alert bands, so
+ *         one dismissal closes the whole month (ADR-0020).
+ * What:   one row per (profile, reviewed month) once the user has dismissed or acted on it.
+ * Result: a Room row in `budget_review`, added at schema version 15 by issue 4.6.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-08-15 — Created for issue 4.6 (FR-BUD-*, §5.5).
+ *
+ * **No per-category detail is stored**, for the reason `BudgetAlertEntity` gives for amounts: the
+ * totals are derivable from the budget and the transactions at any time, and a copy here could
+ * disagree with the screen. The totals are still stamped, purely as an audit trail (AI-ARC-006,
+ * P-02) of what the reviewed month looked like at the moment it was dismissed.
+ */
+@Serializable
+@Entity(
+    tableName = "budget_review",
+    indices = [
+        Index("profile_id", "month_start_iso_date", unique = true),
+    ],
+)
+data class BudgetReviewEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** TIM-002: the first day of the **reviewed** (closed) month, ISO `yyyy-MM-dd`. */
+    @ColumnInfo(name = "month_start_iso_date")
+    val monthStartIsoDate: String,
+    /** The rulebook row that produced this review, and its version (AI-ARC-006, P-02). */
+    @ColumnInfo(name = "rule_id")
+    val ruleId: String,
+    @ColumnInfo(name = "rule_version")
+    val ruleVersion: String,
+    /** Audit-only snapshot of the reviewed month's totals (MNY-001), not re-read by the app. */
+    @ColumnInfo(name = "total_budgeted_minor")
+    val totalBudgetedMinor: Long,
+    @ColumnInfo(name = "total_actual_minor")
+    val totalActualMinor: Long,
+    /** TIM-001: when the user dismissed or acted on the review, UTC epoch millis. */
+    @ColumnInfo(name = "reviewed_at_utc_millis")
+    val reviewedAtUtcMillis: Long,
+)
+
+/**
  * A money movement the user expects to repeat (issue 2.3; FR-ONB-002, FR-TXN-006).
  *
  * Why:    quick setup captures a salary and a rent that recur every month, and FR-TXN-006 describes
@@ -542,6 +697,7 @@ data class BudgetEntity(
  * the UI resolves to a string resource, and [name] stays null and reserved for issue 3.7's rules,
  * which are named after a real merchant and so *are* data rather than copy.
  */
+@Serializable
 @Entity(
     tableName = "recurring_rule",
     indices = [
@@ -618,6 +774,14 @@ data class RecurringRuleEntity(
  * - **No soft delete.** A security log a caller can quietly retire is not a security log. Rows go
  *   only when the whole database does (erase-all, SEC-006).
  * - **No `updated_at`.** An event happened at an instant; it is never edited.
+ *
+ * **A fourth absence, added by issue 5.4: no `@Serializable`, so it is not in the export.** The
+ * first absence forces it — with no `profile_id` there is no way to scope this table to the profile
+ * being exported, and 5.4's import *replaces* what it restores, so including it would mean either
+ * erasing security events or duplicating them. The design spec's data-model bullet lists
+ * `audit_log` among the portable tables; the schema it describes cannot support that, and the
+ * schema is right. See ADR-0023. A security log is also a record of what happened on *this device*,
+ * not the user's financial data to carry to another one.
  */
 @Entity(
     tableName = "audit_log",
@@ -663,6 +827,7 @@ data class AuditLogEntity(
  * is impossible, and P-02 requires the working — a history point the user cannot break down into
  * assets and liabilities is a number with no derivation.
  */
+@Serializable
 @Entity(
     tableName = "net_worth_snapshot",
     indices = [Index("profile_id", "as_of_iso_date")],
@@ -694,6 +859,514 @@ data class NetWorthSnapshotEntity(
     /** TIM-001: when it was computed, which is not the same as the day it describes. */
     @ColumnInfo(name = "computed_at_utc_millis")
     val computedAtUtcMillis: Long,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+)
+
+/**
+ * A file attached to a transaction — for now, a scanned receipt (issue 3.8; FR-OCR-005, §20.1).
+ *
+ * Why:    FR-OCR-005 is a MUST with two halves: *"The original image MUST be stored encrypted and
+ *         linked as an attachment; user can delete image while keeping the transaction."* The second
+ *         half is what decides this table's shape. **There is no BLOB column here, deliberately.**
+ *         Putting the image bytes in the row would mean the receipt lives inside the database file,
+ *         and "delete the image, keep the transaction" would become a rewrite of the row rather than
+ *         the deletion of a file — with the old bytes still recoverable from SQLite's freelist until
+ *         a VACUUM nobody scheduled. [fileName] names a separately encrypted blob in app-private
+ *         storage instead, so erasing the image is `File.delete()` and is complete.
+ * Result: a Room row in `attachments`, added at schema version 11 by issue 3.8.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-08-06 — Created for issue 3.8 (FR-OCR-005).
+ *
+ * **No foreign key on [transactionId], matching every other table here.** §20 asks for foreign keys,
+ * and this schema has consistently used soft delete plus scoped queries instead: with `deleted_at`
+ * tombstones a real `ON DELETE CASCADE` would fire on a *hard* delete that never happens, while the
+ * tombstoned parent it should have followed stays behind. The link is enforced by the repository,
+ * which is the only class allowed to write either side (ARC-005).
+ */
+@Serializable
+@Entity(
+    tableName = "attachments",
+    indices = [Index("transaction_id"), Index("profile_id")],
+)
+data class AttachmentEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** The transaction this belongs to. One transaction may hold several attachments. */
+    @ColumnInfo(name = "transaction_id")
+    val transactionId: String,
+    /**
+     * `receipt` today. A code from a closed set, never copy — the UI maps it to a word, so a
+     * translation never reaches the database (§21.6).
+     */
+    @ColumnInfo(name = "kind")
+    val kind: String,
+    /**
+     * The ciphertext blob's file name inside app-private storage — **not a path**.
+     *
+     * A stored absolute path would break the moment Android moved the app's data directory, which it
+     * does on restore-to-a-new-device. The directory is resolved at read time by the image store.
+     */
+    @ColumnInfo(name = "file_name")
+    val fileName: String,
+    /** e.g. `image/jpeg`. What the *plaintext* was, so a future export knows what it is handing over. */
+    @ColumnInfo(name = "mime_type")
+    val mimeType: String,
+    /** The plaintext size in bytes, so a settings screen can say what receipts are costing. */
+    @ColumnInfo(name = "byte_size")
+    val byteSize: Long,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    /**
+     * FR-OCR-005's "delete image while keeping the transaction": this is stamped **and** the blob is
+     * erased. The tombstone stays so a later sync can see the attachment was removed rather than
+     * never having existed.
+     */
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+)
+
+/**
+ * What the parser concluded one bank alert says, awaiting the user's decision (issue 3.9; §18, §23).
+ *
+ * Why:    the message itself stays in the inbox that already owns it. **There is no body column
+ *         here, and that is the acceptance criterion made structural** — 3.9 requires that "no raw
+ *         SMS [is] stored beyond what is needed", and the cheapest way to guarantee that is for the
+ *         schema to have nowhere to put one. The row holds a conclusion and the [smsId] it was
+ *         drawn from; anyone wanting the original text can read it where it lives, under the
+ *         permission the user granted for exactly that.
+ *
+ *         It is a table rather than a list recomputed on each screen open for one reason: **a
+ *         dismissal has to stick**. Re-deriving the drafts from the inbox would re-propose every
+ *         alert the user has already said no to, for ever, which is the fastest way to make a
+ *         review screen worth ignoring.
+ * Result: a Room row in `sms_draft`, added at schema version 12 by issue 3.9.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-08-07 — Created for issue 3.9.
+ *
+ * **No foreign key on [transactionId], matching every other table here** — soft-delete tombstones
+ * make `ON DELETE CASCADE` fire on a hard delete that never happens. The link is enforced by
+ * `SmsRepository`, the only class allowed to write either side (ARC-005).
+ */
+@Serializable
+@Entity(
+    tableName = "sms_draft",
+    indices = [
+        // UNIQUE, and it is the guard that stops one alert becoming two drafts when a scan overlaps
+        // — a crash between reading a batch and advancing the cursor re-reads it, and without this
+        // the user would find the same purchase offered twice. Scoped by profile because the demo
+        // lives under a second profile id (ADR-0006).
+        Index(value = ["profile_id", "sms_id"], unique = true),
+        // The review screen's only query: this profile's pending drafts.
+        Index(value = ["profile_id", "status"]),
+    ],
+)
+data class SmsDraftEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /**
+     * `Telephony.Sms._ID` of the message this was read from.
+     *
+     * Kept so the same alert is never proposed twice, and so a draft can be traced back to its
+     * source while that message still exists. **Not a copy of the message** — an id whose meaning
+     * lives entirely in a provider this app can only read with the user's permission.
+     */
+    @ColumnInfo(name = "sms_id")
+    val smsId: Long,
+    /** The DLT header the alert came from, e.g. `VM-HDFCBK`. Shown so the user can recognise it. */
+    @ColumnInfo(name = "sender")
+    val sender: String,
+    /** MNY-001: paise, as a positive magnitude. The sign comes from [direction]. */
+    @ColumnInfo(name = "amount_minor")
+    val amountMinor: Long,
+    /** `debit` or `credit`. A code from a closed set, never copy (§21.6). */
+    @ColumnInfo(name = "direction")
+    val direction: String,
+    /** TIM-002: ISO `yyyy-MM-dd`, the day the message arrived in the profile zone. */
+    @ColumnInfo(name = "booked_on")
+    val bookedOn: String,
+    /** The payee or payer as the alert printed it. Null when it named none — best-effort. */
+    @ColumnInfo(name = "counterparty")
+    val counterparty: String? = null,
+    /** The masked account or card digits the alert quoted, e.g. `4521`. Null when it quoted none. */
+    @ColumnInfo(name = "account_tail")
+    val accountTail: String? = null,
+    /** MNY-002: basis points. Below the rulebook's floor the review screen flags the draft. */
+    @ColumnInfo(name = "confidence_bps")
+    val confidenceBps: Int,
+    /**
+     * The parser version and the rulebook version that produced this reading (AI-ARC-006).
+     *
+     * Stored on the row rather than assumed from the current build, because a draft can sit
+     * unreviewed across an app update — and "why did it say ₹1,250?" has an answer only if the row
+     * remembers which code and which thresholds ran.
+     */
+    @ColumnInfo(name = "engine_version")
+    val engineVersion: String,
+    @ColumnInfo(name = "rule_version")
+    val ruleVersion: String,
+    /** `pending`, `accepted` or `dismissed`. A code from a closed set, never copy. */
+    @ColumnInfo(name = "status")
+    val status: String,
+    /** The transaction this draft became, once accepted. Null while pending or dismissed. */
+    @ColumnInfo(name = "transaction_id")
+    val transactionId: String? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+)
+
+/**
+ * What a credit card is, beyond an `account` row with a balance (issue 6.1; FR-ACC-002, §5.7).
+ *
+ * Why:    `AccountEntity` has carried eleven types and one balance since issue 1.6, and
+ *         `AccountType`'s own doc comment has been promising this table since 2.5: *"A credit
+ *         card's limit and statement day (FR-ACC-002) … live in their own tables."* Putting the six
+ *         fields on `account` instead would add six always-null columns to the ten types that can
+ *         never use them — and would do it again for every loan field 6.2 adds, and every holding
+ *         field 6.3 adds. One table per type-specific shape keeps `account` the thing every type
+ *         genuinely shares.
+ *
+ *         **Keyed by `account_id`, not by an id of its own.** A card *is* an account here; a second
+ *         identity would allow two card rows for one account, which nothing in the app could then
+ *         choose between.
+ * What:   the card's terms and the last statement cut against them.
+ * Result: a Room row in `credit_card`, added at schema version 16 by issue 6.1.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-08-17 — Created for issue 6.1 (FR-ACC-002).
+ *
+ * **"Current unbilled" is absent although FR-ACC-002 names it.** It is
+ * `outstanding − last_statement`, and the ledger already knows the first term — storing the
+ * difference would be a second version of a number the app can always re-derive, which is the
+ * argument [BudgetAlertEntity] makes for storing no amounts at all. The card engine derives it.
+ *
+ * **The days are days-of-month, not dates**, because that is what FR-ACC-002 says and what a card
+ * does: it bills on the 5th every month. Storing dates would mean rewriting this row twelve times a
+ * year and still having no answer for next February. The clamp to a short month is the engine's.
+ */
+@Serializable
+@Entity(
+    tableName = "credit_card",
+    indices = [
+        Index("profile_id"),
+        Index("profile_id", "deleted_at_utc_millis"),
+    ],
+)
+data class CreditCardEntity(
+    /** The `account` row this describes. One card per account, which is why it is the key. */
+    @PrimaryKey
+    @ColumnInfo(name = "account_id")
+    val accountId: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** MNY-001: paise. Positive — utilisation divides by it, and the model refuses zero. */
+    @ColumnInfo(name = "credit_limit_minor")
+    val creditLimitMinor: Long,
+    /** 1..31, clamped to the month's length when resolved into a date. */
+    @ColumnInfo(name = "statement_day")
+    val statementDay: Int,
+    /** 1..31. May precede [statementDay] — the payment then falls in the following month. */
+    @ColumnInfo(name = "due_day")
+    val dueDay: Int,
+    /** MNY-001: paise on the most recent statement. Null until one is recorded — not zero (P-03). */
+    @ColumnInfo(name = "last_statement_minor")
+    val lastStatementMinor: Long? = null,
+    /** TIM-002: when that statement was cut, ISO `yyyy-MM-dd`. */
+    @ColumnInfo(name = "last_statement_iso_date")
+    val lastStatementIsoDate: String? = null,
+    /** MNY-001: paise. The minimum payment on that statement, when the user has entered it. */
+    @ColumnInfo(name = "minimum_due_minor")
+    val minimumDueMinor: Long? = null,
+    /** MNY-002: the purchase APR in integer basis points. Never a `Double`. */
+    @ColumnInfo(name = "apr_bps")
+    val aprBps: Int? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+)
+
+/**
+ * What a loan is, beyond an `account` row with a negative balance (issue 6.2; FR-ACC-003, §5.8).
+ *
+ * Why:    the second half of the promise [CreditCardEntity] answered the first half of —
+ *         `AccountType`'s doc comment has said since issue 2.5 that *"a loan's principal, rate and
+ *         EMI (FR-ACC-003) live in their own tables"*. Same shape, same reason: five columns that
+ *         mean nothing on the other ten account types.
+ *
+ *         **Five columns and no schedule.** The amortisation rows are a pure function of these
+ *         fields, so they are derived on every read and never stored (ADR-0026). ADR-0016 names a
+ *         `loan_amortization_rows` table; this is the considered answer to it — a stored schedule is
+ *         a cache that can disagree with the terms that produced it, and the disagreement would be
+ *         silent. It is the argument [CreditCardEntity] makes for storing no "current unbilled" and
+ *         ADR-0007 makes for storing no account balance.
+ *
+ *         **Keyed by `account_id`**, for the reason [CreditCardEntity] is: a loan *is* an account
+ *         here, and a second identity would allow two loan rows for one account.
+ * What:   the sanctioned terms, and the instalment the lender actually charges when it differs.
+ * Result: a Room row in `loan`, added at schema version 17 by issue 6.2.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-08-19 — Created for issue 6.2 (FR-ACC-003).
+ *
+ * **No EMI day column.** A loan bills on the day of month its first instalment fell on, so a column
+ * for it would be a second copy of [firstEmiIsoDate]'s day and a chance for the two to disagree.
+ *
+ * **No outstanding column.** DB-001 already makes the account's current balance derivable rather
+ * than authoritative; a second running total here would be a third opinion about the same rupee.
+ */
+@Serializable
+@Entity(
+    tableName = "loan",
+    indices = [
+        Index("profile_id"),
+        Index("profile_id", "deleted_at_utc_millis"),
+    ],
+)
+data class LoanEntity(
+    /** The `account` row this describes. One loan per account, which is why it is the key. */
+    @PrimaryKey
+    @ColumnInfo(name = "account_id")
+    val accountId: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** MNY-001: the sanctioned amount in paise. Positive — the model refuses zero and below. */
+    @ColumnInfo(name = "principal_minor")
+    val principalMinor: Long,
+    /** MNY-002: the annual rate in integer basis points. Never a `Double`. `0` is a real 0% EMI. */
+    @ColumnInfo(name = "annual_rate_bps")
+    val annualRateBps: Int,
+    /** The number of instalments, 1..600 (fifty years — longer than any Indian retail loan). */
+    @ColumnInfo(name = "tenure_months")
+    val tenureMonths: Int,
+    /** TIM-002: when the first instalment falls, ISO `yyyy-MM-dd`. Its day is the loan's EMI day. */
+    @ColumnInfo(name = "first_emi_iso_date")
+    val firstEmiIsoDate: String,
+    /**
+     * MNY-001: paise. The instalment the lender actually charges, when the user has entered it.
+     * Null means "derive it" — not zero, which would be an instalment that never repays anything.
+     */
+    @ColumnInfo(name = "emi_override_minor")
+    val emiOverrideMinor: Long? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+)
+
+/**
+ * A record that the user has already been told one thing about one card in one billing cycle
+ * (issue 6.1; FR-ACC-002, §17.1).
+ *
+ * Why:    the same problem [BudgetAlertEntity] solves, with a worse failure mode. A payment
+ *         reminder that re-fires every day for three days is not three reminders, it is a channel
+ *         the user mutes — and this is the channel §17.1 classes as a **Critical money event**,
+ *         the one that must still work in eleven months when it actually matters.
+ *
+ *         **The unique index is the memory**, not a flag: `UNIQUE(profile_id, account_id,
+ *         cycle_start_iso_date, kind)` makes a second identical notification structurally
+ *         impossible rather than conditionally avoided.
+ *
+ *         **`kind` is part of the key** for the reason `band` is part of the budget one: a card can
+ *         be both due and over its utilisation line in the same cycle, and those are two different
+ *         messages on two different Android channels (NTF-006). Collapsing them would drop one.
+ *
+ *         **The cycle start is the statement date, not the month**, which is the whole reason this
+ *         key is not `month_start_iso_date`. A card billing on the 25th has a cycle straddling two
+ *         calendar months; keyed by month, the reminder would fire twice for one statement.
+ * What:   one row per (card, cycle, kind) the app has notified.
+ * Result: a Room row in `card_alert`, added at schema version 16 by issue 6.1.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-08-17 — Created for issue 6.1.
+ *
+ * **No amounts and no tombstone.** The figures are re-derivable from the card and the ledger, so a
+ * copy here could disagree with the screen; and a claim that a person was interrupted is not
+ * something a soft delete could honestly undo. That makes this the fifth table exempt from the
+ * per-row invariants `MigrationSafetyTest` enforces, and the exemption is argued there by name.
+ */
+@Serializable
+@Entity(
+    tableName = "card_alert",
+    indices = [
+        Index("profile_id", "account_id", "cycle_start_iso_date", "kind", unique = true),
+        Index("profile_id", "cycle_start_iso_date"),
+    ],
+)
+data class CardAlertEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** The `credit_card` / `account` row this alert is about. Part of the unique key. */
+    @ColumnInfo(name = "account_id")
+    val accountId: String,
+    /** TIM-002: the statement date opening the cycle, ISO `yyyy-MM-dd`. Part of the unique key. */
+    @ColumnInfo(name = "cycle_start_iso_date")
+    val cycleStartIsoDate: String,
+    /** `DUE_SOON` | `UTILISATION` — `CardAlertKind.name`. Part of the key, so both can fire. */
+    @ColumnInfo(name = "kind")
+    val kind: String,
+    /** The rulebook row that fired this alert, and its version (AI-ARC-006, P-02). */
+    @ColumnInfo(name = "rule_id")
+    val ruleId: String,
+    @ColumnInfo(name = "rule_version")
+    val ruleVersion: String,
+    /** TIM-001: when the user was actually told, UTC epoch millis. */
+    @ColumnInfo(name = "notified_at_utc_millis")
+    val notifiedAtUtcMillis: Long,
+)
+
+/**
+ * One instrument the user owns inside an investment account (issue 6.3; §11, §20.1).
+ *
+ * Why:    §20.1 names `holdings` as its own table because a single broker account or MF folio holds
+ *         many instruments, each with its own asset class and its own return. Until this existed
+ *         the app could show what an investment account was worth in total but never what any part
+ *         of it had earned, and `ai/knowledge/classification-kb.json` recorded the gap from the
+ *         other side: `CLS-NAT-003` carries an `_unimplemented` note saying its holdings need a
+ *         holdings table, so nature classification fires on the account TYPE instead (ADR-0016).
+ *
+ *         **This is the first Epic-6 table not keyed on `account_id`**, and the break is
+ *         deliberate. [CreditCardEntity] and [LoanEntity] are 1:1 with their account, so the
+ *         account is their natural key; holdings are 1:N, so they need a surrogate id and an index
+ *         on `account_id` for the read path instead.
+ *
+ *         **The price is stored though the value is not.** Everything a holding is worth is derived
+ *         from its lots and this price — the argument ADR-0007 makes for account balances and
+ *         ADR-0026 for amortisation schedules. A market price is the exception because it is an
+ *         *observation the device cannot compute*: nothing else in the row implies it. Issue 6.5
+ *         replaces only where it comes from, leaving this column and every derived figure alone.
+ * What:   the identity, its account, the user's label, its asset class, and the last observed price
+ *         per unit with the day it was observed.
+ * Result: a Room row in `investment_holding`, added at schema version 18 by issue 6.3.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-08-24 — Created for issue 6.3 (§11). See ADR-0027 for why `asset_class` is a
+ *            column here rather than a derivation from the account's type.
+ *
+ * **No `symbol` or ISIN.** Issue 6.5 needs a price key and adds it with its own migration; every
+ * issue adds the columns it can argue for, which is why this schema has survived seventeen
+ * versions without a destructive change.
+ *
+ * **No stored total quantity or cost.** Both are sums of the lots beneath this row, and a cached
+ * total is a second opinion that goes stale the first time a lot is corrected.
+ */
+@Serializable
+@Entity(
+    tableName = "investment_holding",
+    indices = [
+        Index("profile_id"),
+        Index("profile_id", "deleted_at_utc_millis"),
+        Index("account_id"),
+    ],
+)
+data class InvestmentHoldingEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** The `account` row this sits in. Indexed, not the key: an account holds many of these. */
+    @ColumnInfo(name = "account_id")
+    val accountId: String,
+    /** The user's own label, e.g. "Parag Parikh Flexi Cap". Never blank — the model refuses it. */
+    @ColumnInfo(name = "name")
+    val name: String,
+    /** `AssetClass.storedValue`. Issue 6.4's allocation dimension; `RULE-GOLD-CAP` names two. */
+    @ColumnInfo(name = "asset_class")
+    val assetClass: String,
+    /**
+     * MNY-001: paise **per unit** as last observed. Null means never priced — not zero, which would
+     * read as a worthless holding rather than an unvalued one (P-03).
+     */
+    @ColumnInfo(name = "unit_price_minor")
+    val unitPriceMinor: Long? = null,
+    /**
+     * TIM-002: the day [unitPriceMinor] was observed, ISO `yyyy-MM-dd`. Both-or-neither with the
+     * price: it is XIRR's terminal flow date, and without it the answer would drift by the day.
+     * It is also where issue 6.5 hangs its staleness label.
+     */
+    @ColumnInfo(name = "priced_on_iso_date")
+    val pricedOnIsoDate: String? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+)
+
+/**
+ * One dated cash movement inside a holding — a purchase, a sale or a payout (issue 6.3; §11, §20.1).
+ *
+ * Why:    XIRR is money-weighted, so it needs every movement with its own date. A single "total
+ *         invested" column cannot express a SIP, and a return computed from one is not wrong by a
+ *         rounding but wrong by the whole shape of the contributions. §20.1 names `holding_lots`
+ *         for exactly this.
+ *
+ *         **`profile_id` is denormalised** rather than reached through the holding, for the reason
+ *         [TransactionSplitEntity] gives: the demo wipe and the export both address every table by
+ *         `profile_id` alone (ADR-0006), and a table that can only be reached by a join is a table
+ *         one of them will eventually miss.
+ * What:   the identity, its holding, what the movement was, when, how many units and how much cash.
+ * Result: a Room row in `investment_lot`, added at schema version 18 by issue 6.3.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-08-24 — Created for issue 6.3 (§11).
+ *
+ * **Units and cash are magnitudes; direction lives in `kind`.** Storing a signed amount would give
+ * two spellings of "sold ten units" and let a row disagree with itself — the argument
+ * `AccountType.isLiability` makes about classifying by type rather than by sign.
+ *
+ * **Charges are folded into `amount_minor`**, which is the cash that actually moved. A separate fee
+ * column would be a second figure that can disagree with the first, and the user's statement shows
+ * the total.
+ */
+@Serializable
+@Entity(
+    tableName = "investment_lot",
+    indices = [
+        Index("profile_id"),
+        Index("profile_id", "deleted_at_utc_millis"),
+        Index("holding_id"),
+    ],
+)
+data class InvestmentLotEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** The `investment_holding` row this belongs to. Indexed: a holding has many lots. */
+    @ColumnInfo(name = "holding_id")
+    val holdingId: String,
+    /** `buy` | `sell` | `income` — `LotKind.storedValue`. The only source of the cash direction. */
+    @ColumnInfo(name = "kind")
+    val kind: String,
+    /** TIM-002: the day the money moved, ISO `yyyy-MM-dd`. XIRR weights by this. */
+    @ColumnInfo(name = "transacted_on_iso_date")
+    val transactedOnIsoDate: String,
+    /** Units moved x 10^9, as a magnitude. Zero for an income lot: a dividend moves no units. */
+    @ColumnInfo(name = "quantity_nano")
+    val quantityNano: Long,
+    /** MNY-001: cash moved in paise, as a magnitude, charges included. Always positive. */
+    @ColumnInfo(name = "amount_minor")
+    val amountMinor: Long,
     @ColumnInfo(name = "created_at_utc_millis")
     val createdAtUtcMillis: Long,
     @ColumnInfo(name = "updated_at_utc_millis")

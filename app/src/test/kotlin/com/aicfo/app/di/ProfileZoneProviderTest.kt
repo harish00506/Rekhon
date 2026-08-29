@@ -5,6 +5,7 @@ import com.aicfo.core.common.Err
 import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
 import com.aicfo.core.datastore.OnboardingProfile
+import com.aicfo.core.datastore.QuickSetupSeeds
 import com.aicfo.core.datastore.SettingsSnapshot
 import com.aicfo.core.datastore.SettingsStore
 import com.aicfo.core.datastore.ThemeSetting
@@ -183,7 +184,11 @@ private class FakeSettingsStore(
 
     override suspend fun setTheme(theme: ThemeSetting): Result<Unit, AppError> = Ok(Unit)
 
+    override suspend fun setQuickSetupSeeds(seeds: QuickSetupSeeds): Result<Unit, AppError> = Ok(Unit)
+
     override suspend fun completeOnboarding(profile: OnboardingProfile): Result<Unit, AppError> = Ok(Unit)
 
     override suspend fun setDemoModeActive(active: Boolean): Result<Unit, AppError> = Ok(Unit)
+
+    override suspend fun setSmsScanCursor(smsId: Long): Result<Unit, AppError> = Ok(Unit)
 }

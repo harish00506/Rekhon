@@ -7,13 +7,13 @@
   Result: a reader can build, run, test and extend the project, and knows exactly how far to trust
         each green check.
   Changelog:
-    2026-07-25 — Written on completion of Epic 1 (issues 1.1–1.10), at dev commit 3a0316e.
+    2026-07-25 — Written on completion of Epic 1 (issues 1.1–1.10), at dev commit a4e67d1.
 -->
 
 # Epic 1 — Foundation & Core Platform: handoff
 
 **Status:** complete (issues 1.1 – 1.10) · **Branch:** `dev` · **VERSION:** `0.1.0`
-**Written:** 2026-07-25 · **Last verified commit:** `3a0316e`
+**Written:** 2026-07-25 · **Last verified commit:** `a4e67d1`
 
 ---
 
