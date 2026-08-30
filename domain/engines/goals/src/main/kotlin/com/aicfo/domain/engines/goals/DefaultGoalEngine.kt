@@ -66,6 +66,7 @@ internal class DefaultGoalEngine : GoalEngine {
             goalId = goal.id,
             name = goal.name,
             target = goal.target,
+            targetDateIso = goal.targetDate.toString(),
             saved = goal.saved,
             remaining = remaining,
             monthsRemaining = monthsRemaining,

@@ -15,6 +15,7 @@
     <string name="dashboard_spend_split_label">This month</string>
     <!-- Issue 4.4: the way from the nature-level bar above to the category-level plan behind it. -->
     <string name="dashboard_budgets_action">Your budgets</string>
+    <string name="dashboard_goals_action">Your goals</string>
     <string name="dashboard_accounts_action">Your accounts</string>
     <string name="dashboard_transactions_action">View transactions</string>
     <string name="dashboard_settings_action">Settings</string>

@@ -170,6 +170,8 @@ data class GoalPlan(
  * @property goalId the [GoalSpec.id] this projects.
  * @property name the user's label, carried through.
  * @property target what the goal needs in total.
+ * @property targetDateIso the day the money is needed, ISO `yyyy-MM-dd` (TIM-002), echoed back so a
+ *   caller can render it and refill an editor without a second read of the row.
  * @property saved what is set aside now — `current_minor` in the tool contract.
  * @property remaining `target - saved`, floored at zero. Never negative: over-funding is a state,
  *   not a debt the goal owes back.
@@ -193,6 +195,7 @@ data class GoalProjection(
     val goalId: String,
     val name: String,
     val target: Money,
+    val targetDateIso: String,
     val saved: Money,
     val remaining: Money,
     val monthsRemaining: Int,

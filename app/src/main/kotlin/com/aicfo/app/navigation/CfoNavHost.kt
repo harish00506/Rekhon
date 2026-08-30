@@ -16,6 +16,7 @@ import com.aicfo.feature.budgets.BudgetsScreen
 import com.aicfo.feature.categories.CategoriesScreen
 import com.aicfo.feature.dashboard.DashboardActions
 import com.aicfo.feature.dashboard.DashboardScreen
+import com.aicfo.feature.goals.GoalsScreen
 import com.aicfo.feature.onboarding.OnboardingScreen
 import com.aicfo.feature.settings.SettingsScreen
 import com.aicfo.feature.transactions.AddTransactionScreen
@@ -65,6 +66,7 @@ fun CfoNavHost(
                         onNavigateToTransactions = { navController.navigate(CfoRoute.Transactions) },
                         onNavigateToAccounts = { navController.navigate(CfoRoute.Accounts) },
                         onNavigateToBudgets = { navController.navigate(CfoRoute.Budgets) },
+                        onNavigateToGoals = { navController.navigate(CfoRoute.Goals) },
                         onNavigateToSettings = { navController.navigate(CfoRoute.Settings) },
                     ),
             )
@@ -74,7 +76,7 @@ fun CfoNavHost(
                 onManageCategories = { navController.navigate(CfoRoute.Categories) },
             )
         }
-        planningDestinations()
+        planningDestinations(navController)
         captureDestinations(navController)
         accountsDestinations(navController)
     }
@@ -98,9 +100,12 @@ fun CfoNavHost(
  *
  * Input:  none. Output: none (registers destinations).
  */
-private fun NavGraphBuilder.planningDestinations() {
+private fun NavGraphBuilder.planningDestinations(navController: NavHostController) {
     composable<CfoRoute.Categories> { CategoriesScreen() }
     composable<CfoRoute.Budgets> { BudgetsScreen() }
+    // Issue 7.1: a goal is the plan for the years after this month, so it sits with the budget
+    // rather than with the accounts it will eventually be funded from.
+    composable<CfoRoute.Goals> { GoalsScreen(onDone = { navController.popBackStack() }) }
 }
 
 /**
