@@ -106,7 +106,12 @@ engines:
     layer: L4/L5
     module: ":domain:engines:goals"
     version: "1.0"
-    contract: "goals + surplus -> {requiredMonthly, feasibility, ETA per goal}"
+    # Shipped at issue 7.1. Reconciled against what was built: `requiredMonthly` and `ETA` are here,
+    # `feasibility` is not — ranking goals against a shared surplus needs a number this engine is not
+    # given, and that is issue 7.3 (with RULE-EMERG-FIRST). The only rule consumed today is
+    # RULE-HORIZON, which already named AI-GOAL.funding_buckets before the module existed;
+    # financial-order-of-operations.json stays listed because 7.3/7.5 will read it.
+    contract: "goals -> {requiredMonthly, shortfall, ETA, horizon, status per goal}; feasibility in 7.3"
     reads: [../rules/rules-kb.json, ../rules/financial-order-of-operations.json]
     srs: "§15"
 

@@ -18,6 +18,7 @@ import com.aicfo.core.designsystem.component.CfoCard
 import com.aicfo.core.designsystem.component.CfoSecondaryButton
 import com.aicfo.core.designsystem.theme.CfoDimens
 import com.aicfo.core.designsystem.theme.CfoTheme
+import com.aicfo.core.model.Money
 import com.aicfo.core.model.MoneyFormatter
 import com.aicfo.domain.engines.goals.GoalProjection
 
@@ -145,7 +146,7 @@ private fun GoalCard(
         Text(text = stringResource(GoalLabels.horizon(goal.horizon)), style = MaterialTheme.typography.bodySmall)
         Text(text = stringResource(R.string.goals_rule), style = MaterialTheme.typography.bodySmall)
         CfoSecondaryButton(
-            text = stringResource(R.string.goals_editor_save),
+            text = stringResource(R.string.goals_edit),
             onClick = { onEvent(GoalsEvent.EditGoal(goal.goalId)) },
         )
         CfoSecondaryButton(
@@ -157,19 +158,25 @@ private fun GoalCard(
 
 /**
  * Where the user's own plan gets them.
+ *
  * Why:    the absence is rendered rather than hidden. "No monthly plan set" is information; a blank
  *         line is not, and a made-up date would be worse than either (P-03).
+ *
+ *         **Three cases, not two.** The engine dates an already-funded goal *today*, which is true
+ *         and reads absurdly beside a zero plan — "at ₹0.00 a month you get there 2026-08-30". Found
+ *         by running the app, not by a test: every assertion about the figure passed. The engine is
+ *         right; the sentence was wrong, so the branch is here rather than there.
  * Result: the composition. Input: [goal]. Output: none.
+ * Changelog: 2026-08-30 — Created for issue 7.1.
  */
 @Composable
 private fun GoalEta(goal: GoalProjection) {
     val eta = goal.etaIsoDate
-    if (eta == null) {
-        Text(text = stringResource(R.string.goals_eta_never), style = MaterialTheme.typography.bodySmall)
-    } else {
-        Text(
-            text = stringResource(R.string.goals_eta, MoneyFormatter.format(goal.plannedMonthly), eta),
-            style = MaterialTheme.typography.bodySmall,
-        )
-    }
+    val text =
+        when {
+            goal.remaining == Money.ZERO -> stringResource(R.string.goals_eta_reached)
+            eta == null -> stringResource(R.string.goals_eta_never)
+            else -> stringResource(R.string.goals_eta, MoneyFormatter.format(goal.plannedMonthly), eta)
+        }
+    Text(text = text, style = MaterialTheme.typography.bodySmall)
 }

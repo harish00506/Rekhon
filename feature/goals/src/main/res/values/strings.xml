@@ -24,6 +24,7 @@
     <string name="goals_target_date">Needed by %1$s</string>
     <string name="goals_eta">At %1$s a month you get there %2$s</string>
     <string name="goals_eta_never">No monthly plan set, so there is no date yet</string>
+    <string name="goals_eta_reached">Already fully funded</string>
 
     <!-- P-02: the figure names the rule that shaped it, as the Safe-to-Spend card names RULE-STS. -->
     <string name="goals_rule">Rule RULE-HORIZON v1.0</string>
@@ -48,6 +49,7 @@
     <string name="goals_editor_saved_help">You keep this up to date yourself for now.</string>
     <string name="goals_editor_planned">You plan to put aside each month</string>
     <string name="goals_editor_planned_help">Leave blank if you have not decided. The app still tells you what it would take.</string>
+    <string name="goals_edit">Edit</string>
     <string name="goals_editor_save">Save</string>
     <string name="goals_editor_cancel">Cancel</string>
     <string name="goals_editor_delete">Delete</string>

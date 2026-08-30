@@ -556,6 +556,62 @@ engine version moved 1.0 → 1.1 and `AI-INV` in `engine-registry.yaml` with it.
 
 ---
 
+### 2.5 · What a goal takes each month — and the figure it moves elsewhere (issue 7.1)
+
+```
+GoalsScreen → GoalsViewModel.uiState                       :feature:goals
+└─ GoalRepository.observeGoals()                           :data:repository (ARC-005)
+    └─ activeProfileId.flatMapLatest { goalDao.observeForProfile(it) }
+        └─ project(rows)
+            ├─ clock.today()  READ ONCE PER EMISSION, not per goal, so every figure in one
+            │                 emission describes the same day (TIM-001)
+            ├─ a row whose stored date will not parse is DROPPED, not thrown on — only reachable
+            │  from a hand-edited database, and losing one goal beats a screen that cannot
+            │  render at all (P-04)
+            └─ GoalEngine.plan(GoalPlanInput(goals, today))     :domain:engines:goals
+                └─ per goal:
+                    remaining       = max(0, target − saved)          never negative
+                    monthsRemaining = max(0, MONTHS.between(...))     contributions, not duration
+                    requiredMonthly = remaining.split(max(1, months)).max()
+                                      └─ Money owns the division; the odd paise go to the
+                                         earliest parts, so the LARGEST is the one quoted
+                    etaIsoDate      = today + ceil(remaining ÷ planned) months, or null
+                    horizon         = RULE-HORIZON.bucketFor(months)
+                    status          = NO_TARGET → OVER_FUNDED → PAST_DUE → ON_TRACK → BEHIND
+                                      (order matters: a funded goal is finished whatever its
+                                       date said; "short by ₹0" against a zero target is not
+                                       a shortfall)
+                └─ GoalPlan.provenance.evidence = [ RuleCitation("RULE-HORIZON", "1.0") ]
+                    └─ init { require(evidence.isNotEmpty()) }   ← P-02, enforced in the type
+```
+
+**Nothing derived is stored.** The required monthly is recomputed on every read, because a figure
+written to the table would outlive the goal that produced it — and would go stale simply because a
+day passed, which is the one input the user never edits.
+
+**Issue 7.1 mints no rulebook row.** `RULE-HORIZON` already named `AI-GOAL.funding_buckets` before
+this engine existed, and everything else here is arithmetic. `RulebookDriftTest` asserts the absence
+as well as the presence, so a future threshold has to arrive deliberately (ADR-0033).
+
+**The one figure this moves elsewhere** is the Safe-to-Spend goal term (§2.1). Since issue 5.2 it
+substituted the whole quick-setup INVEST envelope (ADR-0021); it is now:
+
+```
+SafeToSpendRepository.observeSafeToSpend()
+└─ combine(                                    nested: combine's typed overloads stop at five
+    ├─ combine(envelopes, cashFlow, nature, upcoming, recurringRules) → MonthTerms
+    └─ goals.observeGoals()
+   ) { terms, goalProjections →
+       goalContributionsRemaining = maxOf(envelopes.savingsPlanned(),
+                                          goalProjections.requiredMonthly())
+                                    └─ the GREATER, not a replacement. Replacing outright makes
+                                       the headline jump UPWARDS for every user without a goal —
+                                       and fails four tests, two older than issue 7.1.
+   }
+```
+
+---
+
 ## 3 · Shape B — a background worker
 
 The app is usually not open when a band is crossed. Budget alerts, as the worked example:

@@ -95,6 +95,29 @@ class GoalsFlowTest {
     }
 
     @Test
+    fun `a fully funded goal is not told it gets there at zero a month`() {
+        // Found by running the app: the engine dates an already-funded goal today, which is true and
+        // reads as "At ₹0.00 a month you get there 2026-08-30". Every assertion about the figure
+        // passed. The engine is right; the sentence was wrong.
+        setContent(state(goals = listOf(fundedGoal())))
+
+        compose.onNodeWithText(string(R.string.goals_eta_reached)).performScrollTo().assertIsDisplayed()
+        compose.onAllNodesWithText(string(R.string.goals_eta, "₹0.00", "2026-08-30")).assertCountEquals(0)
+    }
+
+    @Test
+    fun `the button on a goal card edits it, and does not say Save`() {
+        // Also found by running the app: the card reused the editor's Save string, so a list of
+        // goals showed a column of Save buttons that saved nothing.
+        val events = mutableListOf<GoalsEvent>()
+        setContent(state(goals = listOf(behindGoal())), onEvent = events::add)
+
+        compose.onNodeWithText(string(R.string.goals_edit)).performScrollTo().performClick()
+
+        assertEquals(GoalsEvent.EditGoal("g1"), events.single())
+    }
+
+    @Test
     fun `an empty list explains itself`() {
         setContent(state(goals = emptyList(), isLoading = false))
 
@@ -197,6 +220,9 @@ class GoalsFlowTest {
     private fun onTrackGoal() = project(behindSpec().copy(plannedMonthly = Money(20_000_00)))
 
     private fun noPlanGoal() = project(behindSpec().copy(plannedMonthly = Money.ZERO))
+
+    /** Saved more than the target: remaining is zero, so the ETA line has a third case. */
+    private fun fundedGoal() = project(behindSpec().copy(saved = Money(6_00_000_00), plannedMonthly = Money.ZERO))
 
     private fun behindSpec() =
         GoalSpec(
