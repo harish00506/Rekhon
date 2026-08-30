@@ -349,6 +349,8 @@ object RepositoryModule {
         database: CfoDatabase,
         transactions: TransactionRepository,
         quickSetup: QuickSetupRepository,
+        // Issue 7.1: the real goal-contributions term, replacing ADR-0021's INVEST-envelope stand-in.
+        goals: GoalRepository,
         engine: SafeToSpendEngine,
         clock: Clock,
         dispatchers: DispatcherProvider,
@@ -358,6 +360,7 @@ object RepositoryModule {
             database = database,
             transactions = transactions,
             quickSetup = quickSetup,
+            goals = goals,
             engine = engine,
             clock = clock,
             dispatchers = dispatchers,

@@ -65,6 +65,21 @@ the figure exists to prevent.
   at today, so this issue bounded it (FR-TXN-010 — it feeds a card captioned "This month,
   **actually**"). That is a correctness fix to 4.3's read in its own right; it changes the
   "This month, actually" figures for any user with a future-dated row in the current month.
+> **Resolved 2026-08-30 by issue 7.1 — but not by a straight replacement.** The goals engine now
+> supplies a real required-monthly figure, and the term is `maxOf(INVEST envelope, goals required)`
+> rather than the goals figure alone.
+>
+> Replacing the stand-in outright, as this ADR's wording implies, would have made Safe-to-Spend jump
+> **upwards** by the whole INVEST envelope for every existing user who has not set a goal —
+> optimistic in exactly the direction §5.2 exists to guard against. That is not a judgement call
+> after the fact: the straight replacement fails four tests in `SafeToSpendRepositoryTest`, two of
+> which predate issue 7.1 — including `saving does not increase what is safe to spend`. The existing
+> suite had already encoded the invariant.
+>
+> A user's declared monthly saving does not stop being planned saving because they have not named a
+> goal for it. Taking the greater of the two counts each planned rupee exactly once and can only ever
+> hold the figure down. See [ADR-0033](0033-goals-mint-no-rulebook-row.md).
+
 - **Follow-ups:** issue 7.1 replaces the goal term in `SafeToSpendRepository` only. Issue 10.1
   (Purchase Advisor) and §14 (health score) both read this figure and inherit the buffer; if either
   needs the unbuffered number, the breakdown already carries it as the `BUFFER` line rather than

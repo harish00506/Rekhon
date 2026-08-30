@@ -3,6 +3,7 @@ package com.aicfo.data.repository
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.aicfo.core.common.AppError
+import com.aicfo.core.common.DispatcherProvider
 import com.aicfo.core.common.FakeClock
 import com.aicfo.core.common.FakeIdGenerator
 import com.aicfo.core.common.Ok
@@ -13,6 +14,7 @@ import com.aicfo.core.database.entity.RecurringRuleEntity
 import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Money
 import com.aicfo.domain.engines.classification.ClassificationEngineFactory
+import com.aicfo.domain.engines.goals.GoalEngineFactory
 import com.aicfo.domain.engines.nature.NatureEngineFactory
 import com.aicfo.domain.engines.quicksetup.BudgetNature
 import com.aicfo.domain.engines.safetospend.SafeToSpend
@@ -67,6 +69,7 @@ class SafeToSpendRepositoryTest {
     private lateinit var database: CfoDatabase
     private lateinit var safeToSpend: SafeToSpendRepository
     private lateinit var transactions: TransactionRepository
+    private lateinit var goals: GoalRepository
     private lateinit var accounts: AccountRepository
     private lateinit var categories: CategoryRepository
     private lateinit var account: String
@@ -101,11 +104,13 @@ class SafeToSpendRepositoryTest {
             accounts = RepositoryFactory.accounts(database, clock, ids, dispatchers, activeProfileId)
             categories = RepositoryFactory.categories(database, clock, ids, dispatchers, activeProfileId)
             val quickSetup = RepositoryFactory.quickSetup(database, clock, dispatchers, activeProfileId)
+            goals = goalRepository(dispatchers)
             safeToSpend =
                 RepositoryFactory.safeToSpend(
                     database = database,
                     transactions = transactions,
                     quickSetup = quickSetup,
+                    goals = goals,
                     engine = SafeToSpendEngineFactory.create(),
                     clock = clock,
                     dispatchers = dispatchers,
@@ -371,6 +376,68 @@ class SafeToSpendRepositoryTest {
             assertEquals("making a planned saving must not move the figure", before, requireFigure().amount)
         }
 
+    // --- the goals term (issue 7.1; ADR-0021's debt) ----------------------------------------------
+
+    /**
+     * Input:  an INVEST envelope and no goals at all.
+     * Output: asserts the deduction is still the envelope.
+     *
+     * **The regression this pair exists to prevent.** ADR-0021 assigned issue 7.1 the job of
+     * replacing the envelope stand-in with the real goals figure, and a straight replacement would
+     * have made Safe-to-Spend jump *upwards* by the whole envelope for every existing user who has
+     * not set a goal — optimistic in exactly the direction §5.2 exists to guard against. The term is
+     * the greater of the two, so it can only ever hold the figure down.
+     */
+    @Test
+    fun `with no goals set, the deduction is still the declared savings envelope`() =
+        runTest(dispatcher) {
+            seedEnvelopes(needs = rupees(65_000), invest = rupees(15_000))
+
+            assertEquals(rupees(15_000), lineFor(SafeToSpendComponent.GOALS))
+        }
+
+    /**
+     * Input:  a goal needing more each month than the envelope declares.
+     * Output: asserts the goals figure takes over.
+     */
+    @Test
+    fun `a goal needing more than the envelope raises the deduction to what the goal needs`() =
+        runTest(dispatcher) {
+            // ₹2,40,000 over the 12 months to the date is ₹20,000 a month, above the ₹15,000 envelope.
+            seedEnvelopes(needs = rupees(65_000), invest = rupees(15_000))
+            goals.save(
+                GoalDraft(
+                    name = "Kerala trip",
+                    target = rupees(240_000),
+                    targetDateIso = clock.today().plusMonths(12).toString(),
+                ),
+            )
+
+            assertEquals(rupees(20_000), lineFor(SafeToSpendComponent.GOALS))
+        }
+
+    /**
+     * Input:  a goal needing less each month than the envelope declares.
+     * Output: asserts the envelope still stands.
+     *
+     * A user's declared monthly saving does not stop being planned saving because the goal they
+     * named happens to need less than all of it.
+     */
+    @Test
+    fun `a goal needing less than the envelope leaves the envelope in place`() =
+        runTest(dispatcher) {
+            seedEnvelopes(needs = rupees(65_000), invest = rupees(15_000))
+            goals.save(
+                GoalDraft(
+                    name = "New laptop",
+                    target = rupees(120_000),
+                    targetDateIso = clock.today().plusMonths(12).toString(),
+                ),
+            )
+
+            assertEquals(rupees(15_000), lineFor(SafeToSpendComponent.GOALS))
+        }
+
     // --- provenance and the live contract ---------------------------------------------------------
 
     /**
@@ -426,10 +493,20 @@ class SafeToSpendRepositoryTest {
 
     // --- fixtures ----------------------------------------------------------------------------------
 
+    /**
+     * The real goals repository over the real engine (issue 7.1).
+     * Why:    extracted so [setUp] stays inside detekt's 40-line limit. Real rather than a fake, so
+     *         the `maxOf` in `SafeToSpendRepository` is exercised rather than stubbed.
+     * Result: a [GoalRepository]. Input: [dispatchers]. Output: the repository.
+     */
+    private fun goalRepository(dispatchers: DispatcherProvider): GoalRepository =
+        RepositoryFactory.goals(database, GoalEngineFactory.create(), clock, ids, dispatchers, activeProfileId)
+
     /** Result: the current figure, or `null`. Input: none. Output: `SafeToSpend?`. */
     private suspend fun figure(): SafeToSpend? = safeToSpend.observeSafeToSpend().first()
 
     /** Result: the current figure, failing the test when absent. Output: [SafeToSpend]. */
+
     private suspend fun requireFigure(): SafeToSpend =
         checkNotNull(figure()) { "expected a Safe-to-Spend figure, got the absence" }
 
