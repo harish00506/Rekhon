@@ -236,7 +236,48 @@ class MarketDataApiTest {
             .that(client.interceptors).isEmpty()
     }
 
+    // --- the contract, against the same bytes the server's suite reads --------------------------
+
+    @Test
+    fun `the wire contract in contracts_ parses into quotes this client can use`() =
+        runTest {
+            // Issue 6.7 built the other half of this endpoint, and a contract described in two
+            // places drifts. `contracts/market-prices-v1.json` is the one place: :backend asserts it
+            // emits these bytes, and this asserts the client reads them. Rename a field on either
+            // side and one of the two goes red.
+            server.enqueue(json(contract()))
+
+            val asked = setOf(crypto, gold, PriceKey("mf:inf109k01z48"), PriceKey("fx:usd.inr"))
+            val quotes = (api().quotes(asked) as Ok).value.associateBy { it.priceKey }
+
+            assertThat(quotes.keys).containsExactlyElementsIn(asked)
+            assertWithMessage("MNY-001: the exact integer paise the contract carries")
+                .that(quotes.getValue(crypto).unitPrice).isEqualTo(Money(750_000_000))
+            assertThat(quotes.getValue(gold).unitPrice).isEqualTo(Money(789_012))
+            assertThat(quotes.getValue(PriceKey("mf:inf109k01z48")).unitPrice).isEqualTo(Money(12_345))
+            assertThat(quotes.getValue(PriceKey("fx:usd.inr")).unitPrice).isEqualTo(Money(8_850))
+            assertThat(quotes.values.map { it.asOfIsoDate }.distinct()).containsExactly("2026-08-30")
+        }
+
     // --- helpers --------------------------------------------------------------------------------
+
+    /**
+     * The shared wire contract, read from `contracts/` rather than retyped here.
+     *
+     * Why:    retyping it would defeat the point — the file exists so that this suite and
+     *         `:backend`'s read the *same bytes*. `build.gradle.kts` passes the directory as a system
+     *         property so the test finds it from any working directory.
+     * Result: the JSON text. Fails loudly if the build script stopped setting the property; a
+     *         contract test that silently skips is a gate that cannot fail.
+     * Input:  none. Output: [String].
+     */
+    private fun contract(): String =
+        java.io.File(
+            requireNotNull(System.getProperty("cfo.contracts.dir")) {
+                "cfo.contracts.dir is not set - core/network/build.gradle.kts must pass it to the test task"
+            },
+            "market-prices-v1.json",
+        ).readText()
 
     /**
      * An api pointed at the mock server, over the production converter and mapper.

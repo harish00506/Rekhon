@@ -1,0 +1,35 @@
+<!--
+  Logging for the §22 market-data proxy (issue 6.7; EXT-003, §21.6).
+
+  Why:  one of this issue's acceptance criteria is that the service keeps "no request logging that
+        retains identifiers per device". The strongest way to hold that is not to configure a
+        redactor — it is to make sure nothing ever writes a request line in the first place.
+
+        So: **Ktor's CallLogging plugin is not installed at all** (see PricesRoute.kt), which is why
+        there is no logger name to silence here. This file exists for the other half of the problem —
+        without an SLF4J binding, a server that fails to start says nothing at all, and a runbook you
+        cannot debug is not a runbook.
+
+  What: WARN at the root, one console appender, and a pattern that carries no MDC.
+  Result: startup failures and genuine errors are visible; ordinary traffic writes nothing.
+  Changelog: 2026-08-30 — Created for issue 6.7.
+
+  The pattern deliberately has no %X / %mdc: Ktor puts request attributes there, and a pattern that
+  interpolates the MDC is one plugin away from printing the query string — which carries exactly the
+  instrument identifiers EXT-003 says must not be retained.
+-->
+<configuration>
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <root level="WARN">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+
+    <!-- Netty announces the bound port at INFO. That is the one line a runbook needs, and it names
+         no request and no identifier. -->
+    <logger name="io.ktor.server.Application" level="INFO"/>
+</configuration>

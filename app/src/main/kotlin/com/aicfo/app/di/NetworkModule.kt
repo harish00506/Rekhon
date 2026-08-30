@@ -1,5 +1,6 @@
 package com.aicfo.app.di
 
+import com.aicfo.app.BuildConfig
 import com.aicfo.core.common.Clock
 import com.aicfo.core.common.DispatcherProvider
 import com.aicfo.core.database.CfoDatabase
@@ -34,22 +35,39 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
     /**
-     * Where the market-data proxy is — which today is nowhere.
-     * Why:    the §22 Market Data API is specified and unbuilt, and no issue in the backlog builds
-     *         it. The alternative to shipping unconfigured is pointing the client at AMFI or a
-     *         crypto exchange directly, which EXT-001 and P-01 forbid outright and which would be
-     *         very hard to unpick once shipped. So the app ships with no backend, which is a
-     *         supported state rather than a broken one (P-04).
+     * Where the market-data proxy is, and what certificate it must present.
      *
-     *         **This binding is the whole switch.** When a proxy exists, its URL and pins go here
-     *         and nothing else in the app changes — no call site, no ViewModel, no screen.
-     * Result: [NetworkConfig.UNCONFIGURED].
+     * Why:    issue 6.5 wrote that "this binding is the whole switch. When a proxy exists, its URL
+     *         and pins go here and nothing else in the app changes." Issue 6.7 built the proxy, and
+     *         this is that change — the only one on the client side, and it is still one function.
+     *
+     *         The URL and pins arrive as `BuildConfig` fields fed from Gradle properties that
+     *         **default to empty**, so the shipping build is byte-for-byte the unconfigured one
+     *         issue 6.5 described: [MarketDataFactory] branches on the blank base URL before it
+     *         constructs anything, and no `OkHttpClient`, connection pool, DNS resolver or socket
+     *         comes into existence. Having no backend remains a supported state, not a broken one
+     *         (P-04) — the app is offline-first and the proxy is optional to it.
+     * What:   a blank base URL means [NetworkConfig.UNCONFIGURED]; anything else is a configured
+     *         host with the pins that came with it.
+     * Result: [NetworkConfig]. Note what is **not** here: no fallback pin, no "if pins are missing,
+     *         carry on". [NetworkConfig]'s own `init` refuses a non-https host and a host with no
+     *         pins, so a misconfigured build fails at construction rather than shipping a client
+     *         that trusts any CA on the device. That refusal is the point of the class.
      * Input:  none. Output: [NetworkConfig].
      * Changelog: 2026-08-29 — Created for issue 6.5.
+     *            2026-08-30 — Issue 6.7: reads BuildConfig, so a build can be pointed at the proxy.
      */
     @Provides
     @Singleton
-    fun provideNetworkConfig(): NetworkConfig = NetworkConfig.UNCONFIGURED
+    fun provideNetworkConfig(): NetworkConfig =
+        if (BuildConfig.MARKET_BASE_URL.isBlank()) {
+            NetworkConfig.UNCONFIGURED
+        } else {
+            NetworkConfig(
+                baseUrl = BuildConfig.MARKET_BASE_URL,
+                pins = BuildConfig.MARKET_PINS.split(',').map(String::trim).filter(String::isNotEmpty),
+            )
+        }
 
     /**
      * The market-data client.

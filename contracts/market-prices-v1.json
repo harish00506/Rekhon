@@ -1,0 +1,8 @@
+{
+  "quotes": [
+    { "price_key": "crypto:btc.inr",      "unit_price_minor": 750000000, "as_of": "2026-08-30" },
+    { "price_key": "gold:inr.gram.24k",   "unit_price_minor": 789012,    "as_of": "2026-08-30" },
+    { "price_key": "mf:inf109k01z48",     "unit_price_minor": 12345,     "as_of": "2026-08-30" },
+    { "price_key": "fx:usd.inr",          "unit_price_minor": 8850,      "as_of": "2026-08-30" }
+  ]
+}

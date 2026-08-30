@@ -11,6 +11,57 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > Credit cards, loans with amortisation, investment holdings with XIRR, allocation and net-worth
 > history — exact paise math throughout.
 
+### [0.6.7] — Issue 6.7: Market-data backend proxy (§22)  (2026-08-30)
+
+- **Implemented:** the §22 service issue 6.5 shipped a client for. `:backend` is a pure Kotlin/JVM
+  Ktor module — outside the §21.2 app graph, in no APK — serving `GET /v1/market/prices?ids=` as
+  **integer paise** with an ISO `as_of` date (**§22**, **API-001/API-002**, **EXT-001/EXT-003**,
+  **MNY-001**, **TIM-002**). Four namespaces behind one shape: `crypto:` (CoinGecko), `gold:` (a
+  keyed metals provider), `mf:` (AMFI NAVs by ISIN), `fx:` (published FX reference rates). It depends
+  on `:core:model`, so `PriceKey`'s charset and paise have **one definition on both sides of the
+  wire**; `contracts/market-prices-v1.json` is read by this module's suite *and* `:core:network`'s,
+  so renaming a field on either side turns one of them red.
+- **Wired:** `NetworkModule.provideNetworkConfig` now reads `BuildConfig` fields fed from Gradle
+  properties that **default to empty** — so the shipping build is byte-for-byte the unconfigured one
+  ADR-0030 described, and pointing a build at a proxy is `-Pcfo.market.baseUrl=… -Pcfo.market.pins=…`.
+  This is the one line ADR-0030 promised would be the whole switch, and it was.
+- **Closed 6.5's recorded gap.** `./gradlew :backend:devTls` mints **two** keypairs, computes both
+  SPKI pins in-process, and writes a **debug-only** trust anchor — `<debug-overrides>` cannot apply to
+  a release build, so the `SSLSocketFactory` seam ADR-0030 refused stays refused. All of it is
+  gitignored. Verified on an emulator against a live proxy: 0.01 BTC priced at **₹74,555.20** and 1
+  ETH at **₹2,34,295.00**, both stamped with the proxy's own `as_of`; killing the host left the cached
+  prices standing with no crash (**P-04**); restarting on the *second* keypair kept working **without
+  rebuilding the app**; and a deliberately wrong pin blocked the fetch while the cached prices stood.
+- **Fixed (6.5 scope, found here):** **no UI could set a holding's `price_key`.** Issue 6.5 shipped
+  the column, the migration, the DAO, the repository, the worker, the client and even the string
+  resources — and no field. Every holding had a null key, so `distinctPriceKeys` returned empty and
+  `refresh()` returned `Ok(0)` before a request was built: **the whole market-data path was
+  unreachable, and shipping the proxy would not have changed that.** Found by pointing the app at a
+  live proxy and watching nothing happen. A malformed key is now *refused* rather than dropped —
+  saving `null` would leave a holding that looks linked to a market and never updates.
+- **Fixed:** AMFI's published header names six columns and its file serves eight (`Plan` and `Option`
+  were inserted and the header never updated). The parser now reads NAV and date from the **end** of
+  each row; indexing from the left read `"Direct Plan"` and silently priced nothing.
+- **Fixed:** `portal.amfiindia.com` serves an **incomplete certificate chain**. `curl` and browsers
+  chase the missing intermediate through AIA; the JDK does not by default, so every NAV fetch died
+  with `PKIX path building failed` in ~300 ms and looked like "unknown ISIN". `Main.kt` enables AIA
+  CA-issuer fetching — the chain still has to reach a trusted root, so verification is unchanged.
+- **Decided:** [ADR-0032](docs/adr/0032-the-proxy-lives-in-this-repo-and-the-pin-set-is-two.md). Why
+  the service is in this repository rather than a TypeScript worker; why the pin set is two and the
+  rotation is actually exercised; why the price cache does not make the service stateful in the sense
+  EXT-003 means; why there is no `CallLogging` plugin and no error body ever echoes an identifier;
+  why `fx:` is ECB reference rates (RBI publishes no machine-readable feed) and why **policy rates are
+  not served at all** — a rate is bps (**MNY-002**), this endpoint's only money field is paise.
+- **Not delivered, stated plainly:** there is **no deployed host** — everything was proved against
+  `localhost:8443` with a certificate this repo minted; `gold:` is untested live because it needs a
+  provider API key; and the first `mf:` request after a restart takes ~3.5 s (it pulls AMFI's 1.5 MB
+  file), which can exceed API-001's five seconds on a slow network and degrades to the cached price.
+  `backend/README.md` holds the ordered deployment steps.
+- **Dependencies:** `ktor-server-core`, `ktor-server-netty`, `ktor-server-test-host`,
+  `logback-classic` — four, not seven. Content negotiation and status-pages are deliberately unpinned
+  (one route, `Json.encodeToString` + `respondText`), and upstream fetches reuse the **already-pinned**
+  OkHttp and MockWebServer. Rows in `DECISIONS.md`.
+
 ### [0.6.5] — Issue 6.5: Gold/crypto valuation via market API  (2026-08-29)
 
 - **Implemented:** a stored price now carries its age (**FR-INV-004**, §16.1, §22, API-001/API-002).

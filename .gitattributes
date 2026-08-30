@@ -26,3 +26,9 @@ gradlew text eol=lf
 *.keystore binary
 *.jks      binary
 *.pyc      binary
+
+# Recorded vendor payloads keep the vendor's own line endings (issue 6.7).
+# AMFI serves NAVAll.txt with CRLF, and AmfiNavSourceTest asserts the trailing carriage return is
+# trimmed off the date before it is parsed. Normalising this file to LF would leave that assertion
+# passing while testing nothing — the exact shape of vacuous gate this project has been bitten by.
+backend/src/test/resources/fixtures/amfi-navall.txt -text

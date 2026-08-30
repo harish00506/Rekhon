@@ -108,12 +108,19 @@ private fun AssetClassPicker(
 }
 
 /**
- * The unit price and the day it was observed.
- * Why:    the two move together, and are rendered together so that stays visible. Blank is
+ * The unit price, the day it was observed, and what the app may look it up as.
+ * Why:    the first two move together, and are rendered together so that stays visible. Blank is
  *         legitimate and means "not valued yet" (P-03); a price with no date has no terminal flow
  *         date, so the return would change by the day for a holding nobody touched (P-08).
- * Result: the two fields. Input: [state]; [onEvent]. Output: none.
+ *
+ *         The price key sits with them because it decides who writes them. **Without it the whole
+ *         market-data path is unreachable**: `distinctPriceKeys` returns nothing, the refresh
+ *         returns `Ok(0)` before a request is built, and the proxy might as well not exist. Issue
+ *         6.5 shipped the column, the DAO, the repository, the worker and the client, and no way for
+ *         a person to fill it in — found while verifying 6.7 against a live proxy.
+ * Result: the three fields. Input: [state]; [onEvent]. Output: none.
  * Changelog: 2026-08-24 — Created for issue 6.3.
+ *            2026-08-30 — Issue 6.7: added the price key, without which nothing can be priced.
  */
 @Composable
 private fun PriceFields(
@@ -132,6 +139,14 @@ private fun PriceFields(
         value = state.pricedOn,
         onValueChange = { onEvent(HoldingsEvent.PricedOnChanged(it)) },
         label = { Text(stringResource(R.string.holdings_priced_on_field)) },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    OutlinedTextField(
+        value = state.priceKey,
+        onValueChange = { onEvent(HoldingsEvent.PriceKeyChanged(it)) },
+        label = { Text(stringResource(R.string.holdings_price_key)) },
+        supportingText = { Text(stringResource(R.string.holdings_price_key_help)) },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
     )

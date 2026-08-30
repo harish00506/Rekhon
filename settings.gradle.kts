@@ -98,3 +98,11 @@ include(":widget")
 //                          not a product module — it ships in no APK. Outside the §21.2 graph, so
 //                          see docs/adr/0001-custom-lint-module-and-money-heuristic.md.
 include(":lint")
+
+// :backend                 the §22 stateless market-data proxy (issue 6.7). Pure Kotlin/JVM Ktor.
+//                          NOT part of the §21.2 app graph and NOT shipped in any APK: nothing in
+//                          the app depends on it, and it depends only on :core:model — so the one
+//                          definition of `PriceKey` and of paise is shared across both sides of the
+//                          wire instead of being written twice and drifting. The dependency arrow
+//                          still points inward (→ core), so ARC-001 is not bent.
+include(":backend")

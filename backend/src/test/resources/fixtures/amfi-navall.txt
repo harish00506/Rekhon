@@ -1,0 +1,12 @@
+Scheme Code;ISIN Div Payout/ ISIN Growth;ISIN Div Reinvestment;Scheme Name;Plan;Option;Net Asset Value;Date
+ 
+Open Ended Schemes(Equity Scheme - Flexi Cap Fund)
+ 
+Parag Parikh Mutual Fund
+ 
+122640;INF879O01019;-;Parag Parikh Flexi Cap Fund;Regular Plan;Growth;83.0832;28-Aug-2026
+120594;INF109K01Z48;-;ICICI Prudential Technology Fund;Direct Plan;Growth;209.15;28-Aug-2026
+135763;INF846K01WS2;INF846K01WQ6;Axis Children's Fund;Direct Plan;IDCW Option;28.1806;28-Aug-2026
+122641;-;-;A Fund That Publishes No ISIN;Direct Plan;Growth;10.0000;28-Aug-2026
+122642;INF000BAD001;-;Suspended Fund;Direct Plan;Growth;N.A.;28-Aug-2026
+122643;INF000BAD002;-;Fund With An Unreadable Date;Direct Plan;Growth;55.5000;not-a-date

@@ -156,6 +156,9 @@
         <item quantity="one">As of %1$s - %2$d day old</item>
         <item quantity="other">As of %1$s - %2$d days old</item>
     </plurals>
+    <!-- Written for issue 6.5 and left unreferenced: the editor had no such field, so no holding
+         could ever carry a price key and the whole market-data path was unreachable. Issue 6.7
+         wired the field that uses these. -->
     <string name="holdings_price_key">Price key (optional, e.g. gold:inr.gram.24k)</string>
     <string name="holdings_price_key_help">Leave this blank to keep pricing by hand. With a key, the
         app can refresh the price for you once market data is switched on in Settings.</string>

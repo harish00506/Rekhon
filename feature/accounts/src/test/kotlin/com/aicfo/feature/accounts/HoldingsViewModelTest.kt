@@ -8,6 +8,7 @@ import com.aicfo.core.model.InvestmentHolding
 import com.aicfo.core.model.InvestmentLot
 import com.aicfo.core.model.LotKind
 import com.aicfo.core.model.Money
+import com.aicfo.core.model.PriceKey
 import com.aicfo.core.model.Quantity
 import com.aicfo.domain.engines.investment.XirrUnavailable
 import kotlinx.coroutines.Dispatchers
@@ -195,6 +196,86 @@ class HoldingsViewModelTest {
 
             assertEquals(HoldingsViewModel.FIELD_HOLDING, subject.uiState.value.editor?.fieldError)
             assertNull("nothing was written", stored("holding:1"))
+        }
+
+    /**
+     * Input:  an editor with a price key typed into it.
+     * Output: asserts the key reaches the stored holding.
+     *
+     * **This is what makes the market-data path reachable at all** (issue 6.7). A holding whose
+     * `price_key` is null is not returned by `distinctPriceKeys`, so the refresh returns `Ok(0)`
+     * before a request is built and the §22 proxy might as well not exist. Issue 6.5 shipped the
+     * column, the DAO, the repository, the worker, the client and even the strings for this field —
+     * and no field. It was found by pointing the app at a live proxy and watching nothing happen.
+     */
+    @Test
+    fun `a price key typed into the editor reaches the holding`() =
+        runTest {
+            val subject = viewModel()
+            subject.onEvent(HoldingsEvent.AddHolding)
+            subject.onEvent(HoldingsEvent.NameChanged("Bitcoin"))
+            subject.onEvent(HoldingsEvent.PriceKeyChanged("crypto:btc.inr"))
+
+            subject.onEvent(HoldingsEvent.SaveEditor)
+
+            assertEquals(PriceKey("crypto:btc.inr"), stored("holding:1")?.priceKey)
+        }
+
+    /**
+     * Input:  an editor with no price key.
+     * Output: asserts the holding stores none.
+     *
+     * Blank is the default and means "I price this by hand" — such a holding is never overwritten by
+     * a refresh, which is the guard against replacing a number the user typed with one they did not.
+     */
+    @Test
+    fun `a blank price key keeps the holding hand-priced`() =
+        runTest {
+            val subject = viewModel()
+            subject.onEvent(HoldingsEvent.AddHolding)
+            subject.onEvent(HoldingsEvent.NameChanged("Some Fund"))
+            subject.onEvent(HoldingsEvent.PriceKeyChanged("   "))
+
+            subject.onEvent(HoldingsEvent.SaveEditor)
+
+            assertNull("absent, so a refresh never touches it", stored("holding:1")?.priceKey)
+        }
+
+    /**
+     * Input:  a price key that PriceKey's charset refuses.
+     * Output: asserts the save is refused rather than the key silently dropped.
+     *
+     * Saving `null` for a malformed key would leave a holding that looks linked to a market and
+     * never updates — worse than not offering the field, because the user would have no way to tell.
+     * The charset is also the EXT-003 control: only an instrument identifier may leave the device.
+     */
+    @Test
+    fun `a malformed price key is refused rather than quietly dropped`() =
+        runTest {
+            val subject = viewModel()
+            subject.onEvent(HoldingsEvent.AddHolding)
+            subject.onEvent(HoldingsEvent.NameChanged("Bitcoin"))
+            subject.onEvent(HoldingsEvent.PriceKeyChanged("MY SECRET FUND"))
+
+            subject.onEvent(HoldingsEvent.SaveEditor)
+
+            assertEquals(HoldingsViewModel.FIELD_HOLDING, subject.uiState.value.editor?.fieldError)
+            assertNull("nothing was written", stored("holding:1"))
+        }
+
+    /** Input: an existing holding with a key. Output: asserts the editor shows it for editing. */
+    @Test
+    fun `editing a holding shows the price key it already has`() =
+        runTest {
+            val subject = viewModel()
+            subject.onEvent(HoldingsEvent.AddHolding)
+            subject.onEvent(HoldingsEvent.NameChanged("Bitcoin"))
+            subject.onEvent(HoldingsEvent.PriceKeyChanged("crypto:btc.inr"))
+            subject.onEvent(HoldingsEvent.SaveEditor)
+
+            subject.onEvent(HoldingsEvent.EditHolding("holding:1"))
+
+            assertEquals("crypto:btc.inr", subject.uiState.value.editor?.priceKey)
         }
 
     /** Input: an editor with no name. Output: asserts the save is refused. */

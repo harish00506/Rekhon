@@ -1,0 +1,5 @@
+{
+  "bitcoin": { "inr": 7500000.0, "last_updated_at": 1787000000 },
+  "ethereum": { "inr": 285432.75, "last_updated_at": 1787000000 },
+  "tether": { "inr": 0.0 }
+}

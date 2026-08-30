@@ -69,6 +69,7 @@ data class HoldingEditorState(
     val assetClass: AssetClass = AssetClass.EQUITY,
     val unitPrice: String = "",
     val pricedOn: String = "",
+    val priceKey: String = "",
     val lots: List<LotEditorState> = emptyList(),
     val fieldError: String? = null,
 )
@@ -126,6 +127,9 @@ sealed interface HoldingsEvent {
 
     /** The pricing-date field changed. */
     data class PricedOnChanged(val value: String) : HoldingsEvent
+
+    /** The price-key field changed (issue 6.7). */
+    data class PriceKeyChanged(val value: String) : HoldingsEvent
 
     /** Append an empty lot row to the editor. */
     data object AddLot : HoldingsEvent

@@ -113,6 +113,9 @@ internal class FakeInvestmentRepository : InvestmentRepository {
                 assetClass = draft.assetClass,
                 unitPrice = draft.unitPrice,
                 pricedOnIsoDate = draft.pricedOnIsoDate,
+                // Carried through, not dropped: this fake silently discarded the price key, which is
+                // part of why nothing noticed the editor never set one (issue 6.7).
+                priceKey = draft.priceKey,
             )
         holdings.value = holdings.value.filterNot { it.id == rowId } + row
         return Ok(rowId)

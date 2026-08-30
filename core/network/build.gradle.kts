@@ -35,3 +35,10 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.truth)
 }
+
+// The wire contract is a file both sides of the network read, not a shape each side describes
+// separately. `:backend` sets the identical property, so the two suites assert against the same
+// bytes and a rename on either side turns one of them red.
+tasks.withType<Test>().configureEach {
+    systemProperty("cfo.contracts.dir", rootProject.file("contracts").absolutePath)
+}

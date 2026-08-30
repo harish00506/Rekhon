@@ -9,14 +9,41 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+/**
+ * Reads a market-proxy Gradle property, defaulting to empty.
+ *
+ * Why:    an unset property must produce an empty string rather than a build failure — the shipping
+ *         build sets neither, and "no backend" is a supported state (P-04), not a misconfiguration.
+ * Result: the property's value, trimmed, or "". Input: [name] — the property name. Output: [String].
+ */
+fun marketProperty(name: String): String = providers.gradleProperty(name).getOrElse("").trim()
+
 android {
     namespace = "com.aicfo.app"
 
     defaultConfig {
         applicationId = "com.aicfo.personalcfo"
-        versionCode = 26
+        versionCode = 27
         versionName = rootProject.file("VERSION").readText().trim()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Where the §22 market-data proxy is, and what certificate it must present (issue 6.7).
+        //
+        // Empty by default, and that default IS the shipping build: with a blank base URL
+        // MarketDataFactory returns UnconfiguredMarketDataApi and constructs no HTTP stack at all
+        // (ADR-0030). Passing these on the command line is how a build gets pointed at a proxy —
+        // locally at https://10.0.2.2:8443/ with the pins `:backend:devTls` prints, and one day at
+        // the deployed host with its own. NetworkConfig refuses a non-https host or a host carrying
+        // no pins, so a half-configured build cannot be produced from here.
+        buildConfigField("String", "MARKET_BASE_URL", "\"${marketProperty("cfo.market.baseUrl")}\"")
+        buildConfigField("String", "MARKET_PINS", "\"${marketProperty("cfo.market.pins")}\"")
+    }
+
+    buildFeatures {
+        // Required by AGP 8 before buildConfigField writes anything. Without it the two fields above
+        // are dropped silently and the app stays unconfigured while looking configured — which is
+        // exactly the shape of gate-that-cannot-fail this project has been bitten by before.
+        buildConfig = true
     }
 
     buildTypes {

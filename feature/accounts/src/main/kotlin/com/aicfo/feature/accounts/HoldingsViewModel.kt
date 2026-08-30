@@ -11,6 +11,7 @@ import com.aicfo.core.common.toAppError
 import com.aicfo.core.model.AssetClass
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.MoneyFormatter
+import com.aicfo.core.model.PriceKey
 import com.aicfo.core.model.Quantity
 import com.aicfo.data.repository.HoldingDraft
 import com.aicfo.data.repository.InvestmentRepository
@@ -106,6 +107,7 @@ class HoldingsViewModel
                 is HoldingsEvent.AssetClassChanged -> editEditor { it.copy(assetClass = event.value) }
                 is HoldingsEvent.UnitPriceChanged -> editEditor { it.copy(unitPrice = event.value) }
                 is HoldingsEvent.PricedOnChanged -> editEditor { it.copy(pricedOn = event.value) }
+                is HoldingsEvent.PriceKeyChanged -> editEditor { it.copy(priceKey = event.value) }
                 HoldingsEvent.AddLot -> editEditor { it.copy(lots = it.lots + LotEditorState()) }
                 is HoldingsEvent.LotChanged ->
                     editEditor { state ->
@@ -174,6 +176,7 @@ class HoldingsViewModel
                                 assetClass = holding.assetClass,
                                 unitPrice = holding.unitPrice?.let(MoneyFormatter::format).orEmpty(),
                                 pricedOn = holding.pricedOnIsoDate.orEmpty(),
+                                priceKey = holding.priceKey?.value.orEmpty(),
                                 lots =
                                     lots.map { lot ->
                                         LotEditorState(
@@ -305,7 +308,17 @@ internal fun HoldingEditorState.toDraft(accountId: String): HoldingDraft? {
     val hasDay = pricedOn.isNotBlank()
     val parsed = if (hasPrice) MoneyFormatter.parse(unitPrice) else null
     val priceIsUsable = !hasPrice || (parsed != null && parsed > Money.ZERO)
-    return if (name.isBlank() || hasPrice != hasDay || !priceIsUsable) {
+    // A blank key means "I price this by hand" and is the default. A key that is present but
+    // malformed is refused rather than dropped: silently saving `null` would leave a holding that
+    // looks linked to a market and never updates, which is the one outcome worse than not offering
+    // the field at all.
+    val key = priceKey.trim().takeIf { it.isNotEmpty() }
+    val parsedKey = key?.let { runCatching { PriceKey(it) }.getOrNull() }
+    val keyIsUsable = key == null || parsedKey != null
+    // Named rather than inlined into the guard: "a price and its date exist together and the price
+    // parses" is one idea, and detekt is right that four clauses in a row stop reading as one.
+    val priceIsWellFormed = hasPrice == hasDay && priceIsUsable
+    return if (name.isBlank() || !priceIsWellFormed || !keyIsUsable) {
         null
     } else {
         HoldingDraft(
@@ -314,6 +327,7 @@ internal fun HoldingEditorState.toDraft(accountId: String): HoldingDraft? {
             assetClass = assetClass,
             unitPrice = parsed,
             pricedOnIsoDate = pricedOn.takeIf { hasDay },
+            priceKey = parsedKey,
         )
     }
 }

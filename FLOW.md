@@ -694,6 +694,64 @@ for ever on every install, since today that is all of them.
 The staleness the user sees comes from the same engine call on the read path (§2.3), so the label and
 the refresh decision cannot disagree.
 
+**A holding only enters this path if somebody gave it a price key** (issue 6.7). `price_key` is
+`null` by default and a null key is the opt-out — such a holding is never returned by
+`distinctPriceKeys` and is never overwritten by a refresh. Issue 6.5 shipped every part of this
+diagram except the field that fills that column, so GATE 2 short-circuited for every holding a user
+could create and **nothing below it had ever run**. The field is now on the holdings editor:
+
+```
+HoldingsScreen → HoldingEditorFields.PriceFields
+└─ OutlinedTextField(state.priceKey)  → HoldingsEvent.PriceKeyChanged
+    └─ HoldingsViewModel.editEditor { copy(priceKey = …) }
+        └─ HoldingEditorState.toDraft()
+            ├─ blank        → priceKey = null      "I price this by hand"; a refresh never touches it
+            ├─ PriceKey(it) → HoldingDraft(priceKey = …)   the charset IS the EXT-003 control
+            └─ malformed    → null draft → FIELD_HOLDING error, nothing written
+                              (dropping it would leave a holding that LOOKS linked and never updates)
+```
+
+### 3.4.1 · The other side of that socket — the §22 proxy (issue 6.7)
+
+The service the diagram above talks to. It is a separate process in `:backend`; nothing in the app
+depends on it and it ships in no APK.
+
+```
+Main.main()                                                   backend/Main.kt
+├─ enableIncompleteChainRecovery()        AMFI omits its intermediate CA; the JDK will not
+│                                         chase it without this, and every mf: key silently
+│                                         came back unpriced. Verification is NOT weakened.
+├─ ServerConfig.fromEnv(System.getenv())
+│   └─ .catalogue(OkHttpFetch, Clock(Asia/Kolkata))
+│       ├─ CachingPriceSource(CoinGeckoCryptoSource, 15 min)      crypto:
+│       ├─ CachingPriceSource(GoldApiSource,       1440 min)      gold:   ← only if a key is set;
+│       │                                                                  absent = not registered
+│       ├─ AmfiNavSource (caches its own 1.5 MB index, 6 h)       mf:     ← whole file is the unit
+│       └─ CachingPriceSource(FxReferenceRateSource, 1440 min)    fx:
+└─ embeddedServer(Netty) { marketPrices(catalogue::quote) }
+
+GET /v1/market/prices?ids=…                                   backend/PricesRoute.kt
+├─ ids missing/blank      → 400 {"error":"ids required"}      names no identifier, ever
+├─ ids > 100              → 400 {"error":"too many ids"}      names no identifier, ever
+├─ PriceKey(it) per id, invalid ones DROPPED                  one bad id must not cost the batch
+│
+└─ PriceCatalogue.quote(keys)                                 backend/PriceCatalogue.kt
+    ├─ group by namespace, query the matching sources CONCURRENTLY   API-001 gives the client 5s
+    │   └─ each source isolated: runCatching → emptyList()           a dead vendor costs its own
+    │                                                                 namespace and nothing else
+    ├─ filter to keys ACTUALLY ASKED FOR                       a source cannot widen the response
+    ├─ filter unitPriceMinor > 0                               the client drops these anyway
+    └─ distinctBy(priceKey)
+        └─ Paise.parseRupees(vendor's RAW TEXT)                never .double — MNY-001 lives here
+            └─ BigDecimal.setScale(2, HALF_EVEN).movePointRight(2).longValueExact()
+                                                               throws rather than wrapping
+    → 200 {"quotes":[…]}  + Cache-Control: public, max-age=900
+```
+
+**No `CallLogging` plugin is installed**, so there is no request line to redact and no logger to
+silence — which is how "no request logging that retains identifiers per device" is held. The only
+state is the price cache, which holds public facts about instruments and nothing about any caller.
+
 ---
 
 ## 4 · Shape C — an engine
