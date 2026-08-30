@@ -68,6 +68,7 @@ include(":domain:engines:safetospend") // §5.2/§14 AI-STS — what is left to 
 include(":domain:engines:card")        // §5.7 FR-ACC-002 — a card's billing cycle, utilisation and reminders
 include(":domain:engines:loan")        // §5.8 FR-ACC-003 — a loan's EMI and its principal/interest split
 include(":domain:engines:investment") // §11 AI-INV — a holding's value, gain and money-weighted return
+include(":domain:engines:goals")      // §15 AI-GOAL — target + date -> required monthly, ETA, horizon
 include(":domain:usecase")
 
 // :data:*                  the ONLY DAO/network touchers (ARC-005)
