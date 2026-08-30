@@ -13,6 +13,7 @@ import com.aicfo.core.database.dao.CardAlertDao
 import com.aicfo.core.database.dao.CategoryDao
 import com.aicfo.core.database.dao.CreditCardDao
 import com.aicfo.core.database.dao.DemoDao
+import com.aicfo.core.database.dao.GoalDao
 import com.aicfo.core.database.dao.InvestmentHoldingDao
 import com.aicfo.core.database.dao.InvestmentLotDao
 import com.aicfo.core.database.dao.LoanDao
@@ -32,6 +33,7 @@ import com.aicfo.core.database.entity.BudgetReviewEntity
 import com.aicfo.core.database.entity.CardAlertEntity
 import com.aicfo.core.database.entity.CategoryEntity
 import com.aicfo.core.database.entity.CreditCardEntity
+import com.aicfo.core.database.entity.GoalEntity
 import com.aicfo.core.database.entity.InvestmentHoldingEntity
 import com.aicfo.core.database.entity.InvestmentLotEntity
 import com.aicfo.core.database.entity.LoanEntity
@@ -85,6 +87,7 @@ import com.aicfo.core.database.entity.TransactionTagEntity
         LoanEntity::class,
         InvestmentHoldingEntity::class,
         InvestmentLotEntity::class,
+        GoalEntity::class,
     ],
     version = CfoDatabase.VERSION,
     exportSchema = true,
@@ -148,6 +151,9 @@ abstract class CfoDatabase : RoomDatabase() {
     /** Input: none. Output: the holding-lot DAO (issue 6.3, §11). */
     abstract fun investmentLotDao(): InvestmentLotDao
 
+    /** Input: none. Output: the goal DAO (issue 7.1). */
+    abstract fun goalDao(): GoalDao
+
     /**
      * Input:  none. Output: the demo wipe DAO (issue 2.4, FR-ONB-004).
      *
@@ -190,7 +196,7 @@ abstract class CfoDatabase : RoomDatabase() {
          * and `price_fetched_at_utc_millis`, when this device last heard a price — distinct from
          * `priced_on_iso_date`, which is when the *market* priced it; §16 EXT-002, FR-ACC-004).
          */
-        const val VERSION = 19
+        const val VERSION = 20
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"

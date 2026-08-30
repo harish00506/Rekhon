@@ -20,7 +20,13 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * bump `CfoDatabase.VERSION`, write the `Migration` here, add it to [ALL], build the module so KSP
  * exports `schemas/<version>.json`, **commit that file**, and add a round-trip case to
  * `MigrationRoundTripTest`.
+ *
+ * `TooManyFunctions` is suppressed: one private `createX` per table this file has ever added, plus
+ * the migrations themselves. The count is the schema's history rather than a design choice — the
+ * same argument `CfoDatabase` makes for its one-accessor-per-table suppression. Splitting the file
+ * by version would make a migration harder to find, not easier.
  */
+@Suppress("TooManyFunctions")
 internal object Migrations {
     /**
      * 1 → 2: adds `audit_log` for security events (issue 2.2; §21.6, SEC-002).
@@ -1018,6 +1024,65 @@ internal object Migrations {
             }
         }
 
+    /**
+     * `goal` — the table §15 needs and nothing had (issue 7.1).
+     *
+     * Why:   the goals engine turns a target and a date into a required monthly contribution, and
+     *        until this table existed there was nowhere to keep either. Its absence also forced
+     *        Safe-to-Spend to substitute the user's whole quick-setup INVEST envelope for goal
+     *        contributions (ADR-0021); this row is what lets that stand-in be retired.
+     *
+     *        ADR-0004 said the `goal` table would arrive with issue 7.2 (the emergency fund). It
+     *        arrives here instead, because 7.1 ships storage and a screen rather than an engine
+     *        alone — see ADR-0033. 7.2 reuses it rather than adding a second one.
+     * What:  one `CREATE TABLE`, two indices, no backfill. Nothing existing is touched (DB-003).
+     * Result: an upgraded installation keeps every row it had and gains an empty table.
+     * Input:  [SupportSQLiteDatabase] mid-upgrade. Output: none (executes DDL).
+     *
+     * No index on `target_date_iso`, deliberately: the list is ordered by it, but a profile holds a
+     * handful of goals, and the `profile_id, deleted_at_utc_millis` index already covers the filter.
+     * An index would cost a write on every goal edit to speed up a sort of five rows.
+     */
+    val MIGRATION_19_20 =
+        object : Migration(VERSION_19, VERSION_20) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                createGoal(db)
+            }
+        }
+
+    /**
+     * `goal`'s DDL, extracted so [MIGRATION_19_20] stays short.
+     * Input:  [db]. Output: none. Result: the table and its two indices, named exactly as Room
+     *   names them.
+     *
+     * **`runMigrationsAndValidate` does NOT check index names** — verified on Room 2.7.1 by renaming
+     * one and watching all twenty round-trip tests still pass. An upgraded installation would then
+     * carry a differently-named index from a fresh one, silently and for ever. So
+     * `migrate19To20_...` asserts the index names against `sqlite_master` itself; that assertion,
+     * not Room, is what makes this correct.
+     */
+    private fun createGoal(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `goal` (" +
+                "`id` TEXT NOT NULL, " +
+                "`profile_id` TEXT NOT NULL, " +
+                "`name` TEXT NOT NULL, " +
+                "`target_minor` INTEGER NOT NULL, " +
+                "`target_date_iso` TEXT NOT NULL, " +
+                "`saved_minor` INTEGER NOT NULL, " +
+                "`planned_monthly_minor` INTEGER NOT NULL, " +
+                "`created_at_utc_millis` INTEGER NOT NULL, " +
+                "`updated_at_utc_millis` INTEGER NOT NULL, " +
+                "`deleted_at_utc_millis` INTEGER, " +
+                "PRIMARY KEY(`id`))",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_goal_profile_id` ON `goal` (`profile_id`)")
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_goal_profile_id_deleted_at_utc_millis` " +
+                "ON `goal` (`profile_id`, `deleted_at_utc_millis`)",
+        )
+    }
+
     /** Every migration, in order, for `CfoDatabaseFactory` to register. */
     val ALL: Array<Migration> =
         arrayOf(
@@ -1039,6 +1104,7 @@ internal object Migrations {
             MIGRATION_16_17,
             MIGRATION_17_18,
             MIGRATION_18_19,
+            MIGRATION_19_20,
         )
 
     /** Named so the version pair reads as a schema version rather than an unexplained literal. */
@@ -1094,4 +1160,7 @@ internal object Migrations {
 
     /** The version issue 6.5 introduces — a holding's price key and its fetch stamp (FR-ACC-004). */
     private const val VERSION_19 = 19
+
+    /** The version issue 7.1 introduced, adding `goal`. */
+    private const val VERSION_20 = 20
 }

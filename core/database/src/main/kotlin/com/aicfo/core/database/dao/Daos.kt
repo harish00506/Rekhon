@@ -20,6 +20,7 @@ import com.aicfo.core.database.entity.BudgetReviewEntity
 import com.aicfo.core.database.entity.CardAlertEntity
 import com.aicfo.core.database.entity.CategoryEntity
 import com.aicfo.core.database.entity.CreditCardEntity
+import com.aicfo.core.database.entity.GoalEntity
 import com.aicfo.core.database.entity.InvestmentHoldingEntity
 import com.aicfo.core.database.entity.InvestmentLotEntity
 import com.aicfo.core.database.entity.LoanEntity
@@ -3338,6 +3339,64 @@ interface InvestmentLotDao {
     )
     suspend fun softDeleteForHolding(
         holdingId: String,
+        deletedAtUtcMillis: Long,
+    ): Int
+}
+
+/**
+ * Reads and writes `goal` (issue 7.1; §15).
+ *
+ * Why:  the goals engine is pure arithmetic over rows somebody has to fetch, and ARC-005 makes a
+ *       repository the only thing allowed to fetch them.
+ * What: an observed list for the screen, a plain read for the export archive, one lookup, an upsert
+ *       and a soft delete.
+ * Result: every query is profile-scoped and excludes soft-deleted rows, so no caller can forget
+ *         either.
+ * Changelog: 2026-08-30 — Created for issue 7.1.
+ */
+@Dao
+interface GoalDao {
+    /** Input: [goal]. Output: none. Result: inserted, or replaced when the id already exists. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(goal: GoalEntity)
+
+    /**
+     * Input:  [profileId]. Output: a [Flow] of this profile's live goals, soonest target first.
+     * Result: ordered by date rather than by name, because a goals list is a queue — the thing
+     *         needing money first is the thing worth seeing first.
+     */
+    @Query(
+        "SELECT * FROM goal WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
+            "ORDER BY target_date_iso, name",
+    )
+    fun observeForProfile(profileId: String): Flow<List<GoalEntity>>
+
+    /**
+     * Input:  [profileId]. Output: this profile's live goals, once.
+     * Result: the non-Flow read the export archive and one-shot engine calls need.
+     */
+    @Query(
+        "SELECT * FROM goal WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
+            "ORDER BY target_date_iso, name",
+    )
+    suspend fun forProfile(profileId: String): List<GoalEntity>
+
+    /** Input: [id]. Output: the goal, or null when it is absent or soft-deleted. */
+    @Query("SELECT * FROM goal WHERE id = :id AND deleted_at_utc_millis IS NULL")
+    suspend fun find(id: String): GoalEntity?
+
+    /**
+     * Soft-deletes one goal.
+     * Why:    §21.4 — rows are never removed, so an export taken before the delete still reconciles.
+     * Input:  [id]; [deletedAtUtcMillis]. Output: rows affected.
+     */
+    @Query(
+        "UPDATE goal SET deleted_at_utc_millis = :deletedAtUtcMillis, " +
+            "updated_at_utc_millis = :deletedAtUtcMillis " +
+            "WHERE id = :id AND deleted_at_utc_millis IS NULL",
+    )
+    suspend fun softDelete(
+        id: String,
         deletedAtUtcMillis: Long,
     ): Int
 }
