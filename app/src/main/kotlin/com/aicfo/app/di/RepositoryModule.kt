@@ -13,6 +13,7 @@ import com.aicfo.data.repository.BudgetRepository
 import com.aicfo.data.repository.CategoryRepository
 import com.aicfo.data.repository.CreditCardRepository
 import com.aicfo.data.repository.DemoModeRepository
+import com.aicfo.data.repository.GoalRepository
 import com.aicfo.data.repository.InvestmentRepository
 import com.aicfo.data.repository.LoanRepository
 import com.aicfo.data.repository.NetWorthRepository
@@ -27,6 +28,7 @@ import com.aicfo.data.sms.SmsInboxReader
 import com.aicfo.domain.engines.budget.BudgetEngine
 import com.aicfo.domain.engines.card.CardEngine
 import com.aicfo.domain.engines.classification.ClassificationEngine
+import com.aicfo.domain.engines.goals.GoalEngine
 import com.aicfo.domain.engines.investment.InvestmentEngine
 import com.aicfo.domain.engines.loan.LoanEngine
 import com.aicfo.domain.engines.nature.NatureEngine
@@ -286,6 +288,28 @@ object RepositoryModule {
         demoMode: DemoModeRepository,
     ): InvestmentRepository =
         RepositoryFactory.investments(database, engine, clock, ids, dispatchers, demoMode.activeProfileId)
+
+    /**
+     * The goals store (issue 7.1; §15, AI-GOAL).
+     * Why:    takes the gated [CfoDatabase] like every binding here, so a locked app cannot read a
+     *         goal (SEC-002). It runs the engine on the way out rather than storing a required
+     *         monthly, so the figure can never outlive the goal that produced it.
+     * Result: a [GoalRepository].
+     * Input:  [database]; [engine]; [clock]; [ids]; [dispatchers]; [demoMode].
+     * Output: [GoalRepository].
+     * Changelog: 2026-08-30 — Created for issue 7.1.
+     */
+    @Provides
+    @Singleton
+    @Suppress("LongParameterList") // Hilt reads the signature; each argument is one binding.
+    fun provideGoalRepository(
+        database: CfoDatabase,
+        engine: GoalEngine,
+        clock: Clock,
+        ids: IdGenerator,
+        dispatchers: DispatcherProvider,
+        demoMode: DemoModeRepository,
+    ): GoalRepository = RepositoryFactory.goals(database, engine, clock, ids, dispatchers, demoMode.activeProfileId)
 
     /**
      * The export/import archive store (issue 5.4; §5.10, §34, P-01).

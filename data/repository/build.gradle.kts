@@ -73,6 +73,10 @@ dependencies {
     // investment account, so the accounts screen must be able to name it (same reasoning as above).
     api(project(":domain:engines:investment"))
 
+    // Issue 7.1: GoalProjection is on GoalRepository's public surface, so `api` for the same reason
+    // every other engine here is — a ViewModel has to be able to name what it renders.
+    api(project(":domain:engines:goals"))
+
     // withTransaction — the atomicity guarantee applySeeds is built on (issue 2.3).
     // api, not implementation: MarketDataApi is a parameter of RepositoryFactory.marketPrice, so
     // :app has to be able to name it to bind one (issue 6.5).
