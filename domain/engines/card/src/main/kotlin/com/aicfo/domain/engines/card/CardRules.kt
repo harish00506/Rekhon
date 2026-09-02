@@ -72,7 +72,7 @@ data class CardRules(
         val DUE = RuleCitation("RULE-CC-DUE", "1.0")
 
         /** The rulebook file these thresholds were copied from, as `_meta.version`. */
-        const val RULEBOOK_VERSION = "1.14.0"
+        const val RULEBOOK_VERSION = "1.15.0"
 
         /** 100% — the ceiling [maxUtilisationPct] must stay under. */
         private const val FULL_PERCENT = 100

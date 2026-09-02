@@ -5,7 +5,7 @@
     "what": "Seed rows for the rules_knowledge_base table (§29.1). RuleEngine.evaluate(ruleId, FeatureSnapshot) -> RuleResult{pass|warn|fail, measuredValue, threshold, evidence, ruleId, version}.",
     "result": "Changing a number here changes the app's advice everywhere that rule is cited, reproducibly and with an audit trail.",
     "source_section": "§29",
-    "version": "1.14.0",
+    "version": "1.15.0",
     "changelog": [
       "2026-07-17 — Created from SRS v1.7 §29.2–§29.5; defaults are the floor, refined by user overrides at runtime.",
       "2026-08-07 — Added RULE-SMS-PARSE for issue 3.9's opt-in, on-device bank-alert parser (§18, §23).",
@@ -14,7 +14,8 @@
       "2026-08-14 — Added RULE-BUD-REVIEW for issue 4.6's monthly budget review (§5.5, FR-BUD-*). A new row again, for the same trigger-3 reason and on the same merits: materiality ('is this gap worth mentioning?') is a different question from the median ('what should this cost?'), and a review result cites both rows.",
       "2026-08-16 — Added RULE-STS for issue 5.2's Safe-to-Spend card (§5.2, §14, AI-STS). The first row in this file that defines a headline figure rather than a threshold to compare one against: its params fix the income basis, the horizon and the buffer, and the engine's arithmetic is fully determined by them. `buffer_pct` is the only genuinely new number here — RULE-IDLE-CASH has named a 'Safe-to-Spend needs + buffer' since this file was created, so the term was already the rulebook's, without a value.",
       "2026-08-17 — Added RULE-CC-DUE for issue 6.1's credit-card payment reminder (FR-ACC-002, §17.1). RULE-CC-UTIL was deliberately NOT touched: it already named `card_alerts` in consumed_by, so the utilisation alert reads its shipped 30% threshold exactly as it stands, and only the date question needed a row. A new row again for ADR-0017's trigger 3, and on the merits too - scoring how much of a limit is used and deciding when to wake someone about a date are different jobs with different severities and, per §17.1, different notification channels.",
-      "2026-08-29 — Added RULE-PRICE-STALE for issue 6.5's market-price refresh and staleness label (FR-ACC-004, §16.1, §22 EXT-002). A new row again for ADR-0017's trigger 3, and on the merits: RULE-GOLD-CAP and RULE-CRYPTO-CAP say how much of a portfolio a class may be, which is a question about allocation and not about time. Nothing in this file had ever expressed a cadence or a shelf life before, so there was no row to extend."
+      "2026-08-29 — Added RULE-PRICE-STALE for issue 6.5's market-price refresh and staleness label (FR-ACC-004, §16.1, §22 EXT-002). A new row again for ADR-0017's trigger 3, and on the merits: RULE-GOLD-CAP and RULE-CRYPTO-CAP say how much of a portfolio a class may be, which is a question about allocation and not about time. Nothing in this file had ever expressed a cadence or a shelf life before, so there was no row to extend.",
+      "2026-09-02 — Added RULE-EMF-MULT and RULE-EMF-COACH for issue 7.2's emergency-fund engine (§10.1, AI-EMF). Two new rows rather than one, and rather than extending RULE-RUNWAY-M. RULE-RUNWAY-M was deliberately NOT touched: its params are the clamp and the `multiplier_source` pointer, both already correct, and §10.1 puts the multiplier itself *in* AI-EMF — so this issue makes that row true for the first time without changing a number in it (ADR-0017's trigger 3 stays unfired). The split into two is the RULE-BUD-ALERT and RULE-CC-DUE argument again: how big the fund should be and what to say about where the user stands are different questions, with different severities. **Only the params the engine applies are minted.** §10.1 also bumps M for dependents, for no health cover and for a job-stability self-assessment; no field in the app holds any of the three, so inventing the params now would ship three numbers nothing reads. Their absence is asserted by the engine's RulebookDriftTest, so they have to arrive deliberately (ADR-0034)."
     ],
     "schema": {
       "rule_id": "stable public ID cited in evidence — never rename, deprecate instead",
@@ -475,6 +476,40 @@
       "rationale": "The buffer that turns an emergency into an inconvenience.",
       "source_note": "Emergency fund engine (§10).",
       "consumed_by": ["AI-EMF", "AI-MKT.capacity_gate"],
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "rule_id": "RULE-EMF-MULT",
+      "domain": "protection",
+      "name": "Emergency-fund multiplier M = base months + an income-volatility bump, then RULE-RUNWAY-M's clamp.",
+      "formula_id": "emergency_multiplier",
+      "params_json": {
+        "base_months": 6,
+        "cv_low_bps": 1000,
+        "cv_high_bps": 3000,
+        "cv_mid_bump": 1,
+        "cv_high_bump": 3,
+        "essentials_lookback_months": 6,
+        "min_months_observed": 3
+      },
+      "severity": "info",
+      "rationale": "Six months is the consensus floor; a volatile income needs longer because the gap it has to bridge is longer. The bump is the only thing here that makes M personal rather than a constant.",
+      "source_note": "SRS §10.1. Only the terms the app can measure are minted: §10.1's dependents, health-cover and job-stability bumps have no field to read and are deferred (ADR-0034).",
+      "consumed_by": ["AI-EMF"],
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "rule_id": "RULE-EMF-COACH",
+      "domain": "protection",
+      "name": "How to frame a runway: urgent below one month, surplus above the target plus a margin.",
+      "formula_id": "runway_coach_bands",
+      "params_json": { "urgent_below_months": 1, "surplus_above_target_months": 2 },
+      "severity": "warn",
+      "rationale": "The same runway means different things at different depths, and the framing is what makes the number act on. Under a month is an emergency about the emergency fund; well over the target is idle cash.",
+      "source_note": "SRS §10.1 coach behaviour. The middle band's upper bound is RULE-EMERG-FIRST's min_runway_months, cited rather than restated.",
+      "consumed_by": ["AI-EMF"],
       "enabled": true,
       "version": "1.0"
     }
