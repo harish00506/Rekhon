@@ -11,6 +11,42 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The goals engine, the emergency-fund engine, the feasibility waterfall, linked contributions and
 > the Financial Order of Operations.
 
+### [0.7.2] — Issue 7.2: Emergency Fund engine (AI-EMF)  (2026-09-02)
+
+- **Implemented:** §10.1's **runway** — how many months the user could live on what they hold liquid
+  — and the target it should reach (**§10.1, §15, §36**, **AI-EMF**). `:domain:engines:emergencyfund`
+  is pure Kotlin/JVM with an injected `today`, so it reads no clock (TIM-001) and every answer is
+  reproducible (P-08). It reports the personal multiplier M, the target, the funded ratio, the
+  shortfall, the monthly top-up that closes it, and which of `RULE-EMF-COACH`'s bands to say it in.
+- **Two rulebook rows minted**, `RULE-EMF-MULT` and `RULE-EMF-COACH`, both v1.0; `rules-kb.json`
+  `_meta.version` **1.14.0 → 1.15.0**, which is why five unrelated typed mirrors restate it.
+  `RULE-RUNWAY-M` was **not** touched — its params were already right, and this issue is what finally
+  makes its `multiplier_source: AI-EMF` true.
+- **Only two of §10.1's five multiplier terms are applied, on purpose.** The spec also bumps M for
+  dependents, for no health cover, and for a job-stability self-assessment; **no field in this app
+  holds any of the three**. Nothing was minted for them, and `RulebookDriftTest` asserts their
+  *absence*, so the issue that adds the fields must add the params in the same breath (ADR-0034).
+- **Liquid means savings and cash.** §10.1 would also count a breakable FD and a liquid mutual fund,
+  through a per-account liquidity tier this schema does not have. Guessing one from `AccountType`
+  would decide for every user at once that every FD is breakable, or that none is. The runway is
+  therefore **understated**, which errs safely, and the screen names exactly which accounts counted.
+- **Essentials are a median, not a mean** — the middle of the closed months' `NEED` spend, falling
+  back to the quick-setup needs envelope, and reported as **unknown** when neither exists. A zero
+  target is the dangerous answer: it would tell somebody with nothing saved that they are funded.
+- **Shipped the way in**, as 7.1 did: `:feature:emergencyfund` on a typed route (ARC-001) with a
+  dashboard entry, carrying §10.1's coach lines and the evidence drill-down it requires.
+- **Superseded `QuickSetupEngine`'s stand-in** three-month target as the app's answer to "how big
+  should the fund be" — the onboarding seed is left in place, because it runs before any history
+  exists.
+- **Found and fixed a gate that could be skipped.** `ai/rules/rules-kb.json` was not a declared input
+  to any Gradle task, so a threshold edit could leave **every** `RulebookDriftTest` in the repo
+  `UP-TO-DATE` and the build green. Discovered by bumping `_meta.version` and watching four of five
+  modules go red while `:domain:engines:goals:test` was skipped. `CfoKotlinLibraryConventionPlugin`
+  now declares it.
+- **Tests:** the engine at **100% line, 99.1% branch**; 16 golden records covering every status,
+  every volatility band and all four band edges; 500 seeded property cases; a Room-backed repository
+  suite; ViewModel and Compose flow tests. Three gates were deliberately broken and confirmed red.
+
 ### [0.7.1] — Issue 7.1: Goals engine (AI-GOAL)  (2026-08-30)
 
 - **Implemented:** a target and a date become a **required monthly contribution** (**§10, §15, §36**,
