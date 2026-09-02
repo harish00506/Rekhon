@@ -69,6 +69,7 @@ include(":domain:engines:card")        // §5.7 FR-ACC-002 — a card's billing 
 include(":domain:engines:loan")        // §5.8 FR-ACC-003 — a loan's EMI and its principal/interest split
 include(":domain:engines:investment") // §11 AI-INV — a holding's value, gain and money-weighted return
 include(":domain:engines:goals")      // §15 AI-GOAL — target + date -> required monthly, ETA, horizon
+include(":domain:engines:emergencyfund") // §10.1 AI-EMF — essentials × multiplier M -> target, runway, coach
 include(":domain:usecase")
 
 // :data:*                  the ONLY DAO/network touchers (ARC-005)
