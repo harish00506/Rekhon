@@ -24,6 +24,7 @@ import com.aicfo.data.repository.AccountDraft
 import com.aicfo.data.repository.AccountRepository
 import com.aicfo.data.repository.CashFlowSummary
 import com.aicfo.data.repository.FilteredTransaction
+import com.aicfo.data.repository.MonthlyLedger
 import com.aicfo.data.repository.ReceiptAttachment
 import com.aicfo.data.repository.ReceiptRepository
 import com.aicfo.data.repository.ReceiptScan
@@ -335,6 +336,11 @@ internal class FakeTransactionRepository(
     }
 
     override fun observeNatureBreakdown(): Flow<NatureBreakdown> = MutableStateFlow(NatureBreakdown())
+
+    // Issue 7.2 added this to the interface. Empty rather than unsupported: nothing in this
+    // module reads a multi-month history, and a fake that threw would fail a test that only
+    // happens to share the repository.
+    override fun observeMonthlyLedger(months: Int): Flow<List<MonthlyLedger>> = MutableStateFlow(emptyList())
 
     override suspend fun create(draft: TransactionDraft): Result<Transaction, AppError> {
         created += draft

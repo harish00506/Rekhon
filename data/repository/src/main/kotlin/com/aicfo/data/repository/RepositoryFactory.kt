@@ -12,6 +12,7 @@ import com.aicfo.data.sms.SmsInboxReader
 import com.aicfo.domain.engines.budget.BudgetEngine
 import com.aicfo.domain.engines.card.CardEngine
 import com.aicfo.domain.engines.classification.ClassificationEngine
+import com.aicfo.domain.engines.emergencyfund.EmergencyFundEngine
 import com.aicfo.domain.engines.goals.GoalEngine
 import com.aicfo.domain.engines.investment.InvestmentEngine
 import com.aicfo.domain.engines.loan.LoanEngine
@@ -276,6 +277,29 @@ object RepositoryFactory {
         dispatchers: DispatcherProvider,
         activeProfileId: Flow<String>,
     ): GoalRepository = RoomGoalRepository(database, engine, clock, ids, dispatchers, activeProfileId)
+
+    /**
+     * The emergency-fund repository (issue 7.2; §10.1).
+     * Why:    **the only repository here built from other repositories rather than from the
+     *         database.** Its three inputs already have owners — the classified ledger is
+     *         [TransactionRepository]'s, the balances are [AccountRepository]'s, the onboarding
+     *         envelopes are [QuickSetupRepository]'s — and reaching past them to the DAOs would put a
+     *         second answer to "is this rupee a need?" in the codebase (ARC-005 is about who may
+     *         touch a DAO, not about how many layers a repository may be).
+     * Result: an [EmergencyFundRepository] over those three and [EmergencyFundEngine].
+     * Input:  [transactions]; [accounts]; [quickSetup]; [engine]; [clock]; [dispatchers].
+     * Output: [EmergencyFundRepository].
+     */
+    @Suppress("LongParameterList") // Six collaborators, each a distinct binding — as [goals].
+    fun emergencyFund(
+        transactions: TransactionRepository,
+        accounts: AccountRepository,
+        quickSetup: QuickSetupRepository,
+        engine: EmergencyFundEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+    ): EmergencyFundRepository =
+        RoomEmergencyFundRepository(transactions, accounts, quickSetup, engine, clock, dispatchers)
 
     /**
      * Builds the market-price refresher (issue 6.5, FR-INV-004).

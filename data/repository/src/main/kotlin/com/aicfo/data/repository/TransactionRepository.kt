@@ -419,6 +419,35 @@ interface TransactionRepository {
     fun observeNatureBreakdown(): Flow<NatureBreakdown>
 
     /**
+     * The same classification, month by month, over the **closed** months behind this one
+     * (issue 7.2; §10.1).
+     *
+     * Why:    `observeNatureBreakdown` answers "this month", which is the wrong window for anything
+     *         sizing a habit. §10.1's emergency-fund target is a multiple of what a month of
+     *         essentials *typically* costs, and one month is not a typical anything — an annual
+     *         insurance premium landing in March would inflate the target by thousands, and a
+     *         half-elapsed month would deflate it every time the user opened the screen.
+     *
+     *         **It lives here rather than in the caller**, because the nature of a row is decided by
+     *         a precedence — stored override, then category, then account type — that this class
+     *         owns and that `breakdownOf` already implements. A second copy in
+     *         `EmergencyFundRepository` would be a second answer to "is this rupee a need?", and the
+     *         two would disagree the first time either changed. It is the argument `MonthWindow`
+     *         settled for "where does a month end".
+     *
+     *         **Closed months only.** The live month is excluded because it is partly unspent and
+     *         partly unearned; including it would drag both the median and the income series down by
+     *         however far into the month the user happens to be.
+     * Result: one entry per month that **has rows**, oldest first — a month with no transactions is
+     *         absent rather than present as a zero, because "spent nothing" and "was not using the
+     *         app yet" are different facts and a median must not treat the second as the first.
+     * Input:  [months] — how many closed months back to read.
+     * Output: `Flow<List<MonthlyLedger>>`.
+     * Changelog: 2026-09-02 — Created for issue 7.2.
+     */
+    fun observeMonthlyLedger(months: Int): Flow<List<MonthlyLedger>>
+
+    /**
      * Records a transaction under the active profile (FR-TXN-002, FR-TXN-009).
      *
      * Why:    the id is generated from the injected [IdGenerator] rather than `UUID.randomUUID()`,
@@ -908,6 +937,24 @@ internal class RoomTransactionRepository(
             }.flattenNature()
         }
 
+    override fun observeMonthlyLedger(months: Int): Flow<List<MonthlyLedger>> {
+        require(months > 0) { "A history window is a positive number of months, was $months" }
+        return activeProfileId.flatMapLatest { profileId ->
+            // Resolved once per subscription, like every other windowed query here (TIM-001).
+            val liveMonthStart = LocalDate.parse(MonthWindow.current(clock.today()).startIsoDate)
+            val lastClosed = liveMonthStart.minusMonths(1)
+            val firstMonth = lastClosed.minusMonths(months - 1L)
+            database.transactionDao()
+                .observeNatureCandidates(
+                    profileId,
+                    firstMonth.toString(),
+                    MonthWindow.closed(lastClosed).endIsoDate,
+                )
+                .map { rows -> monthlyLedgerOf(profileId, rows) }
+                .flowOn(dispatchers.io)
+        }
+    }
+
     override fun observeNatureBreakdown(): Flow<NatureBreakdown> =
         activeProfileId.flatMapLatest { profileId ->
             // The month in the profile zone, resolved once per subscription rather than per row
@@ -943,18 +990,79 @@ internal class RoomTransactionRepository(
     private suspend fun breakdownOf(
         profileId: String,
         rows: List<NatureCandidateRow>,
-    ): NatureBreakdown {
-        val overrides =
-            database.transactionDao().natureOverridesByMerchant(profileId)
-                .groupBy({ it.merchant.orEmpty() }) { it }
-        val contributions =
-            rows.mapNotNull { row ->
-                val type = TransactionType.fromStored(row.type) ?: return@mapNotNull null
-                val nature = row.resolvedNature(overrides) ?: return@mapNotNull null
-                NatureContribution(type = type, amount = Money(row.amountMinor), nature = nature)
+    ): NatureBreakdown = natureBreakdown(contributionsOf(rows, overridesFor(profileId)))
+
+    /**
+     * The profile's merchant overrides, keyed by normalised merchant (issue 4.3).
+     * Why:    extracted from `breakdownOf` for issue 7.2, which folds several months at once. Left
+     *         inline it would be one override query per month on every emission, to produce the same
+     *         map each time.
+     * Result: the map. Input: [profileId]. Output: overrides by merchant.
+     * Changelog: 2026-09-02 — Extracted for issue 7.2.
+     */
+    private suspend fun overridesFor(profileId: String): Map<String, List<MerchantNatureOverrideRow>> =
+        database.transactionDao().natureOverridesByMerchant(profileId)
+            .groupBy({ it.merchant.orEmpty() }) { it }
+
+    /**
+     * Classifies rows against already-fetched overrides (issue 4.3).
+     * Result: one contribution per row whose type and nature both resolve; others are dropped rather
+     *         than guessed at, the rule every mapper in this module follows.
+     * Input:  [rows]; [overrides]. Output: the contributions.
+     * Changelog: 2026-09-02 — Extracted for issue 7.2.
+     */
+    private fun contributionsOf(
+        rows: List<NatureCandidateRow>,
+        overrides: Map<String, List<MerchantNatureOverrideRow>>,
+    ): List<NatureContribution> =
+        rows.mapNotNull { row ->
+            val type = TransactionType.fromStored(row.type) ?: return@mapNotNull null
+            val nature = row.resolvedNature(overrides) ?: return@mapNotNull null
+            NatureContribution(type = type, amount = Money(row.amountMinor), nature = nature)
+        }
+
+    /**
+     * Folds a multi-month window into one entry per month (issue 7.2).
+     *
+     * Why:    the query returns a flat, date-ordered list; the caller needs it grouped. Grouping on
+     *         the ISO date's `yyyy-MM` prefix rather than parsing each date is the cheaper read and
+     *         cannot drift from `MonthWindow`, which builds its keys the same way (TIM-002).
+     * What:   groups, then applies the same nature fold and an income sum to each group.
+     * Result: one `MonthlyLedger` per month that has rows, oldest first. **Income is summed from the
+     *         raw rows**, not from the breakdown: §8.3 asks what money *became* and excludes
+     *         `INCOME` outright, so the fold has no income term to read.
+     * Input:  [profileId]; [rows] — the whole window. Output: the months.
+     * Changelog: 2026-09-02 — Created for issue 7.2.
+     */
+    private suspend fun monthlyLedgerOf(
+        profileId: String,
+        rows: List<NatureCandidateRow>,
+    ): List<MonthlyLedger> {
+        val overrides = overridesFor(profileId)
+        return rows.groupBy { it.bookedOnIsoDate.take(MonthWindow.ISO_MONTH_LENGTH) }
+            .toSortedMap()
+            .map { (monthKey, monthRows) ->
+                MonthlyLedger(
+                    monthKey = monthKey,
+                    nature = natureBreakdown(contributionsOf(monthRows, overrides)),
+                    income = monthRows.incomeTotal(),
+                )
             }
-        return natureBreakdown(contributions)
     }
+
+    /**
+     * One month's income, as a positive magnitude (issue 7.2).
+     * Result: the sum of the `INCOME` rows. Input: the receiver — one month's candidates.
+     * Output: [Money].
+     * Changelog: 2026-09-02 — Created for issue 7.2.
+     */
+    private fun List<NatureCandidateRow>.incomeTotal(): Money =
+        filter { TransactionType.fromStored(it.type) == TransactionType.INCOME }
+            .fold(Money.ZERO) { running, row ->
+                // An income row is positive by definition, so the guard is defensive — but a single
+                // mis-signed row would otherwise subtract from the month and read as a pay cut.
+                running + Money(kotlin.math.abs(row.amountMinor))
+            }
 
     /**
      * The nature of one row inside the monthly fold.

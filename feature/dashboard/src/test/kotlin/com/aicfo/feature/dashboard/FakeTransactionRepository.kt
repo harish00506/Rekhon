@@ -12,6 +12,7 @@ import com.aicfo.core.model.TransactionSource
 import com.aicfo.core.model.Transfer
 import com.aicfo.data.repository.CashFlowSummary
 import com.aicfo.data.repository.FilteredTransaction
+import com.aicfo.data.repository.MonthlyLedger
 import com.aicfo.data.repository.SplitDraft
 import com.aicfo.data.repository.TransactionDraft
 import com.aicfo.data.repository.TransactionFilter
@@ -73,6 +74,11 @@ internal class FakeTransactionRepository : TransactionRepository {
             failOnObserve?.let { throw IllegalStateException(it.code) }
             value
         }
+
+    // Issue 7.2 added this to the interface. Empty rather than unsupported: nothing in this
+    // module reads a multi-month history, and a fake that threw would fail a test that only
+    // happens to share the repository.
+    override fun observeMonthlyLedger(months: Int): Flow<List<MonthlyLedger>> = MutableStateFlow(emptyList())
 
     override fun observeMonthCashFlow(): Flow<CashFlowSummary> =
         cashFlow.map { value ->

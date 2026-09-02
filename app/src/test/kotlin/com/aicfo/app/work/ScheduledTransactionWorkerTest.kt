@@ -18,6 +18,7 @@ import com.aicfo.core.model.TransactionSource
 import com.aicfo.core.model.Transfer
 import com.aicfo.data.repository.CashFlowSummary
 import com.aicfo.data.repository.FilteredTransaction
+import com.aicfo.data.repository.MonthlyLedger
 import com.aicfo.data.repository.SplitDraft
 import com.aicfo.data.repository.TransactionDraft
 import com.aicfo.data.repository.TransactionFilter
@@ -180,6 +181,10 @@ private class RecordingTransactionRepository : TransactionRepository {
     ): Result<Unit, AppError> = unsupported()
 
     override fun observeNatureBreakdown(): Flow<NatureBreakdown> = unsupported()
+
+    // Issue 7.2 added this to the interface. `unsupported()` like every other read here: the
+    // worker writes, and a read reaching it would be a change worth failing loudly on.
+    override fun observeMonthlyLedger(months: Int): Flow<List<MonthlyLedger>> = unsupported()
 
     override suspend fun create(draft: TransactionDraft): Result<Transaction, AppError> = unsupported()
 
