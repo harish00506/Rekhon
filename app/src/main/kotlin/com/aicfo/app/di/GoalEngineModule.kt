@@ -1,5 +1,7 @@
 package com.aicfo.app.di
 
+import com.aicfo.domain.engines.emergencyfund.EmergencyFundEngine
+import com.aicfo.domain.engines.emergencyfund.EmergencyFundEngineFactory
 import com.aicfo.domain.engines.goals.GoalEngine
 import com.aicfo.domain.engines.goals.GoalEngineFactory
 import dagger.Module
@@ -22,6 +24,8 @@ import javax.inject.Singleton
  *       `internal` to its module (ARC-003).
  * Result: features and repositories inject an interface and never name an implementation.
  * Changelog: 2026-08-30 — Created for issue 7.1.
+ *            2026-09-02 — Issue 7.2: the emergency-fund engine, which this module's own KDoc had
+ *            already named as belonging here.
  *
  * **Singleton, safely** — the engine is stateless and deterministic, so one shared instance has
  * nothing to reset between screens and no way for one caller's use to affect another's.
@@ -40,4 +44,17 @@ object GoalEngineModule {
     @Provides
     @Singleton
     fun provideGoalEngine(): GoalEngine = GoalEngineFactory.create()
+
+    /**
+     * The emergency fund's target, runway and multiplier (issue 7.2; §10.1, AI-EMF).
+     * Why:    stateless and pure like every engine in this graph — it reads no clock, so the
+     *         repository hands it today's date (TIM-001) and the resolved figures, and every
+     *         answer is reproducible from them. `@Singleton` because there is nothing to keep
+     *         per caller.
+     * Result: an [EmergencyFundEngine]. Input: none. Output: the engine.
+     * Changelog: 2026-09-02 — Created for issue 7.2.
+     */
+    @Provides
+    @Singleton
+    fun provideEmergencyFundEngine(): EmergencyFundEngine = EmergencyFundEngineFactory.create()
 }

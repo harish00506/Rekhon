@@ -86,6 +86,7 @@ include(":feature:budgets")     // FR-BUD-001/002/003 — per-category budgets a
 include(":feature:categories")  // FR-SET-001 — the category taxonomy editor (issue 4.1)
 include(":feature:dashboard")
 include(":feature:goals")        // §15 AI-GOAL — targets, their required monthly, and the horizon
+include(":feature:emergencyfund") // §10.1 AI-EMF — the runway, the target, and the evidence behind both
 include(":feature:settings")     // FR-SET-001 — income, consents and the app lock, after onboarding
 include(":feature:onboarding")
 include(":feature:transactions")

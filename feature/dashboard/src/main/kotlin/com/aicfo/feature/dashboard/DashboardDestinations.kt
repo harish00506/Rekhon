@@ -29,6 +29,12 @@ internal fun DestinationButtons(actions: DashboardActions) {
         text = stringResource(R.string.dashboard_goals_action),
         onClick = actions.onNavigateToGoals,
     )
+    // Issue 7.2: immediately below goals, because §10.1 gates goals on the runway — no goal
+    // below the emergency fund gets funded while cover is under three months (RULE-EMERG-FIRST).
+    CfoSecondaryButton(
+        text = stringResource(R.string.dashboard_emergency_fund_action),
+        onClick = actions.onNavigateToEmergencyFund,
+    )
     // Reached from here because this is the screen whose two empty states depend on the monthly
     // income it sets — and because until it existed those states told the user to visit a Settings
     // screen the app did not have.

@@ -157,4 +157,17 @@ sealed interface CfoRoute {
      */
     @Serializable
     data object Goals : CfoRoute
+
+    /**
+     * How long the user could live on what they have liquid (issue 7.2; §10.1, AI-EMF).
+     *
+     * **No arguments**, for the reason [Goals] has none: there is exactly one emergency fund
+     * per profile, and the day it is reckoned from comes from the injected `Clock` on every
+     * emission rather than from the back stack.
+     *
+     * Sits beside [Goals] in the graph because §10.1's coach suggests pausing goals when the
+     * runway is thin — the two screens are the two halves of one decision.
+     */
+    @Serializable
+    data object EmergencyFund : CfoRoute
 }

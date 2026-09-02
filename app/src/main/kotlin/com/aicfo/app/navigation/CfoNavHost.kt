@@ -16,6 +16,7 @@ import com.aicfo.feature.budgets.BudgetsScreen
 import com.aicfo.feature.categories.CategoriesScreen
 import com.aicfo.feature.dashboard.DashboardActions
 import com.aicfo.feature.dashboard.DashboardScreen
+import com.aicfo.feature.emergencyfund.EmergencyFundScreen
 import com.aicfo.feature.goals.GoalsScreen
 import com.aicfo.feature.onboarding.OnboardingScreen
 import com.aicfo.feature.settings.SettingsScreen
@@ -67,6 +68,7 @@ fun CfoNavHost(
                         onNavigateToAccounts = { navController.navigate(CfoRoute.Accounts) },
                         onNavigateToBudgets = { navController.navigate(CfoRoute.Budgets) },
                         onNavigateToGoals = { navController.navigate(CfoRoute.Goals) },
+                        onNavigateToEmergencyFund = { navController.navigate(CfoRoute.EmergencyFund) },
                         onNavigateToSettings = { navController.navigate(CfoRoute.Settings) },
                     ),
             )
@@ -106,6 +108,12 @@ private fun NavGraphBuilder.planningDestinations(navController: NavHostControlle
     // Issue 7.1: a goal is the plan for the years after this month, so it sits with the budget
     // rather than with the accounts it will eventually be funded from.
     composable<CfoRoute.Goals> { GoalsScreen(onDone = { navController.popBackStack() }) }
+
+    // Issue 7.2: beside the goals destination. §10.1 suggests pausing goals when the runway is
+    // thin, so the screen that says so belongs within a tap of the screen it is about.
+    composable<CfoRoute.EmergencyFund> {
+        EmergencyFundScreen(onDone = { navController.popBackStack() })
+    }
 }
 
 /**
