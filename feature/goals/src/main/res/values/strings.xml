@@ -20,7 +20,10 @@
 
     <!-- The figure this whole feature exists to produce. -->
     <string name="goals_required_monthly">%1$s a month</string>
-    <string name="goals_shortfall">%1$s a month short of that</string>
+    <!-- Names WHICH comparison it is. Since 7.3 a card can carry two: this one is against the
+         monthly the user typed, and goals_allocated is against what the surplus can spare.
+         "short of that" for both read as a contradiction on the device — see the 7.3 session. -->
+    <string name="goals_shortfall">%1$s a month more than your own monthly plan</string>
     <string name="goals_saved_of_target">%1$s of %2$s saved</string>
     <string name="goals_target_date">Needed by %1$s</string>
     <string name="goals_eta">At %1$s a month you get there %2$s</string>

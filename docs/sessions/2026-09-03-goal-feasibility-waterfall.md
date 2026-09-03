@@ -173,6 +173,78 @@ being unable to reach the action the way TalkBack would.
 
 ---
 
+## 2b · What running the app taught us — two defects no test could have caught
+
+§9 says a green build does not close an issue, and this session is the third in a row where that
+turned out to be load-bearing. Both defects below survived a full green `unitTests`, `koverVerify`,
+`ktlintCheck`, `detekt` and `lintDebug`.
+
+### 2b.1 The drag did nothing at all, silently
+
+`DRAG_ROW_HEIGHT` was `96.dp` — chosen as "roughly a card's height" without measuring one. On the
+emulator (440dpi, 2.75×) that is **264px**, and a goal card is roughly **900px**. Dragging a card up
+by one position therefore computed `900 ÷ 264 ≈ 3` rows; with two goals the target index was `-2`,
+which the ViewModel correctly ignores as out of range. **Nothing happened, and nothing said so.**
+
+Every layer behaved exactly as designed, which is why nothing failed:
+
+- the ViewModel is *right* to ignore an out-of-range index — that is what makes a drag released off
+  the end of the list harmless;
+- the Compose test drives the semantic custom actions rather than the gesture, deliberately, because
+  that is what proves the accessible path works;
+- and no unit test can know what a card measures on a device it never runs on.
+
+The fix is to stop guessing: `Modifier.onSizeChanged` records the card's own height and the drag
+divides by that. Still approximate — cards differ in height with how many levers they carry — but
+approximate around the right number rather than around a number nobody checked.
+
+**The general lesson is about the constant, not the arithmetic.** `96.dp` was a plausible-looking
+figure with no source, in a file otherwise careful to say where every number came from. It is the
+same class of mistake as a threshold in an engine: a magic number that looks like it works.
+
+### 2b.2 A card asserted two opposite things, and explained neither
+
+The laptop card read, on consecutive lines:
+
+```
+₹15,000.00 a month short of that
+Fully covered by this plan
+```
+
+Both true. `GoalProjection.shortfallMonthly` (7.1) compares the required monthly against the
+**monthly the user typed**; `GoalAllocation` (7.3) compares it against **what the surplus can
+spare**. Before this issue there was only one comparison on the card and "short of that" was
+unambiguous; adding a second made the old wording a contradiction *retroactively*, without changing
+a line of 7.1's code.
+
+`goals_shortfall` now reads "%1$s a month more than your own monthly plan" — naming which comparison
+it is. A one-string fix, and P-02's own standard: a figure the user cannot attribute to an input is a
+figure they cannot act on.
+
+**Worth generalising:** adding a second measurement of the same quantity can invalidate the wording
+of the first. Nothing in the build can notice that, because both strings are still correct in
+isolation.
+
+### 2b.3 What was confirmed working
+
+| Checked on the device | Result |
+|---|---|
+| Two goals whose claims exceed the surplus | "Your goals need **₹6,000.00** a month more than you have spare" — exact |
+| The surplus and its basis | "₹19,000.00 spare a month — what you said you'd save at setup". The demo profile has two closed months, so the **`DECLARED_ENVELOPE` fallback fired on its own**, unprompted |
+| The three levers, on the goal that went short | "Push the date out by 18 months", "Aim at ₹48,000.00 instead", "Find ₹6,000.00 more a month" — all three match the hand-derived arithmetic |
+| Drag to reorder (after the fix) | the laptop moved to the top, was fully covered, and the trip fell to the ₹4,000 left |
+| The reorder invariant | the gap stayed ₹6,000 either way — the property test's "reordering moves money between goals but never invents any", confirmed on a real database |
+| Cold start after the reorder | the order survived; `sort_order` persisted through schema 21 |
+| Airplane mode | the whole screen still computes (P-04) |
+| Dark mode | correct; the infeasible verdict and the shortfall use the negative token, the rest the surface tokens |
+| The one goal that fits | "Fully covered by this plan", with no levers offered |
+
+`RULE-EMERG-FIRST` firing was **not** reachable on the demo profile — its balances give a runway well
+past three months, so the gate cleared, which is itself the branch that was exercised. The holding
+branch is covered by `GoalWaterfallRepositoryTest`, the golden file and the flow test.
+
+---
+
 ## 3 · Flow changed this session
 
 New section `FLOW.md` §2.6 — still Shape A, but the first read in the app assembled from **four**
@@ -225,9 +297,9 @@ the half the user needs in order to fix anything.
 | `data/repository/src/test/.../GoalWaterfallRepositoryTest.kt` | the three bases, the negative median, the live-month exclusion, both sides of the gate, a reorder round-trip |
 | `app/.../di/GoalEngineModule.kt`, `RepositoryModule.kt` | the engine and repository bound |
 | `feature/goals/.../GoalWaterfallCard.kt` | the verdict, the surplus with its basis, the gate line, the levers |
-| `feature/goals/.../GoalsScreen.kt` | the plan card, per-goal allocation, `Modifier.reorderable` and the two custom actions |
+| `feature/goals/.../GoalsScreen.kt` | the plan card, per-goal allocation, `Modifier.reorderable` (self-measuring — see §2b.1) and the two custom actions |
 | `feature/goals/.../GoalsUiState.kt`, `GoalsViewModel.kt` | `waterfall`, the three move events, the reorder write |
-| `feature/goals/src/main/res/values/strings.xml` | fifteen strings, including the ICU plural for the date lever |
+| `feature/goals/src/main/res/values/strings.xml` | fifteen strings, the ICU plural for the date lever, and `goals_shortfall` reworded so two comparisons on one card no longer contradict each other (§2b.2) |
 | `feature/goals/src/test/.../{GoalsViewModelTest,GoalsFlowTest,FakeGoalRepository,FakeGoalWaterfallRepository}.kt` | the plan states, the reorder, the levers, and the accessible move driven as TalkBack would |
 | `ai/orchestrator/engine-registry.yaml` | `AI-GOAL.waterfall` registered; AI-GOAL's "feasibility in 7.3" note retired |
 | `docs/adr/0035-*.md`, `DECISIONS.md`, `FLOW.md` | the records |
@@ -253,3 +325,7 @@ the half the user needs in order to fix anything.
 6. The migration adds `sort_order` with a default of zero. What would break if the default were the
    row's insertion index instead?
 7. Why does `GoalsViewModel` observe two flows rather than combining them into one?
+8. The drag was broken and every test was green. Name the three separate design decisions that were
+   each individually correct and together hid it.
+9. Issue 7.1's `goals_shortfall` string became misleading without 7.1's code changing. What made it
+   misleading, and what class of change should make you re-read wording you did not touch?

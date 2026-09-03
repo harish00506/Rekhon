@@ -52,6 +52,15 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
   TalkBack, every card also carries "Move up" / "Move down" as semantic custom actions and merges its
   descendants so those actions land on the goal they move — and the Compose test drives the actions,
   not the gesture, so it proves the accessible path rather than proving a mouse can do it.
+- **Running it found two defects a green build could not.** The drag **did nothing at all**:
+  `DRAG_ROW_HEIGHT` was a plausible-looking `96.dp`, which is 264px at 440dpi against a ~900px card,
+  so a one-place drag computed three rows, fell out of range and was correctly — silently — ignored.
+  Every layer behaved as designed, which is why nothing failed. The card now measures itself. And the
+  goal card asserted two opposite things at once, *"₹15,000.00 a month short of that"* directly above
+  *"Fully covered by this plan"*: 7.1's shortfall compares against the monthly the user typed, 7.3's
+  against what the surplus can spare, and adding the second measurement made the first one's wording
+  ambiguous **retroactively, without 7.1's code changing**. `goals_shortfall` now names its
+  comparison.
 - **Three gates proved red before being trusted:** a mis-labelled golden lever, a `RULE-EMERG-FIRST`
   softened from `fail` to `warn`, and a `surplus_lookback_months` minted into the rulebook. All three
   failed **without `--rerun-tasks`**, which confirms 7.2's rulebook-as-test-input fix still holds.

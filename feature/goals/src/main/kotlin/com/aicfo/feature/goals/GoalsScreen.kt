@@ -18,12 +18,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.aicfo.core.designsystem.component.CfoCard
@@ -156,9 +155,12 @@ private fun GoalList(
  *         catalog, adding one would need a `DECISIONS.md` row, and the list is a plain `Column` of a
  *         handful of cards with no virtualisation or autoscroll to fight.
  * What:   tracks the drag offset, converts it to a row delta at drop, and declares the two actions.
- * Result: the modifier. Rows are treated as a fixed [DRAG_ROW_HEIGHT] apart for that conversion —
- *         cards vary in height with their levers, so an exact hit-test would need a measurement pass
- *         to buy precision no thumb can express.
+ * Result: the modifier. The row pitch is **the card's own measured height**, not a constant: a fixed
+ *         96.dp was 264px on the first device this met against a card of roughly 900px, so a
+ *         one-card drag computed three rows, fell out of range and was silently ignored. Found by
+ *         running the app — the ViewModel is right to ignore an out-of-range index, and the Compose
+ *         test drives the semantic action rather than the gesture, so nothing else could have caught
+ *         it.
  * Input:  [index]; [goalId]; [canMoveUp]; [canMoveDown]; the two action labels; [onEvent].
  * Output: a [Modifier].
  * Changelog: 2026-09-03 — Created for issue 7.3.
@@ -175,10 +177,16 @@ private fun Modifier.reorderable(
     onEvent: (GoalsEvent) -> Unit,
 ): Modifier {
     var dragOffset by remember(goalId) { mutableFloatStateOf(0f) }
+    var rowHeightPx by remember(goalId) { mutableIntStateOf(1) }
     val settledIndex by remember(goalId, index) { mutableIntStateOf(index) }
-    val rowHeightPx = with(LocalDensity.current) { DRAG_ROW_HEIGHT.toPx() }
     val actions = moveActions(goalId, canMoveUp, canMoveDown, moveUp, moveDown, onEvent)
     return this
+        // The card measures itself rather than trusting a constant. A fixed dp pitch was wrong on
+        // the first device it met: 96.dp is 264px at 440dpi and a goal card is roughly 900px, so a
+        // one-card drag computed three rows, fell out of range and was silently ignored — the drag
+        // did nothing at all. Cards differ in height with how many levers they carry, so this is
+        // still approximate, but it is approximate around the right number.
+        .onSizeChanged { rowHeightPx = it.height.coerceAtLeast(1) }
         .graphicsLayer { translationY = dragOffset }
         // `mergeDescendants` makes the whole card one accessibility node rather than eleven
         // unrelated Text nodes with no actions between them. That is the right reading experience
@@ -322,13 +330,3 @@ private fun moveActions(
             )
         }
     }
-
-/**
- * How far a drag must travel to count as one row.
- *
- * Not a design token: it is a **gesture calibration**, not a dimension anything is drawn at. Cards
- * vary in height with how many levers they carry, so converting a drag distance into a row delta is
- * approximate by nature, and a hit-test against real bounds would need a measurement pass to buy
- * precision no thumb can express. Roughly a card's height, which makes the gesture feel one-for-one.
- */
-private val DRAG_ROW_HEIGHT = 96.dp
