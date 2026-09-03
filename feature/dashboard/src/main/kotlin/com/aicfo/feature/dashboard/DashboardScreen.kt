@@ -460,5 +460,6 @@ data class DashboardActions(
     val onNavigateToTransactions: () -> Unit,
     val onNavigateToAccounts: () -> Unit,
     val onNavigateToBudgets: () -> Unit,
+    val onNavigateToGoals: () -> Unit,
     val onNavigateToSettings: () -> Unit,
 )

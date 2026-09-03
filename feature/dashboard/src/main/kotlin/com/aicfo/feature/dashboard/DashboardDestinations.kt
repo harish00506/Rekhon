@@ -23,6 +23,12 @@ internal fun DestinationButtons(actions: DashboardActions) {
         text = stringResource(R.string.dashboard_transactions_action),
         onClick = actions.onNavigateToTransactions,
     )
+    // Issue 7.1: beside the budgets button, one line up. A budget is the plan for this month and a
+    // goal is the plan for the years after it — the same plan at two horizons, so the same place.
+    CfoSecondaryButton(
+        text = stringResource(R.string.dashboard_goals_action),
+        onClick = actions.onNavigateToGoals,
+    )
     // Reached from here because this is the screen whose two empty states depend on the monthly
     // income it sets — and because until it existed those states told the user to visit a Settings
     // screen the app did not have.

@@ -142,4 +142,19 @@ sealed interface CfoRoute {
      */
     @Serializable
     data object Budgets : CfoRoute
+
+    /**
+     * What the user is saving for, and what it takes each month (issue 7.1; §15, AI-GOAL).
+     *
+     * **No arguments**, for the reason [Budgets] has none: a goals list is a question about every
+     * goal at once, and the day it is reckoned from comes from the injected `Clock` on every
+     * emission rather than from a route argument fixed at navigation time. The app is expected to
+     * survive midnight with the screen open, and a required monthly that changes at a month boundary
+     * should change on screen rather than argue with a stale route.
+     *
+     * Reached from the dashboard beside the budgets button: a budget is the plan for this month and
+     * a goal is the plan for the years after it, so the two belong within a tap of each other.
+     */
+    @Serializable
+    data object Goals : CfoRoute
 }

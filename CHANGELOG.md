@@ -6,6 +6,57 @@ Single source of truth for the version number is the repo-root [`VERSION`](VERSI
 `app/build.gradle.kts` `versionName` equal to it. Epics map to the SRS roadmap (§26); every
 entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`](docs/issues/00-issue-workflow.md).
 
+## [0.7.0] — Epic 7: Goals & Emergency Fund
+
+> The goals engine, the emergency-fund engine, the feasibility waterfall, linked contributions and
+> the Financial Order of Operations.
+
+### [0.7.1] — Issue 7.1: Goals engine (AI-GOAL)  (2026-08-30)
+
+- **Implemented:** a target and a date become a **required monthly contribution** (**§10, §15, §36**,
+  **AI-GOAL**). `:domain:engines:goals` is pure Kotlin/JVM with an injected `today`, so it reads no
+  clock (TIM-001) and every answer is reproducible (P-08). Per goal: what is left, how many whole
+  contributions fit before the date, the largest of those instalments, the date the user's own plan
+  actually gets there, the shortfall against it, and which `RULE-HORIZON` funding bucket applies.
+- **Shipped the way in, deliberately.** Schema **19 → 20** adds `goal`, `GoalRepository` is the only
+  thing that reads it (ARC-005), and `:feature:goals` is a new module on a typed route (ARC-001) with
+  a dashboard entry. The acceptance criteria were engine-only; building only the engine would have
+  repeated exactly what issue 6.7 found in 6.5 — a complete stack with no field to fill in, and no
+  test noticing.
+- **`saved_minor` is hand-entered**, and temporary by design: issue 7.4 derives it, as 6.5's fetched
+  price replaced 6.3's hand-typed one.
+- **No rulebook row was minted, and that is the decision.** `RULE-HORIZON` already named
+  `AI-GOAL.funding_buckets` before this engine existed; every other figure is arithmetic. "On track"
+  is an **exact** comparison of two figures the user typed, so the card shows the *shortfall* rather
+  than a tolerance band (P-02). Minting a row would have bumped `rules-kb.json`'s `_meta.version`,
+  forcing all six existing typed mirrors to restate it. `RulebookDriftTest` asserts the **absence**
+  as well as the presence, so a future threshold has to arrive deliberately.
+- **No rate of return is assumed** — an absence, not a zero. None exists in `ai/rules/`, and inventing
+  one would be the hardcoded financial number CLAUDE.md §6 forbids (P-03). The horizon is reported as
+  advice, never compounded into the projection.
+- **Paid ADR-0021's debt, but not as it asked.** Safe-to-Spend's goal term is now
+  `maxOf(INVEST envelope, goals' required monthly)`. The straight replacement that ADR asked for
+  would have made the figure jump **upwards** for every existing user without a goal — optimistic in
+  the one direction §5.2 exists to prevent — and it **fails four tests, two of them older than this
+  issue**, including `saving does not increase what is safe to spend`. The suite had already encoded
+  the invariant.
+- **Found while proving a gate:** **`runMigrationsAndValidate` does not check index names.** Renaming
+  one left all twenty round-trip tests green on Room 2.7.1, so an upgraded database would diverge
+  from a fresh one for ever. The comment claiming Room caught this is corrected, and `migrate19To20`
+  now asserts the names against `sqlite_master` itself — the third gate in this repo found to read as
+  present and check nothing.
+- **Decided:** [ADR-0033](docs/adr/0033-goals-mint-no-rulebook-row.md). Also supersedes ADR-0004's
+  note that the `goal` table would arrive in 7.2.
+- **Not delivered:** feasibility against a surplus (issue 7.3, with `RULE-EMERG-FIRST`), goals linked
+  to accounts or transactions (7.4), and `RULE-PAY-FIRST`'s salary-day scheduling (7.4).
+- **Found by running it, not by a test:** the goal card's button read "Save" (the editor's string,
+  reused) and a fully-funded goal read *"At ₹0.00 a month you get there 2026-08-30"* — true, and
+  absurd. The engine was right both times; the sentences were not. Fixed in the screen, with a
+  regression test each.
+- **Tests:** 24 engine (100% line **and** branch), 10 repository, 14 ViewModel, 10 Robolectric
+  Compose, 3 new Safe-to-Spend cases, 1 new migration round-trip. The golden gate and both halves of
+  the Safe-to-Spend `maxOf` were each run **red on purpose** before being trusted.
+
 ## [0.6.0] — Epic 6: Wealth — Loans & Investments
 
 > Credit cards, loans with amortisation, investment holdings with XIRR, allocation and net-worth

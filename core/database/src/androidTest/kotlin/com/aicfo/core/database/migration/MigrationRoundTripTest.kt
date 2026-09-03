@@ -1260,6 +1260,74 @@ class MigrationRoundTripTest {
             "VALUES ('$id','p1',$smsId,'VM-HDFCBK',125000,'debit','2026-08-07',9000," +
             "'1.0','1.0','$status',1767312000000,1767312000000)"
 
+    /**
+     * 19 -> 20: the `goal` table arrives without disturbing anything already there (issue 7.1; §15).
+     *
+     * This migration adds a table rather than altering one, so the risk is not that a column moves —
+     * it is that the `CREATE TABLE` disagrees with what Room expects.
+     *
+     * **`runMigrationsAndValidate` does not catch a wrong index name.** That was verified rather
+     * than assumed: renaming `index_goal_profile_id` in the migration left all twenty tests in this
+     * file green on Room 2.7.1. An upgraded installation would then carry a differently-named index
+     * from a fresh one, for ever, and nothing would say so. The `sqlite_master` assertion below is
+     * therefore not belt-and-braces — it is the only thing checking.
+     *
+     * The pre-existing row is asserted for the same reason every other case here does: a migration
+     * that added a table while disturbing a rupee would be worse than no migration at all (DB-003).
+     */
+    @Test
+    fun migrate19To20_addsGoalsAndLeavesEverythingElseAlone() {
+        helper.createDatabase(TEST_DB, 19).use { db ->
+            db.execSQL(
+                "INSERT INTO account (id, profile_id, name, type, opening_balance_minor, " +
+                    "current_balance_minor, currency_code, include_in_networth, " +
+                    "created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('a5','p1','HDFC Savings','bank',10000000," +
+                    "10000000,'INR',1,1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 20, true, Migrations.MIGRATION_19_20)
+
+        migrated.query("SELECT name, opening_balance_minor FROM account WHERE id = 'a5'").use { cursor ->
+            assertTrue("the pre-migration account must still be there", cursor.moveToFirst())
+            assertEquals("HDFC Savings", cursor.getString(0))
+            assertEquals("MNY-001: the balance survives byte for byte", 10000000L, cursor.getLong(1))
+        }
+
+        migrated.execSQL(
+            "INSERT INTO goal (id, profile_id, name, target_minor, target_date_iso, saved_minor, " +
+                "planned_monthly_minor, created_at_utc_millis, updated_at_utc_millis) " +
+                "VALUES ('g1','p1','Kerala trip',50000000,'2028-04-30',10000000,1500000," +
+                "1767312000000,1767312000000)",
+        )
+        migrated.query(
+            "SELECT name, target_minor, target_date_iso, saved_minor, planned_monthly_minor, " +
+                "deleted_at_utc_millis FROM goal WHERE id = 'g1'",
+        ).use { cursor ->
+            assertTrue("the new table must accept a row", cursor.moveToFirst())
+            assertEquals("Kerala trip", cursor.getString(0))
+            assertEquals("MNY-001: paise, not rupees", 50000000L, cursor.getLong(1))
+            assertEquals("TIM-002: a date, never a timestamp", "2028-04-30", cursor.getString(2))
+            assertEquals(10000000L, cursor.getLong(3))
+            assertEquals(1500000L, cursor.getLong(4))
+            assertTrue("a live goal is not soft-deleted", cursor.isNull(5))
+        }
+
+        val indices = mutableSetOf<String>()
+        migrated.query("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'goal'")
+            .use { cursor ->
+                while (cursor.moveToNext()) indices += cursor.getString(0)
+            }
+        assertTrue(
+            "the migration must create the indices Room names, or an upgraded database diverges " +
+                "from a fresh one for ever. Room does not check this: $indices",
+            indices.containsAll(
+                listOf("index_goal_profile_id", "index_goal_profile_id_deleted_at_utc_millis"),
+            ),
+        )
+    }
+
     private companion object {
         const val TEST_DB = "migration-test.db"
     }

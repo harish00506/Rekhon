@@ -12,6 +12,7 @@ import com.aicfo.data.sms.SmsInboxReader
 import com.aicfo.domain.engines.budget.BudgetEngine
 import com.aicfo.domain.engines.card.CardEngine
 import com.aicfo.domain.engines.classification.ClassificationEngine
+import com.aicfo.domain.engines.goals.GoalEngine
 import com.aicfo.domain.engines.investment.InvestmentEngine
 import com.aicfo.domain.engines.loan.LoanEngine
 import com.aicfo.domain.engines.nature.NatureEngine
@@ -261,6 +262,22 @@ object RepositoryFactory {
     ): InvestmentRepository = RoomInvestmentRepository(database, engine, clock, ids, dispatchers, activeProfileId)
 
     /**
+     * The goals repository (issue 7.1; §15).
+     * Result: a [GoalRepository] over Room and [GoalEngine].
+     * Input:  [database]; [engine]; [clock]; [ids]; [dispatchers]; [activeProfileId].
+     * Output: [GoalRepository].
+     */
+    @Suppress("LongParameterList") // Six collaborators, each a distinct binding — as [investments].
+    fun goals(
+        database: CfoDatabase,
+        engine: GoalEngine,
+        clock: Clock,
+        ids: IdGenerator,
+        dispatchers: DispatcherProvider,
+        activeProfileId: Flow<String>,
+    ): GoalRepository = RoomGoalRepository(database, engine, clock, ids, dispatchers, activeProfileId)
+
+    /**
      * Builds the market-price refresher (issue 6.5, FR-INV-004).
      * Why:    separate from [investments] because the two own different columns of the same table —
      *         see `MarketPriceRepository`'s class doc. Takes [api] rather than building one, for the
@@ -428,6 +445,7 @@ object RepositoryFactory {
         database: CfoDatabase,
         transactions: TransactionRepository,
         quickSetup: QuickSetupRepository,
+        goals: GoalRepository,
         engine: SafeToSpendEngine,
         clock: Clock,
         dispatchers: DispatcherProvider,
@@ -437,6 +455,7 @@ object RepositoryFactory {
             database = database,
             transactions = transactions,
             quickSetup = quickSetup,
+            goals = goals,
             engine = engine,
             clock = clock,
             dispatchers = dispatchers,

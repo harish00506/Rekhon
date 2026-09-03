@@ -1403,3 +1403,74 @@ data class InvestmentLotEntity(
     @ColumnInfo(name = "deleted_at_utc_millis")
     val deletedAtUtcMillis: Long? = null,
 )
+
+/**
+ * `goal` — a target amount, a date, and what has been put towards it (issue 7.1; §15, FR-GOAL).
+ *
+ * Why:  §15 asks the app to turn a target and a date into a required monthly contribution. Until
+ *       this table existed there was nowhere to keep either, so `AI-GOAL` had nothing to read and
+ *       Safe-to-Spend substituted the user's whole quick-setup INVEST envelope as a stand-in for
+ *       goal contributions (ADR-0021). This is the row that ends both.
+ * What: one goal. The user's label, what it needs, when, what is set aside, and what they intend to
+ *       contribute each month.
+ * Result: the input `GoalRepository` hands `GoalEngine`. Nothing derived is stored — the required
+ *         monthly, the ETA and the horizon are recomputed on every read, because storing them would
+ *         let a figure survive a change to the goal that produced it (the argument
+ *         [InvestmentHoldingEntity] makes for not storing a holding's total).
+ * Changelog: 2026-08-30 — Created at version 20 for issue 7.1.
+ *
+ * **`saved_minor` is hand-entered, and that is temporary by design.** Issue 7.4 (Linked
+ * contributions) derives it from real movements; until then it is a number the user maintains, the
+ * same way a holding's unit price was hand-typed between issues 6.3 and 6.5.
+ */
+@Serializable
+@Entity(
+    tableName = "goal",
+    indices = [
+        Index("profile_id"),
+        Index("profile_id", "deleted_at_utc_millis"),
+    ],
+)
+data class GoalEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** The user's own label, e.g. "Emergency fund" or "Kerala trip". Never blank — the model refuses it. */
+    @ColumnInfo(name = "name")
+    val name: String,
+    /**
+     * MNY-001: what the goal needs in total, in paise. Zero is legitimate and means "no target set
+     * yet" — an ordinary state for a goal the user has just created, reported as `NO_TARGET` rather
+     * than refused.
+     */
+    @ColumnInfo(name = "target_minor")
+    val targetMinor: Long,
+    /**
+     * TIM-002: the day the money is needed, ISO `yyyy-MM-dd`. A date, not a timestamp — "the 1st of
+     * April" is the same day in every time zone, and storing it as an instant invites a bug at
+     * every read. May be in the past; that is `PAST_DUE`, not corruption.
+     */
+    @ColumnInfo(name = "target_date_iso")
+    val targetDateIso: String,
+    /** MNY-001: what is set aside so far, in paise. May exceed [targetMinor] — that is over-funded. */
+    @ColumnInfo(name = "saved_minor")
+    val savedMinor: Long = 0L,
+    /**
+     * MNY-001: what the user intends to contribute each month, in paise.
+     *
+     * Zero means "no plan yet", and the engine then reports no ETA rather than a date infinitely far
+     * away. Kept separate from [savedMinor] because the two answer different questions: one is what
+     * has happened, the other is what the user says will happen, and the gap between them is the
+     * whole point of the goal card.
+     */
+    @ColumnInfo(name = "planned_monthly_minor")
+    val plannedMonthlyMinor: Long = 0L,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+)

@@ -1,0 +1,166 @@
+Golden file for :domain:engines:goals (issue 7.1; AI-GOAL, RULE-HORIZON v1.0).
+
+Every record is one goal. Amounts are PAISE (MNY-001), never rupees — a fixture written in rupees is
+a fixture that silently passes at a hundredth of the amount it claims. Dates are ISO `yyyy-MM-dd`
+(TIM-002).
+
+Every record shares one `today`, 2026-08-30, so the whole file is reproducible to the byte (P-08) —
+this engine reads no clock (TIM-001).
+
+The status, the horizon and the ETA are asserted as well as the required monthly, because a required
+monthly that came out right from the wrong branch is exactly what a golden file exists to catch: the
+same figure can be produced by a normal goal, a past-due one, and one whose target is zero, and only
+the verdict beside it tells them apart.
+
+Record format — one `# key=value` per line, records separated by a line of `===`:
+
+  target            paise, what the goal needs in total
+  saved             paise, set aside so far (optional, default 0)
+  planned           paise, the user's monthly plan (optional, default 0)
+  target_date       ISO date the money is needed
+  expect_required   paise, the largest monthly instalment
+  expect_months     whole months of contribution left before the date
+  expect_status     OVER_FUNDED | ON_TRACK | NO_TARGET | BEHIND | PAST_DUE
+  expect_horizon    SHORT | HYBRID | LONG   (RULE-HORIZON)
+  expect_eta        ISO date the plan reaches the target, or `none`
+
+===
+# label=an ordinary goal - a plan that does not yet clear the requirement
+# target=50000000
+# saved=10000000
+# planned=1500000
+# target_date=2028-04-30
+# expect_required=2000000
+# expect_months=20
+# expect_status=BEHIND
+# expect_horizon=SHORT
+# expect_eta=2028-11-30
+
+===
+# label=the same goal with the plan raised to exactly the requirement
+# target=50000000
+# saved=10000000
+# planned=2000000
+# target_date=2028-04-30
+# expect_required=2000000
+# expect_months=20
+# expect_status=ON_TRACK
+# expect_horizon=SHORT
+# expect_eta=2028-04-30
+
+===
+# label=over-funded - required is zero, never a negative instalment
+# target=10000000
+# saved=12000000
+# target_date=2028-04-30
+# expect_required=0
+# expect_months=20
+# expect_status=OVER_FUNDED
+# expect_horizon=SHORT
+# expect_eta=2026-08-30
+
+===
+# label=past due - the date is gone and the whole remainder is owed now, not divided by zero
+# target=10000000
+# saved=3000000
+# planned=500000
+# target_date=2026-06-30
+# expect_required=7000000
+# expect_months=0
+# expect_status=PAST_DUE
+# expect_horizon=SHORT
+# expect_eta=2027-10-30
+
+===
+# label=no target yet - an ordinary state for a goal just created, not an error
+# target=0
+# target_date=2027-01-31
+# expect_required=0
+# expect_months=5
+# expect_status=NO_TARGET
+# expect_horizon=SHORT
+# expect_eta=2026-08-30
+
+===
+# label=boundary - 35 months is still under RULE-HORIZON short_years_max
+# target=3500000
+# target_date=2029-07-30
+# expect_required=100000
+# expect_months=35
+# expect_status=BEHIND
+# expect_horizon=SHORT
+# expect_eta=none
+
+===
+# label=boundary - 36 months reaches the hybrid band
+# target=3600000
+# target_date=2029-08-30
+# expect_required=100000
+# expect_months=36
+# expect_status=BEHIND
+# expect_horizon=HYBRID
+# expect_eta=none
+
+===
+# label=boundary - 60 months is hybrid_years_max inclusive, still hybrid
+# target=6000000
+# target_date=2031-08-30
+# expect_required=100000
+# expect_months=60
+# expect_status=BEHIND
+# expect_horizon=HYBRID
+# expect_eta=none
+
+===
+# label=boundary - 61 months is equity-eligible
+# target=6100000
+# target_date=2031-09-30
+# expect_required=100000
+# expect_months=61
+# expect_status=BEHIND
+# expect_horizon=LONG
+# expect_eta=none
+
+===
+# label=the odd paise go to the earliest instalment, so the largest is quoted
+# target=100001
+# target_date=2026-11-30
+# expect_required=33334
+# expect_months=3
+# expect_status=BEHIND
+# expect_horizon=SHORT
+# expect_eta=none
+
+===
+# label=a plan so small the answer is not information - no date rather than a fake one
+# target=100000000
+# planned=100
+# target_date=2027-08-30
+# expect_required=8333334
+# expect_months=12
+# expect_status=BEHIND
+# expect_horizon=SHORT
+# expect_eta=none
+
+===
+# label=the date is inside the month - no whole month left, so it is all due now
+# target=5000000
+# saved=1000000
+# target_date=2026-09-10
+# expect_required=4000000
+# expect_months=0
+# expect_status=BEHIND
+# expect_horizon=SHORT
+# expect_eta=none
+
+===
+# label=large amounts - a crore target against a lakh a month
+# target=1000000000
+# saved=25000000
+# planned=10000000
+# target_date=2034-08-30
+# expect_required=10156250
+# expect_months=96
+# expect_status=BEHIND
+# expect_horizon=LONG
+# expect_eta=2034-10-30

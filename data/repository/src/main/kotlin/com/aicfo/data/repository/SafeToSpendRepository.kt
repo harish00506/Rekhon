@@ -8,6 +8,7 @@ import com.aicfo.core.database.entity.RecurringRuleEntity
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.Transaction
 import com.aicfo.core.model.TransactionType
+import com.aicfo.domain.engines.goals.GoalProjection
 import com.aicfo.domain.engines.nature.NatureBreakdown
 import com.aicfo.domain.engines.quicksetup.BudgetEnvelope
 import com.aicfo.domain.engines.quicksetup.BudgetNature
@@ -96,6 +97,7 @@ internal class RoomSafeToSpendRepository(
     private val database: CfoDatabase,
     private val transactions: TransactionRepository,
     private val quickSetup: QuickSetupRepository,
+    private val goals: GoalRepository,
     private val engine: SafeToSpendEngine,
     private val clock: Clock,
     private val dispatchers: DispatcherProvider,
@@ -110,26 +112,40 @@ internal class RoomSafeToSpendRepository(
                 // re-reading is what makes the window roll over with the profile's day (TIM-001).
                 val month = MonthWindow.current(clock.today())
                 val todayIsoDate = clock.today().toString()
+                // Nested rather than one six-way combine: `combine`'s typed overloads stop at five,
+                // and the array form would trade every parameter's type for an `Array<Any?>` and a
+                // cast per term — in the one function where a transposed term is a wrong headline
+                // figure nobody would notice (issue 7.1).
                 combine(
-                    quickSetup.observeLatestEnvelopes(profileId),
-                    transactions.observeMonthCashFlow(),
-                    transactions.observeNatureBreakdown(),
-                    transactions.observeUpcoming(),
-                    database.recurringRuleDao().observeForProfile(profileId),
-                ) { envelopes, cashFlow, nature, upcoming, recurringRules ->
-                    val income = incomeBasis(envelopes, cashFlow.income)
-                    val scheduled = upcoming.scheduledCommitments(month.endIsoDate)
-                    val bills = recurringRules.billsDue(todayIsoDate, month.endIsoDate)
-                    if (income == null) {
-                        null
-                    } else {
-                        figure(
-                            month = month,
-                            income = income,
+                    combine(
+                        quickSetup.observeLatestEnvelopes(profileId),
+                        transactions.observeMonthCashFlow(),
+                        transactions.observeNatureBreakdown(),
+                        transactions.observeUpcoming(),
+                        database.recurringRuleDao().observeForProfile(profileId),
+                    ) { envelopes, cashFlow, nature, upcoming, recurringRules ->
+                        val scheduled = upcoming.scheduledCommitments(month.endIsoDate)
+                        MonthTerms(
+                            income = incomeBasis(envelopes, cashFlow.income),
                             nature = nature,
                             envelopes = envelopes,
                             scheduled = scheduled.total(),
-                            recurring = bills.deduplicatedAgainst(scheduled),
+                            recurring =
+                                recurringRules.billsDue(todayIsoDate, month.endIsoDate)
+                                    .deduplicatedAgainst(scheduled),
+                        )
+                    },
+                    goals.observeGoals(),
+                ) { terms, goalProjections ->
+                    terms.income?.let { income ->
+                        figure(
+                            month = month,
+                            income = income,
+                            nature = terms.nature,
+                            envelopes = terms.envelopes,
+                            scheduled = terms.scheduled,
+                            recurring = terms.recurring,
+                            goalsRequired = goalProjections.requiredMonthly(),
                         )
                     }
                 }
@@ -143,7 +159,8 @@ internal class RoomSafeToSpendRepository(
      * Result: the figure, or `null` when the engine cannot compute one.
      * Input:  [month] — the window; [income] — resolved per `RULE-STS.income_basis`; [nature] — this
      *         month's classified totals (issue 4.3); [envelopes] — the persisted budget, for the
-     *         savings target; [scheduled], [recurring] — the commitments still due, as magnitudes.
+     *         savings target; [scheduled], [recurring] — the commitments still due, as magnitudes;
+     *         [goalsRequired] — what the user's goals need each month (issue 7.1).
      * Output: `SafeToSpend?`.
      */
     private fun figure(
@@ -153,6 +170,7 @@ internal class RoomSafeToSpendRepository(
         envelopes: List<BudgetEnvelope>,
         scheduled: Money,
         recurring: Money,
+        goalsRequired: Money,
     ): SafeToSpend? =
         engine.compute(
             SafeToSpendInput(
@@ -160,12 +178,47 @@ internal class RoomSafeToSpendRepository(
                 spentToDate = nature.trueSpend,
                 scheduled = scheduled,
                 recurringDue = recurring,
-                goalContributionsRemaining = envelopes.savingsPlanned(),
+                goalContributionsRemaining = maxOf(envelopes.savingsPlanned(), goalsRequired),
                 inputWindow = "${month.startIsoDate}..${month.endIsoDate}",
                 nowUtcMillis = clock.nowUtcMillis(),
             ),
         ).getOrNull()
 }
+
+/**
+ * The five terms the inner `combine` resolves, before the goals arrive (issue 7.1).
+ *
+ * Why:    a named value rather than a `Quintuple` nobody would read. The nesting exists only because
+ *         `combine`'s typed overloads stop at five and this now needs six sources.
+ * Result: what the outer combine turns into a figure.
+ * Changelog: 2026-08-30 — Created for issue 7.1.
+ *
+ * @property income resolved per `RULE-STS.income_basis`, or **null when there is no basis at all** —
+ *   carried as null this far rather than defaulted, so the pending state stays reachable (P-03).
+ * @property nature this month's classified totals.
+ * @property envelopes the persisted budget.
+ * @property scheduled future-dated commitments inside the window.
+ * @property recurring confirmed bills due inside it, de-duplicated against [scheduled].
+ */
+private data class MonthTerms(
+    val income: Money?,
+    val nature: NatureBreakdown,
+    val envelopes: List<BudgetEnvelope>,
+    val scheduled: Money,
+    val recurring: Money,
+)
+
+/**
+ * What the user's goals need each month (issue 7.1; §15, AI-GOAL).
+ *
+ * Why:    the real version of the term ADR-0021 stood in for. The engine already computes each
+ *         goal's required monthly; this only adds them up.
+ * Result: the sum, or `Money.ZERO` when there are no goals.
+ * Input:  the receiver — the projected goals. Output: [Money].
+ * Changelog: 2026-08-30 — Created for issue 7.1.
+ */
+private fun List<GoalProjection>.requiredMonthly(): Money =
+    fold(Money.ZERO) { running, goal -> running + goal.requiredMonthly }
 
 /**
  * Resolves `RULE-STS.income_basis` — the declared budget, else the ledger (issue 5.2).
@@ -193,9 +246,13 @@ private fun incomeBasis(
 /**
  * The month's savings envelope, in full (issue 5.2; §5.2).
  *
- * Why:    §5.2 names "goal contributions" as a term, and the goals engine (issue 7.1) does not exist
- *         in this build. This is the closest true statement available: the user's own declared
- *         monthly saving.
+ * Why:    §5.2 names "goal contributions" as a term. Since issue 7.1 the goals engine supplies the
+ *         real figure, and this is no longer a stand-in for it — it is the **other** half of a
+ *         `maxOf`. A user's declared monthly saving does not stop being planned saving because they
+ *         have not named a goal for it, and dropping it the day goals shipped would have made
+ *         Safe-to-Spend jump *upwards* for every existing user with an INVEST envelope and no goals
+ *         — optimistic in exactly the way §5.2 exists to prevent. Taking the greater of the two
+ *         counts each planned rupee once and can only ever hold the figure down. See ADR-0033.
  *
  *         **In full, deliberately — not netted against what has already been saved.** Netting looks
  *         obviously right and is wrong, because §8.3's `trueSpend` is `NEED + WANT` and therefore

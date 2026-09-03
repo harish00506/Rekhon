@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Strings for :feature:goals (issue 7.1; §15, §21.6).
+
+  Why:  §21.6 puts every user-visible string in a resource, and the `CfoHardcodedUiString` lint
+        detector fails the build on a literal in a :feature:* composable. Keeping them here also
+        keeps the domain free of wording: the engine returns a GoalStatus, this file decides how to
+        say it.
+  What: the goals list, its editor, and the plain-language reason beside every figure (P-02).
+  Result: one place to translate, and one place to argue about tone.
+  Changelog: 2026-08-30 — Created for issue 7.1.
+-->
+<resources>
+    <string name="goals_title">Your goals</string>
+    <string name="goals_add">Add a goal</string>
+    <string name="goals_empty">Nothing here yet. Add what you are saving for and the app works out what it takes each month — and tells you if your plan gets there.</string>
+    <string name="goals_error">Something went wrong reading your goals.</string>
+    <string name="goals_dismiss_error">Dismiss</string>
+
+    <!-- The figure this whole feature exists to produce. -->
+    <string name="goals_required_monthly">%1$s a month</string>
+    <string name="goals_shortfall">%1$s a month short of that</string>
+    <string name="goals_saved_of_target">%1$s of %2$s saved</string>
+    <string name="goals_target_date">Needed by %1$s</string>
+    <string name="goals_eta">At %1$s a month you get there %2$s</string>
+    <string name="goals_eta_never">No monthly plan set, so there is no date yet</string>
+    <string name="goals_eta_reached">Already fully funded</string>
+
+    <!-- P-02: the figure names the rule that shaped it, as the Safe-to-Spend card names RULE-STS. -->
+    <string name="goals_rule">Rule RULE-HORIZON v1.0</string>
+
+    <!-- GoalStatus. The domain decides what is true; these decide how to say it. -->
+    <string name="goals_status_on_track">On track</string>
+    <string name="goals_status_behind">Behind</string>
+    <string name="goals_status_past_due">Date has passed</string>
+    <string name="goals_status_over_funded">Fully funded</string>
+    <string name="goals_status_no_target">No target set yet</string>
+
+    <!-- Horizon (RULE-HORIZON). Advice about where the money should sit, never applied to the maths. -->
+    <string name="goals_horizon_short">Under 3 years — savings, an FD, or paying down debt</string>
+    <string name="goals_horizon_hybrid">3 to 5 years — a hybrid mix</string>
+    <string name="goals_horizon_long">Over 5 years — equity is eligible</string>
+
+    <!-- The editor. -->
+    <string name="goals_editor_name">What are you saving for?</string>
+    <string name="goals_editor_target">Target amount</string>
+    <string name="goals_editor_target_date">Needed by (YYYY-MM-DD)</string>
+    <string name="goals_editor_saved">Saved so far</string>
+    <string name="goals_editor_saved_help">You keep this up to date yourself for now.</string>
+    <string name="goals_editor_planned">You plan to put aside each month</string>
+    <string name="goals_editor_planned_help">Leave blank if you have not decided. The app still tells you what it would take.</string>
+    <string name="goals_edit">Edit</string>
+    <string name="goals_editor_save">Save</string>
+    <string name="goals_editor_cancel">Cancel</string>
+    <string name="goals_editor_delete">Delete</string>
+    <string name="goals_editor_error">Check the name, the amounts and the date.</string>
+
+    <!-- §11.1's tone: the app advises, it does not instruct (P-07). -->
+    <string name="goals_disclaimer">These figures are worked out from what you entered — the target, the date and what you have saved. They are a plan, not advice about a particular investment.</string>
+</resources>
