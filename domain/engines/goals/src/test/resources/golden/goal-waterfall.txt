@@ -1,0 +1,299 @@
+Golden records for GoalWaterfallEngine — issue 7.3, SRS §15.1, FR-GOAL-003, FR-GOAL-005.
+
+Every amount is PAISE (MNY-001), never rupees. Every record is reckoned from one fixed day,
+2026-09-03, so this file is byte-reproducible and no record's expectation moves with the calendar.
+
+These records run the REAL PIPELINE: each goal is projected by GoalEngine first, exactly as
+GoalWaterfallRepository does it, and the waterfall then allocates across the projections. That is
+deliberate. The levers need `remaining`, `monthsRemaining` and `saved`, and hand-writing those into
+the fixture would duplicate GoalEngine's arithmetic in a file that could then quietly disagree with
+it. GoalGoldenTest already gates the projection on its own; this file gates the composition.
+
+WHAT THE ACCEPTANCE CRITERION ASKED FOR — "golden-file test on competing goals" — is records 2, 7
+and 14: several goals asking for one surplus, and the order deciding who is short.
+
+Record format. One record per `===` block, one `# key=value` per line:
+
+  label             what the record is for; also the goal ids
+  surplus           the month's surplus in paise, or `unknown` for null. May be negative.
+  basis             OBSERVED_MEDIAN | DECLARED_ENVELOPE | NONE
+  ef_topup          EmergencyFundPlan.topUpMonthly, in paise. Optional, defaults to 0.
+  ef_runway_bps     EmergencyFundPlan.runwayMonthsBps — basis points of a MONTH, so 30000 is three
+                    months (MNY-002). `unknown` for null. Optional, defaults to unknown.
+  ef_gate_months    RULE-EMERG-FIRST.min_runway_months. Optional, defaults to 3.
+  goal              repeatable: name|target|saved|target_date. Zero or more.
+  expect_feasibility        FEASIBLE | INFEASIBLE | UNKNOWN
+  expect_ef_applied         true | false — whether RULE-EMERG-FIRST held the goals at zero
+  expect_ef_allocated       what the emergency fund took off the top
+  expect_required           Σ requiredMonthly — §15.1's left-hand side
+  expect_allocated          what the goals actually got
+  expect_gap                required − allocated
+  expect_unallocated        what was left after every claim
+  expect_alloc              per-goal allocation, comma-separated, in order; `none` for no goals
+  expect_levers             per-goal `ext|reduceTo|increase`, comma-separated; `-` for a fully
+                            funded goal (no levers), `none` in a slot for a null lever, and `none`
+                            for the whole field when there are no goals
+
+===
+# label=one goal, and the month covers it
+# surplus=5000000
+# basis=OBSERVED_MEDIAN
+# ef_runway_bps=90000
+# goal=Kerala trip|12000000|0|2027-09-03
+# expect_feasibility=FEASIBLE
+# expect_ef_applied=false
+# expect_ef_allocated=0
+# expect_required=1000000
+# expect_allocated=1000000
+# expect_gap=0
+# expect_unallocated=4000000
+# expect_alloc=1000000
+# expect_levers=-
+
+===
+# label=two goals, one surplus, and the order decides who is short
+# surplus=1500000
+# basis=OBSERVED_MEDIAN
+# ef_runway_bps=90000
+# goal=Kerala trip|12000000|0|2027-09-03
+# goal=New laptop|6000000|0|2027-03-03
+# expect_feasibility=INFEASIBLE
+# expect_ef_applied=false
+# expect_ef_allocated=0
+# expect_required=2000000
+# expect_allocated=1500000
+# expect_gap=500000
+# expect_unallocated=0
+# expect_alloc=1000000,500000
+# expect_levers=-,6|3000000|500000
+
+===
+# label=exactly enough, to the paise
+# surplus=2000000
+# basis=OBSERVED_MEDIAN
+# ef_runway_bps=90000
+# goal=Kerala trip|12000000|0|2027-09-03
+# goal=New laptop|6000000|0|2027-03-03
+# expect_feasibility=FEASIBLE
+# expect_ef_applied=false
+# expect_ef_allocated=0
+# expect_required=2000000
+# expect_allocated=2000000
+# expect_gap=0
+# expect_unallocated=0
+# expect_alloc=1000000,1000000
+# expect_levers=-,-
+
+===
+# label=RULE-EMERG-FIRST takes the whole surplus and holds the goal at zero
+# surplus=2000000
+# basis=OBSERVED_MEDIAN
+# ef_topup=3000000
+# ef_runway_bps=10000
+# goal=Kerala trip|12000000|0|2027-09-03
+# expect_feasibility=INFEASIBLE
+# expect_ef_applied=true
+# expect_ef_allocated=2000000
+# expect_required=1000000
+# expect_allocated=0
+# expect_gap=1000000
+# expect_unallocated=0
+# expect_alloc=0
+# expect_levers=none|0|1000000
+
+===
+# label=a runway of exactly three months clears the gate
+# surplus=2000000
+# basis=OBSERVED_MEDIAN
+# ef_topup=500000
+# ef_runway_bps=30000
+# goal=Kerala trip|12000000|0|2027-09-03
+# expect_feasibility=FEASIBLE
+# expect_ef_applied=false
+# expect_ef_allocated=0
+# expect_required=1000000
+# expect_allocated=1000000
+# expect_gap=0
+# expect_unallocated=1000000
+# expect_alloc=1000000
+# expect_levers=-
+
+===
+# label=one basis point below the gate holds it
+# surplus=2000000
+# basis=OBSERVED_MEDIAN
+# ef_topup=500000
+# ef_runway_bps=29999
+# goal=Kerala trip|12000000|0|2027-09-03
+# expect_feasibility=INFEASIBLE
+# expect_ef_applied=true
+# expect_ef_allocated=500000
+# expect_required=1000000
+# expect_allocated=0
+# expect_gap=1000000
+# expect_unallocated=1500000
+# expect_alloc=0
+# expect_levers=none|0|1000000
+
+===
+# label=an unknown runway holds the gate too — no evidence of a buffer is not evidence of one
+# surplus=2000000
+# basis=OBSERVED_MEDIAN
+# ef_topup=1000000
+# ef_runway_bps=unknown
+# goal=Kerala trip|12000000|0|2027-09-03
+# expect_feasibility=INFEASIBLE
+# expect_ef_applied=true
+# expect_ef_allocated=1000000
+# expect_required=1000000
+# expect_allocated=0
+# expect_gap=1000000
+# expect_unallocated=1000000
+# expect_alloc=0
+# expect_levers=none|0|1000000
+
+===
+# label=an unknown surplus is UNKNOWN, and never a verdict of impossible
+# surplus=unknown
+# basis=NONE
+# ef_runway_bps=90000
+# goal=Kerala trip|12000000|0|2027-09-03
+# expect_feasibility=UNKNOWN
+# expect_ef_applied=false
+# expect_ef_allocated=0
+# expect_required=1000000
+# expect_allocated=0
+# expect_gap=1000000
+# expect_unallocated=0
+# expect_alloc=0
+# expect_levers=none|0|1000000
+
+===
+# label=a zero surplus is INFEASIBLE — a month with no room is a finding, not missing data
+# surplus=0
+# basis=OBSERVED_MEDIAN
+# ef_runway_bps=90000
+# goal=Kerala trip|12000000|0|2027-09-03
+# expect_feasibility=INFEASIBLE
+# expect_ef_applied=false
+# expect_ef_allocated=0
+# expect_required=1000000
+# expect_allocated=0
+# expect_gap=1000000
+# expect_unallocated=0
+# expect_alloc=0
+# expect_levers=none|0|1000000
+
+===
+# label=a negative surplus is reported as it is and pours nothing
+# surplus=-500000
+# basis=OBSERVED_MEDIAN
+# ef_runway_bps=90000
+# goal=Kerala trip|12000000|0|2027-09-03
+# expect_feasibility=INFEASIBLE
+# expect_ef_applied=false
+# expect_ef_allocated=0
+# expect_required=1000000
+# expect_allocated=0
+# expect_gap=1000000
+# expect_unallocated=0
+# expect_alloc=0
+# expect_levers=none|0|1000000
+
+===
+# label=the onboarding envelope, standing in until there is history to take a median from
+# surplus=800000
+# basis=DECLARED_ENVELOPE
+# ef_runway_bps=90000
+# goal=Kerala trip|12000000|0|2027-09-03
+# expect_feasibility=INFEASIBLE
+# expect_ef_applied=false
+# expect_ef_allocated=0
+# expect_required=1000000
+# expect_allocated=800000
+# expect_gap=200000
+# expect_unallocated=0
+# expect_alloc=800000
+# expect_levers=3|9600000|200000
+
+===
+# label=a past-due goal has no month left to spread over, so no target-reduction lever exists
+# surplus=1000000
+# basis=OBSERVED_MEDIAN
+# ef_runway_bps=90000
+# goal=Overdue tax|5000000|1000000|2026-08-01
+# expect_feasibility=INFEASIBLE
+# expect_ef_applied=false
+# expect_ef_allocated=0
+# expect_required=4000000
+# expect_allocated=1000000
+# expect_gap=3000000
+# expect_unallocated=0
+# expect_alloc=1000000
+# expect_levers=4|none|3000000
+
+===
+# label=an odd paise remainder — the required monthly is the LARGEST instalment, not the smallest
+# surplus=500000
+# basis=OBSERVED_MEDIAN
+# ef_runway_bps=90000
+# goal=Odd target|10000001|0|2027-09-03
+# expect_feasibility=INFEASIBLE
+# expect_ef_applied=false
+# expect_ef_allocated=0
+# expect_required=833334
+# expect_allocated=500000
+# expect_gap=333334
+# expect_unallocated=0
+# expect_alloc=500000
+# expect_levers=9|6000000|333334
+
+===
+# label=three goals competing, and the third gets only what the first two left
+# surplus=2100000
+# basis=OBSERVED_MEDIAN
+# ef_runway_bps=90000
+# goal=Kerala trip|12000000|0|2027-09-03
+# goal=New laptop|6000000|0|2027-03-03
+# goal=Wedding gift|4800000|0|2028-09-03
+# expect_feasibility=INFEASIBLE
+# expect_ef_applied=false
+# expect_ef_allocated=0
+# expect_required=2200000
+# expect_allocated=2100000
+# expect_gap=100000
+# expect_unallocated=0
+# expect_alloc=1000000,1000000,100000
+# expect_levers=-,-,24|2400000|100000
+
+===
+# label=more surplus than every claim — the leftover is the app's cue that cash is idle
+# surplus=10000000
+# basis=OBSERVED_MEDIAN
+# ef_topup=2000000
+# ef_runway_bps=20000
+# goal=Kerala trip|12000000|0|2027-09-03
+# expect_feasibility=INFEASIBLE
+# expect_ef_applied=true
+# expect_ef_allocated=2000000
+# expect_required=1000000
+# expect_allocated=0
+# expect_gap=1000000
+# expect_unallocated=8000000
+# expect_alloc=0
+# expect_levers=none|0|1000000
+
+===
+# label=no goals at all — nothing to fund is not the same as nothing working
+# surplus=2000000
+# basis=OBSERVED_MEDIAN
+# ef_runway_bps=90000
+# expect_feasibility=FEASIBLE
+# expect_ef_applied=false
+# expect_ef_allocated=0
+# expect_required=0
+# expect_allocated=0
+# expect_gap=0
+# expect_unallocated=2000000
+# expect_alloc=none
+# expect_levers=none
