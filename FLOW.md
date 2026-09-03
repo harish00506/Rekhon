@@ -556,6 +556,58 @@ engine version moved 1.0 → 1.1 and `AI-INV` in `engine-registry.yaml` with it.
 
 ---
 
+### 2.6 · How long the money would last — the runway and the target (issue 7.2)
+
+```
+EmergencyFundScreen → EmergencyFundViewModel.uiState        :feature:emergencyfund
+└─ EmergencyFundRepository.observeEmergencyFund()           :data:repository (ARC-005)
+    └─ combine(                                             three flows, so combine stays TYPED
+        TransactionRepository.observeMonthlyLedger(6),      ← NEW read, issue 7.2
+        AccountRepository.observeAccounts(),
+        QuickSetupRepository.observeLatestEnvelopes(),
+       )
+        ├─ clock.today()  READ ONCE PER EMISSION (TIM-001); the engine reads no clock
+        ├─ essentials = median(closed months' NEED) if >= min_months_observed
+        │               else the quick-setup NEED envelope
+        │               else null  → UNKNOWN, never a zero target (a zero reads as "funded")
+        ├─ liquid     = accounts where type ∈ {BANK, CASH} ∧ inNetWorth ∧ balance > 0
+        │               └─ an FD or a liquid fund is NOT counted — no liquidity tier exists
+        │                  (ADR-0034). Understates the runway, which errs safely.
+        └─ EmergencyFundEngine.assess(...)          :domain:engines:emergencyfund
+            incomeCvBps     = integerSqrt(population variance) ÷ mean × 10 000
+                              └─ Newton's method on Long: NO Math.sqrt, so no Double and no
+                                 platform-dependent rounding (MNY-002, P-08)
+                              └─ null below min_months_observed → bump 0, NOT the maximum
+            M               = (base_months + RULE-EMF-MULT.bumpFor(cv))
+                                .coerceIn(RULE-RUNWAY-M.clamp_months)
+                              └─ with the shipped params the clamp NEVER fires (6+3 = 9 ∈ [3,12])
+            target          = essentials × M
+            shortfall       = max(0, target − liquid)
+            topUpMonthly    = shortfall.split(M).max()
+                              └─ Money owns the division; the odd paise go to the earliest
+                                 parts, so the LARGEST is the one quoted
+            runwayMonthsBps = liquid ÷ essentials × 10 000     10 000 bps = ONE MONTH
+            status          = UNKNOWN → SURPLUS → FUNDED → BUILDING → URGENT
+                              (order matters: unknown first, or a zero target makes an empty
+                               fund read as funded; surplus before funded, because a surplus
+                               is also funded and the specific verdict is the useful one)
+        └─ provenance.evidence = [ RULE-EMF-MULT, RULE-EMF-COACH ] + RULE-RUNWAY-M iff clamped
+            └─ init { require(evidence.isNotEmpty()) }   ← P-02, enforced in the type
+```
+
+**`observeMonthlyLedger` is new, and it lives on `TransactionRepository` on purpose.** The nature of
+a row is decided by a precedence — stored override, then category, then account type — that class
+already owns. A second copy in `EmergencyFundRepository` would be a second answer to "is this rupee a
+need?", and the two would disagree the first time either changed.
+
+**Nothing derived is stored.** The target is recomputed on every read, because a figure written to
+the database would outlive the spending that produced it — and would go stale simply because a month
+closed, which is the one input the user never edits.
+
+**§10.1's coach behaviour is a *wording* step, not an engine step.** The engine returns an
+`EmergencyStatus`; `EmergencyFundLabels` turns it into "it is usually worth pausing non-essential
+goals until this has some depth". Nothing on the screen acts on any of it (P-07).
+
 ### 2.5 · What a goal takes each month — and the figure it moves elsewhere (issue 7.1)
 
 ```

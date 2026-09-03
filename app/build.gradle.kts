@@ -14,7 +14,7 @@ android {
 
     defaultConfig {
         applicationId = "com.aicfo.personalcfo"
-        versionCode = 28
+        versionCode = 29
         versionName = rootProject.file("VERSION").readText().trim()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -48,6 +48,7 @@ dependencies {
     implementation(project(":feature:dashboard"))
     // Issue 7.1: the goals screen, reached from the dashboard by a typed route.
     implementation(project(":feature:goals"))
+    implementation(project(":feature:emergencyfund"))
     // FR-SET-001: income, consents and the app lock, reachable after onboarding. Without this edge
     // the SMS consent stays unrevocable from the UI, which P-01 forbids.
     implementation(project(":feature:settings"))

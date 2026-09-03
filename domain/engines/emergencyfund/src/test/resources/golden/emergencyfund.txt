@@ -1,0 +1,252 @@
+Golden file for :domain:engines:emergencyfund (issue 7.2; AI-EMF, RULE-EMF-MULT v1.0,
+RULE-EMF-COACH v1.0, RULE-RUNWAY-M v1.0).
+
+Every record is one assessment. Amounts are PAISE (MNY-001), never rupees — a fixture written in
+rupees is a fixture that silently passes at a hundredth of the amount it claims. Ratios are integer
+BASIS POINTS (MNY-002): 10 000 is 100%, and a runway of 15 000 is one and a half months.
+
+Every record shares one `today`, 2026-09-02, so the whole file is reproducible to the byte (P-08) —
+this engine reads no clock (TIM-001).
+
+The status, the multiplier and the cv are asserted as well as the money, because a figure that came
+out right from the wrong branch is exactly what a golden file exists to catch. Three pairs in this
+file are indistinguishable by their amounts alone:
+
+  * a top-up of 0 is correct for a FUNDED fund AND for a SURPLUS one (records 3 and 4);
+  * a top-up of 0 is also correct for UNKNOWN, where there is no target to top up (record 5);
+  * a null cv is correct for "too few months to measure" AND for "three months of no income at
+    all" (records 8 and 9) — different branches of the same guard, same M, same everything else.
+
+Records 10 to 13 sit exactly on RULE-EMF-MULT's band edges. The row's wording is `< cv_low_bps`
+adds nothing and `<= cv_high_bps` adds the middle bump, so a cv of exactly 1 000 is already the
+middle band and a cv of exactly 3 000 is still the middle band. Record 12 is the first cv the high
+bump applies to. Moving either edge by one basis point must move exactly one of these four.
+
+Note what the file does NOT contain: a record where `RULE-RUNWAY-M`'s clamp fires. With the shipped
+params it cannot — 6 base months plus at most a 3-month volatility bump is 9, comfortably inside
+[3, 12]. The clamp is exercised in EmergencyFundEngineTest with moved rules instead, which is the
+honest place for it: pretending a golden record clamps would be a fixture asserting something the
+shipped rulebook never does. See ADR-0034.
+
+Record format — one `# key=value` per line, records separated by a line of `===`:
+
+  essentials        paise a month, or `none` when the app cannot size it yet
+  basis             OBSERVED_MEDIAN | DECLARED_ENVELOPE | NONE  (must be NONE iff essentials is none)
+  incomes           paise per whole closed month, comma-separated, or `none` for no history
+  liquid            paise that could be spent today (savings + cash)
+  expect_cv         basis points of coefficient of variation, or `none` when unmeasurable
+  expect_months     multiplier M after RULE-RUNWAY-M's clamp
+  expect_target     paise, essentials x M
+  expect_topup      paise, the largest monthly instalment that closes the shortfall
+  expect_runway     basis points of a month that the liquid funds buy, or `none`
+  expect_funded     basis points of the target that is funded; NOT capped at 10 000
+  expect_status     SURPLUS | FUNDED | BUILDING | UNKNOWN | URGENT   (RULE-EMF-COACH)
+
+===
+# label=half a month of cover, steady income
+# essentials=4000000
+# basis=OBSERVED_MEDIAN
+# incomes=5000000,5000000,5000000
+# liquid=2000000
+# expect_cv=0
+# expect_months=6
+# expect_target=24000000
+# expect_topup=3666667
+# expect_runway=5000
+# expect_funded=833
+# expect_status=URGENT
+===
+# label=two and a half months, building
+# essentials=4000000
+# basis=OBSERVED_MEDIAN
+# incomes=5000000,5000000,5000000
+# liquid=10000000
+# expect_cv=0
+# expect_months=6
+# expect_target=24000000
+# expect_topup=2333334
+# expect_runway=25000
+# expect_funded=4166
+# expect_status=BUILDING
+===
+# label=exactly the target, funded
+# essentials=4000000
+# basis=OBSERVED_MEDIAN
+# incomes=5000000,5000000,5000000
+# liquid=24000000
+# expect_cv=0
+# expect_months=6
+# expect_target=24000000
+# expect_topup=0
+# expect_runway=60000
+# expect_funded=10000
+# expect_status=FUNDED
+===
+# label=ten months of cover, surplus
+# essentials=4000000
+# basis=OBSERVED_MEDIAN
+# incomes=5000000,5000000,5000000
+# liquid=40000000
+# expect_cv=0
+# expect_months=6
+# expect_target=24000000
+# expect_topup=0
+# expect_runway=100000
+# expect_funded=16666
+# expect_status=SURPLUS
+===
+# label=no essentials known, so no target
+# essentials=none
+# basis=NONE
+# incomes=5000000,5000000,5000000
+# liquid=10000000
+# expect_cv=0
+# expect_months=6
+# expect_target=0
+# expect_topup=0
+# expect_runway=none
+# expect_funded=0
+# expect_status=UNKNOWN
+===
+# label=variable income, one month added
+# essentials=4000000
+# basis=OBSERVED_MEDIAN
+# incomes=4000000,5000000,6000000
+# liquid=10000000
+# expect_cv=1632
+# expect_months=7
+# expect_target=28000000
+# expect_topup=2571429
+# expect_runway=25000
+# expect_funded=3571
+# expect_status=BUILDING
+===
+# label=lumpy income, three months added
+# essentials=4000000
+# basis=OBSERVED_MEDIAN
+# incomes=2000000,5000000,8000000
+# liquid=10000000
+# expect_cv=4898
+# expect_months=9
+# expect_target=36000000
+# expect_topup=2888889
+# expect_runway=25000
+# expect_funded=2777
+# expect_status=BUILDING
+===
+# label=two months of history is too few to measure
+# essentials=4000000
+# basis=DECLARED_ENVELOPE
+# incomes=5000000,5000000
+# liquid=24000000
+# expect_cv=none
+# expect_months=6
+# expect_target=24000000
+# expect_topup=0
+# expect_runway=60000
+# expect_funded=10000
+# expect_status=FUNDED
+===
+# label=three months of no income at all
+# essentials=4000000
+# basis=DECLARED_ENVELOPE
+# incomes=0,0,0
+# liquid=24000000
+# expect_cv=none
+# expect_months=6
+# expect_target=24000000
+# expect_topup=0
+# expect_runway=60000
+# expect_funded=10000
+# expect_status=FUNDED
+===
+# label=cv exactly on the low edge is already the middle band
+# essentials=4000000
+# basis=OBSERVED_MEDIAN
+# incomes=4500000,4500000,5500000,5500000
+# liquid=10000000
+# expect_cv=1000
+# expect_months=7
+# expect_target=28000000
+# expect_topup=2571429
+# expect_runway=25000
+# expect_funded=3571
+# expect_status=BUILDING
+===
+# label=cv exactly on the high edge is still the middle band
+# essentials=4000000
+# basis=OBSERVED_MEDIAN
+# incomes=3500000,3500000,6500000,6500000
+# liquid=10000000
+# expect_cv=3000
+# expect_months=7
+# expect_target=28000000
+# expect_topup=2571429
+# expect_runway=25000
+# expect_funded=3571
+# expect_status=BUILDING
+===
+# label=one basis point above the high edge takes the high bump
+# essentials=4000000
+# basis=OBSERVED_MEDIAN
+# incomes=3499500,3499500,6500500,6500500
+# liquid=10000000
+# expect_cv=3001
+# expect_months=9
+# expect_target=36000000
+# expect_topup=2888889
+# expect_runway=25000
+# expect_funded=2777
+# expect_status=BUILDING
+===
+# label=one basis point below the low edge adds nothing
+# essentials=4000000
+# basis=OBSERVED_MEDIAN
+# incomes=4500500,4500500,5499500,5499500
+# liquid=10000000
+# expect_cv=999
+# expect_months=6
+# expect_target=24000000
+# expect_topup=2333334
+# expect_runway=25000
+# expect_funded=4166
+# expect_status=BUILDING
+===
+# label=exactly one month of runway is not yet urgent
+# essentials=4000000
+# basis=OBSERVED_MEDIAN
+# incomes=5000000,5000000,5000000
+# liquid=4000000
+# expect_cv=0
+# expect_months=6
+# expect_target=24000000
+# expect_topup=3333334
+# expect_runway=10000
+# expect_funded=1666
+# expect_status=BUILDING
+===
+# label=exactly M plus the margin is funded, not yet surplus
+# essentials=4000000
+# basis=OBSERVED_MEDIAN
+# incomes=5000000,5000000,5000000
+# liquid=32000000
+# expect_cv=0
+# expect_months=6
+# expect_target=24000000
+# expect_topup=0
+# expect_runway=80000
+# expect_funded=13333
+# expect_status=FUNDED
+===
+# label=nothing saved at all, and an essentials figure that does not divide evenly
+# essentials=3333333
+# basis=OBSERVED_MEDIAN
+# incomes=5000000,5000000,5000000
+# liquid=0
+# expect_cv=0
+# expect_months=6
+# expect_target=19999998
+# expect_topup=3333333
+# expect_runway=0
+# expect_funded=0
+# expect_status=URGENT

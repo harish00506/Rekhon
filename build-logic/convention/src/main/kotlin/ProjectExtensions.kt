@@ -8,6 +8,7 @@ import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
 import kotlinx.kover.gradle.plugin.dsl.KoverProjectExtension
 import org.gradle.kotlin.dsl.configure
 import org.gradle.kotlin.dsl.getByType
+import org.gradle.api.tasks.testing.Test
 
 /**
  * Shared helpers for the Cfo* convention plugins.
@@ -99,6 +100,36 @@ internal fun Project.configureCoverage() {
         }
     }
 }
+
+/**
+ * Declares the rulebook as an input to every test task in the module (CLAUDE.md §6, ADR-0005).
+ *
+ * Why:  five engines mirror `ai/rules/rules-kb.json` as typed Kotlin constants, and a
+ *       `RulebookDriftTest` in each is the only thing stopping the copy diverging from the row it
+ *       claims to come from. **That gate could be skipped.** The rulebook is read at runtime from
+ *       the repository root, so it was not part of any task's declared inputs — edit a threshold
+ *       and Gradle would call the drift tests UP-TO-DATE and the build would stay green. Found in
+ *       issue 7.2 by bumping `_meta.version` and watching four of five modules go red while
+ *       `:domain:engines:goals:test` was skipped; `--rerun-tasks` then failed it, which is how we
+ *       know the assertion itself was fine and only its scheduling was wrong.
+ * What: names the file as an input so a rulebook edit invalidates the test task.
+ * Result: a rulebook change now always re-runs every drift test. Modules that do not read the
+ *         rulebook re-run their tests too, which costs one file's worth of up-to-date checking and
+ *         is the cheaper mistake than a silent skip.
+ * Input:  the receiver — the module being configured. Output: none (configures the tasks).
+ * Changelog: 2026-09-02 — Created for issue 7.2.
+ */
+internal fun Project.configureRulebookAsTestInput() {
+    val rulebook = rootProject.layout.projectDirectory.file(RULEBOOK_PATH)
+    tasks.withType(Test::class.java).configureEach {
+        inputs.file(rulebook)
+            .withPropertyName("rulesKb")
+            .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.NONE)
+    }
+}
+
+/** The one rulebook every typed mirror is checked against (CLAUDE.md §6). */
+private const val RULEBOOK_PATH = "ai/rules/rules-kb.json"
 
 /** Engine/domain floor from CLAUDE.md §4. */
 private const val MIN_MODULE_COVERAGE = 85

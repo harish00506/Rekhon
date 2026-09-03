@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Strings for :feature:emergencyfund (issue 7.2; §10.1, §21.6).
+
+  Why:  §21.6 puts every user-visible string in a resource, and the `CfoHardcodedUiString` lint
+        detector fails the build on a literal in a :feature:* composable. Keeping them here also
+        keeps the domain free of wording: the engine returns an EmergencyStatus, this file decides
+        how to say it — including §10.1's coach behaviour, which is entirely a tone decision about a
+        band the engine already computed.
+  What: the runway headline, the coach lines, and the evidence drill-down §10.1 requires.
+  Result: one place to translate, and one place to argue about tone.
+  Changelog: 2026-09-02 — Created for issue 7.2.
+-->
+<resources>
+    <string name="emf_title">Emergency fund</string>
+    <string name="emf_error">Something went wrong reading your emergency fund.</string>
+    <string name="emf_dismiss_error">Dismiss</string>
+    <string name="emf_back">Back</string>
+
+    <!-- §10.1's headline metric. Rendered from runwayMonthsBps, which the engine computed. -->
+    <string name="emf_runway">%1$s months of cover</string>
+    <string name="emf_runway_unknown">We cannot work out your cover yet</string>
+    <string name="emf_target">Target %1$s</string>
+    <string name="emf_saved_of_target">%1$s of %2$s set aside</string>
+    <string name="emf_shortfall">%1$s still to find</string>
+    <string name="emf_top_up">%1$s a month closes it over %2$d months</string>
+    <string name="emf_fully_funded">Nothing more to put aside</string>
+
+    <!-- EmergencyStatus. The domain decides what is true; these decide how to say it. -->
+    <string name="emf_status_surplus">More than you need</string>
+    <string name="emf_status_funded">Fully funded</string>
+    <string name="emf_status_building">Building up</string>
+    <string name="emf_status_unknown">Not enough to go on yet</string>
+    <string name="emf_status_urgent">Under a month of cover</string>
+
+    <!-- §10.1's coach behaviour. Every one a suggestion, never an instruction (P-07). -->
+    <string name="emf_coach_surplus">You are well past your target. You might consider putting some of the excess to work towards a goal — it is sitting idle here.</string>
+    <string name="emf_coach_funded">Your emergency fund covers its target. Anything you save beyond this could go towards your goals instead.</string>
+    <string name="emf_coach_building">You have a real cushion and it is not full yet. Building it from what you have spare each month is usually the next step.</string>
+    <string name="emf_coach_unknown">Record a few months of spending, or set your monthly needs during setup, and the app can size this for you.</string>
+    <string name="emf_coach_urgent">Less than a month of essentials is covered. It is usually worth pausing non-essential goals until this has some depth.</string>
+
+    <!-- The evidence §10.1 requires: "every number links to its evidence". -->
+    <string name="emf_evidence_show">Show the working</string>
+    <string name="emf_evidence_hide">Hide the working</string>
+    <string name="emf_evidence_essentials">A month of essentials: %1$s</string>
+    <string name="emf_basis_observed">the middle month of what you actually spent on needs</string>
+    <string name="emf_basis_declared">the monthly needs you entered during setup</string>
+    <string name="emf_basis_none">not known yet</string>
+    <string name="emf_evidence_multiplier">Held for %1$d months: 6 to start with, %2$s</string>
+    <string name="emf_multiplier_steady">and nothing added — your income has been steady</string>
+    <string name="emf_multiplier_bumped">plus %1$d for how much your income moves month to month</string>
+    <string name="emf_multiplier_unmeasured">and nothing added — there is not enough income history to tell yet</string>
+    <string name="emf_multiplier_clamped">then capped, because the rule holds this between 3 and 12 months</string>
+    <string name="emf_evidence_categories">Counted as essential: %1$s</string>
+    <!--
+      The essentials figure is the NEED total from §8.3's fold, not a list of categories, so the
+      engine's evidence field carries the nature. Rendering the raw token said "Counted as
+      essential: NEED" on the device — a domain word the user has never seen. This is what it
+      says instead; a real category name, when one arrives, needs no mapping.
+    -->
+    <string name="emf_essential_nature_need">everything you have categorised as a need</string>
+    <string name="emf_evidence_liquid">Counted as spendable today: %1$s</string>
+    <string name="emf_evidence_liquid_none">no savings or cash accounts yet</string>
+
+    <!--
+      The honest footnote for the deferral ADR-0034 records. A user with a fixed deposit will
+      otherwise wonder where it went, and telling them is cheaper than a wrong runway.
+    -->
+    <string name="emf_evidence_liquid_note">Only savings and cash count for now. Deposits and investments are not included, so your real cover may be longer than this.</string>
+
+    <!-- P-02: the figure names the rules that shaped it, as the goal card names RULE-HORIZON. -->
+    <string name="emf_rule">Rules RULE-EMF-MULT v1.0, RULE-EMF-COACH v1.0</string>
+
+    <!-- §11.1's tone: the app advises, it does not instruct (P-07). -->
+    <string name="emf_disclaimer">These figures are worked out from what you have recorded — what you spend on essentials and what is in your savings and cash. They are a guide, not advice about a particular product.</string>
+</resources>

@@ -13,6 +13,7 @@ import com.aicfo.data.repository.BudgetRepository
 import com.aicfo.data.repository.CategoryRepository
 import com.aicfo.data.repository.CreditCardRepository
 import com.aicfo.data.repository.DemoModeRepository
+import com.aicfo.data.repository.EmergencyFundRepository
 import com.aicfo.data.repository.GoalRepository
 import com.aicfo.data.repository.InvestmentRepository
 import com.aicfo.data.repository.LoanRepository
@@ -28,6 +29,7 @@ import com.aicfo.data.sms.SmsInboxReader
 import com.aicfo.domain.engines.budget.BudgetEngine
 import com.aicfo.domain.engines.card.CardEngine
 import com.aicfo.domain.engines.classification.ClassificationEngine
+import com.aicfo.domain.engines.emergencyfund.EmergencyFundEngine
 import com.aicfo.domain.engines.goals.GoalEngine
 import com.aicfo.domain.engines.investment.InvestmentEngine
 import com.aicfo.domain.engines.loan.LoanEngine
@@ -310,6 +312,31 @@ object RepositoryModule {
         dispatchers: DispatcherProvider,
         demoMode: DemoModeRepository,
     ): GoalRepository = RepositoryFactory.goals(database, engine, clock, ids, dispatchers, demoMode.activeProfileId)
+
+    /**
+     * The emergency-fund assessment (issue 7.2; §10.1, AI-EMF).
+     * Why:    **built from three repositories rather than from the database**, which is why it
+     *         takes no [CfoDatabase] of its own: the classified ledger, the balances and the
+     *         onboarding envelopes each already have an owner, and every one of those owners is
+     *         already gated on the locked database (SEC-002), so this inherits the gate rather
+     *         than opening a second door to it.
+     * Result: an [EmergencyFundRepository].
+     * Input:  [transactions]; [accounts]; [quickSetup]; [engine]; [clock]; [dispatchers].
+     * Output: [EmergencyFundRepository].
+     * Changelog: 2026-09-02 — Created for issue 7.2.
+     */
+    @Provides
+    @Singleton
+    @Suppress("LongParameterList") // Hilt reads the signature; each argument is one binding.
+    fun provideEmergencyFundRepository(
+        transactions: TransactionRepository,
+        accounts: AccountRepository,
+        quickSetup: QuickSetupRepository,
+        engine: EmergencyFundEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+    ): EmergencyFundRepository =
+        RepositoryFactory.emergencyFund(transactions, accounts, quickSetup, engine, clock, dispatchers)
 
     /**
      * The export/import archive store (issue 5.4; §5.10, §34, P-01).

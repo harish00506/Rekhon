@@ -8,6 +8,7 @@
         without parsing JSON.
   Changelog:
     2026-07-17 — Created from SRS v1.7 §29 to accompany rules-kb.json.
+    2026-09-02 — Added the §29.5 rows RULE-EMF-MULT and RULE-EMF-COACH for issue 7.2 (AI-EMF).
 -->
 
 # Financial Rulebook & Heuristics Knowledge Base (RULE-KB)
@@ -79,6 +80,8 @@ evaluate: RuleEngine.evaluate(ruleId, FeatureSnapshot)
 | RULE-TERM-10X | Term cover ≈ 10–15× annual income if dependents | FHS protection pillar |
 | RULE-HEALTH-COVER | Health cover ≥ ₹5–10L per family (metro 10L) | FHS protection pillar |
 | RULE-RUNWAY-M | Emergency runway ≥ personal multiplier M (§10) | Emergency coach, AI-MKT gate |
+| RULE-EMF-MULT | M = 6 base months, +1 if income cv is 0.10–0.30 and +3 above it, then clamped by RULE-RUNWAY-M. Essentials are the median NEED spend over 6 months, needing 3 months observed | AI-EMF |
+| RULE-EMF-COACH | Runway under 1 month is urgent; over the target plus 2 months is surplus. The band between is RULE-EMERG-FIRST's 3 months | AI-EMF |
 
 ## Governance (binding)
 

@@ -53,7 +53,7 @@ engines:
     module: ":domain:engines:emergencyfund"
     version: "1.0"
     contract: "essentials + income volatility -> {target, runwayMonths, multiplier M}"
-    reads: [../rules/rules-kb.json]      # RULE-RUNWAY-M
+    reads: [../rules/rules-kb.json]      # RULE-EMF-MULT, RULE-EMF-COACH, RULE-RUNWAY-M (clamp)
     srs: "§10"
 
   - id: AI-INV

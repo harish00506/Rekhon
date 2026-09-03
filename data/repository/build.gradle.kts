@@ -76,6 +76,7 @@ dependencies {
     // Issue 7.1: GoalProjection is on GoalRepository's public surface, so `api` for the same reason
     // every other engine here is — a ViewModel has to be able to name what it renders.
     api(project(":domain:engines:goals"))
+    api(project(":domain:engines:emergencyfund"))
 
     // withTransaction — the atomicity guarantee applySeeds is built on (issue 2.3).
     // api, not implementation: MarketDataApi is a parameter of RepositoryFactory.marketPrice, so

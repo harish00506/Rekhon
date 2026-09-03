@@ -69,6 +69,7 @@ include(":domain:engines:card")        // §5.7 FR-ACC-002 — a card's billing 
 include(":domain:engines:loan")        // §5.8 FR-ACC-003 — a loan's EMI and its principal/interest split
 include(":domain:engines:investment") // §11 AI-INV — a holding's value, gain and money-weighted return
 include(":domain:engines:goals")      // §15 AI-GOAL — target + date -> required monthly, ETA, horizon
+include(":domain:engines:emergencyfund") // §10.1 AI-EMF — essentials × multiplier M -> target, runway, coach
 include(":domain:usecase")
 
 // :data:*                  the ONLY DAO/network touchers (ARC-005)
@@ -85,6 +86,7 @@ include(":feature:budgets")     // FR-BUD-001/002/003 — per-category budgets a
 include(":feature:categories")  // FR-SET-001 — the category taxonomy editor (issue 4.1)
 include(":feature:dashboard")
 include(":feature:goals")        // §15 AI-GOAL — targets, their required monthly, and the horizon
+include(":feature:emergencyfund") // §10.1 AI-EMF — the runway, the target, and the evidence behind both
 include(":feature:settings")     // FR-SET-001 — income, consents and the app lock, after onboarding
 include(":feature:onboarding")
 include(":feature:transactions")
