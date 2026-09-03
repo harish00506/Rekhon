@@ -1083,6 +1083,32 @@ internal object Migrations {
         )
     }
 
+    /**
+     * 20 → 21 — `goal.sort_order`, the waterfall order the user drags (issue 7.3; §15, FR-GOAL-005).
+     *
+     * Why:  the contribution waterfall pours a limited surplus into goals in order, and §15 shows
+     *       that order as "a draggable plan". Which goal comes first is a *preference* — nothing in
+     *       the data implies it — so it has to be stored. `ADD COLUMN` with a default, never a
+     *       rebuild: DB-003 forbids destructive migrations, and nothing about the existing columns
+     *       changes.
+     * What: one integer column, defaulted to zero.
+     * Result: every existing goal gets `0` and the queries tie-break on `target_date_iso, name`, so
+     *         an upgraded profile's list is **byte-for-byte the order it was before the upgrade**
+     *         until the user drags something. A migration that silently reshuffled the user's goals
+     *         would be a data change wearing a schema change's clothes.
+     * Input:  [SupportSQLiteDatabase] mid-upgrade. Output: none (executes DDL).
+     *
+     * No index on `sort_order`. It is the leading term of the list's `ORDER BY`, but a profile holds
+     * a handful of goals and the existing `profile_id, deleted_at_utc_millis` index already covers
+     * the filter — the same trade [MIGRATION_19_20] made for `target_date_iso`, for the same reason.
+     */
+    val MIGRATION_20_21 =
+        object : Migration(VERSION_20, VERSION_21) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `goal` ADD COLUMN `sort_order` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
     /** Every migration, in order, for `CfoDatabaseFactory` to register. */
     val ALL: Array<Migration> =
         arrayOf(
@@ -1105,6 +1131,7 @@ internal object Migrations {
             MIGRATION_17_18,
             MIGRATION_18_19,
             MIGRATION_19_20,
+            MIGRATION_20_21,
         )
 
     /** Named so the version pair reads as a schema version rather than an unexplained literal. */
@@ -1163,4 +1190,7 @@ internal object Migrations {
 
     /** The version issue 7.1 introduced, adding `goal`. */
     private const val VERSION_20 = 20
+
+    /** The version issue 7.3 introduces — `goal.sort_order`, the waterfall order (FR-GOAL-005). */
+    private const val VERSION_21 = 21
 }

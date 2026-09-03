@@ -1328,6 +1328,73 @@ class MigrationRoundTripTest {
         )
     }
 
+    /**
+     * 20 -> 21: `goal.sort_order` arrives, and the goals already there do not move (issue 7.3; §15).
+     *
+     * The interesting risk in this one is **not** the DDL — `ADD COLUMN` with a default is about as
+     * safe as SQLite gets. It is that the migration changes what the user sees. `sort_order` is the
+     * leading term of the list's `ORDER BY`, so if the default were anything but a single shared
+     * value, upgrading would silently reshuffle a list the user had arranged by target date. Two
+     * pre-existing goals are inserted **in the opposite order to their target dates**, and the
+     * assertion is that after the migration they come back sorted by date, exactly as at version 20.
+     *
+     * The amounts are checked byte for byte for the reason every case here checks them: a migration
+     * that added a column while disturbing a rupee would be worse than no migration at all (DB-003).
+     */
+    @Test
+    fun migrate20To21_addsSortOrderAndLeavesTheExistingOrderAlone() {
+        helper.createDatabase(TEST_DB, 20).use { db ->
+            db.execSQL(
+                "INSERT INTO goal (id, profile_id, name, target_minor, target_date_iso, " +
+                    "saved_minor, planned_monthly_minor, created_at_utc_millis, " +
+                    "updated_at_utc_millis) " +
+                    "VALUES ('g2','p1','New laptop',15000000,'2027-06-30',2500000,500000," +
+                    "1767312000000,1767312000000)",
+            )
+            db.execSQL(
+                "INSERT INTO goal (id, profile_id, name, target_minor, target_date_iso, " +
+                    "saved_minor, planned_monthly_minor, created_at_utc_millis, " +
+                    "updated_at_utc_millis) " +
+                    "VALUES ('g1','p1','Kerala trip',50000000,'2026-12-31',10000000,1500000," +
+                    "1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 21, true, Migrations.MIGRATION_20_21)
+
+        migrated.query(
+            "SELECT id, sort_order, target_minor, saved_minor FROM goal " +
+                "WHERE profile_id = 'p1' AND deleted_at_utc_millis IS NULL " +
+                "ORDER BY sort_order, target_date_iso, name",
+        ).use { cursor ->
+            assertTrue("the pre-migration goals must still be there", cursor.moveToFirst())
+            assertEquals(
+                "the sooner target still leads — the upgrade must not reorder the user's list",
+                "g1",
+                cursor.getString(0),
+            )
+            assertEquals("an un-dragged goal sorts at zero", 0, cursor.getInt(1))
+            assertEquals("MNY-001: the target survives byte for byte", 50000000L, cursor.getLong(2))
+            assertEquals(10000000L, cursor.getLong(3))
+            assertTrue("both goals must survive", cursor.moveToNext())
+            assertEquals("New laptop", "g2", cursor.getString(0))
+            assertEquals("and it is un-dragged too", 0, cursor.getInt(1))
+        }
+
+        migrated.execSQL("UPDATE goal SET sort_order = 1 WHERE id = 'g1'")
+        migrated.query(
+            "SELECT id FROM goal WHERE profile_id = 'p1' ORDER BY sort_order, target_date_iso, name",
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(
+                "once dragged, the user's order wins over the target date — that is the column's " +
+                    "whole job (FR-GOAL-005)",
+                "g2",
+                cursor.getString(0),
+            )
+        }
+    }
+
     private companion object {
         const val TEST_DB = "migration-test.db"
     }

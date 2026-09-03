@@ -3353,6 +3353,7 @@ interface InvestmentLotDao {
  * Result: every query is profile-scoped and excludes soft-deleted rows, so no caller can forget
  *         either.
  * Changelog: 2026-08-30 — Created for issue 7.1.
+ *   2026-09-03 — Issue 7.3: both list queries lead on `sort_order`, and [setSortOrder] writes it.
  */
 @Dao
 interface GoalDao {
@@ -3361,25 +3362,50 @@ interface GoalDao {
     suspend fun upsert(goal: GoalEntity)
 
     /**
-     * Input:  [profileId]. Output: a [Flow] of this profile's live goals, soonest target first.
-     * Result: ordered by date rather than by name, because a goals list is a queue — the thing
-     *         needing money first is the thing worth seeing first.
+     * Input:  [profileId]. Output: a [Flow] of this profile's live goals, in waterfall order.
+     * Result: ordered by the user's own priority first (issue 7.3), then by date rather than by
+     *         name, because a goals list is a queue — the thing needing money first is the thing
+     *         worth seeing first, and that is the fallback until the user says otherwise.
      */
     @Query(
         "SELECT * FROM goal WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
-            "ORDER BY target_date_iso, name",
+            "ORDER BY sort_order, target_date_iso, name",
     )
     fun observeForProfile(profileId: String): Flow<List<GoalEntity>>
 
     /**
      * Input:  [profileId]. Output: this profile's live goals, once.
-     * Result: the non-Flow read the export archive and one-shot engine calls need.
+     * Result: the non-Flow read the export archive and one-shot engine calls need, in the same
+     *         order as [observeForProfile] — the two must not disagree, or an export would restore
+     *         a different waterfall from the one the user arranged.
      */
     @Query(
         "SELECT * FROM goal WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
-            "ORDER BY target_date_iso, name",
+            "ORDER BY sort_order, target_date_iso, name",
     )
     suspend fun forProfile(profileId: String): List<GoalEntity>
+
+    /**
+     * Moves one goal to a position in the waterfall (issue 7.3; §15).
+     *
+     * Why:    a targeted `UPDATE` rather than an upsert of the whole row, because the caller is
+     *         reordering a list it read a moment ago and an upsert would write back every other
+     *         column too — silently reviving whatever the user had edited in between.
+     * What:   sets `sort_order` and stamps `updated_at_utc_millis`.
+     * Result: rows affected — zero when the id is absent or already soft-deleted, which is how the
+     *         repository notices a goal deleted on another screen mid-drag.
+     * Input:  [id]; [sortOrder] — the goal's position, zero-based; [updatedAtUtcMillis] — from the
+     *   injected `Clock` (TIM-001). Output: [Int].
+     */
+    @Query(
+        "UPDATE goal SET sort_order = :sortOrder, updated_at_utc_millis = :updatedAtUtcMillis " +
+            "WHERE id = :id AND deleted_at_utc_millis IS NULL",
+    )
+    suspend fun setSortOrder(
+        id: String,
+        sortOrder: Int,
+        updatedAtUtcMillis: Long,
+    ): Int
 
     /** Input: [id]. Output: the goal, or null when it is absent or soft-deleted. */
     @Query("SELECT * FROM goal WHERE id = :id AND deleted_at_utc_millis IS NULL")
