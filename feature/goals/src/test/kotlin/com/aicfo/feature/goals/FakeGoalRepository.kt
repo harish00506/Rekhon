@@ -48,6 +48,9 @@ internal class FakeGoalRepository(
     /** Every draft written, in order, so a test can assert what actually reached the repository. */
     val saved: List<GoalDraft> get() = stored.value.map { it.second }
 
+    /** Every reorder asked for, so a test can assert the order the ViewModel computed (issue 7.3). */
+    val reorders: MutableList<List<String>> = mutableListOf()
+
     override fun observeGoals(): Flow<List<GoalProjection>> = stored.map(::project)
 
     override suspend fun requiredMonthlyTotal(): Result<Money, AppError> =
@@ -65,6 +68,24 @@ internal class FakeGoalRepository(
 
     override suspend fun delete(id: String): Result<Unit, AppError> {
         stored.value = stored.value.filterNot { it.first == id }
+        return Ok(Unit)
+    }
+
+    /**
+     * Reorders the stored goals (issue 7.3).
+     *
+     * Why:    the fake keeps insertion order and `observeGoals` reads it back, which is exactly what
+     *         `sort_order` does in the real DAO — so applying the order here rather than recording
+     *         the call means a test asserts what the *screen* would show, not what the ViewModel
+     *         said. Ids the fake does not hold are skipped, matching the repository's own promise
+     *         about a goal deleted mid-drag.
+     * Result: `Ok(Unit)`. Input: [goalIdsInOrder]. Output: the result.
+     */
+    override suspend fun reorder(goalIdsInOrder: List<String>): Result<Unit, AppError> {
+        reorders += goalIdsInOrder
+        val byId = stored.value.associateBy { it.first }
+        val moved = goalIdsInOrder.mapNotNull(byId::get)
+        stored.value = moved + stored.value.filterNot { it.first in goalIdsInOrder }
         return Ok(Unit)
     }
 

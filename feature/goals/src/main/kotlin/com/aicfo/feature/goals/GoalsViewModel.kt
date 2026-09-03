@@ -8,6 +8,7 @@ import com.aicfo.core.model.Money
 import com.aicfo.core.model.MoneyFormatter
 import com.aicfo.data.repository.GoalDraft
 import com.aicfo.data.repository.GoalRepository
+import com.aicfo.data.repository.GoalWaterfallRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,21 +25,38 @@ import javax.inject.Inject
  * Why:  the one place text becomes money and a write becomes state. Everything numeric arrives
  *       already computed by `GoalEngine` through `GoalRepository` (P-03) — this class does no
  *       arithmetic, only parsing.
- * What: observes the projected goals, opens and closes the editor, and saves or deletes.
+ * What: observes the projected goals and the plan across them, opens and closes the editor, saves,
+ *       deletes, and reorders the waterfall.
  * Result: one immutable [GoalsUiState] as a `StateFlow`.
  * Changelog: 2026-08-30 — Created for issue 7.1.
+ *            2026-09-03 — Issue 7.3: the waterfall, and the three reorder events.
+ *
+ * **Eleven functions is detekt's ceiling, and the shape is deliberate.** Nine of them are private
+ * and none is longer than a few lines: `onEvent` is one `when` that delegates, and every branch it
+ * delegates to is named after what it does. Collapsing them back into `onEvent` would trade eleven
+ * short readable functions for one long unreadable one and satisfy a different detekt rule instead.
+ * If a twelfth is wanted, the editor is the seam — it is a screen of its own wearing a nullable
+ * field.
+ *
+ * **Two flows rather than one combined flow**, because they fail independently. The goal list is a
+ * plain table read; the plan needs six months of ledger, the emergency fund and the onboarding
+ * envelopes. Combining them would let a problem resolving the surplus blank a list that is perfectly
+ * readable — and the list is the half the user needs in order to fix anything.
  */
 @HiltViewModel
+@Suppress("TooManyFunctions") // Eleven, each one private and four lines: see the note above.
 class GoalsViewModel
     @Inject
     constructor(
         private val repository: GoalRepository,
+        private val waterfallRepository: GoalWaterfallRepository,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(GoalsUiState())
         val uiState: StateFlow<GoalsUiState> = _uiState.asStateFlow()
 
         init {
             observeGoals()
+            observeWaterfall()
         }
 
         /**
@@ -55,6 +73,9 @@ class GoalsViewModel
                 GoalsEvent.SaveEditor -> save()
                 is GoalsEvent.DeleteGoal -> delete(event.goalId)
                 GoalsEvent.DismissError -> _uiState.update { it.copy(errorCode = null) }
+                is GoalsEvent.MoveUp -> move(event.goalId, -1)
+                is GoalsEvent.MoveDown -> move(event.goalId, 1)
+                is GoalsEvent.MoveGoal -> reorder(event.fromIndex, event.toIndex)
                 else -> editField(event)
             }
         }
@@ -90,6 +111,62 @@ class GoalsViewModel
                 .onEach { goals -> _uiState.update { it.copy(goals = goals, isLoading = false) } }
                 .catch { _uiState.update { it.copy(isLoading = false, errorCode = STORAGE_ERROR) } }
                 .launchIn(viewModelScope)
+        }
+
+        /**
+         * Subscribes to the contribution plan.
+         * Why:    separate from [observeGoals] so a failure here cannot blank the list — see the
+         *         class doc. `isLoading` is **not** touched: the list owns that flag, and letting
+         *         the slower flow clear it would show an empty list as "no goals yet".
+         * Result: the plan, re-emitted on every change to the goals, the ledger or the buffer.
+         * Input/Output: none.
+         */
+        private fun observeWaterfall() {
+            waterfallRepository.observeWaterfall()
+                .onEach { plan -> _uiState.update { it.copy(waterfall = plan) } }
+                .catch { _uiState.update { it.copy(errorCode = STORAGE_ERROR) } }
+                .launchIn(viewModelScope)
+        }
+
+        /**
+         * Moves one goal by one place (issue 7.3; FR-GOAL-005).
+         * Why:    the accessible half of the drag, and the half a Compose test can drive. Computing
+         *         the target index here rather than in the composable keeps the bounds check in one
+         *         place — a row that offers "move up" on the first goal is a UI bug, but a *silent*
+         *         out-of-range write would be a data one.
+         * Result: nothing happens when the goal is absent or already at the end.
+         * Input:  [goalId]; [delta] — −1 for up, +1 for down. Output: none.
+         */
+        private fun move(
+            goalId: String,
+            delta: Int,
+        ) {
+            val from = _uiState.value.goals.indexOfFirst { it.goalId == goalId }
+            if (from < 0) return
+            reorder(from, from + delta)
+        }
+
+        /**
+         * Writes a new waterfall order.
+         * Why:    the whole list is sent, not the moved pair. `sort_order` is positional, so a
+         *         partial write would leave the goals it did not name sharing a rank with the ones
+         *         it did, and the tie-break would decide the plan instead of the user.
+         * Result: the repository re-emits and the plan recomputes. **Out-of-range indices are
+         *         ignored**, which is what makes a drag released off the end of the list harmless.
+         * Input:  [from]; [to]. Output: none.
+         */
+        private fun reorder(
+            from: Int,
+            to: Int,
+        ) {
+            val ids = _uiState.value.goals.map { it.goalId }
+            if (from !in ids.indices || to !in ids.indices || from == to) return
+            val reordered = ids.toMutableList().apply { add(to, removeAt(from)) }
+            viewModelScope.launch {
+                if (repository.reorder(reordered) is Err) {
+                    _uiState.update { it.copy(errorCode = STORAGE_ERROR) }
+                }
+            }
         }
 
         /**

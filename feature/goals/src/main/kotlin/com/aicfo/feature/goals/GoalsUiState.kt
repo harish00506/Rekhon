@@ -1,7 +1,9 @@
 package com.aicfo.feature.goals
 
 import androidx.compose.runtime.Immutable
+import com.aicfo.domain.engines.goals.GoalAllocation
 import com.aicfo.domain.engines.goals.GoalProjection
+import com.aicfo.domain.engines.goals.GoalWaterfall
 
 /**
  * Everything the goals screen draws, as one immutable value (issue 7.1; ARC-004).
@@ -9,12 +11,19 @@ import com.aicfo.domain.engines.goals.GoalProjection
  * Why:  one state class per screen as a `StateFlow`, events up via a sealed interface — the shape
  *       every screen in this app keeps, so a composable holds nothing and a test can drive any
  *       state directly.
- * What: the projected goals, the editor when it is open, and the two transient flags.
+ * What: the projected goals, the contribution plan across them, the editor when it is open, and the
+ *       two transient flags.
  * Result: what `GoalsScreen` renders.
  * Changelog: 2026-08-30 — Created for issue 7.1.
+ *            2026-09-03 — Issue 7.3 added [waterfall]: the goals stopped being independent.
  *
  * @property goals the goals with their figures, already computed by the engine (P-03). This screen
  *   does no arithmetic of its own.
+ * @property waterfall how one month's surplus divides between them, or **null until the first
+ *   emission**. Two flows feed this state and they arrive separately, so the list can render a beat
+ *   before the plan does — showing the goals with no allocations for that beat is better than
+ *   holding the whole screen back, and far better than drawing a zero allocation that is really a
+ *   missing one.
  * @property editor the open editor, or null when the list is showing.
  * @property isLoading true until the first emission, so an empty list and an unread one are not
  *   drawn the same way.
@@ -24,12 +33,31 @@ import com.aicfo.domain.engines.goals.GoalProjection
 @Immutable
 data class GoalsUiState(
     val goals: List<GoalProjection> = emptyList(),
+    val waterfall: GoalWaterfall? = null,
     val editor: GoalEditorState? = null,
     val isLoading: Boolean = true,
     val errorCode: String? = null,
 ) {
     /** Whether to draw the "nothing here yet" copy rather than an empty list under a heading. */
     val isEmpty: Boolean get() = goals.isEmpty() && !isLoading && errorCode == null
+
+    /**
+     * What the waterfall allocated to one goal, if it has said yet.
+     *
+     * Why:    the list and the plan arrive on separate flows, and for one frame the plan may be a
+     *         step behind a goal the user just added. Matching **by id rather than by index** is
+     *         what stops that frame putting the wrong allocation under the wrong goal — a bug that
+     *         would be invisible in a screenshot and wrong in a way the user would act on.
+     * Result: the line, or null while the plan has not caught up. Input: [goalId]. Output: the line.
+     */
+    fun allocationFor(goalId: String): GoalAllocation? = waterfall?.lines?.firstOrNull { it.goalId == goalId }
+
+    /** Whether a goal can move up — false for the first, so the action is not offered pointlessly. */
+    fun canMoveUp(goalId: String): Boolean = goals.indexOfFirst { it.goalId == goalId } > 0
+
+    /** Whether a goal can move down. False for the last, and for an id that is not in the list. */
+    fun canMoveDown(goalId: String): Boolean =
+        goals.indexOfFirst { it.goalId == goalId }.let { it >= 0 && it < goals.lastIndex }
 }
 
 /**
@@ -103,4 +131,24 @@ sealed interface GoalsEvent {
 
     /** Clear the error banner. */
     data object DismissError : GoalsEvent
+
+    /**
+     * Move a goal one place earlier in the waterfall (issue 7.3; FR-GOAL-005).
+     *
+     * Why:    the accessible half of the drag. A drag gesture is unreachable with TalkBack, so every
+     *         row also carries "Move up" and "Move down" as semantic custom actions — which is what
+     *         a Compose test drives too, rather than simulating a gesture that proves nothing about
+     *         whether anybody could perform it.
+     */
+    data class MoveUp(val goalId: String) : GoalsEvent
+
+    /** Move a goal one place later in the waterfall (issue 7.3; FR-GOAL-005). */
+    data class MoveDown(val goalId: String) : GoalsEvent
+
+    /**
+     * Drop a dragged goal at a new position (issue 7.3; §15's "draggable plan").
+     *
+     * @property fromIndex where the drag started. @property toIndex where it was released.
+     */
+    data class MoveGoal(val fromIndex: Int, val toIndex: Int) : GoalsEvent
 }
