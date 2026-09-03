@@ -14,6 +14,7 @@ import com.aicfo.domain.engines.card.CardEngine
 import com.aicfo.domain.engines.classification.ClassificationEngine
 import com.aicfo.domain.engines.emergencyfund.EmergencyFundEngine
 import com.aicfo.domain.engines.goals.GoalEngine
+import com.aicfo.domain.engines.goals.GoalWaterfallEngine
 import com.aicfo.domain.engines.investment.InvestmentEngine
 import com.aicfo.domain.engines.loan.LoanEngine
 import com.aicfo.domain.engines.nature.NatureEngine
@@ -300,6 +301,39 @@ object RepositoryFactory {
         dispatchers: DispatcherProvider,
     ): EmergencyFundRepository =
         RoomEmergencyFundRepository(transactions, accounts, quickSetup, engine, clock, dispatchers)
+
+    /**
+     * The goal-feasibility and contribution waterfall (issue 7.3; §15.1, FR-GOAL-003/005).
+     * Why:    the second repository here built entirely from other repositories, for
+     *         [emergencyFund]'s reason and one more: the goals are already projected by
+     *         [GoalRepository] and the runway is already resolved by [EmergencyFundRepository], so
+     *         recomputing either here would give the app two answers to one question.
+     * Result: a [GoalWaterfallRepository] over those three and [GoalWaterfallEngine].
+     * Input:  [goals]; [transactions] — the closed-month ledger the surplus median is taken from;
+     *         [emergencyFund] — `RULE-EMERG-FIRST`'s runway and the top-up it claims;
+     *         [quickSetup] — the declared INVEST envelope, the fallback surplus; [engine]; [clock];
+     *         [dispatchers]. **No `activeProfileId`**: every source is already profile-scoped.
+     * Output: [GoalWaterfallRepository].
+     */
+    @Suppress("LongParameterList") // Seven collaborators, each a distinct binding — as [emergencyFund].
+    fun goalWaterfall(
+        goals: GoalRepository,
+        transactions: TransactionRepository,
+        emergencyFund: EmergencyFundRepository,
+        quickSetup: QuickSetupRepository,
+        engine: GoalWaterfallEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+    ): GoalWaterfallRepository =
+        RoomGoalWaterfallRepository(
+            goals = goals,
+            transactions = transactions,
+            emergencyFund = emergencyFund,
+            quickSetup = quickSetup,
+            engine = engine,
+            clock = clock,
+            dispatchers = dispatchers,
+        )
 
     /**
      * Builds the market-price refresher (issue 6.5, FR-INV-004).

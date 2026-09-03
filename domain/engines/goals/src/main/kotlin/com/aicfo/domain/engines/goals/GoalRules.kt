@@ -84,6 +84,23 @@ data class GoalRules(
         val HORIZON = RuleCitation("RULE-HORIZON", "1.0")
 
         /**
+         * §15.1 — the gate `GoalWaterfallEngine` checks before funding any goal (issue 7.3).
+         *
+         * **A citation, deliberately not a mirror.** `RULE-EMERG-FIRST.min_runway_months` is already
+         * mirrored once in this repository, by `QuickSetupRules.emergencyRunwayMonths`, and
+         * ADR-0017's second trigger says a *second* mirror of a shared row is the signal to stop
+         * mirroring and build the runtime rulebook loader instead. So the threshold is not copied
+         * here: it reaches the waterfall as `GoalWaterfallInput.emergencyGateMonths`, resolved by
+         * the repository from the mirror that already exists. What lives here is the row's version,
+         * which is what a stored plan needs to stay reproducible (AI-ARC-006).
+         *
+         * Nothing in this module can drift from the rulebook's number, because nothing in this
+         * module holds it. `RulebookDriftTest` still checks the row is enabled, still names this
+         * engine, and still carries the version cited above. ADR-0035 records the reasoning.
+         */
+        val EMERGENCY_FIRST = RuleCitation("RULE-EMERG-FIRST", "1.0")
+
+        /**
          * The rulebook file these thresholds were copied from, as `_meta.version`.
          *
          * `_meta.version` describes the **file**, not this row, so every typed mirror restates it

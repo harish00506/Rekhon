@@ -195,8 +195,14 @@ abstract class CfoDatabase : RoomDatabase() {
          * (`investment_holding.price_key`, the instrument identifier a market-data proxy resolves,
          * and `price_fetched_at_utc_millis`, when this device last heard a price — distinct from
          * `priced_on_iso_date`, which is when the *market* priced it; §16 EXT-002, FR-ACC-004).
+         * · 20 — issue 7.1 (`goal`, a target amount, a date, what is saved and what the user
+         * intends to contribute; the required monthly, the ETA and the horizon are all derived from
+         * those and deliberately **not** stored, ADR-0033; §15) · 21 — issue 7.3
+         * (`goal.sort_order`, the order the contribution waterfall pours a limited surplus in —
+         * a user preference nothing in the data implies, which is why it is the one part of the
+         * waterfall that is stored rather than computed; §15, FR-GOAL-005).
          */
-        const val VERSION = 20
+        const val VERSION = 21
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"

@@ -4,6 +4,8 @@ import com.aicfo.domain.engines.emergencyfund.EmergencyFundEngine
 import com.aicfo.domain.engines.emergencyfund.EmergencyFundEngineFactory
 import com.aicfo.domain.engines.goals.GoalEngine
 import com.aicfo.domain.engines.goals.GoalEngineFactory
+import com.aicfo.domain.engines.goals.GoalWaterfallEngine
+import com.aicfo.domain.engines.goals.GoalWaterfallEngineFactory
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -26,6 +28,7 @@ import javax.inject.Singleton
  * Changelog: 2026-08-30 — Created for issue 7.1.
  *            2026-09-02 — Issue 7.2: the emergency-fund engine, which this module's own KDoc had
  *            already named as belonging here.
+ *            2026-09-03 — Issue 7.3: the waterfall, which shares one surplus between the two.
  *
  * **Singleton, safely** — the engine is stateless and deterministic, so one shared instance has
  * nothing to reset between screens and no way for one caller's use to affect another's.
@@ -57,4 +60,17 @@ object GoalEngineModule {
     @Provides
     @Singleton
     fun provideEmergencyFundEngine(): EmergencyFundEngine = EmergencyFundEngineFactory.create()
+
+    /**
+     * Goal feasibility and the contribution waterfall (issue 7.3; §15.1, FR-GOAL-003/005).
+     * Why:    the engine that makes the other two in this module talk to each other — the goals ask
+     *         for a monthly each, the emergency fund claims the top of the surplus, and this decides
+     *         who actually gets what. Stateless and pure like the rest: it reads no clock and holds
+     *         no threshold, so `@Singleton` keeps nothing per caller.
+     * Result: a [GoalWaterfallEngine]. Input: none. Output: the engine.
+     * Changelog: 2026-09-03 — Created for issue 7.3.
+     */
+    @Provides
+    @Singleton
+    fun provideGoalWaterfallEngine(): GoalWaterfallEngine = GoalWaterfallEngineFactory.create()
 }

@@ -1,6 +1,7 @@
 package com.aicfo.feature.goals
 
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -16,6 +17,10 @@ import com.aicfo.domain.engines.goals.GoalEngineFactory
 import com.aicfo.domain.engines.goals.GoalPlanInput
 import com.aicfo.domain.engines.goals.GoalProjection
 import com.aicfo.domain.engines.goals.GoalSpec
+import com.aicfo.domain.engines.goals.GoalWaterfall
+import com.aicfo.domain.engines.goals.GoalWaterfallEngineFactory
+import com.aicfo.domain.engines.goals.GoalWaterfallInput
+import com.aicfo.domain.engines.goals.SurplusBasis
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -168,6 +173,110 @@ class GoalsFlowTest {
         compose.onNodeWithText(string(R.string.goals_disclaimer)).performScrollTo().assertIsDisplayed()
     }
 
+    // --- issue 7.3: the plan, the levers and the draggable order ----------------------------------
+
+    @Test
+    fun `the plan says whether the goals fit, and by how much they do not`() {
+        // The verdict is the point and the gap is what makes it act on. "Infeasible" alone is a
+        // label; "₹5,000 a month more than you have spare" is something a person can do about it.
+        val goals = listOf(behindGoal(), secondGoal())
+        setContent(state(goals = goals, waterfall = waterfall(goals, surplus = Money(22_000_00))))
+
+        compose.onNodeWithText(string(R.string.goals_plan_infeasible, "₹8,000.00"))
+            .performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun `the surplus names where it came from, never a figure out of nowhere`() {
+        // P-02, and §15.1 in particular: the spec asks for a *forecast* this app does not have, so
+        // the card must say it is a median of closed months rather than imply a projection.
+        val goals = listOf(behindGoal())
+        setContent(state(goals = goals, waterfall = waterfall(goals)))
+
+        compose.onNodeWithText(string(R.string.goals_plan_basis_observed, "₹30,000.00"))
+            .performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(string(R.string.goals_plan_rule)).performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun `an under-funded goal is offered all three levers FR-GOAL-003 requires`() {
+        val goals = listOf(behindGoal())
+        setContent(state(goals = goals, waterfall = waterfall(goals, surplus = Money(10_000_00))))
+
+        compose.onNodeWithText(string(R.string.goals_levers_title)).performScrollTo().assertIsDisplayed()
+        // ₹4,00,000 left at ₹10,000 a month is 40 months against the 20 it has: 20 more.
+        compose.onNodeWithText(plural(R.plurals.goals_lever_extend, 20, 20)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(string(R.string.goals_lever_reduce, "₹3,00,000.00"))
+            .performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(string(R.string.goals_lever_increase, "₹10,000.00"))
+            .performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun `a goal the plan covers is not offered levers it does not need`() {
+        val goals = listOf(behindGoal())
+        setContent(state(goals = goals, waterfall = waterfall(goals, surplus = Money(50_000_00))))
+
+        compose.onNodeWithText(string(R.string.goals_allocated_full)).performScrollTo().assertIsDisplayed()
+        compose.onAllNodesWithText(string(R.string.goals_levers_title)).assertCountEquals(0)
+    }
+
+    @Test
+    fun `a goal held by the emergency fund says so, rather than showing a bare zero`() {
+        // ₹0.00 because the buffer comes first and ₹0.00 because the money ran out are the same
+        // figure and opposite advice.
+        val goals = listOf(behindGoal())
+        setContent(
+            state(
+                goals = goals,
+                waterfall = waterfall(goals, runwayBps = 10_000, topUp = Money(5_000_00)),
+            ),
+        )
+
+        compose.onNodeWithText(string(R.string.goals_blocked)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(string(R.string.goals_plan_emergency_first, "₹5,000.00"))
+            .performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun `a plan with no history reads as unknown rather than as bad news`() {
+        val goals = listOf(behindGoal())
+        setContent(state(goals = goals, waterfall = waterfall(goals, surplus = null)))
+
+        compose.onNodeWithText(string(R.string.goals_plan_unknown)).performScrollTo().assertIsDisplayed()
+        compose.onAllNodesWithText(string(R.string.goals_plan_feasible)).assertCountEquals(0)
+    }
+
+    @Test
+    fun `every goal can be reordered without a drag, because a drag is not accessible`() {
+        // The Definition of Done includes an accessibility scan, and a long-press drag is unusable
+        // with TalkBack or a switch device. Driving the semantic action is what proves the
+        // accessible path exists — a gesture test would prove only that a mouse can do it.
+        val events = mutableListOf<GoalsEvent>()
+        val goals = listOf(behindGoal(), secondGoal())
+        setContent(state(goals = goals, waterfall = waterfall(goals)), onEvent = events::add)
+
+        val moveUp =
+            compose.onNodeWithText("New laptop").performScrollTo()
+                .fetchSemanticsNode().config[SemanticsActions.CustomActions]
+                .first { it.label == string(R.string.goals_move_up) }
+        compose.runOnUiThread { moveUp.action() }
+        compose.waitForIdle()
+
+        assertEquals(GoalsEvent.MoveUp("g2"), events.single())
+    }
+
+    @Test
+    fun `the first goal is not offered a move up it cannot make`() {
+        val goals = listOf(behindGoal(), secondGoal())
+        setContent(state(goals = goals, waterfall = waterfall(goals)))
+
+        val actions =
+            compose.onNodeWithText("Kerala trip").performScrollTo()
+                .fetchSemanticsNode().config[SemanticsActions.CustomActions]
+        assertEquals(listOf(string(R.string.goals_move_down)), actions.map { it.label })
+    }
+
     // --- helpers ---------------------------------------------------------------------------------
 
     /** Renders the screen's body with the given state. */
@@ -184,7 +293,33 @@ class GoalsFlowTest {
         goals: List<GoalProjection> = emptyList(),
         editor: GoalEditorState? = null,
         isLoading: Boolean = false,
-    ) = GoalsUiState(goals = goals, editor = editor, isLoading = isLoading)
+        waterfall: GoalWaterfall? = null,
+    ) = GoalsUiState(goals = goals, editor = editor, isLoading = isLoading, waterfall = waterfall)
+
+    /**
+     * Runs the real waterfall over these projections (issue 7.3).
+     * Why:    a hand-written [GoalWaterfall] would let the screen render a split the engine would
+     *         never produce — the trap `FakeGoalRepository`'s own doc records.
+     * Result: the plan. Input: [goals]; [surplus]; [runwayBps]; [topUp]. Output: [GoalWaterfall].
+     */
+    private fun waterfall(
+        goals: List<GoalProjection>,
+        surplus: Money? = Money(30_000_00),
+        runwayBps: Int? = 90_000,
+        topUp: Money = Money.ZERO,
+    ): GoalWaterfall =
+        (
+            GoalWaterfallEngineFactory.create().allocate(
+                GoalWaterfallInput(
+                    goals = goals,
+                    monthlySurplus = surplus,
+                    surplusBasis = if (surplus == null) SurplusBasis.NONE else SurplusBasis.OBSERVED_MEDIAN,
+                    emergencyTopUpMonthly = topUp,
+                    emergencyRunwayMonthsBps = runwayBps,
+                    today = TODAY,
+                ),
+            ) as Ok
+        ).value
 
     /**
      * Result: a string from this module's resources, resolved the way the screen resolves it.
@@ -218,6 +353,25 @@ class GoalsFlowTest {
         )
 
     private fun onTrackGoal() = project(behindSpec().copy(plannedMonthly = Money(20_000_00)))
+
+    /** A second, smaller goal, so the surplus has two claims to divide between (issue 7.3). */
+    private fun secondGoal() =
+        project(
+            GoalSpec(
+                id = "g2",
+                name = "New laptop",
+                target = Money(2_00_000_00),
+                targetDate = LocalDate.parse("2028-04-30"),
+                saved = Money.ZERO,
+            ),
+        )
+
+    /** Result: a plural string, resolved the way `pluralStringResource` resolves it in the card. */
+    private fun plural(
+        id: Int,
+        count: Int,
+        vararg args: Any,
+    ): String = compose.activity.resources.getQuantityString(id, count, *args)
 
     private fun noPlanGoal() = project(behindSpec().copy(plannedMonthly = Money.ZERO))
 

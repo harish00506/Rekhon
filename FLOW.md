@@ -12,6 +12,9 @@
     2026-08-17 — Issue 5.5 added §4.5, Shape D: the widget. The first surface that renders outside
         the app's process and must work while the app is locked, which is why it earned a section
         rather than being a fourth screen.
+    2026-09-03 — Issue 7.3 added §2.6, the goal waterfall. Still Shape A — a screen — but the first
+        read assembled from four repositories, and the first write driven by a gesture, so it is
+        traced beside §2.5 rather than folded into it.
 -->
 
 # Flow — how execution travels
@@ -661,6 +664,71 @@ SafeToSpendRepository.observeSafeToSpend()
                                        and fails four tests, two older than issue 7.1.
    }
 ```
+
+### 2.6 · Whether the goals fit, and who gets the surplus first (issue 7.3)
+
+§2.5 answers each goal as though it were the only claim on the month. This is the path that shares
+one surplus between all of them — and it is the first read in the app assembled from **four**
+repositories rather than from a table.
+
+```
+GoalsScreen → GoalsViewModel.uiState                       :feature:goals
+├─ GoalRepository.observeGoals()          §2.5, unchanged — the list half of the state
+└─ GoalWaterfallRepository.observeWaterfall()              :data:repository (ARC-005)
+    │   TWO FLOWS INTO ONE STATE, NOT ONE COMBINED FLOW. The list is a plain table read; the
+    │   plan needs six months of ledger, the emergency fund and the onboarding envelopes.
+    │   Combining them would let a surplus problem blank a list that is perfectly readable.
+    └─ combine(
+        ├─ goals.observeGoals()                            → List<GoalProjection>, in sort_order
+        ├─ transactions.observeMonthlyLedger(6)            → closed months only, live month excluded
+        ├─ emergencyFund.observeEmergencyFund()            → §2.4's runway and top-up
+        └─ quickSetup.observeLatestEnvelopes()             → the INVEST envelope, as fallback
+       ) {
+        ├─ clock.today()  READ ONCE PER EMISSION (TIM-001)
+        ├─ surplusFrom(history, envelopes)
+        │   │   §15.1 asks for the P50 FORECAST surplus. :domain:engines:forecast is still
+        │   │   issue 1.1's placeholder — 9.2 was never built — so this is the P50 of what the
+        │   │   closed months actually had spare, and SurplusBasis says so on the result.
+        │   ├─ ≥ 3 closed months → median(income − needs − wants)   OBSERVED_MEDIAN
+        │   │                       └─ `invested` is NOT subtracted: investing IS goal funding
+        │   ├─ else INVEST envelope > 0 →                            DECLARED_ENVELOPE
+        │   └─ else null                                             NONE → feasibility UNKNOWN
+        │                                                            (never zero — 7.2's lesson)
+        ├─ emergencyGateMonths = QuickSetupRules().emergencyRunwayMonths
+        │   └─ the repository's ONE mirror of RULE-EMERG-FIRST. The engine holds the citation,
+        │      not the number — a second mirror is ADR-0017 trigger 2 (ADR-0035).
+        └─ GoalWaterfallEngine.allocate(...)               :domain:engines:goals
+            ├─ gateHolds = runwayBps == null || runwayBps < gateMonths × 10 000
+            │              └─ UNKNOWN HOLDS THE GATE: no evidence of a buffer is not evidence
+            ├─ emergencyAllocated = gateHolds ? min(distributable, topUp) : 0
+            ├─ per goal, IN THE CALLER'S ORDER:
+            │      allocated = gateHolds ? 0 : min(remaining, requiredMonthly)
+            │      └─ strict priority, never pro rata. Money.allocate is a SPLITTER and would
+            │         be the wrong tool; min() in a fold cannot create or lose a paise, so no
+            │         rounding rule appears anywhere in the engine.
+            ├─ levers per under-funded goal, at the ALLOCATED rate (FR-GOAL-003)
+            └─ init { require(emergencyAllocated + Σ allocated + unallocated == max(surplus,0)) }
+                └─ the invariant lives on the TYPE, so 7.5's AI-FOO is held to it too
+   }
+```
+
+**The order is the only stored part of the plan**, because it is the only part the user decides:
+`goal.sort_order` at schema 21, defaulted to zero so an upgraded profile's list does not move.
+
+```
+GoalsEvent.MoveUp / MoveDown / MoveGoal      ← drag, or the semantic custom actions TalkBack uses
+└─ GoalsViewModel.reorder(from, to)
+    │   out-of-range indices ignored here, so a drag released off the end is harmless
+    └─ GoalRepository.reorder(everyGoalIdInOrder)
+        └─ withTransaction { goalDao.setSortOrder(id, index, now) }   ONE clock stamp for the lot
+            └─ sort_order is POSITIONAL, so the WHOLE list is written, never the moved pair —
+               a partial write leaves the rest sharing a rank and the tie-break decides the plan
+```
+
+**`RULE-EMERG-FIRST` finally has a reader.** It has been in the rulebook since day one, `severity:
+fail`, with `AI-GOAL` in its `consumed_by` and nothing consuming it. It is cited on **every** plan,
+not only when it fires — a gate is evaluated every time and both outcomes decide whether goals are
+funded, which is the one place this departs from 7.2's "cite only what fired" (ADR-0035).
 
 ---
 

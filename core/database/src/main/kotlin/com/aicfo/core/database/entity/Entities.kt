@@ -1418,6 +1418,8 @@ data class InvestmentLotEntity(
  *         let a figure survive a change to the goal that produced it (the argument
  *         [InvestmentHoldingEntity] makes for not storing a holding's total).
  * Changelog: 2026-08-30 — Created at version 20 for issue 7.1.
+ *   2026-09-03 — Issue 7.3 added [sortOrder] at version 21: the waterfall needs an order the user
+ *   owns, because "which goal gets the surplus first" is a preference, not something the data knows.
  *
  * **`saved_minor` is hand-entered, and that is temporary by design.** Issue 7.4 (Linked
  * contributions) derives it from real movements; until then it is a number the user maintains, the
@@ -1467,6 +1469,21 @@ data class GoalEntity(
      */
     @ColumnInfo(name = "planned_monthly_minor")
     val plannedMonthlyMinor: Long = 0L,
+    /**
+     * Where the user dragged this goal in the contribution waterfall (issue 7.3; §15).
+     *
+     * The order the surplus is poured in, and therefore the only input to the waterfall the user
+     * sets directly — which is why it is stored rather than derived. Nothing else about a goal says
+     * "this one matters more to me than that one".
+     *
+     * **Zero means "never dragged", and it is a default rather than a null on purpose.** Every row
+     * that existed before version 21 gets zero, and the queries below tie-break on
+     * `target_date_iso, name` — so an upgraded profile sees the list in exactly the order it saw
+     * yesterday, and stays there until the user moves something. A nullable column would say the
+     * same thing while forcing every read to decide what null meant.
+     */
+    @ColumnInfo(name = "sort_order")
+    val sortOrder: Int = 0,
     @ColumnInfo(name = "created_at_utc_millis")
     val createdAtUtcMillis: Long,
     @ColumnInfo(name = "updated_at_utc_millis")

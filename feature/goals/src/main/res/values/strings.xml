@@ -9,6 +9,7 @@
   What: the goals list, its editor, and the plain-language reason beside every figure (P-02).
   Result: one place to translate, and one place to argue about tone.
   Changelog: 2026-08-30 — Created for issue 7.1.
+             2026-09-03 — Issue 7.3: the waterfall card, the three levers, and the reorder actions.
 -->
 <resources>
     <string name="goals_title">Your goals</string>
@@ -19,7 +20,10 @@
 
     <!-- The figure this whole feature exists to produce. -->
     <string name="goals_required_monthly">%1$s a month</string>
-    <string name="goals_shortfall">%1$s a month short of that</string>
+    <!-- Names WHICH comparison it is. Since 7.3 a card can carry two: this one is against the
+         monthly the user typed, and goals_allocated is against what the surplus can spare.
+         "short of that" for both read as a contradiction on the device — see the 7.3 session. -->
+    <string name="goals_shortfall">%1$s a month more than your own monthly plan</string>
     <string name="goals_saved_of_target">%1$s of %2$s saved</string>
     <string name="goals_target_date">Needed by %1$s</string>
     <string name="goals_eta">At %1$s a month you get there %2$s</string>
@@ -54,6 +58,43 @@
     <string name="goals_editor_cancel">Cancel</string>
     <string name="goals_editor_delete">Delete</string>
     <string name="goals_editor_error">Check the name, the amounts and the date.</string>
+
+    <!-- ==== Issue 7.3: the contribution waterfall (§15.1, FR-GOAL-003/005) ==== -->
+
+    <string name="goals_plan_title">This month\'s plan</string>
+
+    <!-- The verdict. §15.1: Σ requiredMonthly ≤ surplus. -->
+    <string name="goals_plan_feasible">Your goals fit inside what you have spare.</string>
+    <string name="goals_plan_infeasible">Your goals need %1$s a month more than you have spare.</string>
+    <string name="goals_plan_unknown">Not enough history yet to say whether your goals fit. Keep recording for a few months and this fills in.</string>
+
+    <!-- Where the surplus figure came from. P-02: never a number with no source. -->
+    <string name="goals_plan_basis_observed">%1$s spare a month — the middle of your last 6 closed months</string>
+    <string name="goals_plan_basis_declared">%1$s spare a month — what you said you\'d save at setup</string>
+
+    <!-- RULE-EMERG-FIRST. severity: fail — this is a gate, not a nudge. -->
+    <string name="goals_plan_emergency_first">%1$s goes to your emergency fund first. Until it covers 3 months, your other goals wait — that buffer is what stops the next surprise becoming card debt.</string>
+    <string name="goals_plan_leftover">%1$s a month is still unspoken for.</string>
+    <string name="goals_plan_rule">Rule RULE-EMERG-FIRST v1.0</string>
+
+    <!-- Per goal: what the plan can actually give it. -->
+    <string name="goals_allocated">%1$s a month from this plan</string>
+    <string name="goals_allocated_full">Fully covered by this plan</string>
+    <string name="goals_blocked">Waiting on your emergency fund</string>
+
+    <!-- FR-GOAL-003's three levers. A gap with no way out is a complaint, not advice. -->
+    <string name="goals_levers_title">Three ways to close the gap</string>
+    <plurals name="goals_lever_extend">
+        <item quantity="one">Push the date out by %1$d month</item>
+        <item quantity="other">Push the date out by %1$d months</item>
+    </plurals>
+    <string name="goals_lever_reduce">Aim at %1$s instead</string>
+    <string name="goals_lever_increase">Find %1$s more a month</string>
+
+    <!-- The draggable plan (§15). Drag is unusable with TalkBack, so these are real actions. -->
+    <string name="goals_reorder_hint">Press and hold to drag, or use the actions to move this goal.</string>
+    <string name="goals_move_up">Move up</string>
+    <string name="goals_move_down">Move down</string>
 
     <!-- §11.1's tone: the app advises, it does not instruct (P-07). -->
     <string name="goals_disclaimer">These figures are worked out from what you entered — the target, the date and what you have saved. They are a plan, not advice about a particular investment.</string>
