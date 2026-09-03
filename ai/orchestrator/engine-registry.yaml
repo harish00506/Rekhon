@@ -106,14 +106,28 @@ engines:
     layer: L4/L5
     module: ":domain:engines:goals"
     version: "1.0"
-    # Shipped at issue 7.1. Reconciled against what was built: `requiredMonthly` and `ETA` are here,
-    # `feasibility` is not — ranking goals against a shared surplus needs a number this engine is not
-    # given, and that is issue 7.3 (with RULE-EMERG-FIRST). The only rule consumed today is
-    # RULE-HORIZON, which already named AI-GOAL.funding_buckets before the module existed;
-    # financial-order-of-operations.json stays listed because 7.3/7.5 will read it.
-    contract: "goals -> {requiredMonthly, shortfall, ETA, horizon, status per goal}; feasibility in 7.3"
+    # Shipped at issue 7.1; feasibility added at 7.3 as a second engine in the same module,
+    # `AI-GOAL.waterfall`, because it is only meaningful over this one's output and reuses its types.
+    # Two rules consumed, both of which named AI-GOAL before either engine existed: RULE-HORIZON
+    # (AI-GOAL.funding_buckets) and RULE-EMERG-FIRST (the waterfall's gate). Neither issue minted a
+    # row. financial-order-of-operations.json is still listed for 7.5's AI-FOO and is NOT read yet:
+    # §15's simple waterfall is what 7.3 built, and §36's staged one is a separate engine.
+    contract: "goals -> {requiredMonthly, shortfall, ETA, horizon, status per goal}"
     reads: [../rules/rules-kb.json, ../rules/financial-order-of-operations.json]
     srs: "§15"
+
+  - id: AI-GOAL.waterfall
+    name: Goal Feasibility & Contribution Waterfall
+    layer: L5
+    module: ":domain:engines:goals"
+    version: "1.0"
+    # §15.1 asks for the P50 *forecast* surplus and AI-FCT does not exist — :domain:engines:forecast
+    # is still issue 1.1's placeholder. GoalWaterfallRepository substitutes the P50 of *observed*
+    # surplus (median of income − needs − wants over closed months) and names the substitution on
+    # every result through SurplusBasis. ADR-0035 records what changes when 9.2 lands.
+    contract: "goals + surplus + runway -> {feasibility, gap, per-goal allocation, 3 levers each}"
+    reads: [../rules/rules-kb.json]      # RULE-EMERG-FIRST — the citation; the threshold is an input
+    srs: "§15.1, FR-GOAL-003, FR-GOAL-005"
 
   - id: AI-FOO
     name: Financial Order of Operations (Priority Waterfall)

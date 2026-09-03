@@ -11,6 +11,51 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The goals engine, the emergency-fund engine, the feasibility waterfall, linked contributions and
 > the Financial Order of Operations.
 
+### [0.7.3] — Issue 7.3: Goal feasibility & waterfall  (2026-09-03)
+
+- **Implemented §15.1's feasibility check and priority waterfall** (**§15, §15.1**, **FR-GOAL-003**,
+  **FR-GOAL-005**, **AI-GOAL.waterfall**). Until now `GoalEngine` answered each goal as though it
+  were the only claim on the month — which is the honest answer to "what would this one take" — and
+  **nothing in the app noticed** when three of those honest answers together exceeded everything the
+  user earns. `GoalWaterfallEngine` shares one surplus between them: emergency fund first while
+  `RULE-EMERG-FIRST` holds, then each goal in the user's own order, reporting the gap and
+  FR-GOAL-003's three levers on everything the money did not reach.
+- **§15.1 asks for the P50 *forecast* surplus, and there is no forecast.** `:domain:engines:forecast`
+  contains only the placeholder issue 1.1 scaffolded — **issue 9.2 was never built**. The
+  substitution is the P50 of *observed* surplus: the median of `income − (needs + wants)` across
+  closed months, falling back to the onboarding INVEST envelope and reporting **unknown** when
+  neither exists. `SurplusBasis` names which on every result, so the card reads "the middle of your
+  last 6 closed months" rather than implying a projection (ADR-0035).
+- **Safe-to-Spend is deliberately *not* the surplus source.** `RULE-STS` has
+  `include_goal_contributions: true` and already subtracts `GoalPlan.totalRequiredMonthly`, so it is
+  the surplus *net of* goals; feeding it back would double-count them and make the answer depend on
+  itself. Money already **invested** is likewise not subtracted — investing is goal funding, and
+  netting it out would hide the money the plan allocates.
+- **`RULE-EMERG-FIRST` finally has a reader**, after sitting in the rulebook since day one at
+  `severity: fail`, naming `AI-GOAL` in its `consumed_by`, and being enforced by nothing. It is cited
+  on **every** plan rather than only when it fires: a clamp that does not bind changed nothing, but a
+  gate is evaluated every time and both outcomes decide whether goals are funded at all.
+- **No rulebook row minted**, on ADR-0033's precedent — `_meta.version` stays 1.15.0 and the six
+  typed mirrors are untouched. Sharper: the engine holds the gate's **citation but not its number**.
+  `QuickSetupRules` has mirrored `min_runway_months` since issue 2.3, and ADR-0017's second trigger
+  makes a *second* mirror the moment to build the runtime loader instead — so the threshold arrives
+  as an input, and a drift test asserts `GoalRules`' instance fields never grow while leaving its
+  citations free to.
+- **Schema 21 — `goal.sort_order`**, one integer defaulted to zero, the only part of the plan that is
+  stored because it is the only part the user decides. Both list queries tie-break on
+  `target_date_iso, name`, so an upgraded profile sees exactly the list it saw yesterday until it
+  drags something; the round-trip test inserts two goals against their date order and asserts
+  precisely that.
+- **Shipped the way in**, as 7.1 and 7.2 did: the plan card sits above the goals on
+  `:feature:goals`, each goal gains what the surplus can give it and the three levers when it falls
+  short, and the waterfall is **draggable** (§15). Because a long-press drag is unusable with
+  TalkBack, every card also carries "Move up" / "Move down" as semantic custom actions and merges its
+  descendants so those actions land on the goal they move — and the Compose test drives the actions,
+  not the gesture, so it proves the accessible path rather than proving a mouse can do it.
+- **Three gates proved red before being trusted:** a mis-labelled golden lever, a `RULE-EMERG-FIRST`
+  softened from `fail` to `warn`, and a `surplus_lookback_months` minted into the rulebook. All three
+  failed **without `--rerun-tasks`**, which confirms 7.2's rulebook-as-test-input fix still holds.
+
 ### [0.7.2] — Issue 7.2: Emergency Fund engine (AI-EMF)  (2026-09-02)
 
 - **Implemented:** §10.1's **runway** — how many months the user could live on what they hold liquid
