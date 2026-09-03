@@ -15,6 +15,7 @@ import com.aicfo.data.repository.CreditCardRepository
 import com.aicfo.data.repository.DemoModeRepository
 import com.aicfo.data.repository.EmergencyFundRepository
 import com.aicfo.data.repository.GoalRepository
+import com.aicfo.data.repository.GoalWaterfallRepository
 import com.aicfo.data.repository.InvestmentRepository
 import com.aicfo.data.repository.LoanRepository
 import com.aicfo.data.repository.NetWorthRepository
@@ -31,6 +32,7 @@ import com.aicfo.domain.engines.card.CardEngine
 import com.aicfo.domain.engines.classification.ClassificationEngine
 import com.aicfo.domain.engines.emergencyfund.EmergencyFundEngine
 import com.aicfo.domain.engines.goals.GoalEngine
+import com.aicfo.domain.engines.goals.GoalWaterfallEngine
 import com.aicfo.domain.engines.investment.InvestmentEngine
 import com.aicfo.domain.engines.loan.LoanEngine
 import com.aicfo.domain.engines.nature.NatureEngine
@@ -337,6 +339,41 @@ object RepositoryModule {
         dispatchers: DispatcherProvider,
     ): EmergencyFundRepository =
         RepositoryFactory.emergencyFund(transactions, accounts, quickSetup, engine, clock, dispatchers)
+
+    /**
+     * The goal-feasibility and contribution plan (issue 7.3; §15.1, FR-GOAL-003/005).
+     * Why:    **built from three repositories rather than from the database**, like
+     *         [provideEmergencyFundRepository] and for the same reasons plus one: the goals are
+     *         already projected and the runway is already resolved, so recomputing either here
+     *         would give the app two answers to one question. It inherits the SEC-002 gate through
+     *         its sources rather than opening a second door to the database.
+     * Result: a [GoalWaterfallRepository].
+     * Input:  [goals]; [transactions]; [emergencyFund]; [quickSetup]; [engine]; [clock];
+     *         [dispatchers].
+     * Output: [GoalWaterfallRepository].
+     * Changelog: 2026-09-03 — Created for issue 7.3.
+     */
+    @Provides
+    @Singleton
+    @Suppress("LongParameterList") // Hilt reads the signature; each argument is one binding.
+    fun provideGoalWaterfallRepository(
+        goals: GoalRepository,
+        transactions: TransactionRepository,
+        emergencyFund: EmergencyFundRepository,
+        quickSetup: QuickSetupRepository,
+        engine: GoalWaterfallEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+    ): GoalWaterfallRepository =
+        RepositoryFactory.goalWaterfall(
+            goals = goals,
+            transactions = transactions,
+            emergencyFund = emergencyFund,
+            quickSetup = quickSetup,
+            engine = engine,
+            clock = clock,
+            dispatchers = dispatchers,
+        )
 
     /**
      * The export/import archive store (issue 5.4; §5.10, §34, P-01).

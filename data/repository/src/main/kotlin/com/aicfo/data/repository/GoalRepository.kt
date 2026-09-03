@@ -1,5 +1,6 @@
 package com.aicfo.data.repository
 
+import androidx.room.withTransaction
 import com.aicfo.core.common.AppError
 import com.aicfo.core.common.Clock
 import com.aicfo.core.common.DispatcherProvider
@@ -79,6 +80,24 @@ interface GoalRepository {
      */
     suspend fun delete(id: String): Result<Unit, AppError>
 
+    /**
+     * Puts the goals in the order the user dragged them into (issue 7.3; §15, FR-GOAL-005).
+     *
+     * Why:    the contribution waterfall pours a limited surplus in list order, so the order **is**
+     *         the plan — §15 calls it "a draggable plan" for that reason. It lives here rather than
+     *         on `GoalWaterfallRepository` because this is the repository that owns the `goal`
+     *         table, and ARC-005 allows exactly one.
+     * What:   writes `sort_order = index` for every id given, in one transaction, stamping
+     *         `updated_at_utc_millis` from the injected `Clock` (TIM-001).
+     * Result: `Ok(Unit)`. **Ids the caller no longer has are ignored rather than refused** — a goal
+     *         deleted on another screen mid-drag would otherwise fail a reorder that is still
+     *         correct for every goal that remains. Goals absent from the list keep the order they
+     *         had, so a partial list cannot silently demote them all to zero.
+     * Input:  [goalIdsInOrder] — the ids, first-funded first. May be empty, which is a no-op.
+     * Output: `Result<Unit, AppError>`.
+     */
+    suspend fun reorder(goalIdsInOrder: List<String>): Result<Unit, AppError>
+
     companion object {
         /** Prefix for minted goal ids, matching the convention every other table uses. */
         const val GOAL_ID_PREFIX = "goal"
@@ -154,6 +173,20 @@ internal class RoomGoalRepository(
     override suspend fun delete(id: String): Result<Unit, AppError> =
         withContext(dispatchers.io) {
             database.goalDao().softDelete(id, clock.nowUtcMillis())
+            Ok(Unit)
+        }
+
+    override suspend fun reorder(goalIdsInOrder: List<String>): Result<Unit, AppError> =
+        withContext(dispatchers.io) {
+            // One stamp for the whole reorder, not one per row: this is a single user action, and
+            // rows that drifted apart by a millisecond would make "what changed together?"
+            // unanswerable in the audit trail (TIM-001).
+            val now = clock.nowUtcMillis()
+            database.withTransaction {
+                goalIdsInOrder.forEachIndexed { index, goalId ->
+                    database.goalDao().setSortOrder(goalId, index, now)
+                }
+            }
             Ok(Unit)
         }
 
