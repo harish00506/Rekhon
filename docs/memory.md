@@ -17,40 +17,42 @@
 
 ## Current state
 
-- **Version:** `0.4.0` (see [`../VERSION`](../VERSION)) · **Phase:** 1 — Core finance (**Epic 4 open**).
-  **Schema is v12** — unchanged by 4.1, which needed no migration: `category` has had `parent_id`,
-  `nature`, `is_system` and `deleted_at_utc_millis` since issue 1.6.
-- **Epics 1, 2 and 3 are done.** Phase 0 — Foundation is complete. Epic 3 closed at `0.3.11` with
-  issue 3.9 (opt-in on-device SMS parsing).
-- **Currently working file:** none — issue **4.1 is implemented and verified but not committed**, on
-  `feature/4-1-categories-editor-merchant-rule-kb`
-  ([tracker](issues/4.1-categories-editor-merchant-rule-kb-tracker.md)). The user has not asked for a
-  commit (workflow step 12).
-- **`dev` was two issues behind and nobody noticed.** 3.9 was finished, changelogged and versioned at
-  `0.3.11` while `dev` still read `0.3.10` — the branch was never merged. Merged as `a70c90c` before
-  4.1 branched off it. **Check `git log dev` against `VERSION` before starting an issue**, not just
-  the issue tracker, which said 3.9 was shipped.
-- **In progress:** nothing. **Next: 4.2** (auto-categorisation, AI-CLS Stage 1), unblocked by 4.1 —
-  it is also the first consumer of the `CLS-MER-*` merchant rules, which ship in 4.1 with no reader.
-- **4.1 seeded the first categories a real profile has ever had.** `CategoryEntity`, `CategoryDao` and
-  `transactions.category_id` shipped in issue 1.6; the add screen's chip row shipped in 3.1; bulk
-  recategorise shipped in 3.6 — and **`DemoDataset` was the only thing that ever wrote a category
-  row.** Four issues built on a table nothing could fill, with a test (`DemoModeRepositoryTest`)
-  asserting the emptiness the whole time. This is the third instance of the same lesson in this repo:
-  **a table with readers is not a table with writers — grep the write paths.**
-- **`FR-CAT-*` does not exist in the SRS.** Five for five on generated acceptance criteria being more
-  specific than the section they cite. 4.1 is FR-SET-001 + AI-CLSN-001 + §8.1. Fixed at source in
-  `scripts/gen_issue_docs.py`; the earlier wrong ids were 3.1, 3.3, 3.4 and 3.5.
-- **A timestamp is not a uniqueness source.** 4.1's created-category id was `category:<slug>-<now>`;
-  deleting "Fuel" and recreating it in the same millisecond hit the same primary key and `REPLACE`
-  resurrected the soft-deleted row with its old nature. Found by a test that asserted the *new* row
-  differed from the old one. Derived ids are for idempotence (the seed); generated ids are for
-  identity — do not use one for the other.
-- **A label can become a lie without anything changing.** The transaction row read
-  note → merchant → "Uncategorised" and never consulted the category. That was *true* while no real
-  profile could hold a category, and false the instant 4.1 seeded one — with no edit to that file.
-  **Code that is correct only because a state is unreachable needs re-reading when the state becomes
-  reachable.** Found on the emulator, not in review.
+- **Version:** `0.7.4` (see [`../VERSION`](../VERSION)) · **Phase:** 3 — AI core & goals
+  (**Epic 7 open**). **Schema is v22** — issue 7.4 added `goal_contribution` and
+  `goal_funding_account`.
+- **Epics 1, 2, 3, 4, 5 and 6 are done.** Epic 7 has shipped 7.1–7.4; **7.5 (Financial Order of
+  Operations, AI-FOO) is the last issue in it.**
+- **Currently working file:** none. Issue **7.4 is implemented and verified but not committed**, on
+  `feature/7-4-linked-contributions`
+  ([tracker](issues/7.4-linked-contributions-tracker.md)). The user has not asked for a commit
+  (workflow step 12).
+- **Check `git log dev` against `VERSION` before starting an issue**, not just the issue tracker.
+  `dev` was two issues behind once and nobody noticed.
+- **Epic 9 was skipped, and Epic 7 keeps paying for it.** `:domain:engines:forecast` is still issue
+  1.1's placeholder, so 7.3 had to substitute an *observed* P50 surplus for §15.1's *forecast* one
+  (ADR-0035). Anything in 7.5 that wants a projection will hit the same wall.
+
+### What 7.4 changed that a future issue must know
+
+- **`goal.saved_minor` is now the *declared* half of progress, not the whole of it.** The total is
+  `saved_minor + the sum of linked movements`, and `GoalProjection` carries both halves
+  (ADR-0036). **Anything that writes `saved_minor` must write the declared half only** — the goal
+  editor was about to fold the evidenced half into it on every edit, and nothing in 7.1's code had
+  changed. That is the second time in this feature that adding a second measurement made an existing
+  sentence wrong retroactively; 7.3's `goals_shortfall` was the first.
+- **Every rule naming `AI-GOAL` now has a reader.** `RULE-HORIZON` (7.1), `RULE-EMERG-FIRST` (7.3),
+  `RULE-PAY-FIRST` (7.4). The rulebook is still at `_meta.version` **1.15.0** — three goal issues in
+  a row minted nothing.
+- **A gate can be a tautology and still be green.** 7.4's first golden assertion derived its
+  expectation with the same subtraction the engine performs, so editing a record moved input and
+  expectation together. Caught only by deliberately breaking it. **When adding a golden assertion,
+  state the expectation in the file; never compute it the way the code does.**
+- **`CfoArchive` dropped every goal for two issues.** Its own doc comment argues that holding Room
+  entities means "a new column is in the archive the moment it is in the table" — true of a column,
+  **false of a table**. `rowCount()` had likewise never counted eight of its lists, and the demo wipe
+  never reached `goal`, `investment_holding` or `investment_lot`. **A new table means four edits, not
+  one: the entity, the archive, the demo wipe and the residue count.**
+
 - **0.3.6 fixed two FR-TXN-001 fields the add screen never captured: merchant and time of day.**
   Merchant was the notable one — the column (schema v1), the draft (3.1), the row's title fallback
   and 3.5's detail sheet all supported it, and **only `DemoDataset` ever wrote one**, so every row on
@@ -240,6 +242,15 @@
   source set on every issue, device or no device.
 
 ## Completed
+
+- **Epic 7 — issue 7.4 (v0.7.4, 2026-09-06):** linked contributions (§15, FR-GOAL-002,
+  FR-GOAL-004). Goal progress split into an **evidenced** half derived from the user's own ledger and
+  a **declared** half they typed, shown as visually distinct and clearable in one tap. Schema **v22**
+  — `goal_contribution` and `goal_funding_account`, neither holding an amount, both summed at query
+  time by one `UNION ALL` that dedupes per goal ([ADR-0036](adr/0036-progress-is-evidenced-and-declared-and-the-two-never-merge.md)).
+  `RULE-PAY-FIRST` consumed at last, mirroring nothing. Also repaired three things it was built on
+  top of: `goal` had been missing from `CfoArchive` since 7.1, `rowCount()` had never counted eight
+  of its lists, and the demo wipe reached neither the goal family nor the investment tables.
 
 - **Epic 0 — Foundations & AI blueprint (v0.1.0):**
   - AI subsystem files the app loads at runtime ([`../ai/`](../ai/)) — layered pipeline,

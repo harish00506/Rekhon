@@ -105,14 +105,19 @@ engines:
     name: Goal Planning
     layer: L4/L5
     module: ":domain:engines:goals"
-    version: "1.0"
+    version: "1.1"
     # Shipped at issue 7.1; feasibility added at 7.3 as a second engine in the same module,
     # `AI-GOAL.waterfall`, because it is only meaningful over this one's output and reuses its types.
-    # Two rules consumed, both of which named AI-GOAL before either engine existed: RULE-HORIZON
-    # (AI-GOAL.funding_buckets) and RULE-EMERG-FIRST (the waterfall's gate). Neither issue minted a
-    # row. financial-order-of-operations.json is still listed for 7.5's AI-FOO and is NOT read yet:
+    # 1.1 at issue 7.4: `saved` arrives split into an evidenced and a declared half, and a plan can
+    # carry RULE-PAY-FIRST's anchor day. Every figure 1.0 computed is computed identically — what
+    # changed is what the input can say (ADR-0036), which is why old results stay reproducible
+    # (AI-ARC-006).
+    # Three rules consumed, all of which named AI-GOAL before any engine existed: RULE-HORIZON
+    # (AI-GOAL.funding_buckets, 7.1), RULE-EMERG-FIRST (the waterfall's gate, 7.3) and
+    # RULE-PAY-FIRST (the contribution anchor, 7.4). No issue minted a row.
+    # financial-order-of-operations.json is still listed for 7.5's AI-FOO and is NOT read yet:
     # §15's simple waterfall is what 7.3 built, and §36's staged one is a separate engine.
-    contract: "goals -> {requiredMonthly, shortfall, ETA, horizon, status per goal}"
+    contract: "goals -> {requiredMonthly, shortfall, ETA, horizon, status per goal, savedEvidenced/savedDeclared}"
     reads: [../rules/rules-kb.json, ../rules/financial-order-of-operations.json]
     srs: "§15"
 
