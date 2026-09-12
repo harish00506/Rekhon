@@ -50,7 +50,7 @@
     <string name="goals_editor_target">Target amount</string>
     <string name="goals_editor_target_date">Needed by (YYYY-MM-DD)</string>
     <string name="goals_editor_saved">Saved so far</string>
-    <string name="goals_editor_saved_help">You keep this up to date yourself for now.</string>
+    <string name="goals_editor_saved_help">Only the part you have not linked to a real movement. Link the rest from the goal’s own screen.</string>
     <string name="goals_editor_planned">You plan to put aside each month</string>
     <string name="goals_editor_planned_help">Leave blank if you have not decided. The app still tells you what it would take.</string>
     <string name="goals_edit">Edit</string>
@@ -98,4 +98,32 @@
 
     <!-- §11.1's tone: the app advises, it does not instruct (P-07). -->
     <string name="goals_disclaimer">These figures are worked out from what you entered — the target, the date and what you have saved. They are a plan, not advice about a particular investment.</string>
+    <!-- Issue 7.4: linked contributions (§15, FR-GOAL-002, FR-GOAL-004). -->
+    <string name="goals_open_detail">What is behind this figure</string>
+    <string name="goals_ghost_note">%1$s of this is your own claim, with nothing linked to back it.</string>
+    <string name="goal_detail_title">Goal</string>
+    <string name="goal_detail_missing">This goal is no longer here. It may have been deleted.</string>
+    <string name="goal_detail_back">Back</string>
+    <string name="goal_detail_evidenced">%1$s of that is backed by movements in your accounts.</string>
+    <string name="goal_detail_ghost">%1$s is a figure you typed in. Nothing in your accounts backs it yet.</string>
+    <string name="goal_detail_clear_ghost">Clear the typed figure</string>
+    <string name="goal_detail_contributions">Linked movements</string>
+    <string name="goal_detail_no_evidence">Nothing is linked to this goal yet, so all of its progress is a figure you typed.</string>
+    <string name="goal_detail_contribution_row">%1$s — %2$s on %3$s</string>
+    <string name="goal_detail_unlink">Unlink</string>
+    <string name="goal_detail_link">Link a movement</string>
+    <string name="goal_detail_picker_title">Pick a movement</string>
+    <string name="goal_detail_picker_empty">There is nothing recent left to link.</string>
+    <string name="goal_detail_picker_row">%1$s — %2$s on %3$s</string>
+    <string name="goal_detail_picker_close">Close</string>
+    <string name="goal_detail_funding">Accounts funding this goal</string>
+    <string name="goal_detail_funding_row">%1$s, counting from %2$s</string>
+    <string name="goal_detail_funding_row_all">%1$s, counting everything in it</string>
+    <string name="goal_detail_funding_empty">Every account is already funding this goal.</string>
+    <string name="goal_detail_funding_from_today">%1$s, from today</string>
+    <string name="goal_detail_funding_all_history">%1$s, counting everything in it</string>
+    <string name="goal_detail_dedicate">Fund this goal from an account</string>
+    <string name="goal_detail_release">Stop counting this account</string>
+    <string name="goal_detail_pay_first">Your income lands on day %1$d of the month. Contribute then, rather than at month end.</string>
+    <string name="goal_detail_pay_first_rule">RULE-PAY-FIRST v1.0</string>
 </resources>

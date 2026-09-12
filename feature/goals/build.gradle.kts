@@ -24,7 +24,12 @@ android {
 // design. So it runs on debug only, exactly as :feature:budgets does.
 tasks.withType<Test>()
     .matching { it.name.contains("Release") }
-    .configureEach { exclude("**/GoalsFlowTest.class") }
+    .configureEach {
+        exclude("**/GoalsFlowTest.class")
+        // Issue 7.4: the same exclusion, for the same reason. Adding a second Compose test without
+        // adding it here is how the release variant went red the first time.
+        exclude("**/GoalDetailFlowTest.class")
+    }
 
 dependencies {
     // Money and MoneyFormatter — the amount the user types, parsed and rendered (MNY-001).

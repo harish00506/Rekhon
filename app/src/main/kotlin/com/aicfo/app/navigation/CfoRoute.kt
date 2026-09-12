@@ -159,6 +159,21 @@ sealed interface CfoRoute {
     data object Goals : CfoRoute
 
     /**
+     * What one goal's progress is made of (issue 7.4; §15, FR-GOAL-002, FR-GOAL-004).
+     *
+     * A `data class` and not a `data object`, unlike [Goals]: linking a movement is a question about
+     * *one* goal, so the id has to come from somewhere and the back stack is the one place that
+     * survives process death. The precedent is [Holdings], whose account id is required for the same
+     * reason — there is no "contributions in general" screen.
+     *
+     * The **day** is still not an argument. Every figure this screen shows is recomputed from the
+     * injected `Clock` on each emission, as [Goals] documents, so the screen survives midnight
+     * rather than arguing with a stale route.
+     */
+    @Serializable
+    data class GoalDetail(val goalId: String) : CfoRoute
+
+    /**
      * How long the user could live on what they have liquid (issue 7.2; §10.1, AI-EMF).
      *
      * **No arguments**, for the reason [Goals] has none: there is exactly one emergency fund

@@ -50,25 +50,33 @@ import kotlin.math.roundToInt
 @Composable
 fun GoalsScreen(
     onDone: () -> Unit,
+    onOpenGoal: (String) -> Unit,
     viewModel: GoalsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    GoalsContent(uiState = uiState, onEvent = viewModel::onEvent, onDone = onDone)
+    GoalsContent(
+        uiState = uiState,
+        onEvent = viewModel::onEvent,
+        onDone = onDone,
+        onOpenGoal = onOpenGoal,
+    )
 }
 
 /**
  * The screen's body, with no ViewModel in sight.
  * Why:    separated so a test can drive every state directly — the reason every screen here splits
  *         this way (ARC-004).
- * Result: the composition. Input: [uiState]; [onEvent]; [onDone]. Output: none.
+ * Result: the composition. Input: [uiState]; [onEvent]; [onDone]; [onOpenGoal]. Output: none.
  * Changelog: 2026-08-30 — Created for issue 7.1.
+ *            2026-09-06 — Issue 7.4: [onOpenGoal], the way to one goal's linked contributions.
  */
 @Composable
 internal fun GoalsContent(
     uiState: GoalsUiState,
     onEvent: (GoalsEvent) -> Unit,
     onDone: () -> Unit,
+    onOpenGoal: (String) -> Unit = {},
 ) {
     // A plain scrolling Column rather than a LazyColumn, for the reason HoldingsScreen gives: the
     // disclaimer sits below the list and must be reachable, so the whole screen scrolls as one, and
@@ -93,7 +101,7 @@ internal fun GoalsContent(
             GoalEditor(state = editor, onEvent = onEvent)
         } else {
             uiState.waterfall?.let { GoalWaterfallCard(waterfall = it) }
-            GoalList(uiState = uiState, onEvent = onEvent)
+            GoalList(uiState = uiState, onEvent = onEvent, onOpenGoal = onOpenGoal)
             CfoSecondaryButton(text = stringResource(R.string.goals_add), onClick = { onEvent(GoalsEvent.AddGoal) })
             CfoSecondaryButton(text = stringResource(R.string.goals_editor_cancel), onClick = onDone)
         }
@@ -108,12 +116,13 @@ internal fun GoalsContent(
 /**
  * The list, or the reason it is empty.
  * Why:    split out to keep [GoalsContent] within the 40-line limit (§21.6).
- * Result: the composition. Input: [uiState]; [onEvent]. Output: none.
+ * Result: the composition. Input: [uiState]; [onEvent]; [onOpenGoal]. Output: none.
  */
 @Composable
 private fun GoalList(
     uiState: GoalsUiState,
     onEvent: (GoalsEvent) -> Unit,
+    onOpenGoal: (String) -> Unit,
 ) {
     if (uiState.isEmpty) {
         Text(text = stringResource(R.string.goals_empty), style = MaterialTheme.typography.bodyMedium)
@@ -137,6 +146,7 @@ private fun GoalList(
                     onEvent = onEvent,
                 ),
             onEvent = onEvent,
+            onOpenGoal = onOpenGoal,
         )
     }
 }
@@ -217,7 +227,11 @@ private fun Modifier.reorderable(
  * Why:    P-02 — the required monthly is shown with the inputs it came from and the rule that
  *         shaped the advice beside it, the way the Safe-to-Spend card names `RULE-STS v1.0`. A bare
  *         "₹20,000 a month" with no explanation is the black-box verdict P-02 exists to forbid.
- * Result: the composition. Input: [goal]; [onEvent]. Output: none.
+ * Result: the composition. Input: [goal]; [allocation]; [onEvent]; [onOpenGoal]. Output: none.
+ * Changelog: 2026-08-30 — Created for issue 7.1.
+ *            2026-09-06 — Issue 7.4: the ghost-progress line, and the way through to what backs the
+ *            figure. The `saved` shown here is now two numbers added together, so a card that said
+ *            only the total would be hiding the distinction §15 asks to be shown.
  */
 @Composable
 private fun GoalCard(
@@ -225,6 +239,7 @@ private fun GoalCard(
     allocation: GoalAllocation?,
     modifier: Modifier = Modifier,
     onEvent: (GoalsEvent) -> Unit,
+    onOpenGoal: (String) -> Unit = {},
 ) {
     CfoCard(modifier = modifier) {
         Text(text = goal.name, style = MaterialTheme.typography.titleMedium)
@@ -242,19 +257,15 @@ private fun GoalCard(
         // What the shared surplus can actually give this goal, which is a different question from
         // what the goal needs — and the one the user can act on (7.3, FR-GOAL-003).
         allocation?.let { GoalAllocationLines(line = it) }
-        // The inputs, so the figure above is checkable rather than asserted.
-        Text(
-            text =
-                stringResource(
-                    R.string.goals_saved_of_target,
-                    MoneyFormatter.format(goal.saved),
-                    MoneyFormatter.format(goal.target),
-                ),
-        )
+        GoalProgressLines(goal)
         Text(text = stringResource(R.string.goals_target_date, goal.targetDateIso))
         GoalEta(goal)
         Text(text = stringResource(GoalLabels.horizon(goal.horizon)), style = MaterialTheme.typography.bodySmall)
         Text(text = stringResource(R.string.goals_rule), style = MaterialTheme.typography.bodySmall)
+        CfoSecondaryButton(
+            text = stringResource(R.string.goals_open_detail),
+            onClick = { onOpenGoal(goal.goalId) },
+        )
         CfoSecondaryButton(
             text = stringResource(R.string.goals_edit),
             onClick = { onEvent(GoalsEvent.EditGoal(goal.goalId)) },
@@ -262,6 +273,37 @@ private fun GoalCard(
         CfoSecondaryButton(
             text = stringResource(R.string.goals_editor_delete),
             onClick = { onEvent(GoalsEvent.DeleteGoal(goal.goalId)) },
+        )
+    }
+}
+
+/**
+ * What is saved, out of what is needed — and how much of it is only claimed (issue 7.4; §15).
+ *
+ * Why:    split from [GoalCard] to keep it inside the 40-line limit (§21.6), and because the two
+ *         lines answer one question together. The `saved` figure is now two numbers added up, so a
+ *         card showing only the total would hide the distinction §15 asks to be shown.
+ *
+ *         **In words, not by colour alone** — the same decision issue 6.5 recorded for the price
+ *         staleness label, so the distinction survives greyscale and TalkBack.
+ * Result: the composition. Input: [goal]. Output: none.
+ * Changelog: 2026-09-06 — Created for issue 7.4.
+ */
+@Composable
+private fun GoalProgressLines(goal: GoalProjection) {
+    // The inputs, so the figure above is checkable rather than asserted (P-02).
+    Text(
+        text =
+            stringResource(
+                R.string.goals_saved_of_target,
+                MoneyFormatter.format(goal.saved),
+                MoneyFormatter.format(goal.target),
+            ),
+    )
+    if (goal.savedDeclared > Money.ZERO) {
+        Text(
+            text = stringResource(R.string.goals_ghost_note, MoneyFormatter.format(goal.savedDeclared)),
+            style = MaterialTheme.typography.bodySmall,
         )
     }
 }

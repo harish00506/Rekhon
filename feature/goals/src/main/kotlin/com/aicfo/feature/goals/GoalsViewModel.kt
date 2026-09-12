@@ -30,6 +30,7 @@ import javax.inject.Inject
  * Result: one immutable [GoalsUiState] as a `StateFlow`.
  * Changelog: 2026-08-30 — Created for issue 7.1.
  *            2026-09-03 — Issue 7.3: the waterfall, and the three reorder events.
+ *            2026-09-06 — Issue 7.4: the editor loads the declared half of progress, not the total.
  *
  * **Eleven functions is detekt's ceiling, and the shape is deliberate.** Nine of them are private
  * and none is longer than a few lines: `onEvent` is one `when` that delegates, and every branch it
@@ -187,7 +188,12 @@ class GoalsViewModel
                             name = goal.name,
                             target = MoneyFormatter.format(goal.target),
                             targetDate = goal.targetDateIso,
-                            saved = MoneyFormatter.format(goal.saved),
+                            // The DECLARED half, never the total (issue 7.4). `saved` is now what
+                            // the user typed *plus* what their linked movements sum to, and the
+                            // editor writes its field straight back to `goal.saved_minor` — so
+                            // loading the total here would fold the evidenced half into the typed
+                            // one on every edit, and it would double again on the next.
+                            saved = MoneyFormatter.format(goal.savedDeclared),
                             plannedMonthly = MoneyFormatter.format(goal.plannedMonthly),
                         ),
                 )
