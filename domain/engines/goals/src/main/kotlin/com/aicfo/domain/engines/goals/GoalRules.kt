@@ -101,6 +101,24 @@ data class GoalRules(
         val EMERGENCY_FIRST = RuleCitation("RULE-EMERG-FIRST", "1.0")
 
         /**
+         * §29.2 — contributions belong on the salary-credit day, not at month end (issue 7.4).
+         *
+         * **A citation with no mirror, and this time there is nothing to mirror.**
+         * `RULE-PAY-FIRST.params_json` is `{"anchor": "salary_credit_day"}` — the *name of where to
+         * look*, not a threshold. So unlike `RULE-HORIZON`, whose two bands are copied into this
+         * class's instance fields, this row contributes no number to this module at all: the day
+         * itself is the profile's own, resolved by the repository from the quick-setup income rule
+         * and handed in as `GoalPlanInput.contributionAnchorDay`.
+         *
+         * The row has named `AI-GOAL` in its `consumed_by` since this file was created and had no
+         * reader until now — the third such row in this repository, after `RULE-HORIZON` (7.1) and
+         * `RULE-EMERG-FIRST` (7.3). No rulebook row was minted for it and `_meta.version` did not
+         * move; `RulebookDriftTest` asserts both, and asserts this class's instance fields have not
+         * grown.
+         */
+        val PAY_FIRST = RuleCitation("RULE-PAY-FIRST", "1.0")
+
+        /**
          * The rulebook file these thresholds were copied from, as `_meta.version`.
          *
          * `_meta.version` describes the **file**, not this row, so every typed mirror restates it

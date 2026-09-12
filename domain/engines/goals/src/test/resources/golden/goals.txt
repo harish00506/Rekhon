@@ -1,4 +1,5 @@
 Golden file for :domain:engines:goals (issue 7.1; AI-GOAL, RULE-HORIZON v1.0).
+Extended by issue 7.4 with `evidenced` — the part of `saved` the ledger backs (FR-GOAL-004).
 
 Every record is one goal. Amounts are PAISE (MNY-001), never rupees — a fixture written in rupees is
 a fixture that silently passes at a hundredth of the amount it claims. Dates are ISO `yyyy-MM-dd`
@@ -17,13 +18,18 @@ Record format — one `# key=value` per line, records separated by a line of `==
   target            paise, what the goal needs in total
   saved             paise, set aside so far (optional, default 0)
   planned           paise, the user's monthly plan (optional, default 0)
+  evidenced         paise, how much of `saved` real linked movements account for (optional,
+                    default 0 — which is every profile before issue 7.4). May be negative: a
+                    dedicated funding account can pay out more than it took in. The remainder,
+                    `saved - evidenced`, is SS15's ghost progress and is asserted too.
   target_date       ISO date the money is needed
   expect_required   paise, the largest monthly instalment
   expect_months     whole months of contribution left before the date
   expect_status     OVER_FUNDED | ON_TRACK | NO_TARGET | BEHIND | PAST_DUE
+  expect_declared   paise, the ghost half of `saved` — stated outright rather than derived,
+                    so a wrong split fails instead of agreeing with itself
   expect_horizon    SHORT | HYBRID | LONG   (RULE-HORIZON)
   expect_eta        ISO date the plan reaches the target, or `none`
-
 ===
 # label=an ordinary goal - a plan that does not yet clear the requirement
 # target=50000000
@@ -33,6 +39,7 @@ Record format — one `# key=value` per line, records separated by a line of `==
 # expect_required=2000000
 # expect_months=20
 # expect_status=BEHIND
+# expect_declared=10000000
 # expect_horizon=SHORT
 # expect_eta=2028-11-30
 
@@ -45,6 +52,7 @@ Record format — one `# key=value` per line, records separated by a line of `==
 # expect_required=2000000
 # expect_months=20
 # expect_status=ON_TRACK
+# expect_declared=10000000
 # expect_horizon=SHORT
 # expect_eta=2028-04-30
 
@@ -56,6 +64,7 @@ Record format — one `# key=value` per line, records separated by a line of `==
 # expect_required=0
 # expect_months=20
 # expect_status=OVER_FUNDED
+# expect_declared=12000000
 # expect_horizon=SHORT
 # expect_eta=2026-08-30
 
@@ -68,6 +77,7 @@ Record format — one `# key=value` per line, records separated by a line of `==
 # expect_required=7000000
 # expect_months=0
 # expect_status=PAST_DUE
+# expect_declared=3000000
 # expect_horizon=SHORT
 # expect_eta=2027-10-30
 
@@ -78,6 +88,7 @@ Record format — one `# key=value` per line, records separated by a line of `==
 # expect_required=0
 # expect_months=5
 # expect_status=NO_TARGET
+# expect_declared=0
 # expect_horizon=SHORT
 # expect_eta=2026-08-30
 
@@ -88,6 +99,7 @@ Record format — one `# key=value` per line, records separated by a line of `==
 # expect_required=100000
 # expect_months=35
 # expect_status=BEHIND
+# expect_declared=0
 # expect_horizon=SHORT
 # expect_eta=none
 
@@ -98,6 +110,7 @@ Record format — one `# key=value` per line, records separated by a line of `==
 # expect_required=100000
 # expect_months=36
 # expect_status=BEHIND
+# expect_declared=0
 # expect_horizon=HYBRID
 # expect_eta=none
 
@@ -108,6 +121,7 @@ Record format — one `# key=value` per line, records separated by a line of `==
 # expect_required=100000
 # expect_months=60
 # expect_status=BEHIND
+# expect_declared=0
 # expect_horizon=HYBRID
 # expect_eta=none
 
@@ -118,6 +132,7 @@ Record format — one `# key=value` per line, records separated by a line of `==
 # expect_required=100000
 # expect_months=61
 # expect_status=BEHIND
+# expect_declared=0
 # expect_horizon=LONG
 # expect_eta=none
 
@@ -128,6 +143,7 @@ Record format — one `# key=value` per line, records separated by a line of `==
 # expect_required=33334
 # expect_months=3
 # expect_status=BEHIND
+# expect_declared=0
 # expect_horizon=SHORT
 # expect_eta=none
 
@@ -139,6 +155,7 @@ Record format — one `# key=value` per line, records separated by a line of `==
 # expect_required=8333334
 # expect_months=12
 # expect_status=BEHIND
+# expect_declared=0
 # expect_horizon=SHORT
 # expect_eta=none
 
@@ -150,6 +167,7 @@ Record format — one `# key=value` per line, records separated by a line of `==
 # expect_required=4000000
 # expect_months=0
 # expect_status=BEHIND
+# expect_declared=1000000
 # expect_horizon=SHORT
 # expect_eta=none
 
@@ -162,5 +180,48 @@ Record format — one `# key=value` per line, records separated by a line of `==
 # expect_required=10156250
 # expect_months=96
 # expect_status=BEHIND
+# expect_declared=25000000
 # expect_horizon=LONG
 # expect_eta=2034-10-30
+
+===
+# label=fully evidenced - every rupee of progress came from a linked movement
+# target=50000000
+# saved=20000000
+# evidenced=20000000
+# planned=1500000
+# target_date=2028-08-30
+# expect_required=1250000
+# expect_months=24
+# expect_status=ON_TRACK
+# expect_declared=0
+# expect_horizon=SHORT
+# expect_eta=2028-04-30
+
+===
+# label=part evidenced - half pointed at, half still the user's own claim
+# target=40000000
+# saved=10000000
+# evidenced=4000000
+# planned=1000000
+# target_date=2029-08-30
+# expect_required=833334
+# expect_months=36
+# expect_status=ON_TRACK
+# expect_declared=6000000
+# expect_horizon=HYBRID
+# expect_eta=2029-02-28
+
+===
+# label=a funding account that paid out - evidenced runs negative, declared absorbs it
+# target=30000000
+# saved=5000000
+# evidenced=-2000000
+# planned=500000
+# target_date=2028-02-29
+# expect_required=1470589
+# expect_months=17
+# expect_status=BEHIND
+# expect_declared=7000000
+# expect_horizon=SHORT
+# expect_eta=2030-10-30

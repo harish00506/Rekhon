@@ -19,6 +19,7 @@ import java.time.LocalDate
  *       no-clock guarantee.
  * Result: the parts of the contract a reviewer would otherwise have to take on trust.
  * Changelog: 2026-08-30 — Created for issue 7.1.
+ *            2026-09-06 — Issue 7.4: the evidenced/declared split and RULE-PAY-FIRST's anchor.
  */
 class GoalEngineTest {
     private val engine = GoalEngineFactory.create()
@@ -94,7 +95,11 @@ class GoalEngineTest {
         val plan = plan(goals = listOf(goal()), nowUtcMillis = 1_756_512_000_000L)
 
         assertEquals("AI-GOAL", plan.provenance.engineId)
-        assertEquals("1.0", plan.provenance.engineVersion)
+        assertEquals(
+            "issue 7.4 split `saved` and added an anchor, so the formula's version moved",
+            "1.1",
+            plan.provenance.engineVersion,
+        )
         assertEquals(1_756_512_000_000L, plan.provenance.computedAtUtcMillis)
         assertEquals(listOf(GoalRules.HORIZON), plan.provenance.evidence)
         assertEquals(TODAY.toString(), plan.provenance.inputWindow)
@@ -158,6 +163,151 @@ class GoalEngineTest {
         assertEquals(plan(goals = goals), plan(goals = goals))
     }
 
+    // --- issue 7.4: progress is evidenced, declared, or both -------------------------------------
+
+    /**
+     * Input:  a goal whose whole progress came from linked movements.
+     * Output: asserts the split reports all of it as evidenced and none as declared.
+     * Result: the ordinary case once 7.4 has been used — nothing typed, everything pointed at.
+     */
+    @Test
+    fun `a goal funded entirely by linked movements declares nothing`() {
+        val projection =
+            plan(goals = listOf(goal(saved = Money(50_000), evidenced = Money(50_000)))).goals.single()
+
+        assertEquals(Money(50_000), projection.saved)
+        assertEquals(Money(50_000), projection.savedEvidenced)
+        assertEquals(Money.ZERO, projection.savedDeclared)
+    }
+
+    /**
+     * Input:  a goal with nothing linked — every pre-7.4 profile on the day it upgrades.
+     * Output: asserts the whole figure reports as declared, which is §15's "ghost progress".
+     * Result: an upgrade changes no number and adds one distinction.
+     */
+    @Test
+    fun `an untouched goal is entirely ghost progress`() {
+        val projection = plan(goals = listOf(goal(saved = Money(50_000)))).goals.single()
+
+        assertEquals(Money.ZERO, projection.savedEvidenced)
+        assertEquals(Money(50_000), projection.savedDeclared)
+    }
+
+    /**
+     * Input:  a goal with some of each.
+     * Output: asserts both halves are reported and that they add to the total.
+     * Result: the mixed case §15 asks to be shown as visually distinct — the card needs both figures
+     *         to do that, and the engine is what has them.
+     */
+    @Test
+    fun `a part-evidenced goal reports both halves and they reconcile`() {
+        val projection =
+            plan(goals = listOf(goal(saved = Money(80_000), evidenced = Money(30_000)))).goals.single()
+
+        assertEquals(Money(30_000), projection.savedEvidenced)
+        assertEquals(Money(50_000), projection.savedDeclared)
+        assertEquals(projection.saved, projection.savedEvidenced + projection.savedDeclared)
+    }
+
+    /**
+     * Input:  evidenced progress larger than the total.
+     * Output: asserts `GoalSpec` refuses it.
+     * Result: the guard that keeps the split honest. The caller floors the pair together, so a
+     *         declared half can never come out negative — which would be the app inventing a claim.
+     */
+    @Test
+    fun `evidenced progress cannot exceed the total`() {
+        val thrown =
+            assertThrows(IllegalArgumentException::class.java) {
+                goal(saved = Money(10_000), evidenced = Money(10_001))
+            }
+
+        assertTrue("$thrown", "cannot exceed total progress" in thrown.message.orEmpty())
+    }
+
+    /**
+     * Input:  a projection whose two halves do not add up.
+     * Output: asserts it cannot be constructed.
+     * Result: P-02 as a precondition on the type, the way [GoalPlan] guards its citation. A card
+     *         showing a split that did not reconcile would be worse than one showing no split.
+     */
+    @Test
+    fun `a projection whose halves do not reconcile cannot be constructed`() {
+        val thrown =
+            assertThrows(IllegalArgumentException::class.java) {
+                plan(goals = listOf(goal(saved = Money(80_000), evidenced = Money(30_000))))
+                    .goals
+                    .single()
+                    .copy(savedDeclared = Money(1))
+            }
+
+        assertTrue("$thrown", "must add up" in thrown.message.orEmpty())
+    }
+
+    /**
+     * Input:  evidenced progress that is negative — a dedicated account that paid out more than it
+     *   took in since it was linked.
+     * Output: asserts it is accepted, and that the declared half absorbs it.
+     * Result: a real state, not an error. Refusing it would force the repository to lie about what
+     *         the ledger says.
+     */
+    @Test
+    fun `negative evidenced progress is a state, not an error`() {
+        val projection =
+            plan(goals = listOf(goal(saved = Money(40_000), evidenced = Money(-10_000)))).goals.single()
+
+        assertEquals(Money(-10_000), projection.savedEvidenced)
+        assertEquals(Money(50_000), projection.savedDeclared)
+        assertEquals(Money(40_000), projection.saved)
+    }
+
+    // --- issue 7.4: RULE-PAY-FIRST ---------------------------------------------------------------
+
+    /**
+     * Input:  a plan with a known salary-credit day.
+     * Output: asserts the day reaches every projection and the rule is cited.
+     * Result: `RULE-PAY-FIRST` finally has a reader, after naming `AI-GOAL` in `consumed_by` since
+     *         the rulebook was written.
+     */
+    @Test
+    fun `a known salary day is carried onto every goal and cites RULE-PAY-FIRST`() {
+        val plan = plan(goals = listOf(goal(id = "g1"), goal(id = "g2")), anchorDay = 7)
+
+        assertEquals(listOf(7, 7), plan.goals.map { it.contributionAnchorDay })
+        assertEquals(listOf(GoalRules.HORIZON, GoalRules.PAY_FIRST), plan.provenance.evidence)
+    }
+
+    /**
+     * Input:  a plan with no salary-credit day.
+     * Output: asserts nothing is carried and the rule is **not** cited.
+     * Result: silence rather than an invented payday (P-03), and an evidence list that names the
+     *         rules that fired rather than the rules that exist.
+     */
+    @Test
+    fun `an unknown salary day says nothing and cites nothing`() {
+        val plan = plan(goals = listOf(goal()))
+
+        assertNull(plan.goals.single().contributionAnchorDay)
+        assertEquals(listOf(GoalRules.HORIZON), plan.provenance.evidence)
+    }
+
+    /**
+     * Input:  a salary day outside 1..31.
+     * Output: asserts the input refuses it.
+     * Result: a calendar bound checked where it enters, rather than a projection carrying a day no
+     *         month has.
+     */
+    @Test
+    fun `a salary day outside the month is refused`() {
+        for (day in listOf(0, 32, -1)) {
+            val thrown =
+                assertThrows(IllegalArgumentException::class.java) {
+                    GoalPlanInput(goals = emptyList(), today = TODAY, contributionAnchorDay = day)
+                }
+            assertTrue("$day: $thrown", "day of the month" in thrown.message.orEmpty())
+        }
+    }
+
     // --- helpers ---------------------------------------------------------------------------------
 
     /** Result: a plan, unwrapped. Input: the goals, the instant, the thresholds. */
@@ -165,20 +315,29 @@ class GoalEngineTest {
         goals: List<GoalSpec>,
         nowUtcMillis: Long = 0L,
         rules: GoalRules = GoalRules(),
+        anchorDay: Int? = null,
     ): GoalPlan =
         (
             engine.plan(
-                GoalPlanInput(goals = goals, today = TODAY, nowUtcMillis = nowUtcMillis, rules = rules),
+                GoalPlanInput(
+                    goals = goals,
+                    today = TODAY,
+                    nowUtcMillis = nowUtcMillis,
+                    rules = rules,
+                    contributionAnchorDay = anchorDay,
+                ),
             ) as Ok
         ).value
 
     /** Result: an ordinary goal with one field varied. */
+    @Suppress("LongParameterList") // One knob per GoalSpec field; every one is varied by a case above.
     private fun goal(
         id: String = "g1",
         target: Money = Money(120_000),
         targetDate: LocalDate = MONTHS_12,
         saved: Money = Money.ZERO,
         planned: Money = Money.ZERO,
+        evidenced: Money = Money.ZERO,
     ) = GoalSpec(
         id = id,
         name = "goal $id",
@@ -186,6 +345,7 @@ class GoalEngineTest {
         targetDate = targetDate,
         saved = saved,
         plannedMonthly = planned,
+        savedEvidenced = evidenced,
     )
 
     /** A provenance with no citation — the thing [GoalPlan] must refuse. */

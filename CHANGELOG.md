@@ -11,6 +11,68 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The goals engine, the emergency-fund engine, the feasibility waterfall, linked contributions and
 > the Financial Order of Operations.
 
+### [0.7.4] — Issue 7.4: Linked contributions  (2026-09-06)
+
+- **Goal progress stopped being a number the user types** (**§15**, **FR-GOAL-002**,
+  **FR-GOAL-004**, **AI-GOAL 1.1**). Issue 7.1 shipped `goal.saved_minor` hand-entered and said so in
+  three places; 7.2's runway, 7.3's waterfall and Safe-to-Spend's goal term have all been computed
+  from a self-declared figure ever since. §15 asks the opposite — *"progress is transaction-evidenced
+  (FR-GOAL-004); ghost progress is visually distinct"* — and this is that.
+- **Schema 22 — two join tables, and neither holds an amount.** `goal_contribution` links a goal to
+  one movement; `goal_funding_account` dedicates a whole account from a stated day. The contribution
+  **is** the linked transaction's `amount_minor`, summed at query time: a stored copy would drift the
+  moment the transaction was edited (ADR-0009's argument for split lines, ADR-0007's for balances).
+  MNY-001 is then satisfied trivially — **no new column holds money at all**.
+- **The two link kinds sum differently, on purpose.** An explicit link contributes the **magnitude**
+  of its amount, because the act of linking is the user asserting the direction and a ₹5,000 SIP
+  debit is stored negative. A dedicated account contributes the **signed** net movement since its
+  link day, because that is how much the pot grew — so a withdrawal reduces it and both legs of an
+  internal transfer net to zero. A movement that is both counts **once**, via the explicit link.
+- **`saved` is now two numbers that never merge.** `savedEvidenced` and `savedDeclared`, with
+  `evidenced + declared == saved` a `require` on the type — a card showing a split that did not
+  reconcile would be worse than one showing no split. `goal.saved_minor` was **not** removed: §15
+  keeps manual claims and asks only that they be distinct, so the goal card marks the ghost half in
+  words (never colour alone) and one tap on the new detail screen clears it.
+- **`RULE-PAY-FIRST` finally has a reader** — the last rule naming `AI-GOAL` that nothing consumed.
+  Its `params_json` is `{"anchor": "salary_credit_day"}`: a **source name, not a threshold**, so this
+  engine mirrors nothing from it and the day arrives as an input, resolved from the quick-setup
+  income rule the profile already has. Unknown day ⇒ no line and no citation, rather than an invented
+  payday (P-03). **No rulebook row minted**; `_meta.version` stays 1.15.0 (ADR-0036).
+- **A route, not another line on the goal card.** `CfoRoute.GoalDetail(goalId)` carries the split
+  figure, the linked movements, the funding accounts and both pickers. The goal card already held
+  three competing "monthly" figures, and the 7.3 session recorded what a fourth measurement does to
+  the sentences already there; it gains exactly one line.
+- **Repaired three things this was built on top of.** `goal` had been **missing from `CfoArchive`
+  since 7.1**, so every export taken between 7.1 and 7.4 silently dropped the user's goals — the
+  precise failure that class's own doc comment warns about, arriving one level up from where it was
+  watched. `rowCount()` had never counted eight of its lists, so "rows imported" under-reported.
+  `DemoDao.countRowsFor` omitted `goal`, `investment_holding` and `investment_lot`, and the demo wipe
+  deleted none of them.
+- **The editor was about to double the figure, and nothing would have said so.** `openEditor` filled
+  *Saved so far* from `goal.saved` — correct until this issue, and from this issue the **total**, so
+  every edit would have folded the evidenced half into `saved_minor` and doubled it on the next read.
+  Nothing in 7.1's code changed; what it meant did. It now loads `savedDeclared`, verified on the
+  emulator against a goal holding ₹1,59,800 evidenced beside ₹10,000 declared.
+- **Running it found two more.** A dedication made with *count everything in it* read back as
+  *"counting from 0001-01-01"* — a true statement about the database and a meaningless one about the
+  user's money; the repository that writes the sentinel now reports it as a flag. And the editor's
+  helper line still said *"You keep this up to date yourself for now"*, which stopped being true the
+  moment this shipped.
+- **Three gates proved red before being trusted:** the funding-account dedupe (broken, and the
+  "counts once" case failed), `RULE-PAY-FIRST`'s anchor param (changed to `month_end`, and
+  `RulebookDriftTest` failed), and the golden split — which was **tautological on the first attempt**
+  and had to be rewritten. `expect_declared` is now stated in the file rather than derived as
+  `saved − evidenced`, because deriving it was the same subtraction the engine performs, so the
+  assertion agreed with any answer the engine gave.
+- **Tests:** the goals engine at **100% line and branch**; 3 new golden records and a per-record
+  split assertion; 17 repository cases over real SQL (the sum both ways, the dedupe, reversal,
+  revival, profile scoping, the picker, the anchor); 9 ViewModel and 12 Compose cases; a 21→22
+  migration round trip asserting all eight index names against `sqlite_master` and that the unique
+  index refuses a duplicate. Verified on an emulator, including in airplane mode (P-04).
+- **Decided:** [ADR-0036](docs/adr/0036-progress-is-evidenced-and-declared-and-the-two-never-merge.md).
+  Pays the three debts ADR-0033 named: `saved_minor` derived, goals linked to accounts and
+  transactions, and `RULE-PAY-FIRST` consumed.
+
 ### [0.7.3] — Issue 7.3: Goal feasibility & waterfall  (2026-09-03)
 
 - **Implemented §15.1's feasibility check and priority waterfall** (**§15, §15.1**, **FR-GOAL-003**,

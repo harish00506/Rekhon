@@ -19,6 +19,7 @@ import java.lang.reflect.Modifier
  *       asserts the row still claims this engine as a consumer.
  * Result: the §6 deferral costs correctness nothing until the loader lands.
  * Changelog: 2026-08-30 — Created for issue 7.1.
+ *            2026-09-06 — Issue 7.4: RULE-PAY-FIRST's row, and the absence of 7.4 thresholds.
  *
  * **Parsed with regex, not a JSON library, on purpose.** `:domain:*` is pure Kotlin with no
  * serialisation dependency (ARC-002), and adding one to a *test* to check two values would be the
@@ -213,6 +214,80 @@ class RulebookDriftTest {
             assertTrue(
                 "'$key' appeared in the rulebook. The waterfall applies no threshold of its own — " +
                     "if it now needs one, it needs an ADR too. See ADR-0035",
+                "\"$key\"" !in rulebook,
+            )
+        }
+    }
+
+    /**
+     * Input:  RULE-PAY-FIRST's row.
+     * Output: asserts the version the plan cites, that the row is enabled, that it still claims this
+     *         engine, and that its `anchor` param still names the salary-credit day (issue 7.4).
+     *
+     * **Note what is not asserted: a number.** There is none.
+     * `RULE-PAY-FIRST.params_json` is `{"anchor": "salary_credit_day"}` — a pointer to where the day
+     * comes from, not a threshold — so this module mirrors nothing at all from it and the day itself
+     * arrives as `GoalPlanInput.contributionAnchorDay`, resolved by the repository from the
+     * profile's own income rule. What has to stay true is that the row exists, is switched on, is
+     * still addressed to `AI-GOAL`, is at the version stamped into every plan that cites it
+     * (AI-ARC-006), and still means *salary day* rather than something else: if `anchor` were
+     * changed to `month_end`, the engine would go on citing a rule whose advice had inverted.
+     */
+    @Test
+    fun `RULE-PAY-FIRST is enabled, names this engine, and still anchors on the salary day`() {
+        val row = ruleBlock("RULE-PAY-FIRST")
+
+        assertEquals(
+            "the citation stamped into a plan with a known salary day must name the row's version",
+            GoalRules.PAY_FIRST.ruleVersion,
+            row.version(),
+        )
+        assertTrue(
+            "RULE-PAY-FIRST is disabled — the plan cites advice that is switched off",
+            "\"enabled\": true" in row,
+        )
+        assertTrue(
+            "RULE-PAY-FIRST no longer names AI-GOAL in consumed_by, so the citation is stale — it " +
+                "was addressed to this engine before the engine existed",
+            "AI-GOAL" in row,
+        )
+        assertTrue(
+            "RULE-PAY-FIRST's anchor is no longer the salary-credit day. The whole of the advice " +
+                "is *which day*, so a changed anchor inverts it while every test on the arithmetic " +
+                "stays green",
+            "\"anchor\": \"salary_credit_day\"" in row,
+        )
+    }
+
+    /**
+     * Input:  every rule in the file.
+     * Output: asserts issue 7.4 invented no threshold either.
+     *
+     * Summing linked movements is arithmetic, and the salary day is the profile's own fact rather
+     * than a rulebook number — so **no parameter was needed** and none was minted, on 7.1's and
+     * 7.3's precedent (ADR-0033, ADR-0035). The keys below are the ones somebody would reach for:
+     *
+     * - a lookback window for how far back a newly dedicated funding account should count. That is
+     *   `goal_funding_account.linked_from_iso_date` — the user's own choice, stored per link, not a
+     *   default applied to everyone at once.
+     * - a minimum contribution worth recording. There is none: a linked movement counts for exactly
+     *   what it is, and a floor would silently discard evidence the user pointed at.
+     * - a tolerance for treating declared progress as evidenced. §15 asks for the opposite — the two
+     *   stay distinct, visually, for ever.
+     *
+     * Minting any of them bumps `_meta.version`, forcing all six typed mirrors to restate it, so it
+     * is a decision that must be made on purpose and with an ADR.
+     */
+    @Test
+    fun `issue 7-4 minted no threshold of its own`() {
+        listOf(
+            "contribution_lookback_months",
+            "min_contribution_minor",
+            "ghost_progress_tolerance_pct",
+        ).forEach { key ->
+            assertTrue(
+                "'$key' appeared in the rulebook. Linked contributions apply no threshold of their " +
+                    "own — if they now need one, it needs an ADR too",
                 "\"$key\"" !in rulebook,
             )
         }

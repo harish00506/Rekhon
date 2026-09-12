@@ -8,6 +8,9 @@ import com.aicfo.core.database.entity.BudgetReviewEntity
 import com.aicfo.core.database.entity.CardAlertEntity
 import com.aicfo.core.database.entity.CategoryEntity
 import com.aicfo.core.database.entity.CreditCardEntity
+import com.aicfo.core.database.entity.GoalContributionEntity
+import com.aicfo.core.database.entity.GoalEntity
+import com.aicfo.core.database.entity.GoalFundingAccountEntity
 import com.aicfo.core.database.entity.InvestmentHoldingEntity
 import com.aicfo.core.database.entity.InvestmentLotEntity
 import com.aicfo.core.database.entity.LoanEntity
@@ -36,6 +39,19 @@ import kotlinx.serialization.Serializable
  * What: an envelope naming the format and the schema it came from, plus one list per table.
  * Result: what `ArchiveRepository.export` writes and `import` reads.
  * Changelog: 2026-08-16 — Created for issue 5.4.
+ *   2026-09-06 — Issue 7.4 added [goals], [goalContributions] and [goalFundingAccounts].
+ *
+ * **`goal` was missing from here for two issues, and the warning below is what it disproved.**
+ * The argument for holding entities directly is that "a new column is in the archive the moment it
+ * is in the table" — true of a *column*, and false of a *table*. Issue 7.1 added `goal`, nothing
+ * added a field here, and every export taken between 7.1 and 7.4 silently dropped the user's goals.
+ * The failure mode this class was designed to avoid arrived one level up from where it was watched.
+ *
+ * **[archiveVersion] stays 1.** The envelope's structure did not change in a way any reader has to
+ * know about: the three new lists default to empty, so an archive written before them still decodes,
+ * and `Json` is configured with `ignoreUnknownKeys` so a newer archive does not break an older
+ * build's parser either. The gate that actually refuses an archive this build cannot restore is
+ * [schemaVersion], which moves 21 → 22 on its own.
  *
  * **It holds the Room entities directly, and that is the safer choice.** The alternative — fourteen
  * hand-written DTOs and twenty-eight mappers — has exactly one failure mode, and it is silent:
@@ -79,6 +95,9 @@ data class CfoArchive(
     val loans: List<LoanEntity> = emptyList(),
     val investmentHoldings: List<InvestmentHoldingEntity> = emptyList(),
     val investmentLots: List<InvestmentLotEntity> = emptyList(),
+    val goals: List<GoalEntity> = emptyList(),
+    val goalContributions: List<GoalContributionEntity> = emptyList(),
+    val goalFundingAccounts: List<GoalFundingAccountEntity> = emptyList(),
 ) {
     companion object {
         /**

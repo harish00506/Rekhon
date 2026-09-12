@@ -17,6 +17,7 @@ import com.aicfo.feature.categories.CategoriesScreen
 import com.aicfo.feature.dashboard.DashboardActions
 import com.aicfo.feature.dashboard.DashboardScreen
 import com.aicfo.feature.emergencyfund.EmergencyFundScreen
+import com.aicfo.feature.goals.GoalDetailScreen
 import com.aicfo.feature.goals.GoalsScreen
 import com.aicfo.feature.onboarding.OnboardingScreen
 import com.aicfo.feature.settings.SettingsScreen
@@ -107,7 +108,17 @@ private fun NavGraphBuilder.planningDestinations(navController: NavHostControlle
     composable<CfoRoute.Budgets> { BudgetsScreen() }
     // Issue 7.1: a goal is the plan for the years after this month, so it sits with the budget
     // rather than with the accounts it will eventually be funded from.
-    composable<CfoRoute.Goals> { GoalsScreen(onDone = { navController.popBackStack() }) }
+    composable<CfoRoute.Goals> {
+        GoalsScreen(
+            onDone = { navController.popBackStack() },
+            onOpenGoal = { goalId -> navController.navigate(CfoRoute.GoalDetail(goalId)) },
+        )
+    }
+
+    // Issue 7.4: a leaf of the goals screen. It is a route rather than a section of the goal card
+    // because that card already carries three different "monthly" figures, and the 7.3 session
+    // recorded what adding a fourth measurement to a crowded card did to the sentences on it.
+    composable<CfoRoute.GoalDetail> { GoalDetailScreen(onDone = { navController.popBackStack() }) }
 
     // Issue 7.2: beside the goals destination. §10.1 suggests pausing goals when the runway is
     // thin, so the screen that says so belongs within a tap of the screen it is about.

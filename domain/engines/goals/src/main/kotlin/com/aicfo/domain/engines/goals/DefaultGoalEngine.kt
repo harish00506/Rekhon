@@ -29,13 +29,25 @@ internal class DefaultGoalEngine : GoalEngine {
     override fun plan(input: GoalPlanInput): Result<GoalPlan, AppError> =
         runCatchingToResult {
             GoalPlan(
-                goals = input.goals.map { goal -> project(goal, input.today, input.rules) },
+                goals =
+                    input.goals.map { goal ->
+                        project(goal, input.today, input.rules, input.contributionAnchorDay)
+                    },
                 provenance =
                     EngineProvenance(
                         engineId = ENGINE_ID,
                         engineVersion = ENGINE_VERSION,
                         computedAtUtcMillis = input.nowUtcMillis,
-                        evidence = listOf(GoalRules.HORIZON),
+                        // RULE-PAY-FIRST is cited only when it shaped something. Unlike the
+                        // waterfall's gate — evaluated every time, so both outcomes are outcomes —
+                        // an anchor the app does not know produces no advice at all, and citing a
+                        // rule that said nothing would make the evidence list a list of rules that
+                        // exist rather than of rules that fired (issue 7.3's refinement of P-02).
+                        evidence =
+                            listOfNotNull(
+                                GoalRules.HORIZON,
+                                GoalRules.PAY_FIRST.takeIf { input.contributionAnchorDay != null },
+                            ),
                         inputWindow = input.today.toString(),
                         // No confidenceBps: this is arithmetic, not an inference.
                     ),
@@ -49,12 +61,14 @@ internal class DefaultGoalEngine : GoalEngine {
      *         issue 7.3's job and needs a number this engine is not given.
      * What:   the six figures in the order they depend on each other.
      * Result: a [GoalProjection].
-     * Input:  [goal]; [today]; [rules]. Output: [GoalProjection].
+     * Input:  [goal]; [today]; [rules]; [anchorDay] — `RULE-PAY-FIRST`'s salary-credit day, or null.
+     * Output: [GoalProjection].
      */
     private fun project(
         goal: GoalSpec,
         today: LocalDate,
         rules: GoalRules,
+        anchorDay: Int?,
     ): GoalProjection {
         val remaining = maxOf(Money.ZERO, goal.target - goal.saved)
         val monthsRemaining = monthsBetween(today, goal.targetDate)
@@ -77,6 +91,12 @@ internal class DefaultGoalEngine : GoalEngine {
             onTrack = shortfall == Money.ZERO,
             horizon = rules.bucketFor(monthsRemaining),
             status = statusFor(goal, remaining, shortfall, today),
+            savedEvidenced = goal.savedEvidenced,
+            // Subtraction rather than a second input: `GoalSpec` already guarantees the two halves
+            // reconcile, so deriving the declared half here means there is exactly one place the
+            // split can be wrong, and it is guarded by a `require`.
+            savedDeclared = goal.saved - goal.savedEvidenced,
+            contributionAnchorDay = anchorDay,
         )
     }
 
@@ -153,8 +173,15 @@ internal class DefaultGoalEngine : GoalEngine {
         /** Matches the `AI-GOAL` row in `ai/orchestrator/engine-registry.yaml`. */
         const val ENGINE_ID = "AI-GOAL"
 
-        /** Bumped whenever the formula changes, so a stored result stays reproducible (AI-ARC-006). */
-        const val ENGINE_VERSION = "1.0"
+        /**
+         * Bumped whenever the formula changes, so a stored result stays reproducible (AI-ARC-006).
+         *
+         * 1.0 → 1.1 (issue 7.4): the arithmetic of every existing figure is untouched, but `saved`
+         * now arrives split into an evidenced and a declared half, and a plan can carry
+         * `RULE-PAY-FIRST`'s anchor. A result computed at 1.0 and one computed at 1.1 from the same
+         * inputs agree on every number; what changed is what the input can say.
+         */
+        const val ENGINE_VERSION = "1.1"
 
         /**
          * A hundred years of monthly contributions.

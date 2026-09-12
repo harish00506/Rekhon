@@ -1,7 +1,7 @@
 # GoalEngine — AI-GOAL · GoalWaterfallEngine — AI-GOAL.waterfall
 
 **SRS:** §10, §15, §15.1, §36 · **Pipeline layer:** L4/L5 · **Module:** `:domain:engines:goals`
-**Versions:** `AI-GOAL` 1.0 · `AI-GOAL.waterfall` 1.0 · **Status:** active
+**Versions:** `AI-GOAL` 1.1 · `AI-GOAL.waterfall` 1.0 · **Status:** active
 
 Two engines in one module, because the second is only meaningful over the first's output and reuses
 its types with no new dependency. `GoalEngine` answers *"what would this goal take?"* one goal at a
@@ -43,11 +43,13 @@ interface GoalEngine {
 | `goals` | the goals to project, in the order they should come back. May be empty — a user with no goals has nothing wrong with them. |
 | `goals[].target` | what the goal needs in total, paise (MNY-001). Zero is legitimate: "no target set yet". |
 | `goals[].targetDate` | the day the money is needed (TIM-002). May be in the past. |
-| `goals[].saved` | what is set aside now. May exceed `target`. |
+| `goals[].saved` | what is set aside now, **both halves added together**. May exceed `target`. |
+| `goals[].savedEvidenced` | how much of `saved` real movements in the ledger account for (issue 7.4; FR-GOAL-004). The remainder is what the user typed — §15's *ghost progress*. **May be negative** (a dedicated funding account can pay out more than it took in) and may **not exceed `saved`**, because the caller floors the pair together. Defaults to zero, which is what every profile reads on the day 7.4 shipped. |
 | `goals[].plannedMonthly` | what the user says they will contribute. Zero means "no plan yet". |
 | `today` | the day to reckon from, **already resolved in the profile's time zone by the caller**. A `LocalDate`, because every question here is a calendar one and TIM-001 forbids this module reading a clock. |
 | `nowUtcMillis` | the caller's instant. Stamped onto the provenance and **never read as a clock**. |
 | `rules` | the thresholds. Injected, so a test can move a band and assert the engine moves with it. |
+| `contributionAnchorDay` | the day of the month the user's income lands, 1–31, or **null** when the app does not know (`RULE-PAY-FIRST`). An **input, not a `GoalRules` field**: the row's `params_json` is `{"anchor": "salary_credit_day"}` — a source name, not a threshold — so this module mirrors nothing from it. `GoalRepository` resolves it from the quick-setup income rule's due date. Null means silence rather than an invented payday (P-03). |
 
 ### Output
 
@@ -73,6 +75,7 @@ onTrack          = shortfallMonthly == 0
 etaIsoDate       = today                     when remaining == 0
                    null                      when plannedMonthly == 0, or the answer exceeds 1200 months
                    today + ⌈remaining ÷ plannedMonthly⌉ months   otherwise
+savedDeclared    = saved − savedEvidenced                     ← §15's ghost progress
 horizon          = RULE-HORIZON.bucketFor(monthsRemaining)
 status           = NO_TARGET   when target ≤ 0
                    OVER_FUNDED when remaining == 0
@@ -91,6 +94,11 @@ was needed.
 
 **`requiredMonthly` is the *largest* instalment.** `Money.split` hands the odd paise to the earliest
 parts; quoting the smallest would leave the goal a few paise short.
+
+**The progress split is carried, never recomputed downstream.** `savedEvidenced + savedDeclared
+== saved` is a `require` on `GoalProjection`, the same shape of guard `GoalPlan` puts on its
+citation: a card that showed a split which did not reconcile would be worse than one that showed no
+split at all. The screen therefore does no subtraction of its own (P-03).
 
 **`status` order is deliberate.** Over-funded is checked before past-due, because a goal that is
 fully saved is finished whatever its date said. No-target is checked before behind, because "you are
@@ -113,9 +121,19 @@ short by ₹0 a month" against a target of zero is not a shortfall — it is a g
   take". Ranking them against a shared surplus is the *second* engine below, added by issue 7.3.
 - **It advises, it does not instruct** (P-07). Nothing moves money or schedules a transfer.
 - **It decides nothing about which goals exist or what "saved" means.** Both arrive resolved:
-  storage is `GoalRepository`'s question (ARC-005). In 7.1 `saved` is hand-entered; **issue 7.4**
-  (Linked contributions) replaces it with a derived figure, the way 6.5's fetched price replaced
-  6.3's hand-typed one.
+  storage is `GoalRepository`'s question (ARC-005). In 7.1 `saved` was hand-entered; **issue 7.4**
+  now derives most of it, the way 6.5's fetched price replaced 6.3's hand-typed one — the sum of the
+  movements the user linked and the net inflow of the accounts they dedicated, computed in SQL by
+  `GoalDao.observeEvidenced` and handed in as `savedEvidenced`.
+- **The hand-typed figure was not removed, and that is §15's instruction.** §15 keeps manual claims
+  and asks only that they be *visually distinct*, so `goal.saved_minor` stays exactly as the editor
+  wrote it and the evidenced half is derived beside it. This engine reports both and ranks neither
+  (ADR-0036).
+- **The two link kinds are summed differently, outside this module.** An explicit transaction link
+  contributes the **magnitude** of its amount — a SIP debit is stored negative and still funds the
+  goal — while a dedicated account contributes the **signed** net movement since its link day, so a
+  withdrawal reduces it. A movement that is both counts once. All of that is one SQL query; none of
+  it is arithmetic this engine performs.
 - **An ETA further out than 1200 months is reported as `null`.** Not a financial threshold — nothing
   about the advice changes at the boundary. Past a century the difference between "in 400 years" and
   "in 40,000 years" is not something a user acts on, and computing it risks `LocalDate.plusMonths`
@@ -154,8 +172,20 @@ mirror: nothing in this module can drift from the rulebook's number, because not
 holds it. `RulebookDriftTest` guards that directly — it asserts `GoalRules`' **instance fields** never
 grow, while leaving the companion's citations free to.
 
-One further rule names AI-GOAL and belongs to a later issue: `RULE-PAY-FIRST` (7.4, contribution
-scheduling).
+**Issue 7.4 minted none either, and consumed the last unread row that named this engine.**
+`RULE-PAY-FIRST` had sat in the rulebook since day one with `AI-GOAL` in its `consumed_by` and
+nothing reading it — the third such row, after `RULE-HORIZON` (7.1) and `RULE-EMERG-FIRST` (7.3).
+Its whole content is *which day*, and its `params_json` is `{"anchor": "salary_credit_day"}`: the
+**name of where to look**, not a number. So this module holds its citation and nothing else, and the
+day arrives as `GoalPlanInput.contributionAnchorDay`, resolved by the repository from the quick-setup
+income rule the profile already has. `rules-kb.json` `_meta.version` stayed at **1.15.0**.
+
+The citation is attached **only when the day is known**. Unlike `RULE-EMERG-FIRST` — a gate,
+evaluated every time, both of whose outcomes are outcomes — an anchor the app does not have produces
+no advice at all, so citing it would make the evidence list a list of rules that *exist* rather than
+of rules that *fired*.
+
+Every rule that names `AI-GOAL` now has a reader.
 
 ---
 
@@ -339,4 +369,5 @@ fix is still holding.
 | Version | Date | Change |
 |---|---|---|
 | `AI-GOAL` 1.0 | 2026-08-30 | Created for issue 7.1. Required monthly, ETA, horizon and status. No rulebook row minted; no growth assumed. |
+| `AI-GOAL` 1.1 | 2026-09-06 | Issue 7.4. `saved` arrives split into `savedEvidenced` and a declared remainder, and a plan can carry `RULE-PAY-FIRST`'s anchor day. **Every existing figure is computed identically** — a result at 1.0 and one at 1.1 from the same inputs agree on every number; what changed is what the input can say (ADR-0036). |
 | `AI-GOAL.waterfall` 1.0 | 2026-09-03 | Created for issue 7.3. Feasibility against a shared surplus, the priority waterfall, and FR-GOAL-003's three levers. No rulebook row minted; the P50 *forecast* surplus §15.1 asks for is substituted by the P50 of observed surplus until issue 9.2 exists (ADR-0035). |

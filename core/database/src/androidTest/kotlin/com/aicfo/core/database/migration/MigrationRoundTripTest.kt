@@ -1395,6 +1395,132 @@ class MigrationRoundTripTest {
         }
     }
 
+    /**
+     * 21 -> 22: the two link tables arrive, and nothing a user typed moves (issue 7.4; §15,
+     * FR-GOAL-002, FR-GOAL-004).
+     *
+     * Why:    this is the migration that turns goal progress from a number the user typed into a
+     *         sum over their own ledger, and the failure that would matter is a *silent* one — a
+     *         profile upgrading and finding its goals suddenly reading zero, or reading double.
+     *         Neither table has an amount column and nothing is backfilled, so the correct outcome
+     *         is that `saved_minor` survives byte for byte and the new tables start empty.
+     * What:   inserts a goal and a transaction at version 21, migrates, and asserts the old rows are
+     *         untouched, the new tables accept a row, the **unique** indices refuse a duplicate
+     *         link, and all eight index names match what Room would create.
+     * Result: an upgraded database is indistinguishable from a fresh one.
+     * Input:  none (the harness supplies the database). Output: none; it asserts.
+     *
+     * **The index-name assertion is the load-bearing part**, for the reason `migrate19To20_...`
+     * records: `runMigrationsAndValidate` does not compare index names, so without this an upgraded
+     * installation could carry differently-named indices for ever with every test still green.
+     * The unique ones matter twice over — the repository's revive-an-unlinked-row logic is only
+     * correct because a duplicate insert is impossible.
+     */
+    @Test
+    fun migrate21To22_addsTheLinkTablesAndLeavesEveryTypedFigureAlone() {
+        helper.createDatabase(TEST_DB, 21).use { db ->
+            db.execSQL(
+                "INSERT INTO goal (id, profile_id, name, target_minor, target_date_iso, " +
+                    "saved_minor, planned_monthly_minor, sort_order, created_at_utc_millis, " +
+                    "updated_at_utc_millis) " +
+                    "VALUES ('g1','p1','Kerala trip',50000000,'2028-04-30',10000000,1500000,0," +
+                    "1767312000000,1767312000000)",
+            )
+            db.execSQL(
+                "INSERT INTO transactions (id, profile_id, account_id, amount_minor, " +
+                    "currency_code, occurred_at_utc_millis, booked_on_iso_date, source, type, " +
+                    "created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('t1','p1','a5',-500000,'INR',1767312000000,'2026-09-01','manual'," +
+                    "'expense',1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 22, true, Migrations.MIGRATION_21_22)
+
+        migrated.query("SELECT saved_minor, planned_monthly_minor FROM goal WHERE id = 'g1'").use { cursor ->
+            assertTrue("the pre-migration goal must still be there", cursor.moveToFirst())
+            assertEquals(
+                "MNY-001: the hand-typed figure survives byte for byte — it is now *declared* " +
+                    "progress, and nothing about this migration may change it",
+                10000000L,
+                cursor.getLong(0),
+            )
+            assertEquals(1500000L, cursor.getLong(1))
+        }
+
+        migrated.query("SELECT COUNT(*) FROM goal_contribution").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("an upgraded profile starts with no evidence, not with guessed evidence", 0, cursor.getInt(0))
+        }
+
+        migrated.execSQL(
+            "INSERT INTO goal_contribution (id, profile_id, goal_id, transaction_id, " +
+                "created_at_utc_millis, updated_at_utc_millis) " +
+                "VALUES ('gc1','p1','g1','t1',1767312000000,1767312000000)",
+        )
+        migrated.query(
+            "SELECT goal_id, transaction_id, deleted_at_utc_millis FROM goal_contribution WHERE id = 'gc1'",
+        ).use { cursor ->
+            assertTrue("the new table must accept a link", cursor.moveToFirst())
+            assertEquals("g1", cursor.getString(0))
+            assertEquals("t1", cursor.getString(1))
+            assertTrue("a live link is not soft-deleted", cursor.isNull(2))
+        }
+
+        migrated.execSQL(
+            "INSERT INTO goal_funding_account (id, profile_id, goal_id, account_id, " +
+                "linked_from_iso_date, created_at_utc_millis, updated_at_utc_millis) " +
+                "VALUES ('fa1','p1','g1','a5','2026-09-01',1767312000000,1767312000000)",
+        )
+        migrated.query(
+            "SELECT account_id, linked_from_iso_date FROM goal_funding_account WHERE id = 'fa1'",
+        ).use { cursor ->
+            assertTrue("the second table must accept a dedication", cursor.moveToFirst())
+            assertEquals("a5", cursor.getString(0))
+            assertEquals("TIM-002: a date, never a timestamp", "2026-09-01", cursor.getString(1))
+        }
+
+        var duplicateRefused = false
+        try {
+            migrated.execSQL(
+                "INSERT INTO goal_contribution (id, profile_id, goal_id, transaction_id, " +
+                    "created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('gc2','p1','g1','t1',1767312000000,1767312000000)",
+            )
+        } catch (expected: SQLiteConstraintException) {
+            duplicateRefused = true
+        }
+        assertTrue(
+            "the unique index must refuse a second link of the same pair — the repository revives " +
+                "the soft-deleted row precisely because it cannot insert a duplicate",
+            duplicateRefused,
+        )
+
+        val indices = mutableSetOf<String>()
+        migrated.query(
+            "SELECT name FROM sqlite_master WHERE type = 'index' " +
+                "AND tbl_name IN ('goal_contribution', 'goal_funding_account')",
+        ).use { cursor ->
+            while (cursor.moveToNext()) indices += cursor.getString(0)
+        }
+        assertTrue(
+            "the migration must create the indices Room names, or an upgraded database diverges " +
+                "from a fresh one for ever. Room does not check this: $indices",
+            indices.containsAll(
+                listOf(
+                    "index_goal_contribution_goal_id",
+                    "index_goal_contribution_transaction_id",
+                    "index_goal_contribution_profile_id",
+                    "index_goal_contribution_goal_id_transaction_id",
+                    "index_goal_funding_account_goal_id",
+                    "index_goal_funding_account_account_id",
+                    "index_goal_funding_account_profile_id",
+                    "index_goal_funding_account_goal_id_account_id",
+                ),
+            ),
+        )
+    }
+
     private companion object {
         const val TEST_DB = "migration-test.db"
     }

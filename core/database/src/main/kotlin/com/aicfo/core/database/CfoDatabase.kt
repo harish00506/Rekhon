@@ -13,7 +13,9 @@ import com.aicfo.core.database.dao.CardAlertDao
 import com.aicfo.core.database.dao.CategoryDao
 import com.aicfo.core.database.dao.CreditCardDao
 import com.aicfo.core.database.dao.DemoDao
+import com.aicfo.core.database.dao.GoalContributionDao
 import com.aicfo.core.database.dao.GoalDao
+import com.aicfo.core.database.dao.GoalFundingAccountDao
 import com.aicfo.core.database.dao.InvestmentHoldingDao
 import com.aicfo.core.database.dao.InvestmentLotDao
 import com.aicfo.core.database.dao.LoanDao
@@ -33,7 +35,9 @@ import com.aicfo.core.database.entity.BudgetReviewEntity
 import com.aicfo.core.database.entity.CardAlertEntity
 import com.aicfo.core.database.entity.CategoryEntity
 import com.aicfo.core.database.entity.CreditCardEntity
+import com.aicfo.core.database.entity.GoalContributionEntity
 import com.aicfo.core.database.entity.GoalEntity
+import com.aicfo.core.database.entity.GoalFundingAccountEntity
 import com.aicfo.core.database.entity.InvestmentHoldingEntity
 import com.aicfo.core.database.entity.InvestmentLotEntity
 import com.aicfo.core.database.entity.LoanEntity
@@ -88,6 +92,8 @@ import com.aicfo.core.database.entity.TransactionTagEntity
         InvestmentHoldingEntity::class,
         InvestmentLotEntity::class,
         GoalEntity::class,
+        GoalContributionEntity::class,
+        GoalFundingAccountEntity::class,
     ],
     version = CfoDatabase.VERSION,
     exportSchema = true,
@@ -154,6 +160,12 @@ abstract class CfoDatabase : RoomDatabase() {
     /** Input: none. Output: the goal DAO (issue 7.1). */
     abstract fun goalDao(): GoalDao
 
+    /** Input: none. Output: the goal-contribution DAO (issue 7.4, FR-GOAL-004). */
+    abstract fun goalContributionDao(): GoalContributionDao
+
+    /** Input: none. Output: the funding-account DAO (issue 7.4, FR-GOAL-002). */
+    abstract fun goalFundingAccountDao(): GoalFundingAccountDao
+
     /**
      * Input:  none. Output: the demo wipe DAO (issue 2.4, FR-ONB-004).
      *
@@ -200,9 +212,13 @@ abstract class CfoDatabase : RoomDatabase() {
          * those and deliberately **not** stored, ADR-0033; §15) · 21 — issue 7.3
          * (`goal.sort_order`, the order the contribution waterfall pours a limited surplus in —
          * a user preference nothing in the data implies, which is why it is the one part of the
-         * waterfall that is stored rather than computed; §15, FR-GOAL-005).
+         * waterfall that is stored rather than computed; §15, FR-GOAL-005) · 22 — issue 7.4
+         * (`goal_contribution`, one movement the user says funded a goal; `goal_funding_account`,
+         * a whole account dedicated to one from a stated day. Neither holds an amount — the
+         * contribution *is* the linked transaction's, summed at query time, so nothing can drift
+         * away from the ledger it came from; §15, FR-GOAL-002, FR-GOAL-004).
          */
-        const val VERSION = 21
+        const val VERSION = 22
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"

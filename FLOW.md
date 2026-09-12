@@ -12,6 +12,8 @@
     2026-08-17 — Issue 5.5 added §4.5, Shape D: the widget. The first surface that renders outside
         the app's process and must work while the app is locked, which is why it earned a section
         rather than being a fourth screen.
+    2026-09-06 — Issue 7.4 added §2.7: goal progress derived from linked movements, and the write
+    path that creates the links. Still Shape A.
     2026-09-03 — Issue 7.3 added §2.6, the goal waterfall. Still Shape A — a screen — but the first
         read assembled from four repositories, and the first write driven by a gesture, so it is
         traced beside §2.5 rather than folded into it.
@@ -729,6 +731,97 @@ GoalsEvent.MoveUp / MoveDown / MoveGoal      ← drag, or the semantic custom ac
 fail`, with `AI-GOAL` in its `consumed_by` and nothing consuming it. It is cited on **every** plan,
 not only when it fires — a gate is evaluated every time and both outcomes decide whether goals are
 funded, which is the one place this departs from 7.2's "cite only what fired" (ADR-0035).
+
+### 2.7 · What a goal's progress is actually made of (issue 7.4)
+
+§2.5 and §2.6 both read `goal.saved_minor` — a number the user typed. This is the path that derives
+most of it from their own ledger instead, and the path that lets them point at a movement and say
+*that one was for this*.
+
+**The read.** `saved` stops being a column and becomes a column plus a query:
+
+```
+GoalsScreen → GoalsViewModel.uiState                       :feature:goals
+└─ GoalRepository.observeGoals()                           :data:repository (ARC-005)
+    └─ activeProfileId.flatMapLatest { profileId ->
+        │   THREE FLOWS NOW, because progress has three moving sources. Linking a movement has to
+        │   move the figure on this screen with nobody re-reading anything.
+        combine(
+        ├─ goalDao.observeForProfile(profileId)             → the rows, in sort_order
+        ├─ goalDao.observeEvidenced(profileId, today)       → ONE `UNION ALL`, one `GROUP BY`
+        │   ├─ goal_contribution ⋈ transactions            → ABS(amount_minor)
+        │   │      the user pointed at ONE movement, so the act of linking asserts the direction:
+        │   │      a ₹5,000 SIP debit is stored negative and still funds the goal
+        │   ├─ goal_funding_account ⋈ transactions         → SIGNED amount_minor
+        │   │      a claim about a POT, so an outflow reduces it and both legs of an internal
+        │   │      transfer net to zero instead of counting twice
+        │   │      bounded below by linked_from_iso_date — what stops a newly dedicated account
+        │   │      crediting the goal with two years of history the instant it is linked
+        │   ├─ AND NOT EXISTS (the same txn explicitly linked TO THIS GOAL)
+        │   │      the dedupe. Per goal, because the same movement may evidence a different one —
+        │   │      that is a separate claim
+        │   └─ both halves bounded by booked_on_iso_date <= today
+        │          a future-dated transaction (3.4) has not happened, so it cannot be progress
+        └─ recurringRuleDao.observeIncomeDueDate(profileId) → RULE-PAY-FIRST's anchor day
+               the quick-setup `income` seed (2.3) already carries it; null when there is none,
+               and null is silence rather than an invented payday (P-03)
+       ) { rows, evidence, incomeDue ->
+        └─ per row:
+            declared   = Money(row.saved_minor)             ← §15's ghost progress, UNCHANGED
+            evidenced  = max(evidence[row.id] ?: 0, −declared)
+            │              THE PAIR IS FLOORED TOGETHER, not the total at zero: clamping the total
+            │              would make `saved − savedEvidenced` report a figure the user never typed
+            saved      = declared + evidenced
+            └─ GoalEngine.plan(GoalPlanInput(specs, today, contributionAnchorDay))
+                └─ GoalProjection.savedEvidenced / .savedDeclared
+                    require(evidenced + declared == saved)  ← the split reconciles, or nothing renders
+       }
+```
+
+**The write.** A second repository, because it owns different tables — ARC-005 asks that exactly one
+class touch a DAO, not that one class touch every DAO:
+
+```
+GoalDetailScreen → GoalDetailViewModel                     :feature:goals
+│                  route CfoRoute.GoalDetail(goalId), typed (ARC-001)
+├─ GoalRepository.observeGoals()  ── filtered to this id, so the two screens cannot disagree
+├─ GoalContributionRepository.observeContributions(goalId)
+│   └─ goalContributionDao.observeForGoal(goalId)
+│       └─ flatMapLatest → transactionDao.observeByIds(linkedIds)
+│              THE LINKS ARE THE INDEX; THE LEDGER IS THE TRUTH. Resolving through the rows on
+│              every emission is what stops an edited amount leaving a stale contribution behind,
+│              and what makes a soft-deleted transaction stop counting with nothing unlinked.
+├─ GoalContributionRepository.observeLinkable(goalId)
+│   └─ transactions.observeRecent(100) minus already-linked minus the transfer_out leg
+│          a transfer is ONE movement stored as two rows (ADR-0008); offering both would invite
+│          the user to link the same money twice
+└─ GoalContributionRepository.link / unlink / linkAccount / unlinkAccount
+    ├─ link:   findIncludingDeleted(goalId, txnId) → REVIVE that row, or mint one
+    │            the unique index forbids a duplicate, so re-linking something once unlinked is
+    │            an ordinary action rather than a failure — and the original created stamp stays
+    └─ unlink: softDelete(goalId, txnId, now)
+                 the progress reverses to the paise AND `when this was linked` survives. A hard
+                 DELETE would do the first and destroy the second, and 7.4 asks for both.
+```
+
+**Clearing the ghost figure is an ordinary goal edit**, which is why it goes through `save` rather
+than reaching for the DAO:
+
+```
+GoalDetailEvent.ClearGhostProgress
+└─ GoalRepository.save(GoalDraft(…, saved = ZERO), id = goalId)
+       the DECLARED half is what is zeroed; the evidenced half is not this screen's to touch and
+       could not be zeroed without unlinking the movements that produced it
+```
+
+**One figure this moves elsewhere, and it was not obvious.** `GoalsViewModel.openEditor` filled the
+editor's *Saved so far* field from `goal.saved` — correct until 7.4, and from 7.4 the **total**. It
+now loads `goal.savedDeclared`; loading the total would have folded the evidenced half into
+`saved_minor` on every edit and doubled it on the next read. Nothing in 7.1's code changed; what it
+meant did.
+
+Safe-to-Spend moves too, by design: `requiredMonthly` falls as `saved` rises, and `RULE-STS`
+subtracts the total (§2.1). Linking a contribution now raises the headline figure.
 
 ---
 
