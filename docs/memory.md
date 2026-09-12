@@ -24,8 +24,9 @@
   Operations, AI-FOO) is the last issue in it.**
 - **Currently working file:** none. Issue **7.4 is merged to `dev`** at `d6d09ee`
   ([tracker](issues/7.4-linked-contributions-tracker.md)). **`origin/dev` is still at `6afa5f0`** —
-  the merge was asked for, the push was not, so local `dev` is five commits plus a merge ahead of
-  the remote. **7.5 is next.**
+  local `dev` is seven commits ahead and **the push is blocked, not skipped**: this environment has
+  no GitHub credentials (no helper, no `gh`, no token, and the one SSH key is for another host).
+  **Pushing 7.4 needs an authenticated shell.** **7.5 is next.**
 - **Check `git log dev` against `VERSION` before starting an issue**, not just the issue tracker.
   `dev` was two issues behind once and nobody noticed.
 - **Epic 9 was skipped, and Epic 7 keeps paying for it.** `:domain:engines:forecast` is still issue
