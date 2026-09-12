@@ -17,10 +17,10 @@ import com.aicfo.domain.engines.goals.GoalProjection
 import com.aicfo.domain.engines.goals.GoalSpec
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 
@@ -34,6 +34,8 @@ import java.time.LocalDate
  *       whoever needs the total.
  * Result: a ViewModel sees [GoalProjection]s and nothing else.
  * Changelog: 2026-08-30 — Created for issue 7.1.
+ *            2026-09-06 — Issue 7.4: `saved` is derived from linked movements rather than read
+ *            straight off the row, and the plan carries the `RULE-PAY-FIRST` anchor day.
  *
  * **Nothing derived is stored.** Every read recomputes through the engine, because a required
  * monthly written to the database would outlive the goal that produced it — and would go stale
@@ -116,7 +118,10 @@ interface GoalRepository {
  * @property target what it needs in total, paise. Zero is allowed — "no target yet" is an ordinary
  *   state, and the engine reports it rather than the repository refusing it.
  * @property targetDateIso the day the money is needed, ISO `yyyy-MM-dd` (TIM-002).
- * @property saved what is set aside now. Hand-entered until issue 7.4 derives it.
+ * @property saved what the user **declares** is set aside — what §15 calls ghost progress.
+ *   Issue 7.4 did not remove it: §15 keeps manual claims and asks only that they be shown as visually distinct, so
+ *   this is still what the editor writes, and the evidenced half is derived beside it rather than in
+ *   place of it.
  * @property plannedMonthly what the user intends to contribute each month. Zero means no plan yet.
  */
 data class GoalDraft(
@@ -144,14 +149,36 @@ internal class RoomGoalRepository(
     override fun observeGoals(): Flow<List<GoalProjection>> =
         activeProfileId
             .flatMapLatest { profileId ->
-                database.goalDao().observeForProfile(profileId).map(::project)
+                // Three flows, because progress now has three moving sources: the goal rows, the
+                // movements linked to them (issue 7.4), and the income rule whose day
+                // RULE-PAY-FIRST anchors on. Linking a transaction has to move the figure on this
+                // screen without anybody re-reading anything.
+                combine(
+                    database.goalDao().observeForProfile(profileId),
+                    database.goalDao().observeEvidenced(profileId, clock.today().toString()),
+                    database.recurringRuleDao().observeIncomeDueDate(profileId),
+                ) { rows, evidence, incomeDue ->
+                    project(
+                        rows = rows,
+                        evidenceByGoalId = evidence.associate { it.goalId to it.amountMinor },
+                        anchorDay = anchorDay(incomeDue),
+                    )
+                }
             }.flowOn(dispatchers.io)
 
     override suspend fun requiredMonthlyTotal(): Result<Money, AppError> =
         withContext(dispatchers.io) {
             val profileId = activeProfileId.first()
+            // The same evidence the observed list uses. Safe-to-Spend subtracts this total, so a
+            // goal the user has actually funded must reduce it here too — otherwise linking a
+            // contribution would move the goals screen and leave the headline figure behind.
+            val evidence =
+                database.goalDao()
+                    .observeEvidenced(profileId, clock.today().toString())
+                    .first()
+                    .associate { it.goalId to it.amountMinor }
             val total =
-                project(database.goalDao().forProfile(profileId))
+                project(database.goalDao().forProfile(profileId), evidence, anchorDay = null)
                     .fold(Money.ZERO) { running, goal -> running + goal.requiredMonthly }
             Ok(total)
         }
@@ -232,27 +259,63 @@ internal class RoomGoalRepository(
      * Result: one projection per row. **A row whose stored date will not parse is dropped**, not
      *         thrown on: it can only arrive from a hand-edited database or a future migration bug,
      *         and losing one goal is a better outcome than a screen that cannot render at all (P-04).
-     * Input:  [rows]. Output: the projections, in the DAO's order.
+     * **`saved` is two figures added together** (issue 7.4). What the user typed stays on the row
+     * and is now *declared* progress; what their linked movements sum to is *evidenced*. The pair is
+     * floored **together** rather than separately: if a dedicated funding account has paid out more
+     * than the declared figure, the evidenced half is clamped at `-declared`, so the total lands on
+     * zero and `saved - savedEvidenced` still equals exactly what the user typed. Flooring the total
+     * on its own would have made the declared half come out as a number they never entered.
+     *
+     * Input:  [rows]; [evidenceByGoalId] — paise per goal from `GoalDao.observeEvidenced`, absent
+     *   for a goal with nothing linked; [anchorDay] — the salary-credit day, or null.
+     * Output: the projections, in the DAO order.
      */
-    private fun project(rows: List<GoalEntity>): List<GoalProjection> {
+    private fun project(
+        rows: List<GoalEntity>,
+        evidenceByGoalId: Map<String, Long>,
+        anchorDay: Int?,
+    ): List<GoalProjection> {
         val specs =
             rows.mapNotNull { row ->
                 val date = runCatching { LocalDate.parse(row.targetDateIso) }.getOrNull()
                 date?.let {
+                    val declared = Money(row.savedMinor)
+                    val evidenced = maxOf(Money(evidenceByGoalId[row.id] ?: 0L), Money.ZERO - declared)
                     GoalSpec(
                         id = row.id,
                         name = row.name,
                         target = Money(row.targetMinor),
                         targetDate = it,
-                        saved = Money(row.savedMinor),
+                        saved = declared + evidenced,
                         plannedMonthly = Money(row.plannedMonthlyMinor),
+                        savedEvidenced = evidenced,
                     )
                 }
             }
         val plan =
             engine.plan(
-                GoalPlanInput(goals = specs, today = clock.today(), nowUtcMillis = clock.nowUtcMillis()),
+                GoalPlanInput(
+                    goals = specs,
+                    today = clock.today(),
+                    nowUtcMillis = clock.nowUtcMillis(),
+                    contributionAnchorDay = anchorDay,
+                ),
             )
         return (plan as? Ok)?.value?.goals.orEmpty()
     }
+
+    /**
+     * Turns the income rule due date into the salary-credit day RULE-PAY-FIRST anchors on.
+     *
+     * Why:    the whole content of that rule is *which day of the month*, and the profile already
+     *         answered it at onboarding — quick setup (issue 2.3) writes an `income` recurring rule
+     *         whose due date carries the day. Reading it beats asking again.
+     * What:   `LocalDate.parse(...).dayOfMonth`.
+     * Result: the day, or **null** when there is no income rule or its stored date will not parse.
+     *         Null is silence: the screen says nothing and the plan cites nothing, rather than the
+     *         app inventing a payday (P-03).
+     * Input:  [incomeDueIsoDate] — from `RecurringRuleDao.observeIncomeDueDate`. Output: `Int?`.
+     */
+    private fun anchorDay(incomeDueIsoDate: String?): Int? =
+        incomeDueIsoDate?.let { iso -> runCatching { LocalDate.parse(iso).dayOfMonth }.getOrNull() }
 }

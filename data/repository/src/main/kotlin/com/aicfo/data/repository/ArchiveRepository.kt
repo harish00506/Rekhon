@@ -115,6 +115,9 @@ internal class RoomArchiveRepository(
                         loans = dao.loans(profileId),
                         investmentHoldings = dao.investmentHoldings(profileId),
                         investmentLots = dao.investmentLots(profileId),
+                        goals = dao.goals(profileId),
+                        goalContributions = dao.goalContributions(profileId),
+                        goalFundingAccounts = dao.goalFundingAccounts(profileId),
                     ),
                 )
             }
@@ -195,6 +198,9 @@ internal class RoomArchiveRepository(
         demo.deleteCreditCards(profileId)
         demo.deleteInvestmentLots(profileId)
         demo.deleteInvestmentHoldings(profileId)
+        demo.deleteGoalContributions(profileId)
+        demo.deleteGoalFundingAccounts(profileId)
+        demo.deleteGoals(profileId)
         demo.deleteLoans(profileId)
         demo.deleteAccounts(profileId)
         demo.deleteProfile(profileId)
@@ -229,6 +235,9 @@ internal class RoomArchiveRepository(
         dao.insertLoans(archive.loans)
         dao.insertInvestmentHoldings(archive.investmentHoldings)
         dao.insertInvestmentLots(archive.investmentLots)
+        dao.insertGoals(archive.goals)
+        dao.insertGoalContributions(archive.goalContributions)
+        dao.insertGoalFundingAccounts(archive.goalFundingAccounts)
     }
 
     private companion object {
@@ -271,8 +280,15 @@ internal class RoomArchiveRepository(
  *         rather than a bare "done" after an operation that replaced everything.
  * Result: the total. Input: the receiver. Output: [Int].
  * Changelog: 2026-08-16 — Created for issue 5.4.
+ *   2026-09-06 — Issue 7.4 added the eight lists this had never counted. Five of them
+ *   (`credit_card`, `card_alert`, `loan`, `investment_holding`, `investment_lot`) were exported and
+ *   restored correctly and simply not reported, so the user was told a smaller number than the file
+ *   held. The other three are 7.4's own. A count that omits a table under-reports a restore the
+ *   user is being asked to check.
  */
 internal fun CfoArchive.rowCount(): Int =
     profiles.size + accounts.size + categories.size + transactions.size + transactionSplits.size +
         tags.size + transactionTags.size + budgets.size + budgetAlerts.size + budgetReviews.size +
-        recurringRules.size + netWorthSnapshots.size + attachments.size + smsDrafts.size
+        recurringRules.size + netWorthSnapshots.size + attachments.size + smsDrafts.size +
+        creditCards.size + cardAlerts.size + loans.size + investmentHoldings.size +
+        investmentLots.size + goals.size + goalContributions.size + goalFundingAccounts.size

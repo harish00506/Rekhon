@@ -14,6 +14,7 @@ import com.aicfo.data.repository.CategoryRepository
 import com.aicfo.data.repository.CreditCardRepository
 import com.aicfo.data.repository.DemoModeRepository
 import com.aicfo.data.repository.EmergencyFundRepository
+import com.aicfo.data.repository.GoalContributionRepository
 import com.aicfo.data.repository.GoalRepository
 import com.aicfo.data.repository.GoalWaterfallRepository
 import com.aicfo.data.repository.InvestmentRepository
@@ -314,6 +315,38 @@ object RepositoryModule {
         dispatchers: DispatcherProvider,
         demoMode: DemoModeRepository,
     ): GoalRepository = RepositoryFactory.goals(database, engine, clock, ids, dispatchers, demoMode.activeProfileId)
+
+    /**
+     * The links that make goal progress evidence rather than a claim (issue 7.4; FR-GOAL-004).
+     * Why:    a binding of its own because it owns different tables from [provideGoalRepository] —
+     *         `goal_contribution` and `goal_funding_account` — and takes the transaction and account
+     *         repositories rather than their DAOs, so the ledger keeps one owner (ARC-005).
+     * Result: a [GoalContributionRepository].
+     * Input:  [database]; [transactions]; [accounts]; [clock]; [ids]; [dispatchers]; [demoMode].
+     * Output: [GoalContributionRepository].
+     * Changelog: 2026-09-06 — Created for issue 7.4.
+     */
+    @Provides
+    @Singleton
+    @Suppress("LongParameterList") // Hilt reads the signature; each argument is one binding.
+    fun provideGoalContributionRepository(
+        database: CfoDatabase,
+        transactions: TransactionRepository,
+        accounts: AccountRepository,
+        clock: Clock,
+        ids: IdGenerator,
+        dispatchers: DispatcherProvider,
+        demoMode: DemoModeRepository,
+    ): GoalContributionRepository =
+        RepositoryFactory.goalContributions(
+            database = database,
+            transactions = transactions,
+            accounts = accounts,
+            clock = clock,
+            ids = ids,
+            dispatchers = dispatchers,
+            activeProfileId = demoMode.activeProfileId,
+        )
 
     /**
      * The emergency-fund assessment (issue 7.2; §10.1, AI-EMF).

@@ -165,6 +165,14 @@ internal class RoomDemoModeRepository(
                     demo.deleteCardAlerts(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteCreditCards(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteLoans(DemoModeRepository.DEMO_PROFILE_ID)
+                    // Issues 6.3 and 7.1 both shipped tables the wipe never reached, and 7.4's
+                    // countRowsFor is what finally said so: lots before holdings, and both link
+                    // tables before the goal they hang off, on the children-first rule above.
+                    demo.deleteInvestmentLots(DemoModeRepository.DEMO_PROFILE_ID)
+                    demo.deleteInvestmentHoldings(DemoModeRepository.DEMO_PROFILE_ID)
+                    demo.deleteGoalContributions(DemoModeRepository.DEMO_PROFILE_ID)
+                    demo.deleteGoalFundingAccounts(DemoModeRepository.DEMO_PROFILE_ID)
+                    demo.deleteGoals(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteBudgets(DemoModeRepository.DEMO_PROFILE_ID)
                     // Issue 4.6: no ordering requirement against deleteBudgets — budget_review carries
                     // no budget_id, since it claims a whole reviewed month rather than one budget

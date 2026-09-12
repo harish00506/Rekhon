@@ -280,6 +280,39 @@ object RepositoryFactory {
     ): GoalRepository = RoomGoalRepository(database, engine, clock, ids, dispatchers, activeProfileId)
 
     /**
+     * The goal-contribution repository (issue 7.4; §15, FR-GOAL-002, FR-GOAL-004).
+     *
+     * Why:    separate from [goals] because the two own different tables — `goal` there, the two
+     *         link tables here — and ARC-005 asks that exactly one class touch a DAO, not that one
+     *         class touch every DAO. It takes [transactions] and [accounts] as repositories rather
+     *         than reaching for their DAOs, for the reason [emergencyFund] does: those rows already
+     *         have owners, and a second reader of them would be a second answer.
+     * Result: a [GoalContributionRepository] over Room and those two.
+     * Input:  [database]; [transactions]; [accounts]; [clock]; [ids]; [dispatchers];
+     *         [activeProfileId].
+     * Output: [GoalContributionRepository].
+     */
+    @Suppress("LongParameterList") // Seven collaborators, each a distinct binding — as [goals].
+    fun goalContributions(
+        database: CfoDatabase,
+        transactions: TransactionRepository,
+        accounts: AccountRepository,
+        clock: Clock,
+        ids: IdGenerator,
+        dispatchers: DispatcherProvider,
+        activeProfileId: Flow<String>,
+    ): GoalContributionRepository =
+        RoomGoalContributionRepository(
+            database = database,
+            transactions = transactions,
+            accounts = accounts,
+            clock = clock,
+            ids = ids,
+            dispatchers = dispatchers,
+            activeProfileId = activeProfileId,
+        )
+
+    /**
      * The emergency-fund repository (issue 7.2; §10.1).
      * Why:    **the only repository here built from other repositories rather than from the
      *         database.** Its three inputs already have owners — the classified ledger is
