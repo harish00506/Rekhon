@@ -77,6 +77,18 @@ interface GoalEngine {
  *   engine reports zero required rather than a negative instalment.
  * @property plannedMonthly what the user says they will contribute each month. Zero means "no plan
  *   yet", and the projection's ETA is then `null` rather than a date infinitely far away.
+ * @property savedEvidenced how much of [saved] is backed by real movements in the user's ledger —
+ *   transactions they linked to this goal, and net inflows into accounts they dedicated to it
+ *   (issue 7.4; §15, FR-GOAL-004). The remainder, `saved - savedEvidenced`, is what the user typed
+ *   by hand: §15's **ghost progress**, which the card must show as visually distinct rather than
+ *   silently merge. Defaults to zero, which is exactly what an upgraded profile has on the day this
+ *   shipped, and what every pre-7.4 caller means.
+ *
+ *   **It may be negative and it may not exceed [saved].** Negative is a real state: a dedicated
+ *   funding account can pay out more than it took in since the day it was linked. Exceeding the
+ *   total is not, because the caller floors the pair together — progress does not go below zero, and
+ *   the floor is applied to the evidenced half so that `saved - savedEvidenced` stays exactly the
+ *   figure the user typed.
  */
 data class GoalSpec(
     val id: String,
@@ -85,6 +97,7 @@ data class GoalSpec(
     val targetDate: LocalDate,
     val saved: Money,
     val plannedMonthly: Money = Money.ZERO,
+    val savedEvidenced: Money = Money.ZERO,
 ) {
     init {
         require(target >= Money.ZERO) {
@@ -98,6 +111,11 @@ data class GoalSpec(
             "A planned monthly contribution is a magnitude and must not be negative, was " +
                 "$plannedMonthly: paying *out* of a goal each month is a withdrawal, which this " +
                 "engine does not model"
+        }
+        require(savedEvidenced <= saved) {
+            "Evidenced progress ($savedEvidenced) cannot exceed total progress ($saved): the " +
+                "difference is what the user declared by hand, and a negative declared figure " +
+                "would mean the app inventing a claim they never made (issue 7.4, §15)"
         }
     }
 }
@@ -115,13 +133,36 @@ data class GoalSpec(
  *   clock** — the same shape `SafeToSpendInput` and `CardCycleInput` use.
  * @property rules the thresholds to apply. Injected so a test can move a band and assert the engine
  *   moves with it, which is also the seam the runtime rules loader will use.
+ * @property contributionAnchorDay the day of the month the user's income lands, 1-31, or **null**
+ *   when the app does not know (issue 7.4; `RULE-PAY-FIRST`). The rule says contributions belong on
+ *   the salary-credit day rather than at month end — saving before spending beats saving the
+ *   leftover — and this is the only number it needs. It arrives as an **input rather than a
+ *   [GoalRules] field** because the rulebook row's `params_json` is `{"anchor":
+ *   "salary_credit_day"}`: a source name, not a threshold, so there is nothing here to mirror and
+ *   nothing to drift (ADR-0035's argument for `emergencyGateMonths`).
+ *
+ *   Null means silence. A profile that never onboarded has no income rule to read, and an invented
+ *   payday would be exactly the number this app does not make up (P-03).
  */
 data class GoalPlanInput(
     val goals: List<GoalSpec>,
     val today: LocalDate,
     val nowUtcMillis: Long = 0L,
     val rules: GoalRules = GoalRules(),
-)
+    val contributionAnchorDay: Int? = null,
+) {
+    init {
+        require(contributionAnchorDay == null || contributionAnchorDay in 1..MAX_DAY_OF_MONTH) {
+            "A salary-credit day is a day of the month, 1-$MAX_DAY_OF_MONTH, was " +
+                "$contributionAnchorDay"
+        }
+    }
+
+    private companion object {
+        /** The largest day any month has. A calendar bound, not a financial threshold. */
+        const val MAX_DAY_OF_MONTH = 31
+    }
+}
 
 /**
  * What [GoalEngine.plan] decided (issue 7.1; AI-ARC-003).
@@ -190,6 +231,15 @@ data class GoalPlan(
  *   [GoalRules].
  * @property horizon which funding bucket `RULE-HORIZON` puts the remaining time in.
  * @property status the single verdict a screen leads with.
+ * @property savedEvidenced how much of [saved] real movements account for (issue 7.4; FR-GOAL-004).
+ * @property savedDeclared `saved - savedEvidenced` — what the user typed and nothing in the ledger
+ *   backs. §15 calls it ghost progress and requires it to be **visually distinct**, which is why it
+ *   is a field of its own rather than a subtraction left to the screen: a figure the user is being
+ *   asked to treat differently should not depend on a caller remembering to compute it.
+ * @property contributionAnchorDay the day of the month to contribute on, or null when unknown —
+ *   `RULE-PAY-FIRST`, echoed onto every projection from [GoalPlanInput] the way [targetDateIso] is
+ *   echoed, so a screen holding one goal has it without a second read. It is a property of the
+ *   profile rather than of the goal, and the same value therefore appears on all of them.
  */
 data class GoalProjection(
     val goalId: String,
@@ -206,7 +256,20 @@ data class GoalProjection(
     val onTrack: Boolean,
     val horizon: Horizon,
     val status: GoalStatus,
-)
+    val savedEvidenced: Money = Money.ZERO,
+    // Defaulted from the two parameters above rather than to zero, so a caller that has no split to
+    // report — every test and every pre-7.4 construction — gets the honest one: all of it declared.
+    val savedDeclared: Money = saved - savedEvidenced,
+    val contributionAnchorDay: Int? = null,
+) {
+    init {
+        require(savedEvidenced + savedDeclared == saved) {
+            "The two halves of progress must add up to it: $savedEvidenced evidenced plus " +
+                "$savedDeclared declared is not $saved. A card that showed a split which did not " +
+                "reconcile would be worse than one that showed no split at all (§15, P-02)"
+        }
+    }
+}
 
 /**
  * The verdict a goal card leads with (issue 7.1).

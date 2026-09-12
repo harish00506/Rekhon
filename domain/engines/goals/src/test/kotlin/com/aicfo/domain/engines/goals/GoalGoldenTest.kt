@@ -23,6 +23,7 @@ import java.time.LocalDate
  * What: runs every record in `golden/goals.txt` and asserts all five outputs.
  * Result: a change to the formula fails the build naming the record that caught it.
  * Changelog: 2026-08-30 — Created for issue 7.1.
+ *            2026-09-06 — Issue 7.4: `evidenced` per record, and the split asserted.
  *
  * **A gate nobody has watched go red is not a gate.** Before this was trusted, records were
  * deliberately mis-labelled and this test was confirmed to fail — the same check the drift tests
@@ -106,6 +107,41 @@ class GoalGoldenTest {
         }
     }
 
+    /**
+     * Input:  every record.
+     * Output: fails naming each goal whose evidenced/declared split came out wrong (issue 7.4).
+     *
+     * §15 requires ghost progress to be **visually distinct**, and a screen can only do that if the
+     * engine hands it two figures that reconcile. Asserted per record rather than once, because the
+     * interesting cases are the extremes — all evidenced, none evidenced, and evidenced running
+     * negative — and each is a different record here.
+     *
+     * **`expect_declared` is stated in the file rather than computed here**, which is the difference
+     * between a gate and a tautology: deriving it as `saved - evidenced` would be the same
+     * subtraction the engine performs, so the assertion would agree with any answer the engine gave.
+     * Confirmed by editing a record's expectation and watching this go red.
+     */
+    @Test
+    fun `every goal splits its progress into evidenced and declared`() {
+        val wrong =
+            records.mapNotNull { record ->
+                val actual = project(record)
+                val got = "${actual.savedEvidenced.minor}/${actual.savedDeclared.minor}"
+                val want = "${record.evidenced}/${record.declared}"
+                if (got == want) null else "${record.label}: expected $want, got $got"
+            }
+
+        assertEquals("$wrong", 0, wrong.size)
+        assertTrue(
+            "no record has evidenced progress — the 7.4 branch is untested",
+            records.any { it.evidenced != 0L },
+        )
+        assertTrue(
+            "no record is wholly ghost progress — every pre-7.4 profile is in that state",
+            records.any { it.evidenced == 0L && it.saved != 0L },
+        )
+    }
+
     /** Result: the projection for one record. Input: [record]. Output: [GoalProjection]. */
     private fun project(record: GoldenGoal): GoalProjection {
         val plan =
@@ -120,6 +156,7 @@ class GoalGoldenTest {
                                 targetDate = record.targetDate,
                                 saved = Money(record.saved),
                                 plannedMonthly = Money(record.planned),
+                                savedEvidenced = Money(record.evidenced),
                             ),
                         ),
                     today = TODAY,
@@ -158,6 +195,8 @@ class GoalGoldenTest {
         val target: Money,
         val saved: Long,
         val planned: Long,
+        val evidenced: Long,
+        val declared: Long,
         val targetDate: LocalDate,
         val required: Long,
         val months: Int,
@@ -177,6 +216,8 @@ class GoalGoldenTest {
                     target = Money(fields.getValue("target").toLong()),
                     saved = fields["saved"]?.toLong() ?: 0L,
                     planned = fields["planned"]?.toLong() ?: 0L,
+                    evidenced = fields["evidenced"]?.toLong() ?: 0L,
+                    declared = fields.getValue("expect_declared").toLong(),
                     targetDate = LocalDate.parse(fields.getValue("target_date")),
                     required = fields.getValue("expect_required").toLong(),
                     months = fields.getValue("expect_months").toInt(),
