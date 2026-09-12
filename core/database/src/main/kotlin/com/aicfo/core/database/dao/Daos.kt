@@ -20,7 +20,9 @@ import com.aicfo.core.database.entity.BudgetReviewEntity
 import com.aicfo.core.database.entity.CardAlertEntity
 import com.aicfo.core.database.entity.CategoryEntity
 import com.aicfo.core.database.entity.CreditCardEntity
+import com.aicfo.core.database.entity.GoalContributionEntity
 import com.aicfo.core.database.entity.GoalEntity
+import com.aicfo.core.database.entity.GoalFundingAccountEntity
 import com.aicfo.core.database.entity.InvestmentHoldingEntity
 import com.aicfo.core.database.entity.InvestmentLotEntity
 import com.aicfo.core.database.entity.LoanEntity
@@ -1198,6 +1200,26 @@ interface TransactionDao {
     ): Int
 
     /**
+     * Observes a named set of transactions (issue 7.4; FR-GOAL-004).
+     *
+     * Why:    a goal's contributions are stored as *links*, not as copies — so rendering them means
+     *         resolving ids back to rows, and doing it as a `Flow` is what keeps an edited amount
+     *         from leaving a stale figure on the goal screen.
+     * What:   one `IN` read, tombstones excluded.
+     * Result: emits on every change to any of the rows. **Rows that have been soft-deleted are
+     *         simply absent**, which is what a link to a deleted transaction should look like: the
+     *         link survives as provenance and contributes nothing.
+     * Input:  [ids] — may be empty, which emits an empty list rather than every row.
+     * Output: `Flow<List<TransactionEntity>>`.
+     * Changelog: 2026-09-06 — Created for issue 7.4.
+     */
+    @Query(
+        "SELECT * FROM transactions WHERE id IN (:ids) AND deleted_at_utc_millis IS NULL " +
+            "ORDER BY occurred_at_utc_millis DESC, id DESC",
+    )
+    fun observeByIds(ids: List<String>): Flow<List<TransactionEntity>>
+
+    /**
      * Marks many transactions deleted at once (issue 3.6; FR-TXN-008, DB-002).
      *
      * Why:    the bulk half of [softDelete], with the same `deleted_at_utc_millis IS NULL` guard —
@@ -2067,6 +2089,27 @@ interface RecurringRuleDao {
     fun observeForProfile(profileId: String): Flow<List<RecurringRuleEntity>>
 
     /**
+     * Observes when the profile's income is next expected (issue 7.4; `RULE-PAY-FIRST`).
+     *
+     * Why:    the rule says goal contributions belong on the salary-credit day rather than at month
+     *         end, and the day of the month is the only thing it needs. No field in this app holds a
+     *         payday, but quick setup writes an `income` recurring rule at onboarding (issue 2.3),
+     *         and its due date carries the day — so the fact already exists and this query is what
+     *         finds it, rather than a new column asking the user something they have answered.
+     * What:   the soonest-due live income seed's `next_due_iso_date`.
+     * Result: null for a profile that never onboarded, or one whose income rule was dismissed or
+     *         deleted. Null is the honest answer and the caller says nothing rather than inventing a
+     *         payday (P-03).
+     * Input:  [profileId]. Output: `Flow<String?>` — an ISO date (TIM-002), or null.
+     */
+    @Query(
+        "SELECT next_due_iso_date FROM recurring_rule WHERE profile_id = :profileId " +
+            "AND seed_kind = 'income' AND deleted_at_utc_millis IS NULL " +
+            "AND dismissed_at_utc_millis IS NULL ORDER BY next_due_iso_date, id LIMIT 1",
+    )
+    fun observeIncomeDueDate(profileId: String): Flow<String?>
+
+    /**
      * Observes the names of every rule a profile has *decided about* (issue 3.7; FR-TXN-006).
      *
      * Why:    FR-TXN-006's detector must propose a merchant only once. What stops it re-proposing
@@ -2306,6 +2349,30 @@ interface DemoDao {
     @Query("SELECT file_name FROM attachments WHERE profile_id = :profileId")
     suspend fun attachmentFileNames(profileId: String): List<String>
 
+    /**
+     * Result: rows removed from `goal_contribution`. Input: [profileId]. Output: the count.
+     *
+     * Issue 7.4: called **before** [deleteGoals] and [deleteTransactions], because it is the child
+     * of both — the ordering [deleteProfile] documents, applied one level down.
+     */
+    @Query("DELETE FROM goal_contribution WHERE profile_id = :profileId")
+    suspend fun deleteGoalContributions(profileId: String): Int
+
+    /** Result: rows removed from `goal_funding_account`. Input: [profileId]. Output: the count. */
+    @Query("DELETE FROM goal_funding_account WHERE profile_id = :profileId")
+    suspend fun deleteGoalFundingAccounts(profileId: String): Int
+
+    /**
+     * Result: rows removed from `goal`. Input: [profileId]. Output: the count.
+     *
+     * **Issue 7.1 shipped `goal` without this**, and without a term in [countRowsFor], so exiting
+     * the demo left every demo goal behind under a profile that no longer existed — the residue
+     * ADR-0006 exists to prevent, invisible because the assertion that would have caught it was
+     * itself missing the table. Added in issue 7.4, alongside the two tables that hang off it.
+     */
+    @Query("DELETE FROM goal WHERE profile_id = :profileId")
+    suspend fun deleteGoals(profileId: String): Int
+
     /** Result: rows removed from `tags`. Input: [profileId]. Output: the count. */
     @Query("DELETE FROM tags WHERE profile_id = :profileId")
     suspend fun deleteTags(profileId: String): Int
@@ -2356,7 +2423,11 @@ interface DemoDao {
      *         Deliberately **not** filtered by `deleted_at_utc_millis`: a soft-deleted row is
      *         precisely the residue being looked for, so it must count.
      * Result: `0` once the profile has been erased.
-     * Input:  [profileId]. Output: the total row count across all sixteen tables.
+     * Input:  [profileId]. Output: the total row count across all twenty-one tables.
+     *
+     * Issue 7.4 added the last five. `goal`, `investment_holding` and `investment_lot` had been
+     * absent since 7.1 and 6.3 — the demo wipe left all three behind, and this query said the
+     * profile was clean. A count that omits a table is not a weaker assertion; it is a false one.
      */
     @Query(
         "SELECT (SELECT COUNT(*) FROM profile WHERE id = :profileId) + " +
@@ -2374,7 +2445,13 @@ interface DemoDao {
             "(SELECT COUNT(*) FROM net_worth_snapshot WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM sms_draft WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM credit_card WHERE profile_id = :profileId) + " +
-            "(SELECT COUNT(*) FROM card_alert WHERE profile_id = :profileId)",
+            "(SELECT COUNT(*) FROM card_alert WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM loan WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM investment_holding WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM investment_lot WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM goal WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM goal_contribution WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM goal_funding_account WHERE profile_id = :profileId)",
     )
     suspend fun countRowsFor(profileId: String): Int
 }
@@ -2484,6 +2561,24 @@ interface ArchiveDao {
     @Query("SELECT * FROM investment_lot WHERE profile_id = :profileId ORDER BY id")
     suspend fun investmentLots(profileId: String): List<InvestmentLotEntity>
 
+    /**
+     * Result: every goal, tombstones included (§15). Input: [profileId].
+     *
+     * **Missing until issue 7.4.** `goal` shipped in 7.1 and was never added here, so every export
+     * taken between 7.1 and 7.4 silently dropped the user's goals — the exact failure this class's
+     * own KDoc warns about, in the table added two issues after the warning was written.
+     */
+    @Query("SELECT * FROM goal WHERE profile_id = :profileId ORDER BY id")
+    suspend fun goals(profileId: String): List<GoalEntity>
+
+    /** Result: every goal-to-transaction link, tombstones included (FR-GOAL-004). Input: [profileId]. */
+    @Query("SELECT * FROM goal_contribution WHERE profile_id = :profileId ORDER BY id")
+    suspend fun goalContributions(profileId: String): List<GoalContributionEntity>
+
+    /** Result: every dedicated funding account, tombstones included (FR-GOAL-002). Input: [profileId]. */
+    @Query("SELECT * FROM goal_funding_account WHERE profile_id = :profileId ORDER BY id")
+    suspend fun goalFundingAccounts(profileId: String): List<GoalFundingAccountEntity>
+
     /** Result: every recurring rule, confirmed and dismissed alike (FR-TXN-006). Input: [profileId]. */
     @Query("SELECT * FROM recurring_rule WHERE profile_id = :profileId ORDER BY id")
     suspend fun recurringRules(profileId: String): List<RecurringRuleEntity>
@@ -2567,6 +2662,18 @@ interface ArchiveDao {
     /** Result: the lots are present. Input: [rows]. Output: none (suspends). */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertInvestmentLots(rows: List<InvestmentLotEntity>)
+
+    /** Result: the goals are present (§15). Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertGoals(rows: List<GoalEntity>)
+
+    /** Result: the goal-to-transaction links are present (FR-GOAL-004). Input: [rows]. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertGoalContributions(rows: List<GoalContributionEntity>)
+
+    /** Result: the dedicated funding accounts are present (FR-GOAL-002). Input: [rows]. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertGoalFundingAccounts(rows: List<GoalFundingAccountEntity>)
 
     /**
      * Result: the card alerts already sent are present. Input: [rows]. Output: none (suspends).
@@ -3354,6 +3461,8 @@ interface InvestmentLotDao {
  *         either.
  * Changelog: 2026-08-30 — Created for issue 7.1.
  *   2026-09-03 — Issue 7.3: both list queries lead on `sort_order`, and [setSortOrder] writes it.
+ *   2026-09-06 — Issue 7.4 added [observeEvidenced]: progress stopped being a number the user
+ *   typed and became a sum over their own ledger (FR-GOAL-004).
  */
 @Dao
 interface GoalDao {
@@ -3423,6 +3532,223 @@ interface GoalDao {
     )
     suspend fun softDelete(
         id: String,
+        deletedAtUtcMillis: Long,
+    ): Int
+
+    /**
+     * Sums every goal's evidenced progress in one pass (issue 7.4; §15, FR-GOAL-004).
+     *
+     * Why:    §15 says progress is transaction-evidenced. Two things can evidence it and they add
+     *         up differently, so one `UNION ALL` produces both halves and one `GROUP BY` adds them
+     *         — a single query rather than two round trips the repository would have to reconcile.
+     * What:   the explicit links, at the **magnitude** of the transaction, plus every movement in a
+     *         dedicated funding account on or after its link day, at the **signed** amount.
+     * Result: one row per goal that has any evidence; a goal with none is simply absent, which the
+     *         repository reads as zero rather than as missing.
+     *
+     * **The two halves sign differently on purpose.** An explicit link is the user pointing at one
+     * movement and saying it funded the goal — a ₹5,000 SIP debit is stored negative and is still a
+     * contribution, so `ABS` is what the goal receives. A funding account is a claim about a pot, so
+     * what counts is how much the pot *grew*: an outflow reduces it, and dedicating both sides of an
+     * internal transfer to the same goal nets to zero instead of counting twice.
+     *
+     * **Nothing is counted twice.** A transaction inside a funding account that is *also* explicitly
+     * linked to that same goal is excluded from the account half — the explicit link wins, because
+     * it is the more specific statement. The exclusion is per goal: the same movement may still
+     * evidence a different goal, which is a separate claim.
+     *
+     * **Bounded by today at both ends.** A future-dated transaction (issue 3.4) has not happened, so
+     * it cannot be progress; `booked_on_iso_date <= :todayIsoDate` is the same bound the balance
+     * queries use, and [linkedFromIsoDate] is what stops a newly dedicated account crediting a goal
+     * with two years of unrelated history the instant it is linked.
+     *
+     * Input:  [profileId] — the active profile, so no query can span profiles; [todayIsoDate] — the
+     *   profile-zone day from the injected `Clock` (TIM-001, TIM-002).
+     * Output: a [Flow] of one [GoalEvidenceRow] per goal with evidence.
+     */
+    @Query(
+        "SELECT goal_id, SUM(amount_minor) AS amount_minor FROM (" +
+            "SELECT gc.goal_id AS goal_id, ABS(t.amount_minor) AS amount_minor " +
+            "FROM goal_contribution gc " +
+            "JOIN transactions t ON t.id = gc.transaction_id " +
+            "WHERE gc.profile_id = :profileId AND gc.deleted_at_utc_millis IS NULL " +
+            "AND t.deleted_at_utc_millis IS NULL AND t.booked_on_iso_date <= :todayIsoDate " +
+            "UNION ALL " +
+            "SELECT fa.goal_id AS goal_id, t.amount_minor AS amount_minor " +
+            "FROM goal_funding_account fa " +
+            "JOIN transactions t ON t.account_id = fa.account_id " +
+            "AND t.profile_id = fa.profile_id " +
+            "WHERE fa.profile_id = :profileId AND fa.deleted_at_utc_millis IS NULL " +
+            "AND t.deleted_at_utc_millis IS NULL " +
+            "AND t.booked_on_iso_date >= fa.linked_from_iso_date " +
+            "AND t.booked_on_iso_date <= :todayIsoDate " +
+            "AND NOT EXISTS (SELECT 1 FROM goal_contribution gc2 " +
+            "WHERE gc2.goal_id = fa.goal_id AND gc2.transaction_id = t.id " +
+            "AND gc2.deleted_at_utc_millis IS NULL)" +
+            ") GROUP BY goal_id",
+    )
+    fun observeEvidenced(
+        profileId: String,
+        todayIsoDate: String,
+    ): Flow<List<GoalEvidenceRow>>
+}
+
+/**
+ * One goal's evidenced progress, as SQLite computes it (issue 7.4; §15, FR-GOAL-004).
+ *
+ * Why:  [GoalDao.observeEvidenced] returns one of these per goal that has any evidence at all.
+ *       A row per goal rather than a `Map` for the reason [DayTotalRow] is one — Room maps a query
+ *       to rows, and the repository builds the map, so the grouping stays visible in the SQL.
+ * What: the goal, and the paise its linked movements add up to.
+ * Result: the figure that replaces a hand-typed `goal.saved_minor` as the app's answer to "how far
+ *         along is this goal".
+ * Changelog: 2026-09-06 — Created for issue 7.4.
+ *
+ * Input:  [goalId] — the goal; [amountMinor] — MNY-001 paise, wrapped in `Money` by the repository
+ *         so nothing above the data layer does arithmetic on a raw `Long`. **It can be negative**:
+ *         a funding account that has paid out more than it took in since the link date is a real
+ *         state, and clamping it here would hide it.
+ * Output: an immutable value.
+ */
+data class GoalEvidenceRow(
+    @ColumnInfo(name = "goal_id") val goalId: String,
+    @ColumnInfo(name = "amount_minor") val amountMinor: Long,
+)
+
+/**
+ * Reads and writes `goal_contribution` (issue 7.4; §15, FR-GOAL-004).
+ *
+ * Why:  linking a transaction to a goal is a write like any other, and ARC-005 makes a repository
+ *       the only thing allowed to make it.
+ * What: an observed list for one goal's detail screen, a plain read for the export archive, the
+ *       lookup that decides between reviving and minting, an upsert and a soft delete.
+ * Result: every query is profile- or goal-scoped; every read but [findIncludingDeleted] excludes
+ *         soft-deleted rows, so no caller can forget either.
+ * Changelog: 2026-09-06 — Created for issue 7.4.
+ */
+@Dao
+interface GoalContributionDao {
+    /** Input: [link]. Output: none. Result: inserted, or replaced when the id already exists. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(link: GoalContributionEntity)
+
+    /**
+     * Input:  [goalId]. Output: a [Flow] of this goal's live links, newest link first.
+     * Result: what the detail screen lists. Ordered by when the *link* was made rather than by the
+     *         transaction's date, because the list is a record of the user's own actions and the
+     *         thing they just linked is the thing they are looking for.
+     */
+    @Query(
+        "SELECT * FROM goal_contribution WHERE goal_id = :goalId " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY created_at_utc_millis DESC, id",
+    )
+    fun observeForGoal(goalId: String): Flow<List<GoalContributionEntity>>
+
+    /**
+     * Input:  [goalId], [transactionId]. Output: the link, **including a soft-deleted one**.
+     * Result: how the repository tells "never linked" from "linked and then unlinked". The second
+     *         must revive the existing row rather than insert a second one — the unique index on
+     *         the pair would refuse the insert, and the user would see a failure for an action that
+     *         is obviously legitimate.
+     */
+    @Query(
+        "SELECT * FROM goal_contribution " +
+            "WHERE goal_id = :goalId AND transaction_id = :transactionId",
+    )
+    suspend fun findIncludingDeleted(
+        goalId: String,
+        transactionId: String,
+    ): GoalContributionEntity?
+
+    /** Input: [profileId]. Output: this profile's live links, once — the export archive's read. */
+    @Query(
+        "SELECT * FROM goal_contribution WHERE profile_id = :profileId " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY created_at_utc_millis, id",
+    )
+    suspend fun forProfile(profileId: String): List<GoalContributionEntity>
+
+    /**
+     * Unlinks one transaction from one goal.
+     *
+     * Why:    a soft delete, so the progress reverses while *when this was linked* survives — 7.4
+     *         asks for both in one sentence, and a hard `DELETE` would answer only the first.
+     * Input:  [goalId], [transactionId]; [deletedAtUtcMillis] — from the injected `Clock`
+     *   (TIM-001). Output: rows affected — zero when it was already unlinked.
+     */
+    @Query(
+        "UPDATE goal_contribution SET deleted_at_utc_millis = :deletedAtUtcMillis, " +
+            "updated_at_utc_millis = :deletedAtUtcMillis " +
+            "WHERE goal_id = :goalId AND transaction_id = :transactionId " +
+            "AND deleted_at_utc_millis IS NULL",
+    )
+    suspend fun softDelete(
+        goalId: String,
+        transactionId: String,
+        deletedAtUtcMillis: Long,
+    ): Int
+}
+
+/**
+ * Reads and writes `goal_funding_account` (issue 7.4; §15, FR-GOAL-002).
+ *
+ * Why:  dedicating an account to a goal is a write like any other (ARC-005).
+ * What: the same five operations [GoalContributionDao] exposes, over the standing link rather than
+ *       the one-off one.
+ * Result: profile- or goal-scoped, soft-delete-aware queries.
+ * Changelog: 2026-09-06 — Created for issue 7.4.
+ */
+@Dao
+interface GoalFundingAccountDao {
+    /** Input: [link]. Output: none. Result: inserted, or replaced when the id already exists. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(link: GoalFundingAccountEntity)
+
+    /**
+     * Input:  [goalId]. Output: a [Flow] of this goal's live funding accounts, newest first.
+     * Result: what the detail screen lists, ordered as [GoalContributionDao.observeForGoal] is and
+     *         for the same reason.
+     */
+    @Query(
+        "SELECT * FROM goal_funding_account WHERE goal_id = :goalId " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY created_at_utc_millis DESC, id",
+    )
+    fun observeForGoal(goalId: String): Flow<List<GoalFundingAccountEntity>>
+
+    /**
+     * Input:  [goalId], [accountId]. Output: the dedication, **including a soft-deleted one**.
+     * Result: the revive-or-mint decision, exactly as [GoalContributionDao.findIncludingDeleted]
+     *         makes it.
+     */
+    @Query(
+        "SELECT * FROM goal_funding_account " +
+            "WHERE goal_id = :goalId AND account_id = :accountId",
+    )
+    suspend fun findIncludingDeleted(
+        goalId: String,
+        accountId: String,
+    ): GoalFundingAccountEntity?
+
+    /** Input: [profileId]. Output: this profile's live dedications, once — the archive's read. */
+    @Query(
+        "SELECT * FROM goal_funding_account WHERE profile_id = :profileId " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY created_at_utc_millis, id",
+    )
+    suspend fun forProfile(profileId: String): List<GoalFundingAccountEntity>
+
+    /**
+     * Un-dedicates one account from one goal.
+     * Why:    soft, for [GoalContributionDao.softDelete]'s reason.
+     * Input:  [goalId], [accountId]; [deletedAtUtcMillis]. Output: rows affected.
+     */
+    @Query(
+        "UPDATE goal_funding_account SET deleted_at_utc_millis = :deletedAtUtcMillis, " +
+            "updated_at_utc_millis = :deletedAtUtcMillis " +
+            "WHERE goal_id = :goalId AND account_id = :accountId " +
+            "AND deleted_at_utc_millis IS NULL",
+    )
+    suspend fun softDelete(
+        goalId: String,
+        accountId: String,
         deletedAtUtcMillis: Long,
     ): Int
 }

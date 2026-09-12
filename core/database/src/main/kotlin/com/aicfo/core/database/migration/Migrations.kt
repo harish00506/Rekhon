@@ -1109,6 +1109,113 @@ internal object Migrations {
             }
         }
 
+    /**
+     * 21 → 22 — `goal_contribution` and `goal_funding_account` (issue 7.4; §15, FR-GOAL-002,
+     * FR-GOAL-004).
+     *
+     * Why:  §15 says goal progress is transaction-evidenced, and until these tables existed
+     *       `goal.saved_minor` was a number the user typed — 7.1 shipped it that way deliberately
+     *       and said so. These two tables are the evidence: one movement the user points at, and
+     *       one whole account they dedicate from a stated day.
+     * What: two `CREATE TABLE`s and eight indices. No backfill and nothing existing is touched
+     *       (DB-003) — a profile that upgrades keeps every hand-typed figure it had, which now
+     *       reads as *declared* progress beside an evidenced total of zero (§15's "ghost progress").
+     * Result: an upgraded installation keeps every row it had and gains two empty tables.
+     * Input:  [SupportSQLiteDatabase] mid-upgrade. Output: none (executes DDL).
+     *
+     * **Neither table has an amount column**, so this migration moves no money and cannot round
+     * anything: the contribution *is* the linked transaction's `amount_minor`, summed at query time
+     * by [com.aicfo.core.database.dao.GoalDao.observeEvidenced] (ADR-0009's argument for split
+     * lines, ADR-0007's for balances).
+     *
+     * **The unique indices are load-bearing.** Unlinking is a soft delete, so a second link of the
+     * same pair must revive the existing row rather than insert a duplicate — the constraint is
+     * what makes the repository's revive-or-mint decision a rule rather than a convention. They
+     * cover soft-deleted rows too, which is exactly the point.
+     *
+     * **`runMigrationsAndValidate` does NOT check index names** — see [createGoal]. So
+     * `migrate21To22_...` asserts all eight against `sqlite_master` itself.
+     */
+    val MIGRATION_21_22 =
+        object : Migration(VERSION_21, VERSION_22) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                createGoalContribution(db)
+                createGoalFundingAccount(db)
+            }
+        }
+
+    /**
+     * `goal_contribution`'s DDL, extracted so [MIGRATION_21_22] stays short (issue 7.4).
+     * Input:  [db]. Output: none. Result: the table and its four indices, named exactly as Room
+     *   names them.
+     */
+    private fun createGoalContribution(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `goal_contribution` (" +
+                "`id` TEXT NOT NULL, " +
+                "`profile_id` TEXT NOT NULL, " +
+                "`goal_id` TEXT NOT NULL, " +
+                "`transaction_id` TEXT NOT NULL, " +
+                "`created_at_utc_millis` INTEGER NOT NULL, " +
+                "`updated_at_utc_millis` INTEGER NOT NULL, " +
+                "`deleted_at_utc_millis` INTEGER, " +
+                "PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_goal_contribution_goal_id` " +
+                "ON `goal_contribution` (`goal_id`)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_goal_contribution_transaction_id` " +
+                "ON `goal_contribution` (`transaction_id`)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_goal_contribution_profile_id` " +
+                "ON `goal_contribution` (`profile_id`)",
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS " +
+                "`index_goal_contribution_goal_id_transaction_id` " +
+                "ON `goal_contribution` (`goal_id`, `transaction_id`)",
+        )
+    }
+
+    /**
+     * `goal_funding_account`'s DDL, extracted for [createGoalContribution]'s reason (issue 7.4).
+     * Input:  [db]. Output: none. Result: the table and its four indices, named as Room names them.
+     */
+    private fun createGoalFundingAccount(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `goal_funding_account` (" +
+                "`id` TEXT NOT NULL, " +
+                "`profile_id` TEXT NOT NULL, " +
+                "`goal_id` TEXT NOT NULL, " +
+                "`account_id` TEXT NOT NULL, " +
+                "`linked_from_iso_date` TEXT NOT NULL, " +
+                "`created_at_utc_millis` INTEGER NOT NULL, " +
+                "`updated_at_utc_millis` INTEGER NOT NULL, " +
+                "`deleted_at_utc_millis` INTEGER, " +
+                "PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_goal_funding_account_goal_id` " +
+                "ON `goal_funding_account` (`goal_id`)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_goal_funding_account_account_id` " +
+                "ON `goal_funding_account` (`account_id`)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_goal_funding_account_profile_id` " +
+                "ON `goal_funding_account` (`profile_id`)",
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS " +
+                "`index_goal_funding_account_goal_id_account_id` " +
+                "ON `goal_funding_account` (`goal_id`, `account_id`)",
+        )
+    }
+
     /** Every migration, in order, for `CfoDatabaseFactory` to register. */
     val ALL: Array<Migration> =
         arrayOf(
@@ -1132,6 +1239,7 @@ internal object Migrations {
             MIGRATION_18_19,
             MIGRATION_19_20,
             MIGRATION_20_21,
+            MIGRATION_21_22,
         )
 
     /** Named so the version pair reads as a schema version rather than an unexplained literal. */
@@ -1191,6 +1299,12 @@ internal object Migrations {
     /** The version issue 7.1 introduced, adding `goal`. */
     private const val VERSION_20 = 20
 
-    /** The version issue 7.3 introduces — `goal.sort_order`, the waterfall order (FR-GOAL-005). */
+    /** The version issue 7.3 introduced — `goal.sort_order`, the waterfall order (FR-GOAL-005). */
     private const val VERSION_21 = 21
+
+    /**
+     * The version issue 7.4 introduces — `goal_contribution` and `goal_funding_account`, the two
+     * ways a goal's progress can be evidenced rather than declared (FR-GOAL-002, FR-GOAL-004).
+     */
+    private const val VERSION_22 = 22
 }

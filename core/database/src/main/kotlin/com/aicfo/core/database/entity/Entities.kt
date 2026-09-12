@@ -1491,3 +1491,136 @@ data class GoalEntity(
     @ColumnInfo(name = "deleted_at_utc_millis")
     val deletedAtUtcMillis: Long? = null,
 )
+
+/**
+ * Links one [TransactionEntity] to one [GoalEntity] — a movement the user says funded a goal
+ * (issue 7.4; §15, FR-GOAL-004).
+ *
+ * Why:    until this table existed, `goal.saved_minor` was a number the user typed, and §15 asks
+ *         for the opposite: *"progress is transaction-evidenced"*. A row here is the evidence —
+ *         the user pointing at a real movement in their own ledger and saying "that one was for
+ *         this goal".
+ * What:   the many-to-many join between goals and transactions.
+ * Result: a Room row in `goal_contribution`, summed by `GoalDao` into a goal's evidenced progress.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-09-06 — Created at version 22 for issue 7.4 (FR-GOAL-004).
+ *
+ * **It holds no amount, and that is the decision.** The contribution *is* the linked transaction's
+ * `amount_minor`, read at query time. A stored copy would drift the moment the transaction was
+ * edited or deleted — the argument [TransactionSplitEntity] makes for lines that carry no money of
+ * their own (ADR-0009), and the one [AccountEntity]'s balance makes for deriving rather than
+ * storing (ADR-0007). MNY-001 is then satisfied trivially: no new column holds money at all.
+ *
+ * **The sum takes `ABS(amount_minor)`.** A ₹5,000 SIP debit is stored negative and is still a
+ * contribution; the act of linking is the user asserting the direction, so the magnitude is what
+ * the goal receives. [GoalFundingAccountEntity] sums the *signed* amount instead, for a reason
+ * stated on that class.
+ *
+ * **`profile_id` is denormalised onto the join**, for the reason [TransactionTagEntity] carries
+ * one: `DemoDao`'s wipe and its residue count are profile-scoped single-table deletes (ADR-0006),
+ * and a table they cannot reach by `profile_id` alone leaves residue behind when the demo is
+ * exited. `MigrationSafetyTest` enforces it on every table but `audit_log`.
+ *
+ * **Soft-deleted rather than removed** (DB-002). Unlinking must reverse the progress *and* keep the
+ * provenance — 7.4's acceptance criteria ask for both in the same sentence — so the row survives
+ * with its [createdAtUtcMillis] intact and simply stops counting. Re-linking the same transaction
+ * revives this row rather than minting a second, which is what the unique index below is for.
+ */
+@Serializable
+@Entity(
+    tableName = "goal_contribution",
+    indices = [
+        // "what has been linked to this goal?" — the detail screen and the evidenced sum.
+        Index("goal_id"),
+        // "is this transaction already linked?" — the picker, and the funding-account dedupe.
+        Index("transaction_id"),
+        // The demo wipe and the residue count both scope by profile.
+        Index("profile_id"),
+        // One link per pair, live or soft-deleted: re-linking revives, it never duplicates.
+        Index(value = ["goal_id", "transaction_id"], unique = true),
+    ],
+)
+data class GoalContributionEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    @ColumnInfo(name = "goal_id")
+    val goalId: String,
+    @ColumnInfo(name = "transaction_id")
+    val transactionId: String,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+)
+
+/**
+ * Dedicates one [AccountEntity] to one [GoalEntity] — a standing link, not a one-off
+ * (issue 7.4; §15, FR-GOAL-002 "funding accounts", FR-GOAL-004).
+ *
+ * Why:    FR-GOAL-004 says contributions link to transactions **or accounts**, and the two are
+ *         different promises. Pointing at a transaction is a claim about one movement; dedicating
+ *         an account is a claim about a pot — "everything that lands in my Kerala-trip RD is for
+ *         the trip", including movements that have not happened yet.
+ * What:   the many-to-many join between goals and accounts, with the day the dedication starts.
+ * Result: a Room row in `goal_funding_account`, summed by `GoalDao` into the same evidenced
+ *         progress figure [GoalContributionEntity] feeds.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-09-06 — Created at version 22 for issue 7.4 (FR-GOAL-002, FR-GOAL-004).
+ *
+ * **The sum is signed, where [GoalContributionEntity]'s is not.** What this row claims is how much
+ * the pot *grew*, so an outflow has to reduce it, and linking both sides of an internal transfer to
+ * one goal has to net to zero rather than count twice. That is the opposite convention from an
+ * explicit transaction link, deliberately: the two answer different questions.
+ *
+ * **A transaction that is both inside a funding account and explicitly linked counts once**, via
+ * the explicit link — `GoalDao` excludes the explicit set from this sum. Two representations of one
+ * movement is the double-count ADR-0009 exists to prevent.
+ *
+ * **[linkedFromIsoDate] is what stops history arriving by surprise.** Dedicating an account that
+ * has held money for two years would otherwise credit the goal with all of it the instant the user
+ * tapped. The chooser offers "from today" or "count everything in this account", and stores the day
+ * either way, so the answer is a stated input rather than a hidden policy.
+ */
+@Serializable
+@Entity(
+    tableName = "goal_funding_account",
+    indices = [
+        // "which accounts fund this goal?" — the detail screen and the evidenced sum.
+        Index("goal_id"),
+        // "is this account already dedicated?" — the chooser.
+        Index("account_id"),
+        // The demo wipe and the residue count both scope by profile.
+        Index("profile_id"),
+        // One dedication per pair, live or soft-deleted: re-linking revives, it never duplicates.
+        Index(value = ["goal_id", "account_id"], unique = true),
+    ],
+)
+data class GoalFundingAccountEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    @ColumnInfo(name = "goal_id")
+    val goalId: String,
+    @ColumnInfo(name = "account_id")
+    val accountId: String,
+    /**
+     * TIM-002: the first day whose movements count, ISO `yyyy-MM-dd`. A date, not a timestamp, for
+     * the reason [GoalEntity.targetDateIso] is one — the boundary every ledger query already bounds
+     * on is `transactions.booked_on_iso_date`, and comparing a day to a day needs no time zone.
+     */
+    @ColumnInfo(name = "linked_from_iso_date")
+    val linkedFromIsoDate: String,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+)
