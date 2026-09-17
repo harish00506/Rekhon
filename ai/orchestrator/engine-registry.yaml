@@ -115,10 +115,11 @@ engines:
     # Three rules consumed, all of which named AI-GOAL before any engine existed: RULE-HORIZON
     # (AI-GOAL.funding_buckets, 7.1), RULE-EMERG-FIRST (the waterfall's gate, 7.3) and
     # RULE-PAY-FIRST (the contribution anchor, 7.4). No issue minted a row.
-    # financial-order-of-operations.json is still listed for 7.5's AI-FOO and is NOT read yet:
-    # §15's simple waterfall is what 7.3 built, and §36's staged one is a separate engine.
+    # financial-order-of-operations.json used to be listed here too, but this engine never read it:
+    # §15's simple waterfall is what 7.3 built, and §36's staged one is AI-FOO, a separate engine that
+    # composes this one (7.5, ADR-0037).
     contract: "goals -> {requiredMonthly, shortfall, ETA, horizon, status per goal, savedEvidenced/savedDeclared}"
-    reads: [../rules/rules-kb.json, ../rules/financial-order-of-operations.json]
+    reads: [../rules/rules-kb.json]
     srs: "§15"
 
   - id: AI-GOAL.waterfall
@@ -137,11 +138,19 @@ engines:
   - id: AI-FOO
     name: Financial Order of Operations (Priority Waterfall)
     layer: L5
-    module: ":domain:engines:orchestrator"
+    module: ":domain:engines:orderofoperations"
     version: "1.0"
-    contract: "surplus -> ranked next-best-rupee cards with stage + evidence"
-    reads: [../rules/financial-order-of-operations.json]
-    srs: "§36"
+    # Shipped at issue 7.5. The module was pre-registered here as `:domain:engines:orchestrator`, but
+    # that name is AI-ORCH's (insight-orchestrator.yaml), so it was built as `orderofoperations`
+    # (ADR-0037). Reads the FOO file as its rule set — a typed mirror, each stage cited as FOO.<id> —
+    # and cites RULE-EMERG-FIRST (Stage 3's gate), RULE-HORIZON (Stage 5) and RULE-PREPAY-VS-INVEST
+    # (Stage 7) without mirroring any of them. No rulebook row minted. The surplus is
+    # AI-GOAL.waterfall's own figure (ADR-0035's observed-P50 stand-in for the forecast issue 9.2
+    # never built). Stages 1 and 4 are always skipped with reasons (no EPF data; no §38 comparator,
+    # 13.4); Stage 7 defers to the unbuilt simulator (10.3) with no amount.
+    contract: "surplus + emergency fund + debts + goals -> eight ranked stages {status, need, amount, reason, debts, citations}, top action, unallocated"
+    reads: [../rules/financial-order-of-operations.json, ../rules/rules-kb.json]
+    srs: "§36, FOO-001, FOO-002, FOO-003"
 
   - id: AI-MKT
     name: Market Signal Engine (Opportunity Detection)

@@ -6,6 +6,7 @@
   Result: A reader knows the current version, completed work, the file in progress, and next up.
   Changelog:
     2026-07-18 — Created. Baseline: Epic 0 (blueprint) done; no Kotlin code yet.
+    2026-09-17 — Issue 7.5 implemented and verified on its branch (uncommitted); last issue of Epic 7.
 -->
 
 # AI Personal CFO — Project Memory
@@ -17,21 +18,49 @@
 
 ## Current state
 
-- **Version:** `0.7.4` (see [`../VERSION`](../VERSION)) · **Phase:** 3 — AI core & goals
-  (**Epic 7 open**). **Schema is v22** — issue 7.4 added `goal_contribution` and
-  `goal_funding_account`.
-- **Epics 1, 2, 3, 4, 5 and 6 are done.** Epic 7 has shipped 7.1–7.4; **7.5 (Financial Order of
-  Operations, AI-FOO) is the last issue in it.**
-- **Currently working file:** none. Issue **7.4 is merged to `dev`** at `d6d09ee`
-  ([tracker](issues/7.4-linked-contributions-tracker.md)). **`origin/dev` is still at `6afa5f0`** —
-  local `dev` is seven commits ahead and **the push is blocked, not skipped**: this environment has
-  no GitHub credentials (no helper, no `gh`, no token, and the one SSH key is for another host).
-  **Pushing 7.4 needs an authenticated shell.** **7.5 is next.**
+- **Version:** `0.7.5` (see [`../VERSION`](../VERSION)) · **Phase:** 3 — AI core & goals.
+  **Schema is v22**, unchanged by 7.5.
+- **Epics 1–6 are done; Epic 7 is done once 7.5 merges** — 7.5 (Financial Order of Operations,
+  AI-FOO) is implemented and verified but not yet committed. Epics 8 and 9 are the open ones left in
+  Phases 2–3; **Epic 9 (AI core engines, incl. the 9.2 forecast) is the
+  one the goals work kept waiting on.**
+- **Currently working file:** none. Issue **7.5 is implemented and verified but not committed**, on
+  `feature/7-5-financial-order-of-operations-ai-foo`
+  ([tracker](issues/7.5-financial-order-of-operations-ai-foo-tracker.md)). The user has not asked
+  for a commit (workflow step 12).
+- **`origin/dev` is still at `6afa5f0`** — local `dev` is eight commits ahead (7.4 and its records),
+  and **the push is blocked, not skipped**: this machine has no GitHub credentials (no helper, no
+  `gh`, no token, and the one SSH key is for another host). Pushing needs an authenticated shell.
+- **This machine builds with Temurin JDK 21** (`~/.jdks/temurin-21`) and the SDK at `~/Android/Sdk`;
+  `local.properties` points there. Gradle stays at **8.13**: JDK 25 would need Gradle ≥ 9.1, AGP 8.x
+  stops working at Gradle 9.6, and Hilt 2.56.2's transforms are ambiguous under Gradle 9. Emulator:
+  **`CfoTest`** (API 36, Google APIs x86_64).
 - **Check `git log dev` against `VERSION` before starting an issue**, not just the issue tracker.
   `dev` was two issues behind once and nobody noticed.
-- **Epic 9 was skipped, and Epic 7 keeps paying for it.** `:domain:engines:forecast` is still issue
-  1.1's placeholder, so 7.3 had to substitute an *observed* P50 surplus for §15.1's *forecast* one
-  (ADR-0035). Anything in 7.5 that wants a projection will hit the same wall.
+- **Epic 9 was skipped, and Epic 7 paid for it twice.** `:domain:engines:forecast` is still issue
+  1.1's placeholder, so 7.3 substituted an *observed* P50 surplus for §15.1's *forecast* one
+  (ADR-0035), and 7.5 reuses that same figure (ADR-0037). When 9.2 lands, the change is one place:
+  `GoalWaterfallRepository`.
+
+### What 7.5 changed that a future issue must know
+
+- **The card editor has no APR field** — `credit_card.apr_bps` has been in the schema since 6.1 and
+  **nothing in the UI writes it**. Found by following 7.5's own "add the rate" button on the device;
+  the button was removed. So **every card ranks as fire debt** in AI-FOO until the field exists. The
+  0.3.6 lesson again: a plumbed field is not evidence anything produces a value for it.
+- **AI-FOO reads `financial-order-of-operations.json`**, the first thing to read that file, through a
+  typed mirror and a drift test that declares the file as a test input. **Stage citations are
+  `FOO.<STAGE_ID>`** at the file's version. No rulebook row minted; rulebook still **1.15.0**.
+- **`RULE-EMERG-FIRST`'s number still has exactly one mirror** (`QuickSetupRules`); 7.3 and 7.5 both
+  take it as an input. The next engine that needs it should build the runtime loader (ADR-0017 trigger 2).
+- **AI-FOO and 7.3's goal waterfall disagree past the gate** about whether the emergency fund's pace
+  comes before the goals. Recorded, not fixed — ADR-0037's first follow-up is re-pointing 7.3 at what
+  AI-FOO leaves after Stage 3.
+- **The dashboard's populated fixture now includes a ranking**, so the privacy-blur test and the five
+  Paparazzi baselines cover the next-best-rupee card. Any change to the card's copy re-records them.
+- **Automating the device:** `adb shell input keyevent 111` (ESC) does **not** dismiss the numeric
+  keyboard, and taps then land on its keys. Use Back (`keyevent 4`) and check
+  `dumpsys input_method | grep mInputShown` before tapping a field.
 
 ### What 7.4 changed that a future issue must know
 

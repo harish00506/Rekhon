@@ -823,6 +823,64 @@ meant did.
 Safe-to-Spend moves too, by design: `requiredMonthly` falls as `saved` rises, and `RULE-STS`
 subtracts the total (§2.1). Linking a contribution now raises the headline figure.
 
+### 2.8 · Where the next rupee should go — the whole household in one order (issue 7.5)
+
+§2.5–§2.7 each answer one question — what a goal needs, how long the buffer lasts, who gets the
+surplus. This is the path that ranks all of them, plus the user's debts, into §36's single order.
+
+**The read.** A third repository built on the other two, adding only what nobody resolved before:
+
+```
+DashboardScreen → DashboardViewModel.uiState.orderOfOperations        :feature:dashboard
+│                 NextBestRupeeCard — FOO-002's single top action
+│                 "See the full order" → CfoRoute.OrderOfOperations (typed, ARC-001)
+│                   → OrderOfOperationsScreen → OrderOfOperationsViewModel
+└─ OrderOfOperationsRepository.observe()                               :data:repository (ARC-005)
+    └─ combine(
+        ├─ GoalWaterfallRepository.observeWaterfall()                  §2.6 (7.3)
+        │      monthlySurplus + surplusBasis    ← REUSED, not re-derived: the two screens must pour
+        │                                         the same number (ADR-0035's observed-P50 stand-in)
+        │      totalRequiredMonthly, lines.size ← Stage 5's need and whether any goal exists
+        ├─ EmergencyFundRepository.observeEmergencyFund()               §2.6 (7.2)
+        │      essentials, liquid               ← Stage 0
+        │      shortfall, topUp, runway         ← Stage 3 and the gate
+        │      status == UNKNOWN → shortfall = null
+        │             EMF reports ₹0 when it cannot size the fund; passed on, that would read "done"
+        └─ observeDebts()                                               THE NEW READ
+            └─ activeProfileId.flatMapLatest { profileId ->
+                combine(
+                ├─ accountDao.observeWithBalances(profileId, includeArchived = false, today)
+                ├─ creditCardDao.observeForProfile(profileId)   → apr_bps (nullable)
+                └─ loanDao.observeForProfile(profileId)         → annual_rate_bps
+                ) → per account:
+                    CREDIT_CARD → DebtPosition(CARD, −balance floored at 0, apr or null)
+                    LOAN        → DebtPosition(LOAN, …) ONLY when a loan row exists
+                                  no terms = no rate = no band that is not a guess (P-03)
+                    anything else → not a debt this engine can place
+            }
+       ) { plan, fund, debts ->
+        emergencyGateMonths = QuickSetupRules().emergencyRunwayMonths   RULE-EMERG-FIRST's ONE mirror
+        └─ OrderOfOperationsEngine.rank(input)                         :domain:engines:orderofoperations
+            │   eight stages, in §36's order, each min(remaining, claim)
+            │   bands decided once: fire ≥ 1350 bps or unrated card · grey 1000..1349 · low < 1000
+            │   gate = runway unknown || runway < gate × 10 000 bps → Stages 5–7 BLOCKED
+            └─ Err (a sum past Long.MAX_VALUE) → rank again WITHOUT the surplus, debts and goals
+                   a flow that stopped emitting would leave the card "working it out" for ever
+       }
+```
+
+**Nothing is written.** The ranking is advice (P-07): no table, no worker, no stored insight yet.
+Editing a card's APR in Accounts is what moves a debt between stages — the flow re-emits because
+`credit_card` changed.
+
+**Rules reach it two ways.** Stage thresholds come from `OrderOfOperationsRules`, a typed mirror of
+`financial-order-of-operations.json` held by a drift test. `RULE-EMERG-FIRST`'s number comes from the
+repository, never from the engine's own mirror (ADR-0035, ADR-0037).
+
+**Known divergence, recorded.** Past the gate this path gives the emergency fund its monthly pace
+before the goals; §2.6's waterfall gives it nothing. Re-pointing §2.6 at what this path leaves after
+Stage 3 is ADR-0037's first follow-up.
+
 ---
 
 ## 3 · Shape B — a background worker
