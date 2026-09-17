@@ -7,6 +7,7 @@ import com.aicfo.data.repository.CategoryBudget
 import com.aicfo.data.repository.CategoryBudgetAlert
 import com.aicfo.data.repository.FilteredTransaction
 import com.aicfo.domain.engines.nature.NatureBreakdown
+import com.aicfo.domain.engines.orderofoperations.OrderOfOperations
 import com.aicfo.domain.engines.safetospend.SafeToSpend
 
 /**
@@ -110,6 +111,16 @@ data class DashboardUiState(
      * state (a brand-new profile) and must read differently from "not read yet".
      */
     val recentActivity: List<FilteredTransaction>? = null,
+    /**
+     * The Financial Order of Operations — the card leads with its top action (issue 7.5; §36,
+     * FOO-002).
+     *
+     * Carried whole, for the reason [safeToSpend] is: the card shows the stage, its reason, its
+     * amount and its rule together, and all four must come from one engine result or they could
+     * disagree. `null` until the first emission, which the card renders as "working it out" — **not**
+     * as "nothing to do", a different finding with its own state on the result.
+     */
+    val orderOfOperations: OrderOfOperations? = null,
     /**
      * Where the export/import feature is right now (issue 5.4; §5.10).
      *

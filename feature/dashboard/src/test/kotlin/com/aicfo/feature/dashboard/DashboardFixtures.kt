@@ -48,6 +48,9 @@ internal fun populatedDashboardState(): DashboardUiState =
         budgets = listOf(budgetRow()),
         budgetAlerts = listOf(alertRow()),
         recentActivity = listOf(transactionRow()),
+        // Issue 7.5: a real ranking with amounts on the card, so the privacy-blur test proves the
+        // next-best-rupee card hides them too, and the screenshots show it populated.
+        orderOfOperations = rank(cardDebtInput()),
     )
 
 /**

@@ -16,6 +16,8 @@ import com.aicfo.feature.budgets.BudgetsScreen
 import com.aicfo.feature.categories.CategoriesScreen
 import com.aicfo.feature.dashboard.DashboardActions
 import com.aicfo.feature.dashboard.DashboardScreen
+import com.aicfo.feature.dashboard.OrderOfOperationsActions
+import com.aicfo.feature.dashboard.OrderOfOperationsScreen
 import com.aicfo.feature.emergencyfund.EmergencyFundScreen
 import com.aicfo.feature.goals.GoalDetailScreen
 import com.aicfo.feature.goals.GoalsScreen
@@ -71,6 +73,7 @@ fun CfoNavHost(
                         onNavigateToGoals = { navController.navigate(CfoRoute.Goals) },
                         onNavigateToEmergencyFund = { navController.navigate(CfoRoute.EmergencyFund) },
                         onNavigateToSettings = { navController.navigate(CfoRoute.Settings) },
+                        onNavigateToOrderOfOperations = { navController.navigate(CfoRoute.OrderOfOperations) },
                     ),
             )
         }
@@ -124,6 +127,19 @@ private fun NavGraphBuilder.planningDestinations(navController: NavHostControlle
     // thin, so the screen that says so belongs within a tap of the screen it is about.
     composable<CfoRoute.EmergencyFund> {
         EmergencyFundScreen(onDone = { navController.popBackStack() })
+    }
+
+    // Issue 7.5: with the plan, because it ranks the plan — the fund and the goals it links to are
+    // this group's own screens.
+    composable<CfoRoute.OrderOfOperations> {
+        OrderOfOperationsScreen(
+            actions =
+                OrderOfOperationsActions(
+                    onDone = { navController.popBackStack() },
+                    onOpenGoals = { navController.navigate(CfoRoute.Goals) },
+                    onOpenEmergencyFund = { navController.navigate(CfoRoute.EmergencyFund) },
+                ),
+        )
     }
 }
 

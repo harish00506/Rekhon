@@ -114,6 +114,12 @@ fun DashboardContent(
         }
 
         MoneySummary(uiState)
+        // Issue 7.5: FOO-002 — the single top action, directly under the two headline figures. It is
+        // the answer to "what should I do with what is left?", so it sits beside what is left.
+        NextBestRupeeCard(
+            ranking = uiState.orderOfOperations,
+            onOpen = actions.onNavigateToOrderOfOperations,
+        )
         SpendSplitSection(uiState)
         // Issue 4.3: the plan is above, the outcome is here. Adjacent on purpose.
         ActualSpendSection(uiState)
@@ -452,7 +458,8 @@ private fun RecentActivitySection(uiState: DashboardUiState) {
  *
  * Input:  [onNavigateToTransactions]; [onNavigateToAccounts]; [onNavigateToSettings] — FR-SET-001's
  *         income, consents and app lock; [onNavigateToBudgets] — issue 4.4's
- *         per-category plan, behind the nature-level bar this screen already draws.
+ *         per-category plan, behind the nature-level bar this screen already draws;
+ *         [onNavigateToOrderOfOperations] — issue 7.5's full ranking, behind the next-best-rupee card.
  * Output: an immutable value.
  */
 @Immutable
@@ -463,4 +470,5 @@ data class DashboardActions(
     val onNavigateToGoals: () -> Unit,
     val onNavigateToEmergencyFund: () -> Unit,
     val onNavigateToSettings: () -> Unit,
+    val onNavigateToOrderOfOperations: () -> Unit,
 )

@@ -122,4 +122,99 @@
         app. Nothing on this device has been changed.</string>
     <string name="dashboard_archive_write_failed">Couldn\'t write to that location. Try somewhere else.</string>
     <string name="dashboard_archive_failed">Something went wrong. Nothing on this device has been changed.</string>
+
+    <!--
+      Issue 7.5 — the Financial Order of Operations (§36, AI-FOO, FOO-002).
+
+      No rule's number is written into any sentence here. "Your minimum runway", not "three months":
+      that figure is RULE-EMERG-FIRST's, and a copy in a string is a mirror nothing checks. The amounts
+      that do appear arrive as arguments, formatted from the engine's own figures (P-03).
+
+      Advice, not instructions (P-07): every action is phrased as a suggestion, and the screen says in
+      as many words that nothing moves unless the user moves it.
+    -->
+    <string name="dashboard_foo_title">Your next best rupee</string>
+    <string name="dashboard_foo_pending">Working out where your next rupee should go…</string>
+    <string name="dashboard_foo_nothing">Nothing needs your money right now.</string>
+    <string name="dashboard_foo_idle">%1$s is free this month.</string>
+    <string name="dashboard_foo_amount">Suggested this month: %1$s</string>
+    <string name="dashboard_foo_need">Still needed: %1$s</string>
+    <string name="dashboard_foo_open">See the full order</string>
+
+    <string name="foo_title">Where your money should go</string>
+    <string name="foo_intro">Each step is filled before the next one. The amounts are suggestions — nothing
+        moves unless you move it.</string>
+    <string name="foo_loading">Working it out…</string>
+    <string name="foo_error">Couldn\'t work out the order just now.</string>
+    <string name="foo_dismiss_error">OK</string>
+    <string name="foo_back">Back</string>
+    <string name="foo_basis_observed">Based on your typical monthly surplus of %1$s.</string>
+    <string name="foo_basis_declared">Based on the %1$s you told us you save each month.</string>
+    <string name="foo_basis_none">We don\'t know your monthly surplus yet, so no amounts are suggested.</string>
+    <string name="foo_step">Step %1$d · %2$s</string>
+    <string name="foo_this_month">Suggested this month: %1$s</string>
+    <string name="foo_needs">Needed: %1$s</string>
+    <string name="foo_debt_rated">%1$s · %2$s owed · %3$s a year</string>
+    <string name="foo_debt_unrated">%1$s · %2$s owed · rate not entered</string>
+    <string name="foo_compare">Investing is expected to earn about %1$s a year.</string>
+    <string name="foo_rate_percent">%1$d.%2$02d%%</string>
+    <string name="foo_rules">Rules: %1$s</string>
+    <string name="foo_rule_citation">%1$s v%2$s</string>
+    <string name="foo_left_over">%1$s is left after every step.</string>
+    <string name="foo_open_goals">Open your goals</string>
+    <string name="foo_open_emergency_fund">Open your emergency fund</string>
+    <string name="foo_disclaimer">Advice, not instructions. The app never moves your money.</string>
+
+    <string name="foo_stage_starter_buffer">Build a starter buffer</string>
+    <string name="foo_stage_capture_epf_vpf">Capture your EPF and VPF</string>
+    <string name="foo_stage_kill_fire_debt">Pay off high-interest debt</string>
+    <string name="foo_stage_full_emergency">Complete your emergency fund</string>
+    <string name="foo_stage_tax_advantaged">Use your tax-saving limits</string>
+    <string name="foo_stage_goal_investing">Fund your goals</string>
+    <string name="foo_stage_grey_zone_debt">Consider paying down mid-rate debt</string>
+    <string name="foo_stage_low_rate_debt">Low-rate debt: prepay or invest?</string>
+
+    <string name="foo_status_action">Do this</string>
+    <string name="foo_status_satisfied">Done</string>
+    <string name="foo_status_blocked">Waiting on your emergency fund</string>
+    <string name="foo_status_skipped">Can\'t check yet</string>
+    <string name="foo_status_not_applicable">Doesn\'t apply to you</string>
+    <string name="foo_status_choice">Your call</string>
+    <string name="foo_status_defer">Needs a comparison</string>
+
+    <string name="foo_reason_buffer_short">A small buffer you can reach instantly stops the first surprise
+        bill from landing on a credit card.</string>
+    <string name="foo_reason_buffer_short_unknown">We don\'t know your monthly essentials yet, so this uses
+        the largest starter buffer. A few months of spending will size it for you.</string>
+    <string name="foo_reason_buffer_held">You already have a starter buffer you can reach instantly.</string>
+    <string name="foo_reason_no_epf_data">The app can\'t see your EPF contributions yet, so this step is
+        skipped. Your payslip shows whether your employer\'s share is going in.</string>
+    <string name="foo_reason_fire_debt">Paying off debt at this rate is a guaranteed return at that rate.
+        Nothing else reliably beats it.</string>
+    <!-- No "add the rate" prompt: the card editor (6.1) has no rate field, so the app cannot keep that
+         promise. Found on the 7.5 device run (ADR-0037). -->
+    <string name="foo_reason_fire_debt_rate_unknown">No interest rate is recorded for this card, so it is
+        treated as high-interest, as most cards are.</string>
+    <string name="foo_reason_no_fire_debt">You have no high-interest debt.</string>
+    <string name="foo_reason_emergency_unsized">Your emergency fund can\'t be sized until your monthly
+        essentials are known.</string>
+    <string name="foo_reason_emergency_below_gate">Your savings cover less than your minimum runway, so the
+        steps below wait until this is built.</string>
+    <string name="foo_reason_emergency_building">Your minimum runway is covered. Keep building the full fund
+        at this pace.</string>
+    <string name="foo_reason_emergency_funded">Your emergency fund is complete.</string>
+    <string name="foo_reason_emergency_gate">Waiting until your emergency fund reaches its minimum
+        runway.</string>
+    <string name="foo_reason_no_regime_comparator">Tax-saving investments only help if the old tax regime
+        is better for you, and the app can\'t compare the two regimes yet.</string>
+    <string name="foo_reason_goals_need_funding">Your goals need this much this month to stay on
+        track.</string>
+    <string name="foo_reason_goals_on_track">Your goals need nothing more this month.</string>
+    <string name="foo_reason_no_goals">You have no goals yet.</string>
+    <string name="foo_reason_grey_debt">At this rate, paying the debt down and investing are close. Compare
+        the two rates and decide.</string>
+    <string name="foo_reason_no_grey_debt">You have no mid-rate debt.</string>
+    <string name="foo_reason_low_rate_debt">At this rate, prepaying and investing are a genuine toss-up. No
+        amount is suggested until the app can compare them for you.</string>
+    <string name="foo_reason_no_low_rate_debt">You have no low-rate debt.</string>
 </resources>

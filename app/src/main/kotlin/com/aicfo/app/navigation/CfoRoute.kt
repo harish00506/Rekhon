@@ -185,4 +185,14 @@ sealed interface CfoRoute {
      */
     @Serializable
     data object EmergencyFund : CfoRoute
+
+    /**
+     * The full Financial Order of Operations (issue 7.5; §36, AI-FOO, FOO-002).
+     *
+     * **No arguments**: there is one ranking per profile, recomputed from the injected `Clock` on
+     * every emission, like [EmergencyFund]. Reached from the dashboard's next-best-rupee card; it
+     * moves to the Advisor hub when Epic 10 builds one (ADR-0037).
+     */
+    @Serializable
+    data object OrderOfOperations : CfoRoute
 }
