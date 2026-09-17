@@ -11,6 +11,54 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The goals engine, the emergency-fund engine, the feasibility waterfall, linked contributions and
 > the Financial Order of Operations.
 
+### [0.7.5] — Issue 7.5: Financial Order of Operations  (2026-09-17)
+
+- **The app now answers "what should my next rupee do?"** (**§36**, **AI-FOO**, **FOO-002**,
+  **FOO-003**). A new engine, `:domain:engines:orderofoperations`, pours the month's surplus down
+  §36's eight stages in fixed order — starter buffer, EPF, fire debt, the full emergency fund, tax,
+  goals, grey-zone debt, low-rate debt — each taking the lesser of what it needs and what is left.
+  Every stage is reported, **including the skipped ones, with why**, and each names the rule that
+  placed it. The paise invariant (`Σ amounts + left over == surplus`) is a `require` on the type.
+- **The thresholds are the FOO file's, not a new rulebook row.** `OrderOfOperationsRules` mirrors
+  `financial-order-of-operations.json` in paise and basis points (13.5% → 1350 bps) and a drift test
+  holds it there; each stage is cited as `FOO.<id>`. `RULE-EMERG-FIRST` is **cited, not mirrored** —
+  its number still comes from `QuickSetupRules` (ADR-0035). **No rulebook row minted**; the rulebook
+  stays at 1.15.0 (ADR-0037).
+- **What the app cannot judge yet, it says.** Stage 1 (no EPF data) and Stage 4 (no §38 regime
+  comparator, issue 13.4) are always *skipped, with the reason*. Stage 7 hands low-rate debt to the
+  prepay-vs-invest simulator (issue 10.3, not built) and **proposes no amount**. The surplus is the
+  goal waterfall's own observed-P50 figure, because issue 9.2's forecast still does not exist — and
+  the screen says which basis it used.
+- **Two readings of §36 worth arguing with.** The grey band runs from 10% up to the 13.5% fire
+  threshold, because "~10–12%" read literally leaves 12–13.5% loans in no stage. And while
+  `RULE-EMERG-FIRST` holds, the emergency fund may take its **whole** shortfall rather than its
+  monthly pace — nothing below it may be funded, so capping it would leave money idle behind the rule
+  that exists to build it.
+- **A card with no rate recorded counts as fire debt**, and the screen says the rate was assumed. A
+  loan with no terms is left out rather than guessed into a band (P-03).
+- **Found by running the app:** the card editor (issue 6.1) has **no APR field** — `credit_card.apr_bps`
+  exists and nothing in the UI writes it. The first build offered "Add the rate in Accounts", which led
+  to a screen where the rate could not be entered; that button was removed rather than shipped as a
+  dead end. Until the field exists, every card ranks as fire debt. Recorded as a follow-up (ADR-0037).
+- **Dashboard:** a *Your next best rupee* card under the headline figures leads with the top action,
+  its reason, the suggested amount and the rule (FOO-002). *See the full order* opens a new screen
+  with all eight stages, each debt and its rate to the basis point, the equity comparison on the
+  grey-zone choice, and links to goals and the emergency fund. Every amount honours the
+  privacy blur. Advice only — nothing moves (P-07).
+- **Known divergence, recorded:** past the gate, AI-FOO funds the emergency fund's pace before the
+  goals; 7.3's goal waterfall does not. Re-pointing 7.3 at what AI-FOO leaves is ADR-0037's first
+  follow-up. FOO-001's user reordering is deferred.
+- **Engine registry:** AI-FOO's module is `orderofoperations`, not the pre-registered `orchestrator`
+  (that is AI-ORCH); AI-GOAL no longer claims to read the FOO file.
+- **Tests:** 52 engine tests (33 unit, 12-household golden file, 6 seeded properties over 500
+  households, 9 drift) at **100% line and branch coverage**; 8 repository tests on in-memory Room;
+  4 ViewModel + 11 Compose tests for the new screen and card; 4 new dashboard ViewModel tests.
+  Drift, golden, repository and UI gates each **proven red three ways** before being trusted. Five
+  dashboard Paparazzi baselines re-recorded for the new card (light, dark, 200% font, blurred, empty).
+  Full gate `unitTests koverVerify ktlintCheck detekt lintDebug verifyPaparazziDebug` green: 2,507
+  JVM tests, 0 failed, 0 skipped. Driven on the `CfoTest` emulator (API 36) including an
+  airplane-mode cold start and the privacy blur. No schema change; no dependency added.
+
 ### [0.7.4] — Issue 7.4: Linked contributions  (2026-09-06)
 
 - **Goal progress stopped being a number the user types** (**§15**, **FR-GOAL-002**,

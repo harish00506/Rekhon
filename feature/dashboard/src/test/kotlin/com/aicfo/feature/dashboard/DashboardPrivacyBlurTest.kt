@@ -122,6 +122,7 @@ class DashboardPrivacyBlurTest {
                             onNavigateToGoals = {},
                             onNavigateToEmergencyFund = {},
                             onNavigateToSettings = {},
+                            onNavigateToOrderOfOperations = {},
                         ),
                 )
             }

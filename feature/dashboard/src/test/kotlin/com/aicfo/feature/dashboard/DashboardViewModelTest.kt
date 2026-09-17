@@ -9,6 +9,7 @@ import com.aicfo.core.model.TransactionType
 import com.aicfo.data.repository.CashFlowSummary
 import com.aicfo.domain.engines.budget.BudgetAlertBand
 import com.aicfo.domain.engines.nature.NatureBreakdown
+import com.aicfo.domain.engines.orderofoperations.FooStage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -47,8 +48,10 @@ class DashboardViewModelTest {
     private val budgets = FakeBudgetRepository()
     private val safeToSpend = FakeSafeToSpendRepository()
     private val archives = FakeArchiveRepository()
+    private val orderOfOperations = FakeOrderOfOperationsRepository()
 
-    private fun viewModel() = DashboardViewModel(budget, netWorth, transactions, budgets, safeToSpend, archives)
+    private fun viewModel() =
+        DashboardViewModel(budget, netWorth, transactions, budgets, safeToSpend, archives, orderOfOperations)
 
     /** `viewModelScope` runs on `Dispatchers.Main`, which has no factory on a plain JVM. */
     @Before
@@ -578,5 +581,62 @@ class DashboardViewModelTest {
 
             assertNull(state.recentActivity)
             assertNull("a failed recent-activity read raised a banner", state.errorCode)
+        }
+
+    // --- issue 7.5: the next best rupee -------------------------------------------------------
+
+    /**
+     * Input:  a ViewModel whose ranking has not arrived.
+     * Output: the card's state is absent — "working it out", not "nothing to do" — and no error.
+     */
+    @Test
+    fun `the ranking is absent until the first emission, and that is not an error`() =
+        runTest {
+            val viewModel = viewModel()
+
+            assertNull(viewModel.uiState.value.orderOfOperations)
+            assertNull(viewModel.uiState.value.errorCode)
+        }
+
+    /** Input: a ranking pushed by the repository. Output: the state carries it whole. */
+    @Test
+    fun `the engine's ranking reaches the state whole`() =
+        runTest {
+            val viewModel = viewModel()
+            viewModel.uiState.test {
+                awaitItem()
+
+                orderOfOperations.emit(cardDebtInput())
+
+                val loaded = awaitItem()
+                assertEquals(rank(cardDebtInput()), loaded.orderOfOperations)
+                assertEquals(FooStage.STARTER_BUFFER, loaded.orderOfOperations?.topAction?.stage)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    /** Input: a second, different ranking. Output: the card follows it — §36 recomputes on change. */
+    @Test
+    fun `the card follows the ranking while the screen is open`() =
+        runTest {
+            val viewModel = viewModel()
+            orderOfOperations.emit(cardDebtInput())
+            assertEquals(rank(cardDebtInput()), viewModel.uiState.value.orderOfOperations)
+
+            orderOfOperations.emit(idleHouseholdInput())
+
+            assertEquals(rank(idleHouseholdInput()), viewModel.uiState.value.orderOfOperations)
+        }
+
+    /** Input: a failed ranking read. Output: the error banner, not a silent blank. */
+    @Test
+    fun `a failed ranking read surfaces an error`() =
+        runTest {
+            val viewModel = viewModel()
+
+            orderOfOperations.fail()
+
+            assertEquals(AppError.Unexpected("").code, viewModel.uiState.value.errorCode)
+            assertNull(viewModel.uiState.value.orderOfOperations)
         }
 }

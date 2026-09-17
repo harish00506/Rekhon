@@ -8,6 +8,7 @@ import com.aicfo.core.common.toAppError
 import com.aicfo.data.repository.ArchiveRepository
 import com.aicfo.data.repository.BudgetRepository
 import com.aicfo.data.repository.NetWorthRepository
+import com.aicfo.data.repository.OrderOfOperationsRepository
 import com.aicfo.data.repository.QuickSetupRepository
 import com.aicfo.data.repository.SafeToSpendRepository
 import com.aicfo.data.repository.TransactionRepository
@@ -38,6 +39,7 @@ import javax.inject.Inject
  * Changelog: 2026-07-27 — Issue 2.3: the spending split is real, read from the persisted budget.
  *            2026-08-01 — Issue 2.6: net worth is real, read from the daily snapshot (FR-ACC-005).
  *            2026-08-16 — Issue 5.2: Safe-to-Spend is real, and this ViewModel now computes nothing.
+ *            2026-09-17 — Issue 7.5: the next best rupee, FOO-002's single top action.
  *
  * **Nothing on this screen is a placeholder any more.** Safe-to-Spend was the last one — a literal
  * `Money(12_500_00L + today.dayOfMonth)` that had been on the app's home screen since issue 1.10, in
@@ -62,7 +64,9 @@ import javax.inject.Inject
 // One private collector per figure the dashboard shows, plus issue 5.4's two archive actions. The
 // count is the number of things on the screen, not a design choice — splitting it would mean two
 // ViewModels for one screen and two StateFlows for one UiState, which ARC-004 exists to prevent.
-@Suppress("TooManyFunctions")
+// LongParameterList for the same reason (issue 7.5): Hilt reads the constructor, and each argument is
+// one repository behind one figure on the screen — the next-best-rupee card brought the seventh.
+@Suppress("TooManyFunctions", "LongParameterList")
 class DashboardViewModel
     @Inject
     constructor(
@@ -72,6 +76,7 @@ class DashboardViewModel
         private val budgetRepository: BudgetRepository,
         private val safeToSpendRepository: SafeToSpendRepository,
         private val archiveRepository: ArchiveRepository,
+        private val orderOfOperationsRepository: OrderOfOperationsRepository,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(DashboardUiState())
 
@@ -91,6 +96,32 @@ class DashboardViewModel
             observeCashFlow()
             observeBudgetStatus()
             observeRecentActivity()
+            observeOrderOfOperations()
+        }
+
+        /**
+         * Keeps the next-best-rupee card in step with the whole household (issue 7.5; §36,
+         * FOO-002).
+         *
+         * Why:    §36 says the ranking is "recomputed monthly and on any surplus change", and the
+         *         surplus, the runway and every debt move under this screen — so a snapshot at
+         *         construction would name a top action that stopped being true the first time the
+         *         user paid a card.
+         *
+         *         A failure raises the error banner, as [observeSafeToSpend] does: this card is the
+         *         answer to "what should I do next?", and a silent blank where it used to be would
+         *         read as "nothing" — a finding the card has its own state for. The repository
+         *         already falls back rather than failing on bad arithmetic, so what reaches this
+         *         `catch` is a storage failure worth telling the user about.
+         * Result: [uiState] carries the ranking; it stays `null` until the first emission.
+         * Input:  none. Output: none (launches a collector).
+         * Changelog: 2026-09-17 — Created for issue 7.5.
+         */
+        private fun observeOrderOfOperations() {
+            orderOfOperationsRepository.observe()
+                .onEach { ranking -> _uiState.update { it.copy(orderOfOperations = ranking) } }
+                .catch { failure -> _uiState.update { it.copy(errorCode = failure.toAppError().code) } }
+                .launchIn(viewModelScope)
         }
 
         /**

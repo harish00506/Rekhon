@@ -25,7 +25,13 @@ android {
 // runs every other test here, which is what would catch a release-only compile problem.
 tasks.withType<Test>()
     .matching { it.name.contains("Release") }
-    .configureEach { exclude("**/DashboardPrivacyBlurTest.class") }
+    .configureEach {
+        exclude("**/DashboardPrivacyBlurTest.class")
+        // Issue 7.5: the same exclusion for the same reason — a Compose test needs the debug
+        // manifest's activity. Adding a Compose test without adding it here is how 7.4's release
+        // variant went red.
+        exclude("**/OrderOfOperationsFlowTest.class")
+    }
 
 dependencies {
     implementation(project(":core:model"))
@@ -40,6 +46,11 @@ dependencies {
     // :data:repository's `api` dependency; this declaration is what lets the screen name it directly
     // rather than relying on a transitive it does not own.
     implementation(project(":domain:engines:safetospend"))
+    // Issue 7.5: the next-best-rupee card and the full-order screen render OrderOfOperations stage by
+    // stage, so this module names its enums to word them; SurplusBasis says where the poured figure
+    // came from. Types, not construction — :app injects the engine into the repository.
+    implementation(project(":domain:engines:orderofoperations"))
+    implementation(project(":domain:engines:goals"))
     implementation(project(":data:repository"))
 
     // FakeClock: every screen that shows a date needs a fixed one in tests (issue 1.3).
