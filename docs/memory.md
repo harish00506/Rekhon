@@ -6,7 +6,7 @@
   Result: A reader knows the current version, completed work, the file in progress, and next up.
   Changelog:
     2026-07-18 — Created. Baseline: Epic 0 (blueprint) done; no Kotlin code yet.
-    2026-09-17 — Issue 7.5 implemented and verified on its branch (uncommitted); last issue of Epic 7.
+    2026-09-17 — Issue 7.5 merged to dev; Epic 7 complete.
 -->
 
 # AI Personal CFO — Project Memory
@@ -20,15 +20,13 @@
 
 - **Version:** `0.7.5` (see [`../VERSION`](../VERSION)) · **Phase:** 3 — AI core & goals.
   **Schema is v22**, unchanged by 7.5.
-- **Epics 1–6 are done; Epic 7 is done once 7.5 merges** — 7.5 (Financial Order of Operations,
-  AI-FOO) is implemented and verified but not yet committed. Epics 8 and 9 are the open ones left in
-  Phases 2–3; **Epic 9 (AI core engines, incl. the 9.2 forecast) is the
+- **Epics 1–7 are done** — 7.5 (Financial Order of Operations, AI-FOO) closed Epic 7. Epics 8 and 9
+  are the open ones left in Phases 2–3; **Epic 9 (AI core engines, incl. the 9.2 forecast) is the
   one the goals work kept waiting on.**
-- **Currently working file:** none. Issue **7.5 is implemented and verified but not committed**, on
-  `feature/7-5-financial-order-of-operations-ai-foo`
-  ([tracker](issues/7.5-financial-order-of-operations-ai-foo-tracker.md)). The user has not asked
-  for a commit (workflow step 12).
-- **`origin/dev` is still at `6afa5f0`** — local `dev` is eight commits ahead (7.4 and its records),
+- **Currently working file:** none. Issue **7.5 is merged to `dev`** at `6a25b13`
+  ([tracker](issues/7.5-financial-order-of-operations-ai-foo-tracker.md)).
+- **`origin/dev` is still at `6afa5f0`** — local `dev` is fourteen commits ahead (7.4, 7.5 and their
+  records),
   and **the push is blocked, not skipped**: this machine has no GitHub credentials (no helper, no
   `gh`, no token, and the one SSH key is for another host). Pushing needs an authenticated shell.
 - **This machine builds with Temurin JDK 21** (`~/.jdks/temurin-21`) and the SDK at `~/Android/Sdk`;
