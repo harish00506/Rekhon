@@ -1,0 +1,321 @@
+Golden records for OrderOfOperationsEngine — issue 7.5, SRS §36, AI-FOO.
+
+Every amount is PAISE (MNY-001), never rupees: 5000000 is ₹50,000. Every rate is BASIS POINTS
+(MNY-002): 3600 is 36%. A runway is basis points of a MONTH: 30000 is three months. Every record is
+reckoned from one fixed day, 2026-09-17, so the file is byte-reproducible.
+
+WHAT THE ACCEPTANCE CRITERION ASKED FOR — "golden-file test across representative states" — is the
+whole file: a cold start, a young earner with card debt and a thin buffer, a gated emergency fund, a
+household with nothing left to do, a grey-zone car loan, a home loan, a month in the red, an
+unknown card rate on the band edges, an unsized fund, and both sides of RULE-EMERG-FIRST's gate by
+one basis point.
+
+EVERY EXPECTATION IS WRITTEN OUT, NEVER DERIVED. Issue 7.4's first golden assertion computed its
+expectation with the same subtraction the engine performs, so editing a record moved input and
+expectation together and the test stayed green. The arithmetic behind each record is shown in its
+comment lines so a reviewer can check it by hand — but the test reads only the `# key=value` lines.
+
+Record format. One record per `===` block, one `# key=value` per line; other lines are comments.
+
+  label               what the record is for
+  surplus             the month's surplus in paise, or `unknown`. May be negative.
+  basis               OBSERVED_MEDIAN | DECLARED_ENVELOPE | NONE
+  essentials          monthly essentials, or `unknown`. Optional, defaults to unknown.
+  liquid              liquid funds. Optional, defaults to 0.
+  ef_shortfall        the emergency fund's shortfall, or `unknown` (an unsized fund). Optional, unknown.
+  ef_topup            AI-EMF's monthly pace. Optional, defaults to 0.
+  ef_runway_bps       the runway, or `unknown`. Optional, defaults to unknown.
+  debt                repeatable: id|CARD or LOAN|outstanding|apr_bps or `unknown`.
+  goals_required      what every goal needs this month. Optional, defaults to 0.
+  goal_count          how many active goals. Optional, defaults to 0.
+  expect_top          the top action's stage, or `none`.
+  expect_unallocated  what is left after every stage.
+  expect              repeatable, exactly eight, in stage order:
+                      STAGE|STATUS|REASON|need or `unknown`|amount
+  expect_debts        optional, repeatable: STAGE|comma-separated debt ids in the order shown.
+
+===
+# label=cold-start
+Nothing is known. Every stage still reports, and the buffer is sized by its cap alone.
+# surplus=unknown
+# basis=NONE
+# expect_top=STARTER_BUFFER
+# expect_unallocated=0
+# expect=STARTER_BUFFER|ACTION|BUFFER_SHORT_ESSENTIALS_UNKNOWN|5000000|0
+# expect=CAPTURE_EPF_VPF|SKIPPED|NO_EPF_DATA|unknown|0
+# expect=KILL_FIRE_DEBT|NOT_APPLICABLE|NO_FIRE_DEBT|0|0
+# expect=FULL_EMERGENCY|ACTION|EMERGENCY_UNSIZED|unknown|0
+# expect=TAX_ADVANTAGED|SKIPPED|NO_REGIME_COMPARATOR|unknown|0
+# expect=GOAL_INVESTING|NOT_APPLICABLE|NO_GOALS|0|0
+# expect=GREY_ZONE_DEBT|NOT_APPLICABLE|NO_GREY_DEBT|0|0
+# expect=LOW_RATE_DEBT|NOT_APPLICABLE|NO_LOW_RATE_DEBT|0|0
+
+===
+# label=young-earner-card-debt-thin-buffer
+₹25,000 spare. Buffer: min(50,000, 28,000) − 12,000 = 16,000, all of it funded → 9,000 left.
+The ₹65,000 card takes the 9,000. Runway 12,000/28,000 = 0.4285 months, so the gate holds: the fund
+asks for its whole 1,56,000 shortfall but nothing is left, and the goal waits.
+# surplus=2500000
+# basis=OBSERVED_MEDIAN
+# essentials=2800000
+# liquid=1200000
+# ef_shortfall=15600000
+# ef_topup=2600000
+# ef_runway_bps=4285
+# debt=hdfc|CARD|6500000|3600
+# goals_required=800000
+# goal_count=1
+# expect_top=STARTER_BUFFER
+# expect_unallocated=0
+# expect=STARTER_BUFFER|ACTION|BUFFER_SHORT|1600000|1600000
+# expect=CAPTURE_EPF_VPF|SKIPPED|NO_EPF_DATA|unknown|0
+# expect=KILL_FIRE_DEBT|ACTION|FIRE_DEBT_OUTSTANDING|6500000|900000
+# expect=FULL_EMERGENCY|ACTION|EMERGENCY_BELOW_GATE|15600000|0
+# expect=TAX_ADVANTAGED|SKIPPED|NO_REGIME_COMPARATOR|unknown|0
+# expect=GOAL_INVESTING|BLOCKED|EMERGENCY_GATE|800000|0
+# expect=GREY_ZONE_DEBT|NOT_APPLICABLE|NO_GREY_DEBT|0|0
+# expect=LOW_RATE_DEBT|NOT_APPLICABLE|NO_LOW_RATE_DEBT|0|0
+# expect_debts=KILL_FIRE_DEBT|hdfc
+
+===
+# label=gated-emergency-with-home-loan
+₹40,000 from the declared envelope. Buffer held (60,000 ≥ 30,000). Runway two months: the gate holds,
+so the fund may take its whole 1,20,000 shortfall and takes all 40,000. Goals and the home loan wait.
+# surplus=4000000
+# basis=DECLARED_ENVELOPE
+# essentials=3000000
+# liquid=6000000
+# ef_shortfall=12000000
+# ef_topup=2000000
+# ef_runway_bps=20000
+# debt=home|LOAN|250000000|850
+# goals_required=1500000
+# goal_count=2
+# expect_top=FULL_EMERGENCY
+# expect_unallocated=0
+# expect=STARTER_BUFFER|SATISFIED|BUFFER_HELD|0|0
+# expect=CAPTURE_EPF_VPF|SKIPPED|NO_EPF_DATA|unknown|0
+# expect=KILL_FIRE_DEBT|NOT_APPLICABLE|NO_FIRE_DEBT|0|0
+# expect=FULL_EMERGENCY|ACTION|EMERGENCY_BELOW_GATE|12000000|4000000
+# expect=TAX_ADVANTAGED|SKIPPED|NO_REGIME_COMPARATOR|unknown|0
+# expect=GOAL_INVESTING|BLOCKED|EMERGENCY_GATE|1500000|0
+# expect=GREY_ZONE_DEBT|NOT_APPLICABLE|NO_GREY_DEBT|0|0
+# expect=LOW_RATE_DEBT|BLOCKED|EMERGENCY_GATE|250000000|0
+# expect_debts=LOW_RATE_DEBT|home
+
+===
+# label=gated-with-money-left-over
+₹30,000 spare, gate holds, and the fund needs only 20,000 of it. The other 10,000 cannot pass the gate
+to the goal, so it waits, unallocated.
+# surplus=3000000
+# basis=OBSERVED_MEDIAN
+# essentials=3000000
+# liquid=6000000
+# ef_shortfall=2000000
+# ef_topup=300000
+# ef_runway_bps=20000
+# goals_required=500000
+# goal_count=1
+# expect_top=FULL_EMERGENCY
+# expect_unallocated=1000000
+# expect=STARTER_BUFFER|SATISFIED|BUFFER_HELD|0|0
+# expect=CAPTURE_EPF_VPF|SKIPPED|NO_EPF_DATA|unknown|0
+# expect=KILL_FIRE_DEBT|NOT_APPLICABLE|NO_FIRE_DEBT|0|0
+# expect=FULL_EMERGENCY|ACTION|EMERGENCY_BELOW_GATE|2000000|2000000
+# expect=TAX_ADVANTAGED|SKIPPED|NO_REGIME_COMPARATOR|unknown|0
+# expect=GOAL_INVESTING|BLOCKED|EMERGENCY_GATE|500000|0
+# expect=GREY_ZONE_DEBT|NOT_APPLICABLE|NO_GREY_DEBT|0|0
+# expect=LOW_RATE_DEBT|NOT_APPLICABLE|NO_LOW_RATE_DEBT|0|0
+
+===
+# label=everything-done-money-idle
+Buffer held, fund complete, two goals on track, no debt. Nothing asks, so there is no top action and
+the whole ₹15,000 is idle.
+# surplus=1500000
+# basis=OBSERVED_MEDIAN
+# essentials=3000000
+# liquid=18000000
+# ef_shortfall=0
+# ef_runway_bps=60000
+# goal_count=2
+# expect_top=none
+# expect_unallocated=1500000
+# expect=STARTER_BUFFER|SATISFIED|BUFFER_HELD|0|0
+# expect=CAPTURE_EPF_VPF|SKIPPED|NO_EPF_DATA|unknown|0
+# expect=KILL_FIRE_DEBT|NOT_APPLICABLE|NO_FIRE_DEBT|0|0
+# expect=FULL_EMERGENCY|SATISFIED|EMERGENCY_FUNDED|0|0
+# expect=TAX_ADVANTAGED|SKIPPED|NO_REGIME_COMPARATOR|unknown|0
+# expect=GOAL_INVESTING|SATISFIED|GOALS_ON_TRACK|0|0
+# expect=GREY_ZONE_DEBT|NOT_APPLICABLE|NO_GREY_DEBT|0|0
+# expect=LOW_RATE_DEBT|NOT_APPLICABLE|NO_LOW_RATE_DEBT|0|0
+
+===
+# label=grey-zone-car-loan-past-the-gate
+₹30,000 spare. Runway four months clears the gate, so the fund takes its 10,000 pace (not its 60,000
+shortfall) → 20,000 left. The goal takes 12,000 → 8,000. The 11.5% car loan is offered the 8,000.
+# surplus=3000000
+# basis=OBSERVED_MEDIAN
+# essentials=3000000
+# liquid=12000000
+# ef_shortfall=6000000
+# ef_topup=1000000
+# ef_runway_bps=40000
+# debt=car|LOAN|45000000|1150
+# goals_required=1200000
+# goal_count=1
+# expect_top=FULL_EMERGENCY
+# expect_unallocated=0
+# expect=STARTER_BUFFER|SATISFIED|BUFFER_HELD|0|0
+# expect=CAPTURE_EPF_VPF|SKIPPED|NO_EPF_DATA|unknown|0
+# expect=KILL_FIRE_DEBT|NOT_APPLICABLE|NO_FIRE_DEBT|0|0
+# expect=FULL_EMERGENCY|ACTION|EMERGENCY_BUILDING|6000000|1000000
+# expect=TAX_ADVANTAGED|SKIPPED|NO_REGIME_COMPARATOR|unknown|0
+# expect=GOAL_INVESTING|ACTION|GOALS_NEED_FUNDING|1200000|1200000
+# expect=GREY_ZONE_DEBT|CHOICE|GREY_DEBT_OUTSTANDING|45000000|800000
+# expect=LOW_RATE_DEBT|NOT_APPLICABLE|NO_LOW_RATE_DEBT|0|0
+# expect_debts=GREY_ZONE_DEBT|car
+
+===
+# label=home-loan-only-deferred-to-simulator
+Everything done except an 8.4% home loan. Stage 7 proposes nothing — the simulator is not built — so
+there is no top action and the ₹20,000 is idle.
+# surplus=2000000
+# basis=OBSERVED_MEDIAN
+# essentials=3000000
+# liquid=20000000
+# ef_shortfall=0
+# ef_runway_bps=66666
+# debt=home|LOAN|350000000|840
+# expect_top=none
+# expect_unallocated=2000000
+# expect=STARTER_BUFFER|SATISFIED|BUFFER_HELD|0|0
+# expect=CAPTURE_EPF_VPF|SKIPPED|NO_EPF_DATA|unknown|0
+# expect=KILL_FIRE_DEBT|NOT_APPLICABLE|NO_FIRE_DEBT|0|0
+# expect=FULL_EMERGENCY|SATISFIED|EMERGENCY_FUNDED|0|0
+# expect=TAX_ADVANTAGED|SKIPPED|NO_REGIME_COMPARATOR|unknown|0
+# expect=GOAL_INVESTING|NOT_APPLICABLE|NO_GOALS|0|0
+# expect=GREY_ZONE_DEBT|NOT_APPLICABLE|NO_GREY_DEBT|0|0
+# expect=LOW_RATE_DEBT|DEFER_TO_SIMULATOR|LOW_RATE_DEBT_SIMULATOR_NOT_BUILT|350000000|0
+# expect_debts=LOW_RATE_DEBT|home
+
+===
+# label=month-in-the-red
+Spending ₹18,000 more than earned. Nothing can be poured, but the ranking still says where the next
+rupee should go: the 30,000 buffer gap, then the card.
+# surplus=-1800000
+# basis=OBSERVED_MEDIAN
+# essentials=4000000
+# liquid=1000000
+# ef_shortfall=23000000
+# ef_topup=4000000
+# ef_runway_bps=2500
+# debt=sbi|CARD|2000000|3900
+# expect_top=STARTER_BUFFER
+# expect_unallocated=0
+# expect=STARTER_BUFFER|ACTION|BUFFER_SHORT|3000000|0
+# expect=CAPTURE_EPF_VPF|SKIPPED|NO_EPF_DATA|unknown|0
+# expect=KILL_FIRE_DEBT|ACTION|FIRE_DEBT_OUTSTANDING|2000000|0
+# expect=FULL_EMERGENCY|ACTION|EMERGENCY_BELOW_GATE|23000000|0
+# expect=TAX_ADVANTAGED|SKIPPED|NO_REGIME_COMPARATOR|unknown|0
+# expect=GOAL_INVESTING|NOT_APPLICABLE|NO_GOALS|0|0
+# expect=GREY_ZONE_DEBT|NOT_APPLICABLE|NO_GREY_DEBT|0|0
+# expect=LOW_RATE_DEBT|NOT_APPLICABLE|NO_LOW_RATE_DEBT|0|0
+
+===
+# label=unknown-card-rate-and-every-band-edge
+₹1,00,000 spare, fund complete. The Axis card has no rate: fire debt, ranked first. 13.50% is fire,
+13.49% and 10.00% are grey, 9.99% is low. Fire takes 45,000 → 55,000; grey takes 35,000 → 20,000.
+# surplus=10000000
+# basis=OBSERVED_MEDIAN
+# essentials=2000000
+# liquid=30000000
+# ef_shortfall=0
+# ef_runway_bps=150000
+# debt=edu|LOAN|3000000|1350
+# debt=home|LOAN|80000000|999
+# debt=gold|LOAN|1000000|1000
+# debt=axis|CARD|1500000|unknown
+# debt=personal|LOAN|2500000|1349
+# expect_top=KILL_FIRE_DEBT
+# expect_unallocated=2000000
+# expect=STARTER_BUFFER|SATISFIED|BUFFER_HELD|0|0
+# expect=CAPTURE_EPF_VPF|SKIPPED|NO_EPF_DATA|unknown|0
+# expect=KILL_FIRE_DEBT|ACTION|FIRE_DEBT_CARD_RATE_UNKNOWN|4500000|4500000
+# expect=FULL_EMERGENCY|SATISFIED|EMERGENCY_FUNDED|0|0
+# expect=TAX_ADVANTAGED|SKIPPED|NO_REGIME_COMPARATOR|unknown|0
+# expect=GOAL_INVESTING|NOT_APPLICABLE|NO_GOALS|0|0
+# expect=GREY_ZONE_DEBT|CHOICE|GREY_DEBT_OUTSTANDING|3500000|3500000
+# expect=LOW_RATE_DEBT|DEFER_TO_SIMULATOR|LOW_RATE_DEBT_SIMULATOR_NOT_BUILT|80000000|0
+# expect_debts=KILL_FIRE_DEBT|axis,edu
+# expect_debts=GREY_ZONE_DEBT|personal,gold
+# expect_debts=LOW_RATE_DEBT|home
+
+===
+# label=unsized-fund-with-card-debt
+Essentials unknown, so the buffer asks for its 50,000 cap less 10,000 liquid = 40,000, and the fund
+cannot be sized. ₹70,000 spare: buffer 40,000 → 30,000; card 15,000 → 15,000. The unknown runway
+holds the gate, so the goal waits and 15,000 is left.
+# surplus=7000000
+# basis=DECLARED_ENVELOPE
+# liquid=1000000
+# debt=icici|CARD|1500000|3600
+# goals_required=900000
+# goal_count=1
+# expect_top=STARTER_BUFFER
+# expect_unallocated=1500000
+# expect=STARTER_BUFFER|ACTION|BUFFER_SHORT_ESSENTIALS_UNKNOWN|4000000|4000000
+# expect=CAPTURE_EPF_VPF|SKIPPED|NO_EPF_DATA|unknown|0
+# expect=KILL_FIRE_DEBT|ACTION|FIRE_DEBT_OUTSTANDING|1500000|1500000
+# expect=FULL_EMERGENCY|ACTION|EMERGENCY_UNSIZED|unknown|0
+# expect=TAX_ADVANTAGED|SKIPPED|NO_REGIME_COMPARATOR|unknown|0
+# expect=GOAL_INVESTING|BLOCKED|EMERGENCY_GATE|900000|0
+# expect=GREY_ZONE_DEBT|NOT_APPLICABLE|NO_GREY_DEBT|0|0
+# expect=LOW_RATE_DEBT|NOT_APPLICABLE|NO_LOW_RATE_DEBT|0|0
+
+===
+# label=gate-exactly-at-three-months
+Runway 30000 bps is exactly the gate, which is clear. The fund takes its 15,000 pace → 15,000 left;
+the goal takes 10,000 → 5,000 idle.
+# surplus=3000000
+# basis=OBSERVED_MEDIAN
+# essentials=3000000
+# liquid=9000000
+# ef_shortfall=9000000
+# ef_topup=1500000
+# ef_runway_bps=30000
+# goals_required=1000000
+# goal_count=1
+# expect_top=FULL_EMERGENCY
+# expect_unallocated=500000
+# expect=STARTER_BUFFER|SATISFIED|BUFFER_HELD|0|0
+# expect=CAPTURE_EPF_VPF|SKIPPED|NO_EPF_DATA|unknown|0
+# expect=KILL_FIRE_DEBT|NOT_APPLICABLE|NO_FIRE_DEBT|0|0
+# expect=FULL_EMERGENCY|ACTION|EMERGENCY_BUILDING|9000000|1500000
+# expect=TAX_ADVANTAGED|SKIPPED|NO_REGIME_COMPARATOR|unknown|0
+# expect=GOAL_INVESTING|ACTION|GOALS_NEED_FUNDING|1000000|1000000
+# expect=GREY_ZONE_DEBT|NOT_APPLICABLE|NO_GREY_DEBT|0|0
+# expect=LOW_RATE_DEBT|NOT_APPLICABLE|NO_LOW_RATE_DEBT|0|0
+
+===
+# label=gate-one-bps-short
+The same household one basis point below the gate. The fund may now take its whole 90,000 shortfall,
+takes all 30,000, and the goal is held.
+# surplus=3000000
+# basis=OBSERVED_MEDIAN
+# essentials=3000000
+# liquid=9000000
+# ef_shortfall=9000000
+# ef_topup=1500000
+# ef_runway_bps=29999
+# goals_required=1000000
+# goal_count=1
+# expect_top=FULL_EMERGENCY
+# expect_unallocated=0
+# expect=STARTER_BUFFER|SATISFIED|BUFFER_HELD|0|0
+# expect=CAPTURE_EPF_VPF|SKIPPED|NO_EPF_DATA|unknown|0
+# expect=KILL_FIRE_DEBT|NOT_APPLICABLE|NO_FIRE_DEBT|0|0
+# expect=FULL_EMERGENCY|ACTION|EMERGENCY_BELOW_GATE|9000000|3000000
+# expect=TAX_ADVANTAGED|SKIPPED|NO_REGIME_COMPARATOR|unknown|0
+# expect=GOAL_INVESTING|BLOCKED|EMERGENCY_GATE|1000000|0
+# expect=GREY_ZONE_DEBT|NOT_APPLICABLE|NO_GREY_DEBT|0|0
+# expect=LOW_RATE_DEBT|NOT_APPLICABLE|NO_LOW_RATE_DEBT|0|0
