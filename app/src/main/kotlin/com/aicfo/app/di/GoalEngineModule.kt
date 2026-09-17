@@ -6,6 +6,8 @@ import com.aicfo.domain.engines.goals.GoalEngine
 import com.aicfo.domain.engines.goals.GoalEngineFactory
 import com.aicfo.domain.engines.goals.GoalWaterfallEngine
 import com.aicfo.domain.engines.goals.GoalWaterfallEngineFactory
+import com.aicfo.domain.engines.orderofoperations.OrderOfOperationsEngine
+import com.aicfo.domain.engines.orderofoperations.OrderOfOperationsEngineFactory
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -29,6 +31,8 @@ import javax.inject.Singleton
  *            2026-09-02 — Issue 7.2: the emergency-fund engine, which this module's own KDoc had
  *            already named as belonging here.
  *            2026-09-03 — Issue 7.3: the waterfall, which shares one surplus between the two.
+ *            2026-09-17 — Issue 7.5: the order of operations, which the KDoc above had already
+ *            placed here — it ranks the other three's answers across the whole household.
  *
  * **Singleton, safely** — the engine is stateless and deterministic, so one shared instance has
  * nothing to reset between screens and no way for one caller's use to affect another's.
@@ -73,4 +77,17 @@ object GoalEngineModule {
     @Provides
     @Singleton
     fun provideGoalWaterfallEngine(): GoalWaterfallEngine = GoalWaterfallEngineFactory.create()
+
+    /**
+     * The Financial Order of Operations (issue 7.5; §36, AI-FOO).
+     * Why:    the engine that ranks the other three's answers — buffer, debt, emergency fund, goals —
+     *         into one "next best rupee". Stateless and pure like the rest: it reads no clock, and the
+     *         one threshold it does not mirror arrives as an input, so `@Singleton` keeps nothing per
+     *         caller.
+     * Result: an [OrderOfOperationsEngine]. Input: none. Output: the engine.
+     * Changelog: 2026-09-17 — Created for issue 7.5.
+     */
+    @Provides
+    @Singleton
+    fun provideOrderOfOperationsEngine(): OrderOfOperationsEngine = OrderOfOperationsEngineFactory.create()
 }

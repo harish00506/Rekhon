@@ -20,6 +20,7 @@ import com.aicfo.data.repository.GoalWaterfallRepository
 import com.aicfo.data.repository.InvestmentRepository
 import com.aicfo.data.repository.LoanRepository
 import com.aicfo.data.repository.NetWorthRepository
+import com.aicfo.data.repository.OrderOfOperationsRepository
 import com.aicfo.data.repository.QuickSetupRepository
 import com.aicfo.data.repository.ReceiptRepository
 import com.aicfo.data.repository.RecurringRepository
@@ -38,6 +39,7 @@ import com.aicfo.domain.engines.investment.InvestmentEngine
 import com.aicfo.domain.engines.loan.LoanEngine
 import com.aicfo.domain.engines.nature.NatureEngine
 import com.aicfo.domain.engines.networth.NetWorthEngine
+import com.aicfo.domain.engines.orderofoperations.OrderOfOperationsEngine
 import com.aicfo.domain.engines.receipt.ReceiptEngine
 import com.aicfo.domain.engines.recurring.RecurringEngine
 import com.aicfo.domain.engines.safetospend.SafeToSpendEngine
@@ -406,6 +408,41 @@ object RepositoryModule {
             engine = engine,
             clock = clock,
             dispatchers = dispatchers,
+        )
+
+    /**
+     * The Financial Order of Operations (issue 7.5; §36, AI-FOO).
+     * Why:    built on [provideGoalWaterfallRepository] and [provideEmergencyFundRepository] for the
+     *         surplus, the goals' need and the runway — resolving those again would give the dashboard
+     *         and the goals screen two answers to one question. Takes the gated [CfoDatabase] only for
+     *         what nobody resolved before, each debt's rate, so a card's APR is no more readable before
+     *         an unlock than its balance is (SEC-002). Follows the demo (ADR-0006) like every
+     *         profile-scoped binding here.
+     * Result: an [OrderOfOperationsRepository].
+     * Input:  [database]; [waterfall]; [emergencyFund]; [engine]; [clock]; [dispatchers]; [demoMode].
+     * Output: [OrderOfOperationsRepository].
+     * Changelog: 2026-09-17 — Created for issue 7.5.
+     */
+    @Provides
+    @Singleton
+    @Suppress("LongParameterList") // Hilt reads the signature; each argument is one binding.
+    fun provideOrderOfOperationsRepository(
+        database: CfoDatabase,
+        waterfall: GoalWaterfallRepository,
+        emergencyFund: EmergencyFundRepository,
+        engine: OrderOfOperationsEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        demoMode: DemoModeRepository,
+    ): OrderOfOperationsRepository =
+        RepositoryFactory.orderOfOperations(
+            database = database,
+            waterfall = waterfall,
+            emergencyFund = emergencyFund,
+            engine = engine,
+            clock = clock,
+            dispatchers = dispatchers,
+            activeProfileId = demoMode.activeProfileId,
         )
 
     /**

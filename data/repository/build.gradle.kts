@@ -77,6 +77,9 @@ dependencies {
     // every other engine here is — a ViewModel has to be able to name what it renders.
     api(project(":domain:engines:goals"))
     api(project(":domain:engines:emergencyfund"))
+    // Issue 7.5: OrderOfOperations is what OrderOfOperationsRepository emits, and the dashboard
+    // renders its stages — `api` for the same reason as the two above.
+    api(project(":domain:engines:orderofoperations"))
 
     // withTransaction — the atomicity guarantee applySeeds is built on (issue 2.3).
     // api, not implementation: MarketDataApi is a parameter of RepositoryFactory.marketPrice, so

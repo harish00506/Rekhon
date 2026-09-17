@@ -19,6 +19,7 @@ import com.aicfo.domain.engines.investment.InvestmentEngine
 import com.aicfo.domain.engines.loan.LoanEngine
 import com.aicfo.domain.engines.nature.NatureEngine
 import com.aicfo.domain.engines.networth.NetWorthEngine
+import com.aicfo.domain.engines.orderofoperations.OrderOfOperationsEngine
 import com.aicfo.domain.engines.receipt.ReceiptEngine
 import com.aicfo.domain.engines.recurring.RecurringEngine
 import com.aicfo.domain.engines.safetospend.SafeToSpendEngine
@@ -366,6 +367,38 @@ object RepositoryFactory {
             engine = engine,
             clock = clock,
             dispatchers = dispatchers,
+        )
+
+    /**
+     * The Financial Order of Operations (issue 7.5; §36, AI-FOO).
+     * Why:    built mostly from other repositories, for [goalWaterfall]'s reason: the surplus and the
+     *         goals' need are the waterfall's, the runway and shortfall are the emergency fund's, and
+     *         resolving either again here would give the app two answers to one question. It takes
+     *         the [database] only for the one thing nobody resolved before — each debt's rate.
+     * Result: an [OrderOfOperationsRepository] over those and [OrderOfOperationsEngine].
+     * Input:  [database] — accounts, cards and loans; [waterfall]; [emergencyFund]; [engine]; [clock];
+     *         [dispatchers]; [activeProfileId] — scopes the debt read, which is this repository's own.
+     * Output: [OrderOfOperationsRepository].
+     * Changelog: 2026-09-17 — Created for issue 7.5.
+     */
+    @Suppress("LongParameterList") // Seven collaborators, each a distinct binding — as [goalWaterfall].
+    fun orderOfOperations(
+        database: CfoDatabase,
+        waterfall: GoalWaterfallRepository,
+        emergencyFund: EmergencyFundRepository,
+        engine: OrderOfOperationsEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        activeProfileId: Flow<String>,
+    ): OrderOfOperationsRepository =
+        RoomOrderOfOperationsRepository(
+            database = database,
+            waterfall = waterfall,
+            emergencyFund = emergencyFund,
+            engine = engine,
+            clock = clock,
+            dispatchers = dispatchers,
+            activeProfileId = activeProfileId,
         )
 
     /**
