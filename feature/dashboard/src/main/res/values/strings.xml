@@ -163,6 +163,7 @@
     <string name="foo_left_over">%1$s is left after every step.</string>
     <string name="foo_open_goals">Open your goals</string>
     <string name="foo_open_emergency_fund">Open your emergency fund</string>
+    <string name="foo_open_accounts">Add the card\'s rate in Accounts</string>
     <string name="foo_disclaimer">Advice, not instructions. The app never moves your money.</string>
 
     <string name="foo_stage_starter_buffer">Build a starter buffer</string>
@@ -191,10 +192,10 @@
         skipped. Your payslip shows whether your employer\'s share is going in.</string>
     <string name="foo_reason_fire_debt">Paying off debt at this rate is a guaranteed return at that rate.
         Nothing else reliably beats it.</string>
-    <!-- No "add the rate" prompt: the card editor (6.1) has no rate field, so the app cannot keep that
-         promise. Found on the 7.5 device run (ADR-0037). -->
+    <!-- The 7.5 device run found the card editor had no rate field, and the prompt was withdrawn. The
+         field now exists (card APR follow-up), so the prompt is back and can be kept. -->
     <string name="foo_reason_fire_debt_rate_unknown">No interest rate is recorded for this card, so it is
-        treated as high-interest, as most cards are.</string>
+        treated as high-interest, as most cards are. Add the rate in the card\'s details to be sure.</string>
     <string name="foo_reason_no_fire_debt">You have no high-interest debt.</string>
     <string name="foo_reason_emergency_unsized">Your emergency fund can\'t be sized until your monthly
         essentials are known.</string>

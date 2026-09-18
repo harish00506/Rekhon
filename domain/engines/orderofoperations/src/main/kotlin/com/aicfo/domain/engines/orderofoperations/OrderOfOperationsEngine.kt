@@ -341,7 +341,7 @@ enum class StageReason {
 
     /**
      * Stage 2: a card with a balance has no APR recorded, and was counted as fire debt — §36 names
-     * credit cards as 36–42%. The screen says the rate was assumed.
+     * credit cards as 36–42%. The screen says the rate was assumed and links to where it is entered.
      */
     FIRE_DEBT_CARD_RATE_UNKNOWN,
 
