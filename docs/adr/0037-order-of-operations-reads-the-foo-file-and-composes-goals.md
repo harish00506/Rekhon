@@ -1,6 +1,6 @@
 # ADR-0037 — The order of operations reads the FOO file, mints nothing, and composes the goal waterfall rather than replacing it
 
-- **Status:** accepted
+- **Status:** accepted · **updated 2026-09-17** (card APR field — see the end)
 - **Date:** 2026-09-17
 - **Deciders:** Harish G (solo), implementing issue 7.5
 - **SRS refs:** §36 (AI-FOO, FOO-001, FOO-002, FOO-003), §15.1, §10.1, §29, AI-ARC-003, AI-ARC-006,
@@ -109,7 +109,8 @@ half. The Advisor hub is Epic 10's and does not exist, so the list gets its own 
   card is ranked as fire debt. For Indian card rates that is the right answer, but it is an assumption
   the user cannot yet correct.
 - **Follow-ups:**
-  - Add an APR field to the card editor (issue 6.1's screen). Found on the 7.5 device run.
+  - ~~Add an APR field to the card editor (issue 6.1's screen). Found on the 7.5 device run.~~
+    **Done the same day** — see *Update* below.
   - Re-point `GoalWaterfallRepository` at what AI-FOO leaves after Stages 0–3, so the goals screen and
     the ranking agree (closes the divergence above).
   - FOO-001 reordering and its "cost of deviation" — needs an interest projection per deviation.
@@ -145,3 +146,20 @@ half. The Advisor hub is Epic 10's and does not exist, so the list gets its own 
 - **P-07:** amounts are "suggested"; Stage 6 is a `CHOICE`; Stage 7 proposes nothing; nothing moves.
 - **P-08 / MNY / TIM:** `Long` paise, `Int` basis points, no clock read, no randomness; property-tested
   for determinism and the no-paise-lost invariant.
+
+## Update — 2026-09-17: the card APR field
+
+The follow-up in decision 6 was done the same day (branch `feature/6-1-card-apr-field`):
+
+- The card editor gained **Annual interest rate (%)** — optional, typed in percent, stored in basis
+  points through the loan section's existing `parseRateBps` / `formatRatePercent`. Blank stays "not
+  recorded", which AI-FOO still ranks as fire debt.
+- **The "Add the card's rate in Accounts" button is back** on the full-order screen, under a card with
+  no rate, because the promise can now be kept. The reason text asks for the rate again.
+- **A partial card section is now a validation error**, where 6.1 dropped it silently. `CreditCard`
+  needs its limit and both days, so a rate typed alone has nowhere to go; with this field, that is the
+  first thing a user sent from AI-FOO would type, and silently discarding it would read as saved.
+  A wholly blank section still saves as "no terms yet".
+- The negative consequence "no card can reach Stage 6" no longer holds: a card at 12% now ranks in
+  Stage 6, verified on the device (and back to Stage 2 at 42%).
+

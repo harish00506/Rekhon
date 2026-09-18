@@ -871,7 +871,17 @@ DashboardScreen → DashboardViewModel.uiState.orderOfOperations        :feature
 
 **Nothing is written.** The ranking is advice (P-07): no table, no worker, no stored insight yet.
 Editing a card's APR in Accounts is what moves a debt between stages — the flow re-emits because
-`credit_card` changed.
+`credit_card` changed. The loop is closed on screen:
+
+```
+OrderOfOperationsScreen ─ "Add the card's rate in Accounts"   (only under a card with no rate)
+└─ CfoRoute.Accounts → AccountEditorScreen → "Annual interest rate (%)"
+    └─ AccountEditorViewModel.save
+        ├─ hasPartialCardTerms → Err(validation)   a rate with no limit/days has nowhere to go —
+        │                                          reported, never silently dropped
+        └─ toCreditCard: parseRateBps("42") = 4200 → CreditCardRepository.save → credit_card.apr_bps
+            └─ creditCardDao.observeForProfile re-emits → the ranking moves the card between stages
+```
 
 **Rules reach it two ways.** Stage thresholds come from `OrderOfOperationsRules`, a typed mirror of
 `financial-order-of-operations.json` held by a drift test. `RULE-EMERG-FIRST`'s number comes from the
