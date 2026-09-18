@@ -87,16 +87,26 @@ private fun Verdict(waterfall: GoalWaterfall) {
 }
 
 /**
- * The surplus, and where it came from.
+ * The surplus, where it came from, and what took a share of it before the goals.
  * Why:    P-02 forbids a figure with no provenance, and this figure has an unusual one worth being
  *         honest about — §15.1 wants a forecast, and this is a median of what has already happened.
+ *
+ *         **The month's whole surplus is named, then what is left for goals** (issue 7.5, ADR-0038).
+ *         §36 fills the starter buffer, high-interest debt and the emergency fund before goals, so
+ *         without the second line the card would show a figure smaller than the user's surplus with
+ *         no explanation — money apparently going missing between two screens.
  * Result: the composition, or **nothing at all** when the basis is `NONE`: the verdict above has
  *         already said there is not enough history, and repeating it under a missing number would
  *         be noise. Input: [waterfall]. Output: none.
+ * Changelog: 2026-09-03 — Created for issue 7.3.
+ *            2026-09-18 — Names what §36's earlier stages claimed (ADR-0038).
  */
 @Composable
 private fun SurplusLine(waterfall: GoalWaterfall) {
-    val surplus = waterfall.monthlySurplus ?: return
+    val forGoals = waterfall.monthlySurplus ?: return
+    // The gross figure when the ranking took a share, so the basis line always describes the month's
+    // own surplus rather than the remainder.
+    val surplus = waterfall.grossSurplus ?: forGoals
     val text =
         when (waterfall.surplusBasis) {
             SurplusBasis.OBSERVED_MEDIAN ->
@@ -106,6 +116,17 @@ private fun SurplusLine(waterfall: GoalWaterfall) {
             SurplusBasis.NONE -> return
         }
     Text(text = text)
+    if (waterfall.claimedBeforeGoals > Money.ZERO) {
+        Text(
+            text =
+                stringResource(
+                    R.string.goals_plan_claimed_first,
+                    MoneyFormatter.format(waterfall.claimedBeforeGoals),
+                    MoneyFormatter.format(forGoals),
+                ),
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
 }
 
 /**

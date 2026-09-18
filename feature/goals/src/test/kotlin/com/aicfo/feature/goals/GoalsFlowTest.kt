@@ -186,6 +186,36 @@ class GoalsFlowTest {
             .performScrollTo().assertIsDisplayed()
     }
 
+    /**
+     * Input:  a plan whose month was partly claimed by §36's earlier stages (ADR-0038).
+     * Output: the basis line names the **month's** surplus, and a second line says what went to the
+     *         buffer, high-interest debt and the emergency fund first, and what is left for goals.
+     *
+     * Without that second line the card would simply show a smaller figure than the dashboard's, and
+     * the money would look as though it had gone missing between two screens.
+     */
+    @Test
+    fun `a plan whose month was claimed first says so, rather than showing a smaller figure`() {
+        val goals = listOf(behindGoal())
+        setContent(
+            state(
+                goals = goals,
+                waterfall =
+                    waterfall(
+                        goals = goals,
+                        surplus = Money(20_000_00),
+                        claimedBeforeGoals = Money(10_000_00),
+                        grossSurplus = Money(30_000_00),
+                    ),
+            ),
+        )
+
+        compose.onNodeWithText(string(R.string.goals_plan_basis_observed, "₹30,000.00"))
+            .performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(string(R.string.goals_plan_claimed_first, "₹10,000.00", "₹20,000.00"))
+            .performScrollTo().assertIsDisplayed()
+    }
+
     @Test
     fun `the surplus names where it came from, never a figure out of nowhere`() {
         // P-02, and §15.1 in particular: the spec asks for a *forecast* this app does not have, so
@@ -300,13 +330,18 @@ class GoalsFlowTest {
      * Runs the real waterfall over these projections (issue 7.3).
      * Why:    a hand-written [GoalWaterfall] would let the screen render a split the engine would
      *         never produce — the trap `FakeGoalRepository`'s own doc records.
-     * Result: the plan. Input: [goals]; [surplus]; [runwayBps]; [topUp]. Output: [GoalWaterfall].
+     * Result: the plan. Input: [goals]; [surplus]; [runwayBps]; [topUp]; [claimedBeforeGoals] and
+     *   [grossSurplus] — §36's share of the month and the figure it came out of (ADR-0038).
+     * Output: [GoalWaterfall].
      */
+    @Suppress("LongParameterList") // A fixture: one knob per term of the plan a test may need to set.
     private fun waterfall(
         goals: List<GoalProjection>,
         surplus: Money? = Money(30_000_00),
         runwayBps: Int? = 90_000,
         topUp: Money = Money.ZERO,
+        claimedBeforeGoals: Money = Money.ZERO,
+        grossSurplus: Money? = null,
     ): GoalWaterfall =
         (
             GoalWaterfallEngineFactory.create().allocate(
@@ -315,6 +350,8 @@ class GoalsFlowTest {
                     monthlySurplus = surplus,
                     surplusBasis = if (surplus == null) SurplusBasis.NONE else SurplusBasis.OBSERVED_MEDIAN,
                     emergencyTopUpMonthly = topUp,
+                    claimedBeforeGoals = claimedBeforeGoals,
+                    grossSurplus = grossSurplus,
                     emergencyRunwayMonthsBps = runwayBps,
                     today = TODAY,
                 ),
