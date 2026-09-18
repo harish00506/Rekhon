@@ -34,6 +34,7 @@ class AuditEventTest {
                 "PIN_SET",
                 "APP_LOCK_ENABLED",
                 "APP_LOCK_DISABLED",
+                "BACKUP_CREATED",
             ),
             AuditEvent.entries.map { it.name },
         )

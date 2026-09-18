@@ -44,6 +44,14 @@ internal fun Project.configureKotlinAndroid(
             warningsAsErrors = false
             checkDependencies = true
         }
+        packaging {
+            resources {
+                // Issue 8.1: BouncyCastle (the backup's Argon2id, ADR-0039) and JSpecify both ship an
+                // OSGi manifest at this path. Nothing on Android reads OSGi bundle metadata, and the
+                // duplicate fails every APK merge — the app's and each library's androidTest APK.
+                excludes += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+            }
+        }
     }
     configureKotlinJvmTarget()
 }

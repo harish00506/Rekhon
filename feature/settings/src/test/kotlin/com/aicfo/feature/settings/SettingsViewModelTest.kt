@@ -16,6 +16,7 @@ import com.aicfo.core.datastore.QuickSetupSeeds
 import com.aicfo.core.datastore.SettingsSnapshot
 import com.aicfo.core.datastore.SettingsStore
 import com.aicfo.core.datastore.ThemeSetting
+import com.aicfo.data.repository.BackupRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -44,12 +45,15 @@ import org.junit.Test
  *       PIN-before-flag ordering, and the money plan's validation.
  * Result: the behaviour the golden rule depends on, assertable without a device.
  * Changelog: 2026-08-29 — Created for FR-SET-001.
+ *   2026-09-18 — Issue 8.1: the encrypted-backup flow — its consent gate, the passphrase leaving
+ *   state the moment it is used, and a revocation dropping a sealed backup nobody has saved yet.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class SettingsViewModelTest {
     private val consents = FakeConsentStore()
     private val appLock = FakeAppLockStore()
     private val pins = FakePinVerifier()
+    private val backups = FakeBackupRepository()
 
     @Before
     fun setUp() {
@@ -197,7 +201,154 @@ class SettingsViewModelTest {
             }
         }
 
+    // --- the encrypted backup (issue 8.1; SEC-005, P-01) -------------------------------------------
+
+    @Test
+    fun `without the backup consent the only thing the section asks for is the consent`() =
+        runTest {
+            val vm = viewModel()
+            vm.fillValidBackupForm()
+
+            vm.uiState.test {
+                val state = awaitItem()
+                assertEquals(BackupBlocker.CONSENT, state.backupBlocker)
+                assertFalse(state.canCreateBackup)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `the blocker names the next thing to fix, in order`() =
+        runTest {
+            consents.granted.value = setOf(ConsentFeature.CLOUD_BACKUP)
+            val vm = viewModel()
+
+            vm.onEvent(SettingsEvent.BackupPassphraseChanged("eleven char"))
+            assertEquals(BackupBlocker.TOO_SHORT, vm.uiState.value.backupBlocker)
+
+            vm.onEvent(SettingsEvent.BackupPassphraseChanged(PASSPHRASE))
+            vm.onEvent(SettingsEvent.BackupConfirmationChanged(PASSPHRASE.dropLast(1)))
+            assertEquals(BackupBlocker.MISMATCH, vm.uiState.value.backupBlocker)
+
+            vm.onEvent(SettingsEvent.BackupConfirmationChanged(PASSPHRASE))
+            assertEquals(BackupBlocker.NOT_ACKNOWLEDGED, vm.uiState.value.backupBlocker)
+
+            vm.onEvent(SettingsEvent.BackupAcknowledged(checked = true))
+            assertEquals(null, vm.uiState.value.backupBlocker)
+            assertTrue(vm.uiState.value.canCreateBackup)
+        }
+
+    @Test
+    fun `a passphrase of exactly twelve characters is long enough`() =
+        runTest {
+            consents.granted.value = setOf(ConsentFeature.CLOUD_BACKUP)
+            val vm = viewModel()
+
+            vm.onEvent(SettingsEvent.BackupPassphraseChanged("twelve chars"))
+            vm.onEvent(SettingsEvent.BackupConfirmationChanged("twelve chars"))
+            vm.onEvent(SettingsEvent.BackupAcknowledged(checked = true))
+
+            assertTrue(vm.uiState.value.canCreateBackup)
+        }
+
+    @Test
+    fun `creating a backup hands the passphrase over and clears it from the screen state`() =
+        runTest {
+            consents.granted.value = setOf(ConsentFeature.CLOUD_BACKUP)
+            val vm = viewModel()
+            vm.fillValidBackupForm()
+
+            vm.onEvent(SettingsEvent.CreateBackup)
+
+            assertEquals(PASSPHRASE, backups.received.single())
+            val state = vm.uiState.value
+            assertEquals("", state.backup.passphraseText)
+            assertEquals("", state.backup.confirmationText)
+            assertFalse("the acknowledgement is asked again for the next backup", state.backup.acknowledged)
+            val status = state.backup.status
+            assertTrue(status is BackupStatus.ReadyToWrite)
+            assertTrue((status as BackupStatus.ReadyToWrite).bytes.contentEquals(FakeBackupRepository.SEALED))
+        }
+
+    @Test
+    fun `a blocked create never reaches the repository`() =
+        runTest {
+            val vm = viewModel()
+            vm.fillValidBackupForm()
+
+            vm.onEvent(SettingsEvent.CreateBackup)
+
+            assertTrue(backups.received.isEmpty())
+            assertEquals(BackupStatus.Idle, vm.uiState.value.backup.status)
+        }
+
+    @Test
+    fun `a refused backup shows the refusal's code`() =
+        runTest {
+            consents.granted.value = setOf(ConsentFeature.CLOUD_BACKUP)
+            backups.result = Err(AppError.Validation("backup.consent"))
+            val vm = viewModel()
+            vm.fillValidBackupForm()
+
+            vm.onEvent(SettingsEvent.CreateBackup)
+
+            assertEquals(BackupStatus.Failed("backup.consent"), vm.uiState.value.backup.status)
+        }
+
+    @Test
+    fun `a crypto failure shows its error code`() =
+        runTest {
+            consents.granted.value = setOf(ConsentFeature.CLOUD_BACKUP)
+            backups.result = Err(AppError.Crypto("backup.seal"))
+            val vm = viewModel()
+            vm.fillValidBackupForm()
+
+            vm.onEvent(SettingsEvent.CreateBackup)
+
+            assertEquals(BackupStatus.Failed("crypto"), vm.uiState.value.backup.status)
+        }
+
+    @Test
+    fun `the picker's outcome is reported — written, or not`() =
+        runTest {
+            val vm = viewModel()
+
+            vm.onEvent(SettingsEvent.BackupWritten(written = true))
+            assertEquals(BackupStatus.Written, vm.uiState.value.backup.status)
+
+            vm.onEvent(SettingsEvent.BackupWritten(written = false))
+            assertEquals(BackupStatus.Failed("backup.writeFailed"), vm.uiState.value.backup.status)
+
+            vm.onEvent(SettingsEvent.BackupDismissed)
+            assertEquals(BackupStatus.Idle, vm.uiState.value.backup.status)
+        }
+
+    @Test
+    fun `revoking the consent drops a sealed backup that has not been saved yet`() =
+        runTest {
+            consents.granted.value = setOf(ConsentFeature.CLOUD_BACKUP)
+            val vm = viewModel()
+            vm.fillValidBackupForm()
+            vm.onEvent(SettingsEvent.CreateBackup)
+            assertTrue(vm.uiState.value.backup.status is BackupStatus.ReadyToWrite)
+
+            vm.onEvent(SettingsEvent.ConsentToggled(ConsentFeature.CLOUD_BACKUP, granted = false))
+
+            assertEquals(
+                "P-01: a revoked consent stops the data path, including one already half-way out",
+                BackupStatus.Idle,
+                vm.uiState.value.backup.status,
+            )
+        }
+
     // --- fakes ------------------------------------------------------------------------------------
+
+    /** Input: none. Output: the backup form filled so only the consent can block it. */
+    private fun SettingsViewModel.fillValidBackupForm() {
+        onEvent(SettingsEvent.BackupPassphraseChanged(PASSPHRASE))
+        onEvent(SettingsEvent.BackupConfirmationChanged(PASSPHRASE))
+        onEvent(SettingsEvent.BackupAcknowledged(checked = true))
+    }
 
     /** Result: a ViewModel over the fakes. The money writer is null-object: its own test covers it. */
     private fun viewModel() =
@@ -207,6 +358,7 @@ class SettingsViewModelTest {
             appLockStore = appLock,
             pinVerifier = pins,
             moneyPlan = NeverCalledMoneyPlanWriter,
+            backupRepository = backups,
         )
 
     /**
@@ -315,5 +467,24 @@ class SettingsViewModelTest {
             stored = null
             return Ok(Unit)
         }
+    }
+
+    /** Records what it was asked to seal, and answers with [result]. */
+    private class FakeBackupRepository : BackupRepository {
+        val received = mutableListOf<String>()
+        var result: Result<ByteArray, AppError> = Ok(SEALED)
+
+        override suspend fun create(passphrase: CharArray): Result<ByteArray, AppError> {
+            received += String(passphrase)
+            return result
+        }
+
+        companion object {
+            val SEALED = byteArrayOf(0x43, 0x46, 0x4F, 0x42)
+        }
+    }
+
+    private companion object {
+        const val PASSPHRASE = "correct horse battery staple"
     }
 }

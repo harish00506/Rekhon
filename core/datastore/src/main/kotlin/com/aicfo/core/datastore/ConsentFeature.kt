@@ -31,7 +31,11 @@ enum class ConsentFeature(
     /** Sending the structured context pack — never raw transactions — to a cloud LLM (§19.4). */
     CLOUD_LLM("cloud_llm"),
 
-    /** Storing the end-to-end-encrypted backup archive off-device (issue 8.x). */
+    /**
+     * Saving the end-to-end-encrypted backup off this device (issue 8.1, ADR-0039). Gates the whole
+     * backup: the system file picker can hand back a cloud drive as easily as a memory card, and the
+     * app cannot tell them apart. The id keeps its original name because it is persisted.
+     */
     CLOUD_BACKUP("cloud_backup"),
     ;
 

@@ -3,6 +3,7 @@ package com.aicfo.data.repository
 import com.aicfo.core.common.Clock
 import com.aicfo.core.common.DispatcherProvider
 import com.aicfo.core.common.IdGenerator
+import com.aicfo.core.crypto.BackupCipher
 import com.aicfo.core.crypto.ReceiptImageStore
 import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.datastore.ConsentStore
@@ -565,6 +566,25 @@ object RepositoryFactory {
         dispatchers: DispatcherProvider,
         activeProfileId: Flow<String>,
     ): ArchiveRepository = RoomArchiveRepository(database, clock, dispatchers, activeProfileId)
+
+    /**
+     * Builds the encrypted-backup store (issue 8.1; SEC-005, §23.3, P-01).
+     * Why:    composes two things that already exist — the archive and the cipher — rather than
+     *         reading the database a second way, so a backup can never carry different rows from an
+     *         export. The consent ledger and the audit log are the two gates it adds.
+     * Result: a [BackupRepository].
+     * Input:  [archive] — what is sealed; [cipher] — Argon2id → AES-256-GCM; [consents] — the P-01
+     *         ledger; [audit] — the security log; [dispatchers] — the KDF runs on `default`.
+     * Output: [BackupRepository].
+     * Changelog: 2026-09-18 — Created for issue 8.1.
+     */
+    fun backup(
+        archive: ArchiveRepository,
+        cipher: BackupCipher,
+        consents: ConsentStore,
+        audit: AuditLogRepository,
+        dispatchers: DispatcherProvider,
+    ): BackupRepository = EncryptedBackupRepository(archive, cipher, consents, audit, dispatchers)
 
     /**
      * Builds the Safe-to-Spend store (issue 5.2; §5.2, §14, AI-STS).

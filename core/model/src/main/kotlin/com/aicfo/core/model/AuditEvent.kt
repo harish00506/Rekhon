@@ -13,6 +13,7 @@ package com.aicfo.core.model
  * Result: an answerable "was there a burst of failed unlocks last Tuesday?" with nothing private
  *       stored to answer it.
  * Changelog: 2026-07-26 — Created for issue 2.2 (SEC-002).
+ *   2026-09-18 — Issue 8.1 added [BACKUP_CREATED].
  *
  * Pure Kotlin so `:data:repository`, `:app` and any later feature can all name the same event
  * without importing a Room type (ARC-005).
@@ -45,6 +46,12 @@ enum class AuditEvent {
 
     /** The app lock was switched off — worth recording precisely because it lowers protection. */
     APP_LOCK_DISABLED,
+
+    /**
+     * An end-to-end-encrypted backup was sealed (issue 8.1; SEC-005). A complete copy of the user's
+     * data now exists outside the database; never where it went, and never the passphrase.
+     */
+    BACKUP_CREATED,
 }
 
 /**

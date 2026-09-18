@@ -7,6 +7,7 @@
   Changelog:
     2026-07-18 — Created. Baseline: Epic 0 (blueprint) done; no Kotlin code yet.
     2026-09-17 — Issue 7.5 merged to dev; Epic 7 complete.
+    2026-09-18 — Issue 8.1 (E2EE backup) merged to dev; Epic 8 opened at 0.8.0.
 -->
 
 # AI Personal CFO — Project Memory
@@ -18,16 +19,14 @@
 
 ## Current state
 
-- **Version:** `0.7.7` (see [`../VERSION`](../VERSION)) · **Phase:** 3 — AI core & goals.
-  **Schema is v22**, unchanged by 7.5.
-- **Epics 1–7 are done** — 7.5 (Financial Order of Operations, AI-FOO) closed Epic 7. Epics 8 and 9
-  are the open ones left in Phases 2–3; **Epic 9 (AI core engines, incl. the 9.2 forecast) is the
-  one the goals work kept waiting on.**
-- **Currently working file:** none. Issue **7.5 is merged to `dev`** at `6a25b13`, the card APR field
-  at `4eb998b` (0.7.6) and the FOO/goals agreement at `dev` HEAD (0.7.7, ADR-0038)
-  ([tracker](issues/7.5-financial-order-of-operations-ai-foo-tracker.md)).
-- **`origin/dev` is still at `6afa5f0`** — local `dev` is twenty-three commits ahead (7.4, 7.5, the
-  card APR field, the FOO/goals agreement and their records),
+- **Version:** `0.8.1` (see [`../VERSION`](../VERSION)) · **Phase:** 2–3. **Schema is v22**, unchanged by 8.1.
+- **Epics 1–7 are done; Epic 8 is open** — 8.1 (E2EE backup) shipped; **8.2 (restore on a fresh
+  device) is next**, then 8.3 (restore drill). Epic 9 (AI core engines, incl. the 9.2 forecast) is
+  still the one the goals work kept waiting on.
+- **Currently working file:** none. Issue **8.1 is merged to `dev`**
+  ([tracker](issues/8.1-e2ee-backup-argon2id-aes-256-gcm-tracker.md), ADR-0039).
+- **`origin/dev` is still at `6afa5f0`** — local `dev` is well ahead (7.4, 7.5, the card APR field,
+  the FOO/goals agreement, 8.1 and their records),
   and **the push is blocked, not skipped**: this machine has no GitHub credentials (no helper, no
   `gh`, no token, and the one SSH key is for another host). Pushing needs an authenticated shell.
 - **This machine builds with Temurin JDK 21** (`~/.jdks/temurin-21`) and the SDK at `~/Android/Sdk`;
@@ -40,6 +39,29 @@
   1.1's placeholder, so 7.3 substituted an *observed* P50 surplus for §15.1's *forecast* one
   (ADR-0035), and 7.5 reuses that same figure (ADR-0037). When 9.2 lands, the change is one place:
   `GoalWaterfallRepository`.
+
+### What 8.1 changed that a future issue must know
+
+- **The backup format is `"CFOB" | v1 | memKiB | iters | lanes | saltLen | salt` (31 B, the GCM AAD)
+  then Tink's `nonce | ct | tag`**, sealed in `:core:crypto`'s `BackupCipher`. **`open` has no
+  production caller yet — 8.2 wires it**, and must apply the plaintext through
+  `ArchiveRepository.import` (already atomic) rather than a second restore path.
+  Errors: `Crypto("backup.open")` (wrong passphrase *or* tamper, deliberately one code),
+  `Validation("backup.format" | "backup.version")`.
+- **Argon2id comes from BouncyCastle, the only sanctioned non-Tink crypto** (ADR-0039). Issue 11.7's
+  audit should allow `BackupKdf` and fail any other `org.bouncycastle` import.
+- **BouncyCastle must resolve as one family.** Root `build.gradle.kts` aligns every
+  `org.bouncycastle:*-jdk18on` (bar `:lint`) to the catalog version — Robolectric's older
+  `bcpkix`/`bcutil` broke 15 dashboard tests when only `bcprov` moved, and forcing it into `:lint`
+  broke lint's own tests. The shared convention config also excludes
+  `META-INF/versions/9/OSGI-INF/MANIFEST.MF` (bcprov + jspecify both ship it).
+- **The whole backup sits behind `CLOUD_BACKUP`** (label: "Save encrypted backups off this device"),
+  including the file-picker path — unlike the plaintext export.
+- **The device-made file can be opened without the app**: OpenSSL 3.5's `kdf … ARGON2ID` plus
+  Python's `cryptography` `AESGCM` — the recipe is in the 8.1 tracker. Useful for 8.2/8.3 fixtures.
+- **`connectedDebugAndroidTest` crashes (0 tests) on every module with no androidTest sources** —
+  pre-existing, not a regression; only `:app`, `:core:database` and `:feature:onboarding` have tests.
+  Run with `--max-workers=4` on this machine or D8 can OOM on the androidTest dex merge.
 
 ### What 7.5 changed that a future issue must know
 

@@ -61,6 +61,10 @@ work = "2.10.1"
 # --- ML / crypto / security ---
 mlkitTextRecognition = "16.0.1"
 tink = "1.17.0"
+# Issue 8.1: Argon2id for the backup KDF (SEC-005). Tink has no password-based KDF at all, so the
+# one primitive SEC-005 names that Tink cannot supply comes from here — and ONLY that primitive
+# (ADR-0039). Every cipher operation stays in Tink.
+bouncycastle = "1.86"
 biometric = "1.2.0-alpha05"
 
 # --- Home-screen widget ---
@@ -179,6 +183,7 @@ mlkit-text-recognition = { module = "com.google.mlkit:text-recognition", version
 
 # --- Crypto / security ---
 tink-android = { module = "com.google.crypto.tink:tink-android", version.ref = "tink" }
+bouncycastle-bcprov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 androidx-biometric = { module = "androidx.biometric:biometric-ktx", version.ref = "biometric" }
 
 # --- Home-screen widget (Glance) ---

@@ -3,12 +3,15 @@ package com.aicfo.app.di
 import com.aicfo.core.common.Clock
 import com.aicfo.core.common.DispatcherProvider
 import com.aicfo.core.common.IdGenerator
+import com.aicfo.core.crypto.BackupCipherFactory
 import com.aicfo.core.crypto.ReceiptImageStore
 import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.datastore.ConsentStore
 import com.aicfo.core.datastore.SettingsStore
 import com.aicfo.data.repository.AccountRepository
 import com.aicfo.data.repository.ArchiveRepository
+import com.aicfo.data.repository.AuditLogRepository
+import com.aicfo.data.repository.BackupRepository
 import com.aicfo.data.repository.BudgetRepository
 import com.aicfo.data.repository.CategoryRepository
 import com.aicfo.data.repository.CreditCardRepository
@@ -481,6 +484,33 @@ object RepositoryModule {
         dispatchers: DispatcherProvider,
         demoMode: DemoModeRepository,
     ): ArchiveRepository = RepositoryFactory.archive(database, clock, dispatchers, demoMode.activeProfileId)
+
+    /**
+     * The end-to-end-encrypted backup store (issue 8.1; SEC-005, §23.3, P-01).
+     * Why:    built over the [ArchiveRepository] binding rather than the database, so a backup
+     *         inherits everything the archive already guarantees — the unlock gate, and following
+     *         the demo (ADR-0006) — and can never carry different rows from an export. The cipher
+     *         needs no Android context, because its key is derived from the passphrase, never stored.
+     * Result: a [BackupRepository].
+     * Input:  [archive]; [consents] — the P-01 gate; [audit] — the security log; [dispatchers].
+     * Output: the repository.
+     * Changelog: 2026-09-18 — Created for issue 8.1.
+     */
+    @Provides
+    @Singleton
+    fun provideBackupRepository(
+        archive: ArchiveRepository,
+        consents: ConsentStore,
+        audit: AuditLogRepository,
+        dispatchers: DispatcherProvider,
+    ): BackupRepository =
+        RepositoryFactory.backup(
+            archive = archive,
+            cipher = BackupCipherFactory.create(),
+            consents = consents,
+            audit = audit,
+            dispatchers = dispatchers,
+        )
 
     /**
      * The Safe-to-Spend store (issue 5.2; §5.2, §14, AI-STS).

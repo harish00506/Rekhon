@@ -14,6 +14,7 @@
         rather than being a fourth screen.
     2026-09-06 — Issue 7.4 added §2.7: goal progress derived from linked movements, and the write
     path that creates the links. Still Shape A.
+    2026-09-18 — Issue 8.1 added §2.06: the encrypted backup. Shape A, wrapped around §2.05's export.
     2026-09-03 — Issue 7.3 added §2.6, the goal waterfall. Still Shape A — a screen — but the first
         read assembled from four repositories, and the first write driven by a gesture, so it is
         traced beside §2.5 rather than folded into it.
@@ -34,7 +35,7 @@ commit that made it stale.
 > app is one of these shapes with different nouns, so a per-file call graph would add pages
 > and no understanding, and would be stale within a week. **Ceiling:** issue 5.5 built `:widget`,
 > which earned §4.5 by being the first surface that renders outside the app's process and must work
-> while it is locked. `:sync:backup` and `:ml:llm` still do not exist; a fifth section waits for
+> while it is locked. `:sync:backup` (still a placeholder — issue 8.1's backup is a screen, not a worker) and `:ml:llm` still do not exist; a fifth section waits for
 > one of them to be a genuinely different shape rather than another worker.
 
 ---
@@ -282,6 +283,41 @@ someone's data was gone.
 **The Uri never leaves `ArchiveHost`.** The launchers need an `ActivityResultRegistryOwner`, so they
 live in the stateful half; the body gets a plain lambda and the ViewModel deals in text. Putting them
 in the stateless body broke every Paparazzi baseline at once, which is how the constraint was found.
+
+### 2.06 · The encrypted backup — consent, then archive, then seal (issue 8.1)
+
+Shape A again, from the settings screen. It reuses §2.05's export verbatim and adds two gates and a
+cipher around it; the database is never read a second way.
+
+```
+SettingsEvent.CreateBackup
+└─ SettingsViewModel.createBackup()                   canCreateBackup re-checked, never trusted
+    ├─ passphrase = passphraseText.toCharArray()
+    ├─ BackupUiState(status = Sealing)               BOTH FIELDS CLEARED in the same update
+    └─ BackupRepository.create(passphrase)            data/repository — ARC-005
+        ├─ consents.observe(CLOUD_BACKUP).first()    P-01 gate **FIRST**; unreadable = refused
+        │   └─ not granted → Validation("backup.consent")   archive never read
+        ├─ ArchiveRepository.export()                exactly §2.05's export
+        ├─ withContext(dispatchers.default)
+        │   └─ BackupCipher.seal(bytes, passphrase)  core/crypto — SEC-003, SEC-005
+        │       ├─ salt ← SecureRandom (16 B)
+        │       ├─ BackupKdf.derive → Argon2id        BouncyCastle, the ONLY call into it (ADR-0039)
+        │       └─ AesGcmJce(key).encrypt(pt, aad = header)   Tink draws the nonce; key zeroed after
+        ├─ plaintext.fill(0)
+        ├─ audit.record(BACKUP_CREATED)              best-effort; never undoes a backup
+        └─ finally: passphrase.fill('\u0000')        every path, success or refusal
+    ⇣  BackupStatus.ReadyToWrite(bytes)
+BackupFileHost (STATEFUL half — owns the Uri)
+└─ CreateDocument("application/octet-stream") → context.writeBytes(uri, bytes)   "wt" truncates
+    ⇡ SettingsEvent.BackupWritten(written)  →  Written | Failed("backup.writeFailed")
+
+REVOCATION
+ConsentToggled(CLOUD_BACKUP, false) → observeConsents → ReadyToWrite dropped to Idle
+```
+
+**The file:** `"CFOB" | v1 | memoryKib | iterations | parallelism | saltLen | salt` (31 bytes, the
+GCM associated data) then Tink's `nonce | ciphertext | tag`. `BackupCipher.open` exists and is tested
+but has no caller until issue 8.2's restore.
 
 ### 2.1 · The dashboard's headline figure (issue 5.2)
 
