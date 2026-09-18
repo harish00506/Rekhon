@@ -89,9 +89,14 @@
     <string name="account_editor_card_due_day">Due day</string>
     <string name="account_editor_card_last_statement">Last statement amount</string>
     <string name="account_editor_card_minimum_due">Minimum due</string>
+    <!-- Card APR follow-up to 7.5: the order-of-operations screen ranks a card by this rate, and
+         treats a card without one as high-interest. Percent, as the card's statement quotes it. -->
+    <string name="account_editor_card_apr">Annual interest rate (%)</string>
     <string name="account_editor_card_help">The limit and both days are needed together — without
-        all three the app cannot work out your billing cycle. The statement amount and minimum are
-        optional; add them and you\'ll get a reminder before the payment is due.</string>
+        all three the app cannot work out your billing cycle, and nothing else in this section can be
+        saved. The statement amount and minimum are optional; add them and you\'ll get a reminder
+        before the payment is due. The interest rate is optional too; without it, the card is treated
+        as high-interest when the app suggests what to pay off first.</string>
 
     <!-- Issue 6.1: the utilisation bar on a credit-card row. The figure shown is the LIVE one -
          everything currently owed - and it says so, because the app also holds a statement figure

@@ -200,17 +200,25 @@ class AccountEditorViewModel
          *         the limit later, and refusing the save would make three optional fields feel
          *         mandatory. `hasCardTerms` is all-or-nothing precisely so a *partial* set cannot
          *         reach here and produce a card that computes nothing.
+         *
+         *         **A partial set is an error, not silence** (card APR follow-up to 7.5). A rate typed
+         *         without a limit used to vanish on save; with the APR field, that is the first thing
+         *         someone sent here by the order-of-operations screen would do, so it is reported and
+         *         the typing stays.
          * Result: `Ok(Unit)` when there was nothing to write or the write succeeded; the repository's
          *         `Err` otherwise — including `account.notACreditCard`, which is a real answer if the
          *         type was changed away between typing and saving.
          * Input:  [id] — the saved account; [state] — the form. Output: `Result<Unit, AppError>`.
          * Changelog: 2026-08-17 — Created for issue 6.1.
+         *            2026-09-17 — A partial section is a validation error (card APR follow-up).
          */
         private suspend fun saveCardTerms(
             id: String,
             state: AccountEditorUiState,
         ): Result<Unit, AppError> {
-            if (!state.showsCardFields || !state.hasCardTerms) return Ok(Unit)
+            if (!state.showsCardFields) return Ok(Unit)
+            if (state.hasPartialCardTerms) return Err(AppError.Validation(VALIDATION_ERROR_CODE))
+            if (!state.hasCardTerms) return Ok(Unit)
             val card = state.toCreditCard(id) ?: return Err(AppError.Validation(VALIDATION_ERROR_CODE))
             return cards.save(card)
         }
@@ -302,6 +310,7 @@ internal fun Account.toEditorState(): AccountEditorUiState =
  * Result: the state with the card fields filled, or unchanged.
  * Input:  the receiver; [card] — the stored terms, or `null`. Output: [AccountEditorUiState].
  * Changelog: 2026-08-17 — Created for issue 6.1.
+ *            2026-09-17 — Fills the APR, in percent (card APR follow-up to 7.5).
  */
 internal fun AccountEditorUiState.withCard(card: CreditCard?): AccountEditorUiState =
     if (card == null) {
@@ -313,6 +322,8 @@ internal fun AccountEditorUiState.withCard(card: CreditCard?): AccountEditorUiSt
             dueDayText = card.dueDay.toString(),
             lastStatementText = card.lastStatement?.let(MoneyFormatter::format).orEmpty(),
             minimumDueText = card.minimumDue?.let(MoneyFormatter::format).orEmpty(),
+            // Back out in percent, the unit it went in as — the loan section's round trip.
+            aprText = card.aprBps?.let(::formatRatePercent).orEmpty(),
         )
     }
 
@@ -334,6 +345,7 @@ internal fun AccountEditorUiState.withCardField(
         CardField.DUE_DAY -> copy(dueDayText = value)
         CardField.LAST_STATEMENT -> copy(lastStatementText = value)
         CardField.MINIMUM_DUE -> copy(minimumDueText = value)
+        CardField.APR -> copy(aprText = value)
     }
 
 /**
@@ -350,6 +362,8 @@ internal fun AccountEditorUiState.withCardField(
  * Result: the card, or `null` when anything in the section is not exactly representable.
  * Input:  the receiver; [accountId] — the account these terms belong to. Output: `CreditCard?`.
  * Changelog: 2026-08-17 — Created for issue 6.1.
+ *            2026-09-17 — Carries the APR in basis points. Before this, saving the editor would have
+ *            cleared any stored rate, had anything been able to store one.
  */
 internal fun AccountEditorUiState.toCreditCard(accountId: String): CreditCard? {
     val limit = MoneyFormatter.parse(creditLimitText) ?: return null
@@ -359,6 +373,8 @@ internal fun AccountEditorUiState.toCreditCard(accountId: String): CreditCard? {
     // not — it is a mistake, and substituting null for it would silently discard what was typed.
     val lastStatement = lastStatementText.takeIf { it.isNotBlank() }?.let { MoneyFormatter.parse(it) ?: return null }
     val minimumDue = minimumDueText.takeIf { it.isNotBlank() }?.let { MoneyFormatter.parse(it) ?: return null }
+    // The loan's percent-to-bps conversion (MNY-002), with the same blank-versus-mistake rule.
+    val aprBps = aprText.takeIf { it.isNotBlank() }?.let { parseRateBps(it) ?: return null }
 
     return runCatching {
         CreditCard(
@@ -368,6 +384,7 @@ internal fun AccountEditorUiState.toCreditCard(accountId: String): CreditCard? {
             dueDay = dueDay,
             lastStatement = lastStatement,
             minimumDue = minimumDue,
+            aprBps = aprBps,
         )
     }.getOrNull()
 }

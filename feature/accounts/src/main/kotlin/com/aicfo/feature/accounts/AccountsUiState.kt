@@ -214,6 +214,11 @@ data class AccountEditorUiState(
     val dueDayText: String = "",
     val lastStatementText: String = "",
     val minimumDueText: String = "",
+    // The purchase APR, typed in **percent** ("36" or "42.5") and stored in basis points, exactly as
+    // [annualRateText] is for a loan. Optional: blank means "not recorded", which AI-FOO reads as a
+    // high-interest card and says so (7.5). Added after the 7.5 device run found that
+    // `credit_card.apr_bps` had existed since this issue with no field to fill it.
+    val aprText: String = "",
     // --- Issue 6.2: loan terms (FR-ACC-003) ---------------------------------------------------
     //
     // The second type branch, held as text for the reason the card fields are: a half-typed "8." is
@@ -258,6 +263,23 @@ data class AccountEditorUiState(
      */
     val hasCardTerms: Boolean
         get() = creditLimitText.isNotBlank() && statementDayText.isNotBlank() && dueDayText.isNotBlank()
+
+    /**
+     * Whether something was typed into the card section that cannot be stored (card APR follow-up).
+     *
+     * Why:  a card row needs its limit and both days (`CreditCard` refuses a zero limit), so a rate —
+     *       or a statement amount — typed on its own has nowhere to go. Until the APR field existed
+     *       that was silently dropped; now that people open this section *to enter a rate*, dropping
+     *       it would tell them it saved when it did not. So a partial section is a validation error
+     *       and the user's typing stays on screen.
+     * Result: true when [hasCardTerms] is false and any card field is non-blank. A wholly blank
+     *       section is still the supported "no terms yet" state.
+     */
+    val hasPartialCardTerms: Boolean
+        get() =
+            !hasCardTerms &&
+                listOf(creditLimitText, statementDayText, dueDayText, lastStatementText, minimumDueText, aprText)
+                    .any { it.isNotBlank() }
 
     /**
      * Whether the loan's terms are complete enough to store (issue 6.2).
@@ -354,6 +376,12 @@ enum class CardField {
 
     /** The minimum payment on that statement. Optional. */
     MINIMUM_DUE,
+
+    /**
+     * The purchase APR, in percent as typed. Optional — blank is "not recorded" (card APR
+     * follow-up to 7.5; MNY-002).
+     */
+    APR,
 }
 
 /**

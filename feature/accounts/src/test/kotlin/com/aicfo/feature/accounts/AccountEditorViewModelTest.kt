@@ -3,6 +3,7 @@ package com.aicfo.feature.accounts
 import androidx.lifecycle.SavedStateHandle
 import com.aicfo.core.common.AppError
 import com.aicfo.core.model.AccountType
+import com.aicfo.core.model.CreditCard
 import com.aicfo.core.model.Loan
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.MoneyFormatter
@@ -466,6 +467,157 @@ class AccountEditorViewModelTest {
         assertEquals("8.50", formatRatePercent(850))
         assertEquals("0.00", formatRatePercent(0))
         assertEquals("100.00", formatRatePercent(10_000))
+    }
+
+    // --- card APR (follow-up to 7.5; FR-ACC-002, MNY-002) ------------------------------------
+
+    /**
+     * Input:  a complete card section with the APR typed as `42.5`.
+     * Output: asserts the card reached the store with the rate in **basis points**. `42.5` read as
+     *         42 or as 425 would rank the card in a different AI-FOO band with nothing on screen
+     *         looking wrong.
+     */
+    @Test
+    fun `a card's APR is saved in basis points`() =
+        runTest {
+            val viewModel = editor()
+            viewModel.enterCard()
+            viewModel.onEvent(AccountEditorEvent.CardFieldChanged(CardField.APR, "42.5"))
+
+            viewModel.onEvent(AccountEditorEvent.Save)
+
+            assertEquals(4_250, cards.saved.values.single().aprBps)
+            assertTrue(viewModel.uiState.value.isSaved)
+        }
+
+    /**
+     * Input:  a complete card section with the APR left blank.
+     * Output: asserts the card is saved with **no** rate — not a zero. A 0% card would rank as
+     *         low-rate debt; an unrecorded rate is treated as high-interest and says so.
+     */
+    @Test
+    fun `a blank APR is saved as not recorded, never as zero`() =
+        runTest {
+            val viewModel = editor()
+            viewModel.enterCard()
+
+            viewModel.onEvent(AccountEditorEvent.Save)
+
+            assertNull(cards.saved.values.single().aprBps)
+            assertTrue(viewModel.uiState.value.isSaved)
+        }
+
+    /**
+     * Input:  a card whose terms, including a 36% APR, are already stored, opened for editing.
+     * Output: asserts the rate comes back in percent — so re-saving without touching it keeps 3 600
+     *         bps rather than turning it into 360 000.
+     */
+    @Test
+    fun `a stored APR opens in the form in percent and survives a re-save`() =
+        runTest {
+            repository.setAccounts(account { copy(id = "account:1", type = AccountType.CREDIT_CARD) })
+            cards.saved["account:1"] =
+                CreditCard(
+                    accountId = "account:1",
+                    creditLimit = Money(2_00_000_00L),
+                    statementDay = 5,
+                    dueDay = 25,
+                    aprBps = 3_600,
+                )
+            val viewModel = editor("account:1")
+            assertEquals("36.00", viewModel.uiState.value.aprText)
+
+            viewModel.onEvent(AccountEditorEvent.Save)
+
+            assertEquals(3_600, cards.saved.getValue("account:1").aprBps)
+        }
+
+    /**
+     * Input:  APRs the conversion cannot hold — more precise than a basis point, negative, not a
+     *         number.
+     * Output: asserts each is one validation error and **no card is written**, rather than a
+     *         rounded or dropped rate.
+     */
+    @Test
+    fun `an APR that is not an exact percentage is a validation error`() =
+        runTest {
+            listOf("36.555", "-1", "thirty").forEach { apr ->
+                cards.saved.clear()
+                val viewModel = editor()
+                viewModel.enterCard()
+                viewModel.onEvent(AccountEditorEvent.CardFieldChanged(CardField.APR, apr))
+
+                viewModel.onEvent(AccountEditorEvent.Save)
+
+                assertFalse("APR $apr must not save", viewModel.uiState.value.isSaved)
+                assertEquals("APR $apr", AppError.Validation("validation").code, viewModel.uiState.value.errorCode)
+                assertTrue("APR $apr wrote a card", cards.saved.isEmpty())
+            }
+        }
+
+    /**
+     * Input:  a credit-card account with only the APR typed — no limit, no days.
+     * Output: asserts the save is **refused and reported** and no card is written. A card row needs
+     *         its limit, so the rate has nowhere to go; this used to vanish silently, and the APR
+     *         field is exactly what someone sent here by the order-of-operations screen would fill.
+     */
+    @Test
+    fun `an APR typed without the limit and days is reported, not silently dropped`() =
+        runTest {
+            val viewModel = editor()
+            viewModel.onEvent(AccountEditorEvent.NameChanged("ICICI Card"))
+            viewModel.onEvent(AccountEditorEvent.TypeChanged(AccountType.CREDIT_CARD))
+            viewModel.onEvent(AccountEditorEvent.CardFieldChanged(CardField.APR, "42"))
+
+            viewModel.onEvent(AccountEditorEvent.Save)
+
+            assertFalse(viewModel.uiState.value.isSaved)
+            assertEquals(AppError.Validation("validation").code, viewModel.uiState.value.errorCode)
+            assertTrue(cards.saved.isEmpty())
+            assertEquals("the typing stays on screen", "42", viewModel.uiState.value.aprText)
+        }
+
+    /**
+     * Input:  a credit-card account with the whole card section blank.
+     * Output: asserts it still saves with no card — "no terms yet" remains a supported state.
+     */
+    @Test
+    fun `a credit card with a blank card section still saves, with no terms`() =
+        runTest {
+            val viewModel = editor()
+            viewModel.onEvent(AccountEditorEvent.NameChanged("ICICI Card"))
+            viewModel.onEvent(AccountEditorEvent.TypeChanged(AccountType.CREDIT_CARD))
+
+            viewModel.onEvent(AccountEditorEvent.Save)
+
+            assertTrue(viewModel.uiState.value.isSaved)
+            assertTrue(cards.saved.isEmpty())
+        }
+
+    /** Result: every card field edit lands in its own state field, APR included. */
+    @Test
+    fun `each card field edit lands in its own field`() {
+        val edited =
+            CardField.entries.fold(AccountEditorUiState()) { state, field -> state.withCardField(field, field.name) }
+
+        assertEquals("LIMIT", edited.creditLimitText)
+        assertEquals("STATEMENT_DAY", edited.statementDayText)
+        assertEquals("DUE_DAY", edited.dueDayText)
+        assertEquals("LAST_STATEMENT", edited.lastStatementText)
+        assertEquals("MINIMUM_DUE", edited.minimumDueText)
+        assertEquals("APR", edited.aprText)
+    }
+
+    /**
+     * Fills the form with the canonical card: a ₹2,00,000 limit billed on the 5th, due on the 25th.
+     * Result: the editor holding a complete, valid card section with no APR. Input: none. Output: none.
+     */
+    private fun AccountEditorViewModel.enterCard() {
+        onEvent(AccountEditorEvent.NameChanged("HDFC Card"))
+        onEvent(AccountEditorEvent.TypeChanged(AccountType.CREDIT_CARD))
+        onEvent(AccountEditorEvent.CardFieldChanged(CardField.LIMIT, "200000"))
+        onEvent(AccountEditorEvent.CardFieldChanged(CardField.STATEMENT_DAY, "5"))
+        onEvent(AccountEditorEvent.CardFieldChanged(CardField.DUE_DAY, "25"))
     }
 
     /**
