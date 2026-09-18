@@ -8,6 +8,7 @@ import com.aicfo.core.database.entity.AccountEntity
 import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Money
 import com.aicfo.domain.engines.emergencyfund.EmergencyStatus
+import com.aicfo.domain.engines.goals.GoalProjection
 import com.aicfo.domain.engines.goals.SurplusBasis
 import com.aicfo.domain.engines.orderofoperations.DebtKind
 import com.aicfo.domain.engines.orderofoperations.DebtPosition
@@ -25,10 +26,16 @@ import kotlinx.coroutines.flow.flowOn
  * The Financial Order of Operations for the active profile (issue 7.5; SRS §36, AI-FOO, ARC-005).
  *
  * Why:  AI-FOO ranks the whole household — buffer, debt, emergency fund, goals — and every one of
- *       those figures already has an owner. The surplus and the goals' need are
- *       [GoalWaterfallRepository]'s, the runway and shortfall are [EmergencyFundRepository]'s. This
- *       repository adds only what nobody resolved before: **each debt with its rate**. Recomputing
- *       the others here would give the dashboard and the goals screen two answers to one question.
+ *       those figures already has an owner. The surplus is [SurplusRepository]'s, the goals' need is
+ *       [GoalRepository]'s projections, the runway and shortfall are [EmergencyFundRepository]'s.
+ *       This repository adds only what nobody resolved before: **each debt with its rate**.
+ *       Recomputing any of them here would give two screens two answers to one question.
+ *
+ *       **It no longer reads [GoalWaterfallRepository], and the direction matters.** Until 2026-09-18
+ *       it did, and the waterfall poured the whole surplus into goals — so past the emergency gate the
+ *       two screens disagreed about whether the fund's monthly pace came first. The waterfall now
+ *       allocates what *this* ranking leaves, which makes AI-FOO the base and the goal split a
+ *       consumer of it (ADR-0038).
  * What: one flow, recomputed whenever any source changes — a transaction, a goal, a card's APR.
  * Result: an [OrderOfOperations] the dashboard card and the ranking screen both read.
  * Changelog: 2026-09-17 — Created for issue 7.5.
@@ -60,10 +67,11 @@ interface OrderOfOperationsRepository {
  * **`RULE-EMERG-FIRST`'s number comes from [QuickSetupRules]**, the repository's one mirror of that
  * row, exactly as [GoalWaterfallRepository] resolves it — see ADR-0035 on why no second mirror.
  */
-@Suppress("LongParameterList") // Seven, and each is a distinct binding — as GoalWaterfallRepository.
+@Suppress("LongParameterList") // Eight, and each is a distinct binding — as GoalWaterfallRepository.
 internal class RoomOrderOfOperationsRepository(
     private val database: CfoDatabase,
-    private val waterfall: GoalWaterfallRepository,
+    private val goals: GoalRepository,
+    private val surplus: SurplusRepository,
     private val emergencyFund: EmergencyFundRepository,
     private val engine: OrderOfOperationsEngine,
     private val clock: Clock,
@@ -72,14 +80,15 @@ internal class RoomOrderOfOperationsRepository(
 ) : OrderOfOperationsRepository {
     override fun observe(): Flow<OrderOfOperations> =
         combine(
-            waterfall.observeWaterfall(),
+            surplus.observeMonthlySurplus(),
+            goals.observeGoals(),
             emergencyFund.observeEmergencyFund(),
             observeDebts(),
-        ) { plan, fund, debts ->
+        ) { month, projections, fund, debts ->
             val input =
                 OrderOfOperationsInput(
-                    monthlySurplus = plan.monthlySurplus,
-                    surplusBasis = plan.surplusBasis,
+                    monthlySurplus = month.amount,
+                    surplusBasis = month.basis,
                     monthlyEssentials = fund.monthlyEssentials,
                     liquidFunds = fund.liquidFunds,
                     // EMF reports a zero shortfall when it cannot size the fund at all. Passing that
@@ -89,14 +98,20 @@ internal class RoomOrderOfOperationsRepository(
                     emergencyRunwayMonthsBps = fund.runwayMonthsBps,
                     emergencyGateMonths = GATE_RULES.emergencyRunwayMonths,
                     debts = debts,
-                    goalsRequiredMonthly = plan.totalRequiredMonthly,
-                    goalCount = plan.lines.size,
+                    // Σ over the projections themselves, not over a waterfall's lines: this is what
+                    // the goals need, before anything decides who gets it.
+                    goalsRequiredMonthly = projections.requiredMonthly(),
+                    goalCount = projections.size,
                     // Read once per emission (TIM-001). The engine reads no clock of its own.
                     today = clock.today(),
                     nowUtcMillis = clock.nowUtcMillis(),
                 )
             (engine.rank(input) as? Ok)?.value ?: rankWithoutSums(input)
         }.flowOn(dispatchers.io)
+
+    /** Result: what every goal needs this month, summed. Input: the receiver. Output: [Money]. */
+    private fun List<GoalProjection>.requiredMonthly(): Money =
+        fold(Money.ZERO) { sum, goal -> sum + goal.requiredMonthly }
 
     /**
      * Every debt the profile owes, with its rate.

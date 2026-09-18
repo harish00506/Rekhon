@@ -5,13 +5,13 @@ import com.aicfo.core.common.DispatcherProvider
 import com.aicfo.core.common.Ok
 import com.aicfo.core.model.Money
 import com.aicfo.domain.engines.emergencyfund.EmergencyFundPlan
-import com.aicfo.domain.engines.emergencyfund.EmergencyFundRules
+import com.aicfo.domain.engines.goals.GoalProjection
 import com.aicfo.domain.engines.goals.GoalWaterfall
 import com.aicfo.domain.engines.goals.GoalWaterfallEngine
 import com.aicfo.domain.engines.goals.GoalWaterfallInput
 import com.aicfo.domain.engines.goals.SurplusBasis
-import com.aicfo.domain.engines.quicksetup.BudgetEnvelope
-import com.aicfo.domain.engines.quicksetup.BudgetNature
+import com.aicfo.domain.engines.orderofoperations.FooStage
+import com.aicfo.domain.engines.orderofoperations.OrderOfOperations
 import com.aicfo.domain.engines.quicksetup.QuickSetupRules
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -20,13 +20,16 @@ import kotlinx.coroutines.flow.flowOn
 /**
  * Resolves what `GoalWaterfallEngine` needs, and hands back its answer (issue 7.3; §15.1, ARC-005).
  *
- * Why:  the engine is a fold over three figures somebody has to decide — what the month has spare,
- *       what the emergency fund still wants, and how deep a runway `RULE-EMERG-FIRST` calls
- *       sufficient. **All three are storage questions**, so they belong on this side of the
- *       boundary, not in the engine and certainly not in a ViewModel.
- * What: watch the plan, recomputed on every change to the goals, the ledger or the emergency fund.
+ * Why:  the engine is a fold over figures somebody has to decide — what the month has spare **for
+ *       goals**, and how deep a runway `RULE-EMERG-FIRST` calls sufficient. Both are storage
+ *       questions, so they belong on this side of the boundary, not in the engine and certainly not
+ *       in a ViewModel.
+ * What: watch the plan, recomputed on every change to the goals, the ledger, the debts or the
+ *       emergency fund.
  * Result: a ViewModel sees a [GoalWaterfall] and nothing else — no Room types, no DAOs.
  * Changelog: 2026-09-03 — Created for issue 7.3.
+ *            2026-09-18 — The surplus it pours is what AI-FOO leaves after §36's earlier stages,
+ *            not the month's whole surplus (ADR-0038).
  *
  * **Nothing derived is stored**, for the reason `GoalRepository` and `EmergencyFundRepository` both
  * give: an allocation written to the database would outlive the surplus that produced it, and would
@@ -52,28 +55,31 @@ interface GoalWaterfallRepository {
  * The Room-backed [GoalWaterfallRepository] (issue 7.3).
  *
  * Why:  `internal`, reached through [RepositoryFactory], like every other repository here.
- * What: combines three sources, resolves the surplus and the gate, calls the engine once per
+ * What: combines three sources, takes what §36 leaves for goals, and calls the engine once per
  *       emission.
  * Result: a [GoalWaterfall] per emission.
  * Changelog: 2026-09-03 — Created for issue 7.3.
+ *            2026-09-18 — Pours AI-FOO's remainder; the surplus derivation moved to
+ *            [SurplusRepository], which AI-FOO now owns the reading of (ADR-0038).
  *
- * **Seven constructor parameters is detekt's ceiling, and none of them is spare.** Four sources,
- * because the plan is genuinely the intersection of four things — what the goals want, what the
- * months had spare, what the buffer still claims, and what the user declared before any of it
- * existed — plus the engine, the clock and the dispatchers every repository here takes. Collapsing
- * any pair into a wrapper would hide a dependency rather than remove one.
+ * **It pours what the ranking leaves, and that is the whole point of the change.** Until 2026-09-18
+ * this repository derived the month's surplus itself and handed all of it to the goals, while AI-FOO
+ * filled the starter buffer, high-interest debt and the emergency fund first. Both were right about
+ * their own rule and they disagreed about the goals' share — the divergence ADR-0037 recorded as its
+ * first follow-up. §36 supersedes §15's simple waterfall, so the ranking is the base and this is the
+ * per-goal split of what it did not claim.
  *
  * **It composes three repositories rather than reaching for their DAOs.** `GoalRepository` already
- * projects the goals through `GoalEngine`, and `EmergencyFundRepository` already resolves the
- * runway; duplicating either here would give the app two answers to the same question, which is the
- * failure `GoalRepository.project`'s own KDoc warns about one level down.
+ * projects the goals through `GoalEngine`, `OrderOfOperationsRepository` already ranked the month,
+ * and `EmergencyFundRepository` already resolved the runway; duplicating any of them here would give
+ * the app two answers to one question, which is the failure `GoalRepository.project`'s own KDoc warns
+ * about one level down.
  */
-@Suppress("LongParameterList") // Seven, and every one is a source the plan genuinely needs.
+@Suppress("LongParameterList") // Six, and every one is a source the plan genuinely needs.
 internal class RoomGoalWaterfallRepository(
     private val goals: GoalRepository,
-    private val transactions: TransactionRepository,
+    private val ranking: OrderOfOperationsRepository,
     private val emergencyFund: EmergencyFundRepository,
-    private val quickSetup: QuickSetupRepository,
     private val engine: GoalWaterfallEngine,
     private val clock: Clock,
     private val dispatchers: DispatcherProvider,
@@ -81,22 +87,25 @@ internal class RoomGoalWaterfallRepository(
     override fun observeWaterfall(): Flow<GoalWaterfall> =
         combine(
             goals.observeGoals(),
-            transactions.observeMonthlyLedger(SURPLUS_RULES.essentialsLookbackMonths),
+            ranking.observe(),
             emergencyFund.observeEmergencyFund(),
-            quickSetup.observeLatestEnvelopes(),
-        ) { projections, history, fund, envelopes ->
+        ) { projections, order, fund ->
             // Read once per emission (TIM-001). The engine reads no clock of its own.
             val today = clock.today()
-            val surplus = surplusFrom(history, envelopes)
+            val forGoals = order.availableForGoals()
             val result =
                 engine.allocate(
                     GoalWaterfallInput(
                         goals = projections,
-                        monthlySurplus = surplus.amount,
-                        surplusBasis = surplus.basis,
-                        emergencyTopUpMonthly = fund.topUpMonthly,
+                        monthlySurplus = forGoals.amount,
+                        surplusBasis = forGoals.basis,
+                        // ZERO, not the fund's top-up: §36 already claimed it in Stage 3, and
+                        // claiming it twice would hide a month's pace from the goals.
+                        emergencyTopUpMonthly = Money.ZERO,
                         emergencyRunwayMonthsBps = fund.runwayMonthsBps,
                         emergencyGateMonths = GATE_RULES.emergencyRunwayMonths,
+                        claimedBeforeGoals = forGoals.claimed,
+                        grossSurplus = order.monthlySurplus,
                         today = today,
                         nowUtcMillis = clock.nowUtcMillis(),
                     ),
@@ -108,71 +117,41 @@ internal class RoomGoalWaterfallRepository(
         }.flowOn(dispatchers.io)
 
     /**
-     * What the month has spare for goals, and where that figure came from.
+     * What §36 leaves for the goals, and what it took first.
      *
-     * Why:    **§15.1 asks for the P50 *forecast* surplus, and this app has no forecast.**
-     *         `:domain:engines:forecast` is still the placeholder issue 1.1 scaffolded; issue 9.2
-     *         was never built. Rather than invent one inside this issue, the substitution is the
-     *         P50 of what the closed months actually had spare — a genuine median, of observed
-     *         rather than projected surplus — and it is **named on the result** so the screen can
-     *         say which it is (P-02). ADR-0035 records what changes when 9.2 lands.
-     *
-     *         The median rather than the mean, for the reason issue 7.2 found in its own fixture:
-     *         one replaced fridge moves a mean by a sixth of the fridge and moves a median by
-     *         nothing. A surplus is exactly the figure a single unusual month distorts most.
-     *
-     *         **`invested`, `assets` and `liabilities` are deliberately not subtracted.** Investing
-     *         *is* goal funding; netting it out would hide the very money this plan allocates, and
-     *         the user would be told to find a surplus they had already found.
-     *
-     *         **Safe-to-Spend is not the source, and using it would be a bug.** `RULE-STS` has
-     *         `include_goal_contributions: true`, and `SafeToSpendRepository` already feeds it
-     *         `GoalPlan.totalRequiredMonthly` — so Safe-to-Spend is the surplus *net of* goals.
-     *         Feeding it back in would double-count the goals and make the answer depend on itself.
-     * Result: the amount and its [SurplusBasis]. **`null` with `NONE` when neither source is
-     *         available** — never a zero, which would read as "this month has no room" and tell a
-     *         day-one user that every goal they own is impossible.
-     * Input:  [history] — the closed months; [envelopes] — the onboarding envelopes.
-     * Output: [Surplus].
+     * Why:    AI-FOO fills the starter buffer, high-interest debt and the emergency fund before it
+     *         reaches goals. Pouring the *whole* surplus here instead is what made the goals screen
+     *         and the dashboard disagree past the emergency gate (ADR-0038).
+     * What:   the distributable surplus less every stage above `GOAL_INVESTING`. Below the gate those
+     *         stages have already absorbed or blocked everything, so this is zero and the engine's own
+     *         gate marks each goal `blockedByEmergencyFund` — the same sentence the card always showed.
+     * Result: the amount, its basis and what was claimed first. **Null stays null**: an unknown
+     *         surplus is not a zero one, and feasibility must stay UNKNOWN rather than become
+     *         INFEASIBLE.
+     * Input:  the receiver — the ranking. Output: [ForGoals].
      */
-    private fun surplusFrom(
-        history: List<MonthlyLedger>,
-        envelopes: List<BudgetEnvelope>,
-    ): Surplus {
-        val observed = history.map { it.income - (it.nature.needs + it.nature.wants) }
-        if (observed.size >= SURPLUS_RULES.minMonthsObserved) {
-            return Surplus(observed.median(), SurplusBasis.OBSERVED_MEDIAN)
-        }
-        val declared = envelopes.firstOrNull { it.nature == BudgetNature.INVEST }?.amount
-        return if (declared != null && declared > Money.ZERO) {
-            Surplus(declared, SurplusBasis.DECLARED_ENVELOPE)
-        } else {
-            Surplus(null, SurplusBasis.NONE)
-        }
+    private fun OrderOfOperations.availableForGoals(): ForGoals {
+        val claimed =
+            stages.takeWhile { it.stage != FooStage.GOAL_INVESTING }
+                .fold(Money.ZERO) { sum, stage -> sum + stage.amountMonthly }
+        val available = monthlySurplus?.let { maxOf(Money.ZERO, it) - claimed }
+        return ForGoals(available, surplusBasis, claimed)
     }
 
-    /**
-     * The median of a run of monthly figures.
-     * Why:    the statistic that survives one unusual month. Written here rather than taken from a
-     *         library because `:data:repository` has no statistics dependency and this is one line —
-     *         the same call `EmergencyFundRepository` makes for its essentials.
-     * Result: the middle value, or the **lower** of the two middles for an even count — the
-     *         conservative choice for a surplus, and one that needs no division and so cannot lose
-     *         a paise. Unlike the essentials median, **this one may legitimately be negative**: a
-     *         profile spending more than it earns has a negative surplus, and saying so is more use
-     *         than clamping it out of sight.
-     * Input:  the receiver — a non-empty list. Output: [Money].
-     */
-    private fun List<Money>.median(): Money = sorted()[(size - 1) / 2]
+    /** What the goals may have this month, and what §36's earlier stages took before them. */
+    private data class ForGoals(
+        val amount: Money?,
+        val basis: SurplusBasis,
+        val claimed: Money,
+    )
 
     /**
-     * The plan for a profile whose figures could not be resolved.
-     * Why:    the engine's own `UNKNOWN` branch, reached without it — used only when `allocate`
-     *         returns an `Err`, which means an overflow rather than missing data.
-     * Result: a [GoalWaterfall] the screen can render. Input: [projections]; [fund]. Output: the plan.
+     * The plan for a ranking that could not be turned into one.
+     * Result: an UNKNOWN-surplus waterfall, so the screen renders with every goal unallocated rather
+     *         than showing nothing at all. Input: [projections]; [fund]. Output: [GoalWaterfall].
      */
     private fun unknownFor(
-        projections: List<com.aicfo.domain.engines.goals.GoalProjection>,
+        projections: List<GoalProjection>,
         fund: EmergencyFundPlan,
     ): GoalWaterfall =
         (
@@ -189,34 +168,8 @@ internal class RoomGoalWaterfallRepository(
             ) as Ok
         ).value
 
-    /** The amount and its provenance, returned together so the two cannot be mismatched. */
-    private data class Surplus(
-        val amount: Money?,
-        val basis: SurplusBasis,
-    )
-
     private companion object {
-        /**
-         * The history window and the observed-months floor, **borrowed from `RULE-EMF-MULT`**.
-         *
-         * A surplus median and an essentials median are the same shape of question over the same
-         * ledger read, so they take the same window rather than minting a second pair of thresholds
-         * that could drift from it. Issue 7.3 therefore adds no rulebook parameter at all (ADR-0035,
-         * on ADR-0033's precedent), and the goals drift test asserts the absence of the two keys
-         * somebody would otherwise reach for.
-         */
-        val SURPLUS_RULES = EmergencyFundRules()
-
-        /**
-         * `RULE-EMERG-FIRST.min_runway_months` — **the repository's one and only mirror of it**.
-         *
-         * `QuickSetupRules` has mirrored this row since issue 2.3. ADR-0017's second trigger says a
-         * *second* mirror of a shared row is the point at which the drift tests stop being enough
-         * and the runtime rulebook loader should be built instead — so `GoalWaterfallEngine` takes
-         * the threshold as an input and reads it from here, rather than declaring its own copy.
-         * Reaching across to the quick-setup engine for it looks odd for exactly one moment; the
-         * alternative is a third copy of the number three, which is how thresholds drift.
-         */
+        /** `RULE-EMERG-FIRST`'s one mirror in this repository, as it has been since 7.3. */
         val GATE_RULES = QuickSetupRules()
     }
 }

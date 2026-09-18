@@ -138,25 +138,25 @@ class OrderOfOperationsRepositoryTest {
                 clock,
                 dispatchers,
             )
-        waterfall =
-            RepositoryFactory.goalWaterfall(
-                goals = goals,
-                transactions = transactions,
-                emergencyFund = emergencyFund,
-                quickSetup = quickSetup,
-                engine = GoalWaterfallEngineFactory.create(),
-                clock = clock,
-                dispatchers = dispatchers,
-            )
         ranking =
             RepositoryFactory.orderOfOperations(
                 database = database,
-                waterfall = waterfall,
+                goals = goals,
+                surplus = RepositoryFactory.surplus(transactions, quickSetup, dispatchers),
                 emergencyFund = emergencyFund,
                 engine = OrderOfOperationsEngineFactory.create(),
                 clock = clock,
                 dispatchers = dispatchers,
                 activeProfileId = activeProfileId,
+            )
+        waterfall =
+            RepositoryFactory.goalWaterfall(
+                goals = goals,
+                ranking = ranking,
+                emergencyFund = emergencyFund,
+                engine = GoalWaterfallEngineFactory.create(),
+                clock = clock,
+                dispatchers = dispatchers,
             )
     }
 

@@ -343,48 +343,64 @@ object RepositoryFactory {
      *         [GoalRepository] and the runway is already resolved by [EmergencyFundRepository], so
      *         recomputing either here would give the app two answers to one question.
      * Result: a [GoalWaterfallRepository] over those three and [GoalWaterfallEngine].
-     * Input:  [goals]; [transactions] — the closed-month ledger the surplus median is taken from;
-     *         [emergencyFund] — `RULE-EMERG-FIRST`'s runway and the top-up it claims;
-     *         [quickSetup] — the declared INVEST envelope, the fallback surplus; [engine]; [clock];
-     *         [dispatchers]. **No `activeProfileId`**: every source is already profile-scoped.
+     * Input:  [goals]; [ranking] — §36's order, whose remainder after the buffer, high-interest debt
+     *         and the emergency fund is what the goals may have (ADR-0038); [emergencyFund] —
+     *         `RULE-EMERG-FIRST`'s runway; [engine]; [clock]; [dispatchers]. **No `activeProfileId`**:
+     *         every source is already profile-scoped.
      * Output: [GoalWaterfallRepository].
      */
-    @Suppress("LongParameterList") // Seven collaborators, each a distinct binding — as [emergencyFund].
+    @Suppress("LongParameterList") // Six collaborators, each a distinct binding — as [emergencyFund].
     fun goalWaterfall(
         goals: GoalRepository,
-        transactions: TransactionRepository,
+        ranking: OrderOfOperationsRepository,
         emergencyFund: EmergencyFundRepository,
-        quickSetup: QuickSetupRepository,
         engine: GoalWaterfallEngine,
         clock: Clock,
         dispatchers: DispatcherProvider,
     ): GoalWaterfallRepository =
         RoomGoalWaterfallRepository(
             goals = goals,
-            transactions = transactions,
+            ranking = ranking,
             emergencyFund = emergencyFund,
-            quickSetup = quickSetup,
             engine = engine,
             clock = clock,
             dispatchers = dispatchers,
         )
 
     /**
+     * The month's surplus and where it came from (issue 7.3, extracted 2026-09-18).
+     * Why:    both §15.1's waterfall and §36's ranking need it, and whichever owned the derivation
+     *         would be depended on by the other. Extracting it lets AI-FOO be the base (ADR-0038).
+     * Result: a [SurplusRepository]. Input: [transactions] — the closed-month ledger the median is
+     *         taken over; [quickSetup] — the declared INVEST envelope, the fallback; [dispatchers].
+     * Output: [SurplusRepository].
+     * Changelog: 2026-09-18 — Extracted from `goalWaterfall`.
+     */
+    fun surplus(
+        transactions: TransactionRepository,
+        quickSetup: QuickSetupRepository,
+        dispatchers: DispatcherProvider,
+    ): SurplusRepository = RoomSurplusRepository(transactions, quickSetup, dispatchers)
+
+    /**
      * The Financial Order of Operations (issue 7.5; §36, AI-FOO).
-     * Why:    built mostly from other repositories, for [goalWaterfall]'s reason: the surplus and the
-     *         goals' need are the waterfall's, the runway and shortfall are the emergency fund's, and
-     *         resolving either again here would give the app two answers to one question. It takes
-     *         the [database] only for the one thing nobody resolved before — each debt's rate.
+     * Why:    built mostly from other repositories: the surplus is [surplus]'s, the goals' need is
+     *         [goals]' projections, the runway and shortfall are the emergency fund's, and resolving
+     *         any of them again here would give the app two answers to one question. It takes the
+     *         [database] only for the one thing nobody resolved before — each debt's rate. **This is
+     *         the base of the pair**: [goalWaterfall] consumes what it leaves (ADR-0038).
      * Result: an [OrderOfOperationsRepository] over those and [OrderOfOperationsEngine].
-     * Input:  [database] — accounts, cards and loans; [waterfall]; [emergencyFund]; [engine]; [clock];
-     *         [dispatchers]; [activeProfileId] — scopes the debt read, which is this repository's own.
+     * Input:  [database] — accounts, cards and loans; [goals] — the projections Stage 5 sums;
+     *         [surplus]; [emergencyFund]; [engine]; [clock]; [dispatchers]; [activeProfileId] — scopes
+     *         the debt read, which is this repository's own.
      * Output: [OrderOfOperationsRepository].
      * Changelog: 2026-09-17 — Created for issue 7.5.
      */
     @Suppress("LongParameterList") // Seven collaborators, each a distinct binding — as [goalWaterfall].
     fun orderOfOperations(
         database: CfoDatabase,
-        waterfall: GoalWaterfallRepository,
+        goals: GoalRepository,
+        surplus: SurplusRepository,
         emergencyFund: EmergencyFundRepository,
         engine: OrderOfOperationsEngine,
         clock: Clock,
@@ -393,7 +409,8 @@ object RepositoryFactory {
     ): OrderOfOperationsRepository =
         RoomOrderOfOperationsRepository(
             database = database,
-            waterfall = waterfall,
+            goals = goals,
+            surplus = surplus,
             emergencyFund = emergencyFund,
             engine = engine,
             clock = clock,
