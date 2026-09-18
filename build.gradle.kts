@@ -72,3 +72,31 @@ tasks.register("unitTests") {
         },
     )
 }
+
+/**
+ * Keeps the BouncyCastle family on one version in every module (issue 8.1; ADR-0039).
+ *
+ * Why:  `:core:crypto` takes `bcprov` for Argon2id, and Robolectric brings its own `bcpkix` and
+ *       `bcutil` at an older release. Gradle upgrades the shared `bcprov` to ours and leaves the other
+ *       two where they were, and the mixed jars break `BouncyCastleProvider`'s static setup — which
+ *       Robolectric runs in every Compose test. Fifteen dashboard tests failed with
+ *       `NoClassDefFoundError ... compositesignatures.KeyFactorySpi` the first time this was bumped.
+ *       The three artifacts ship as one release and must resolve as one.
+ * What: every `org.bouncycastle:*-jdk18on` request in every subproject configuration (bar `:lint`) resolves to the
+ *       catalog's `bouncycastle` version.
+ * Result: one BouncyCastle version on every classpath, test ones included.
+ * Changelog: 2026-09-18 — Created for issue 8.1.
+ */
+val bouncyCastleVersion = libs.versions.bouncycastle.get()
+subprojects {
+    // `:lint` runs Android Lint's own classpath, which must stay exactly as AGP ships it.
+    if (path == ":lint") return@subprojects
+    configurations.configureEach {
+        resolutionStrategy.eachDependency {
+            if (requested.group == "org.bouncycastle" && requested.name.endsWith("-jdk18on")) {
+                useVersion(bouncyCastleVersion)
+                because("the BouncyCastle family ships as one release (issue 8.1, ADR-0039)")
+            }
+        }
+    }
+}

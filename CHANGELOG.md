@@ -6,6 +6,37 @@ Single source of truth for the version number is the repo-root [`VERSION`](VERSI
 `app/build.gradle.kts` `versionName` equal to it. Epics map to the SRS roadmap (§26); every
 entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`](docs/issues/00-issue-workflow.md).
 
+## [0.8.0] — Epic 8: Backup & Restore
+
+> End-to-end-encrypted backup, restore on a fresh device, and an automated restore drill — so backups
+> are proven, not assumed (§23.3, §34.4).
+
+### [0.8.1] — Issue 8.1: E2EE backup (Argon2id + AES-256-GCM)  (2026-09-18)
+
+- **Implemented:** Settings → *Encrypted backup* seals the whole active-profile archive under a
+  passphrase and writes it wherever the user picks through the system file picker (**SEC-005**, SAF).
+  Argon2id (RFC 9106: 64 MiB, t = 3, p = 4) derives an AES-256 key; Tink's AES-GCM encrypts with a
+  fresh nonce, and a fresh salt per backup means a fresh key too. A 31-byte header carries the cost
+  and salt and is the GCM associated data, so tampering with any of it fails the tag (**SEC-003**,
+  **ADR-0039**).
+- **Consent-gated (P-01):** the existing `CLOUD_BACKUP` consent — relabelled *Save encrypted backups
+  off this device* — is checked before the archive is even read; revoking it drops a sealed backup
+  that has not been saved yet.
+- **Passphrase never stored:** consumed and zero-filled on every path; the screen clears both fields
+  the moment a backup starts. SEC-005's irrecoverability is a required acknowledgement: the button
+  stays disabled until the user ticks that a forgotten passphrase means an unopenable backup.
+- **Audited:** `AuditEvent.BACKUP_CREATED`.
+- **New dependency:** BouncyCastle `bcprov-jdk18on`, for Argon2id only — Tink has no password KDF.
+  The KDF is checked against OpenSSL's independent Argon2id. The BouncyCastle family is aligned to one
+  version across every module's classpaths, because Robolectric's older `bcpkix`/`bcutil` broke fifteen
+  dashboard tests when only `bcprov` moved.
+- **Tests:** 2,579 passed, 0 skipped (`unitTests`, incl. +29 cipher, +11 repository, +9 ViewModel,
+  +8 Compose); `koverVerify`, `ktlintCheck`, `detekt`, `lintDebug` green (lint at the pre-existing 86
+  warnings, none new); debug + release APKs build. **On the emulator:** two backups made (one in
+  airplane mode), each opened **independently** with OpenSSL + Python's AES-GCM (schema 22,
+  5 accounts, 73 transactions), with a wrong passphrase and a flipped tag bit rejected; revocation
+  re-disables the button.
+
 ## [0.7.0] — Epic 7: Goals & Emergency Fund
 
 > The goals engine, the emergency-fund engine, the feasibility waterfall, linked contributions and

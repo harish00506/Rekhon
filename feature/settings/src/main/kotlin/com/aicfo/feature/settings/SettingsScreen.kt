@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -38,10 +39,11 @@ import com.aicfo.core.designsystem.theme.CfoDimens
  *       rule violation rather than an inconvenience — **P-01 requires consent to be explicit,
  *       revocable and per-feature**, and revocation existed in the data layer with nothing able to
  *       trigger it. Five strings across three other modules used to point here before this existed.
- * What: the money plan, the consent ledger, and the app lock, in that order.
+ * What: the money plan, the consent ledger, the app lock and the encrypted backup, in that order.
  * Result: the dashboard's needs/wants/savings split and Safe-to-Spend's preferred income basis stop
  *       being permanently empty for anyone who skipped the optional onboarding step.
  * Changelog: 2026-08-29 — Created for FR-SET-001.
+ *   2026-09-18 — Issue 8.1 added the encrypted backup, below the lock.
  *
  * **No amounts are masked here**, unlike every other screen: these are fields the user is editing,
  * and a privacy blur over an input you are typing into would make it unusable. The screen shows
@@ -57,6 +59,7 @@ fun SettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
+    BackupFileHost(status = uiState.backup.status, onEvent = viewModel::onEvent)
     SettingsContent(uiState = uiState, onEvent = viewModel::onEvent, onDone = onDone)
 }
 
@@ -72,7 +75,12 @@ internal fun SettingsContent(
     onDone: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(CfoDimens.spaceMd),
+        // imePadding before verticalScroll, for the reason AddTransactionScreen records: the app is
+        // edge-to-edge, so without it the keyboard covers the backup's passphrase fields (issue 8.1).
+        modifier =
+            Modifier.fillMaxWidth().imePadding().verticalScroll(
+                rememberScrollState(),
+            ).padding(CfoDimens.spaceMd),
         verticalArrangement = Arrangement.spacedBy(CfoDimens.spaceMd),
     ) {
         Text(text = stringResource(R.string.settings_title), style = MaterialTheme.typography.headlineSmall)
@@ -92,6 +100,7 @@ internal fun SettingsContent(
         MoneySection(uiState = uiState, onEvent = onEvent)
         ConsentSection(uiState = uiState, onEvent = onEvent)
         AppLockSection(uiState = uiState, onEvent = onEvent)
+        BackupSection(uiState = uiState, onEvent = onEvent)
 
         CfoSecondaryButton(text = stringResource(R.string.settings_done), onClick = onDone)
     }

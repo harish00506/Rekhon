@@ -22,6 +22,11 @@ dependencies {
     // two Keystore touches (KeystoreMacFactory, ReceiptImageStoreFactory) go through Tink's own
     // Android integration.
     api(libs.tink.android)
+    // Issue 8.1: Argon2id, and nothing else from it. Tink has no password KDF, and SEC-005 names
+    // Argon2id; hand-rolling it is exactly what SEC-003 forbids. `implementation`, not `api` — no
+    // BouncyCastle type appears on BackupCipher's surface, so no other module can reach for it
+    // (ADR-0039).
+    implementation(libs.bouncycastle.bcprov)
 
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.junit)

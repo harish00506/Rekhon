@@ -33,7 +33,10 @@
     <string name="consent_sms_parsing">Read bank messages on this device</string>
     <string name="consent_market_data">Fetch gold, crypto and fund prices</string>
     <string name="consent_cloud_llm">Ask a cloud assistant</string>
-    <string name="consent_cloud_backup">Back up to the cloud</string>
+    <!-- Issue 8.1: the id stays "cloud_backup" (it is persisted), but the backup goes wherever the
+         system file picker points - a memory card as easily as a cloud drive - so the label says
+         what the consent actually covers: an encrypted copy leaving this device (ADR-0039). -->
+    <string name="consent_cloud_backup">Save encrypted backups off this device</string>
 
     <!-- The app lock. -->
     <string name="settings_lock_title">Lock the app</string>
@@ -41,4 +44,28 @@
     <string name="settings_lock_toggle">Require a PIN to open the app</string>
     <string name="settings_pin">New PIN (at least 4 digits)</string>
     <string name="settings_pin_required">Enter at least 4 digits before turning the lock on.</string>
+    <!-- The encrypted backup (issue 8.1; SEC-005). The irrecoverability sentence is the one
+         SEC-005 requires the screen to make explicit: there is no reset, by design. -->
+    <string name="settings_backup_title">Encrypted backup</string>
+    <string name="settings_backup_body">A copy of everything in the app, locked with a passphrase
+        only you know. Save it anywhere - a memory card, a computer, a cloud drive. Without the
+        passphrase it cannot be read, by anyone.</string>
+    <string name="settings_backup_passphrase">Backup passphrase (at least 12 characters)</string>
+    <string name="settings_backup_confirmation">Type the passphrase again</string>
+    <string name="settings_backup_irrecoverable">I understand that if I forget this passphrase, this
+        backup can never be opened - not by me, and not by the app. There is no reset.</string>
+    <string name="settings_backup_create">Create encrypted backup</string>
+    <string name="settings_backup_needs_consent">Turn on \"Save encrypted backups off this device\"
+        above first.</string>
+    <string name="settings_backup_too_short">Use at least 12 characters - a short sentence works
+        well.</string>
+    <string name="settings_backup_mismatch">The two passphrases do not match.</string>
+    <string name="settings_backup_needs_acknowledgement">Tick the box above to confirm you
+        understand.</string>
+    <string name="settings_backup_sealing">Locking your backup. This takes a few seconds.</string>
+    <string name="settings_backup_written">Backup saved. Keep the passphrase somewhere safe - the
+        app does not keep a copy.</string>
+    <string name="settings_backup_write_failed">Could not write the backup to that file. Nothing was
+        saved.</string>
+    <string name="settings_backup_failed">The backup could not be made. Nothing was saved.</string>
 </resources>
