@@ -193,11 +193,13 @@ private fun ImportConfirmation(onEvent: (DashboardEvent) -> Unit) {
  * Result: a string resource. Input: the receiver — an `AppError.code` or archive field code.
  * Output: a resource id.
  * Changelog: 2026-08-16 — Created for issue 5.4.
+ *   2026-09-18 — Issue 8.2: `archive.profile`, the import's new refusal of another profile's archive.
  */
 private fun String.toArchiveMessage(): Int =
     when (this) {
         "archive.unreadable" -> R.string.dashboard_archive_unreadable
         "archive.schemaVersion" -> R.string.dashboard_archive_wrong_version
+        "archive.profile" -> R.string.dashboard_archive_wrong_profile
         "archive.writeFailed" -> R.string.dashboard_archive_write_failed
         else -> R.string.dashboard_archive_failed
     }

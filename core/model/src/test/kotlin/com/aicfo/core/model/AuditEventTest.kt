@@ -35,6 +35,7 @@ class AuditEventTest {
                 "APP_LOCK_ENABLED",
                 "APP_LOCK_DISABLED",
                 "BACKUP_CREATED",
+                "BACKUP_RESTORED",
             ),
             AuditEvent.entries.map { it.name },
         )

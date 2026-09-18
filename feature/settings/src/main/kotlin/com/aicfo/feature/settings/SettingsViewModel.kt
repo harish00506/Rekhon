@@ -42,7 +42,8 @@ import javax.inject.Inject
  * What: exposes [uiState] and handles [SettingsEvent]s.
  * Result: a screen whose every state is reachable and assertable without a device.
  * Changelog: 2026-08-29 — Created for FR-SET-001.
- *   2026-09-18 — Issue 8.1: the encrypted backup.
+ *   2026-09-18 — Issue 8.1: the encrypted backup. Issue 8.2: restore; both now handled by
+ *   `BackupActions`.
  *
  * Input:  [settingsStore] — the seeds this screen prefills from; [consentStore] — the ledger;
  *         [appLockStore] — the lock flag; [pinVerifier] — writes the PIN before the flag (SEC-002);
@@ -65,6 +66,9 @@ class SettingsViewModel
 
         /** The screen's state; every field a `val`, replaced wholesale on each emission (ARC-004). */
         val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
+
+        /** Backup and restore (issues 8.1, 8.2), split out to keep this class to its settings. */
+        private val backupActions = BackupActions(backupRepository, _uiState, viewModelScope)
 
         init {
             observeSettings()
@@ -91,59 +95,8 @@ class SettingsViewModel
                 is SettingsEvent.PinChanged -> _uiState.update { it.copy(pinText = event.value, fieldError = null) }
                 is SettingsEvent.AppLockToggled -> toggleAppLock(event.enabled)
                 SettingsEvent.DismissError -> _uiState.update { it.copy(errorCode = null, fieldError = null) }
-                is SettingsEvent.Backup -> onBackupEvent(event)
-            }
-        }
-
-        /**
-         * Handles the encrypted backup's events (issue 8.1; SEC-005).
-         * Why:    split from [onEvent] so each stays readable, and so the backup flow is one unit.
-         * Result: the backup form advances, or a backup is sealed.
-         * Input:  [event]. Output: none.
-         * Changelog: 2026-09-18 — Created for issue 8.1.
-         */
-        private fun onBackupEvent(event: SettingsEvent.Backup) {
-            when (event) {
-                is SettingsEvent.BackupPassphraseChanged ->
-                    _uiState.updateBackup { it.copy(passphraseText = event.value) }
-                is SettingsEvent.BackupConfirmationChanged ->
-                    _uiState.updateBackup { it.copy(confirmationText = event.value) }
-                is SettingsEvent.BackupAcknowledged -> _uiState.updateBackup { it.copy(acknowledged = event.checked) }
-                SettingsEvent.CreateBackup -> createBackup()
-                is SettingsEvent.BackupWritten ->
-                    _uiState.updateBackup {
-                        it.copy(status = if (event.written) BackupStatus.Written else BackupStatus.Failed(WRITE_FAILED))
-                    }
-                SettingsEvent.BackupDismissed -> _uiState.updateBackup { it.copy(status = BackupStatus.Idle) }
-            }
-        }
-
-        /**
-         * Seals a backup under the typed passphrase (SEC-005, P-01).
-         * Why:    **the passphrase leaves the screen state before the seal starts** — it is copied
-         *         into a `CharArray` the repository zero-fills, and both fields are cleared in the
-         *         same update that shows "sealing". Nothing keeps it after this function.
-         *         The blocker is re-checked here rather than trusting the disabled button, so a stale
-         *         tap can never reach the repository without the consent.
-         * Result: [BackupStatus.ReadyToWrite] with the sealed bytes, or [BackupStatus.Failed].
-         * Input:  none (reads [uiState]). Output: none.
-         * Changelog: 2026-09-18 — Created for issue 8.1.
-         */
-        private fun createBackup() {
-            val state = _uiState.value
-            if (!state.canCreateBackup) return
-            val passphrase = state.backup.passphraseText.toCharArray()
-            _uiState.update { it.copy(backup = BackupUiState(status = BackupStatus.Sealing)) }
-            viewModelScope.launch {
-                val status =
-                    when (val outcome = backupRepository.create(passphrase)) {
-                        is Ok -> BackupStatus.ReadyToWrite(outcome.value)
-                        is Err ->
-                            BackupStatus.Failed(
-                                (outcome.error as? AppError.Validation)?.field ?: outcome.error.code,
-                            )
-                    }
-                _uiState.updateBackup { it.copy(status = status) }
+                is SettingsEvent.Backup -> backupActions.onBackupEvent(event)
+                is SettingsEvent.Restore -> backupActions.onRestoreEvent(event)
             }
         }
 
@@ -306,24 +259,8 @@ class SettingsViewModel
         private companion object {
             const val INCOME_FIELD = "monthlyIncome"
             const val PIN_FIELD = "pin"
-
-            /** The picker returned but the bytes did not reach the file. */
-            const val WRITE_FAILED = "backup.writeFailed"
         }
     }
-
-/**
- * Replaces the backup form inside the screen state (issue 8.1).
- * Why:    every backup event changes only [SettingsUiState.backup]; one helper keeps each of them a
- *         single line. File-level rather than a method, so the ViewModel's surface stays the flows
- *         it owns (detekt's function budget is a readability limit, and this is plumbing).
- * Result: the state with [transform] applied to its backup form.
- * Input:  the receiver — the screen's mutable state; [transform]. Output: none.
- * Changelog: 2026-09-18 — Created for issue 8.1.
- */
-private fun MutableStateFlow<SettingsUiState>.updateBackup(transform: (BackupUiState) -> BackupUiState) {
-    update { it.copy(backup = transform(it.backup)) }
-}
 
 /**
  * Renders a stored amount as text for a prefilled field.

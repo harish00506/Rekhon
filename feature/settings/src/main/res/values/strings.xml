@@ -68,4 +68,32 @@
     <string name="settings_backup_write_failed">Could not write the backup to that file. Nothing was
         saved.</string>
     <string name="settings_backup_failed">The backup could not be made. Nothing was saved.</string>
+    <!-- Restoring a backup (issue 8.2; SEC-005, F6). Every failure line says what happened AND that
+         nothing was changed, because a refused restore that might have deleted something is the
+         one fear this screen has to answer. -->
+    <string name="settings_restore_title">Restore from a backup</string>
+    <string name="settings_restore_body">Setting up a new phone, or starting again? Pick a backup
+        you saved from this app and type its passphrase.</string>
+    <string name="settings_restore_pick">Choose a backup file</string>
+    <string name="settings_restore_warning">Restoring replaces everything on this device with what
+        is in the backup. Anything added since the backup was made will be gone.</string>
+    <string name="settings_restore_passphrase">The backup\'s passphrase</string>
+    <string name="settings_restore_confirm">Replace everything with this backup</string>
+    <string name="settings_restore_cancel">Cancel</string>
+    <string name="settings_restore_working">Unlocking and checking your backup. This takes a few
+        seconds.</string>
+    <plurals name="settings_restore_done">
+        <item quantity="one">Restored %1$d item. Your dashboard now shows the backup.</item>
+        <item quantity="other">Restored %1$d items. Your dashboard now shows the backup.</item>
+    </plurals>
+    <string name="settings_restore_wrong_passphrase">That passphrase does not open this backup, or
+        the file has been damaged. Nothing was changed.</string>
+    <string name="settings_restore_not_a_backup">That file is not a backup from this app. Nothing
+        was changed.</string>
+    <string name="settings_restore_wrong_version">This backup is from a different version of the
+        app. Update the app and try again. Nothing was changed.</string>
+    <string name="settings_restore_wrong_profile">This backup was made while exploring the sample
+        data, so it holds none of your own. Nothing was changed.</string>
+    <string name="settings_restore_failed">The backup could not be restored. Nothing was
+        changed.</string>
 </resources>

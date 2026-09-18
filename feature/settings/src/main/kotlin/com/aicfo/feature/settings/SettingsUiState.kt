@@ -17,7 +17,7 @@ import com.aicfo.core.datastore.ConsentFeature
  * What: the money seeds as typed, the consent ledger, the lock's state, and the flags around them.
  * Result: a screen whose every state is assertable without a device.
  * Changelog: 2026-08-29 — Created for FR-SET-001.
- *   2026-09-18 — Issue 8.1 added [backup].
+ *   2026-09-18 — Issue 8.1 added [backup]; issue 8.2 added [restore].
  *
  * @property monthlyIncomeText the monthly income as typed, in rupees; blank means not supplied.
  * @property rentOrEmiText the rent or EMI as typed; blank means not supplied.
@@ -30,6 +30,7 @@ import com.aicfo.core.datastore.ConsentFeature
  * @property fieldError which field the last save rejected, or `null`.
  * @property savedAtLeastOnce whether a save has succeeded, so the screen can confirm it.
  * @property backup the encrypted-backup form and where it is (issue 8.1).
+ * @property restore the restore flow and where it is (issue 8.2).
  */
 @Immutable
 data class SettingsUiState(
@@ -44,6 +45,7 @@ data class SettingsUiState(
     val fieldError: String? = null,
     val savedAtLeastOnce: Boolean = false,
     val backup: BackupUiState = BackupUiState(),
+    val restore: RestoreUiState = RestoreUiState(),
 ) {
     /**
      * Whether the money plan can be saved.
@@ -157,6 +159,85 @@ sealed interface SettingsEvent {
 
     /** Dismiss the backup's result line, or back out of the picker. */
     data object BackupDismissed : Backup
+
+    /**
+     * Restoring a backup (issue 8.2; SEC-005), grouped for the same reason as [Backup].
+     */
+    sealed interface Restore : SettingsEvent
+
+    /**
+     * The user picked a backup file; [bytes] are its contents, read by the screen (which owns the
+     * `Uri`). A plain class: a `ByteArray` has identity equality, which a data class would hide.
+     */
+    class RestoreFilePicked(val bytes: ByteArray) : Restore
+
+    /** The picked file could not be read at all. */
+    data object RestoreFileUnreadable : Restore
+
+    /** The restore passphrase field changed. */
+    data class RestorePassphraseChanged(val value: String) : Restore
+
+    /** Replace everything on this device with the picked backup. */
+    data object ConfirmRestore : Restore
+
+    /** Drop the picked file, or dismiss a result. */
+    data object CancelRestore : Restore
+}
+
+/**
+ * The restore flow (issue 8.2; SEC-005, P-07).
+ *
+ * Why:  restoring replaces everything on the device, so it is two deliberate steps — pick a file,
+ *       then type its passphrase and press a button that says *replace everything* — rather than
+ *       one tap. The passphrase is held only while typed and cleared the moment it is used, as the
+ *       backup's is.
+ * What: the passphrase field and where the restore is.
+ * Result: every reachable restore state, constructible in a test.
+ * Changelog: 2026-09-18 — Created for issue 8.2.
+ *
+ * @property passphraseText the passphrase as typed.
+ * @property status where the restore is.
+ */
+@Immutable
+data class RestoreUiState(
+    val passphraseText: String = "",
+    val status: RestoreStatus = RestoreStatus.Idle,
+) {
+    /**
+     * Whether "Replace everything" may be pressed.
+     *
+     * Why: a file must be picked and a passphrase typed. **No length floor** — the backup's own
+     *      12-character rule is a rule for *new* passphrases, and a restore must accept whatever
+     *      opened the file, or a policy change would lock a user out of their own backup.
+     */
+    val canConfirm: Boolean get() = status is RestoreStatus.Picked && passphraseText.isNotEmpty()
+}
+
+/**
+ * Where a restore is (issue 8.2).
+ * Why:    sealed, so "restoring" and "restored" cannot both be true.
+ * Result: what the restore card renders.
+ * Changelog: 2026-09-18 — Created for issue 8.2.
+ */
+sealed interface RestoreStatus {
+    /** Nothing picked. */
+    data object Idle : RestoreStatus
+
+    /**
+     * A file is picked and waiting for its passphrase. [failure] is the last attempt's code — a
+     * wrong passphrase keeps the file, so the user can try again without picking it twice.
+     * A plain class, for the reason `BackupStatus.ReadyToWrite` gives.
+     */
+    class Picked(val bytes: ByteArray, val failure: String? = null) : RestoreStatus
+
+    /** Opening, checking and applying. */
+    data object Restoring : RestoreStatus
+
+    /** Done: [rows] rows now on the device, a number the user can check. */
+    data class Restored(val rows: Int) : RestoreStatus
+
+    /** The picked file could not be read; [code] names why. */
+    data class Failed(val code: String) : RestoreStatus
 }
 
 /**

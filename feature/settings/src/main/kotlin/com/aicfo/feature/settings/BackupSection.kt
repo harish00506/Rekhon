@@ -88,22 +88,29 @@ internal fun BackupSection(
 }
 
 /**
- * Opens the system file picker once a backup is sealed, and writes it there (issue 8.1; SEC-005).
+ * Owns the two system file pickers — save a backup, pick one to restore (issues 8.1, 8.2; SEC-005).
  *
  * Why:  SEC-005's "local backup to user-chosen storage (SAF)": the user picks the destination, the
- *       app needs no storage permission, and it never learns where the file went. The picker opens
- *       only once the bytes exist, so a user is never asked where to save a backup that then fails.
- * What: a `CreateDocument` launcher, and the effect that launches it on [BackupStatus.ReadyToWrite].
- * Result: the sealed bytes in the file the user named, and an event saying whether they got there.
+ *       app needs no storage permission, and it never learns where the file went. The save picker
+ *       opens only once the bytes exist, so a user is never asked where to save a backup that then
+ *       fails. Both launchers live here, in the stateful half, and the stateless body gets a plain
+ *       "pick a backup" lambda — the split `ArchiveHost` records, because a launcher needs a real
+ *       Activity and the body must stay renderable in a test without one.
+ * What: a `CreateDocument` launcher and the effect that launches it on
+ *       [BackupStatus.ReadyToWrite]; an `OpenDocument` launcher that reads the picked file.
+ * Result: sealed bytes in the file the user named; a picked backup's bytes handed up as an event.
  * Changelog: 2026-09-18 — Created for issue 8.1.
+ *   2026-09-18 — Issue 8.2 added the open picker and the [content] slot.
  *
- * Input:  [status] — watched for [BackupStatus.ReadyToWrite]; [onEvent] — events up.
- * Output: the composition (nothing visible).
+ * Input:  [status] — watched for [BackupStatus.ReadyToWrite]; [onEvent] — events up;
+ *         [content] — the body, given the "pick a backup to restore" callback.
+ * Output: the composition.
  */
 @Composable
 internal fun BackupFileHost(
     status: BackupStatus,
     onEvent: (SettingsEvent) -> Unit,
+    content: @Composable (onPickBackup: () -> Unit) -> Unit,
 ) {
     val context = LocalContext.current
     val createDocument =
@@ -115,10 +122,24 @@ internal fun BackupFileHost(
                 else -> onEvent(SettingsEvent.BackupWritten(context.writeBytes(uri, bytes)))
             }
         }
+    val openDocument =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            // Backing out of the picker leaves the restore card where it was.
+            if (uri != null) {
+                val bytes = context.readBytes(uri)
+                onEvent(
+                    if (bytes == null) SettingsEvent.RestoreFileUnreadable else SettingsEvent.RestoreFilePicked(bytes),
+                )
+            }
+        }
 
     LaunchedEffect(status) {
         if (status is BackupStatus.ReadyToWrite) createDocument.launch(BACKUP_FILE_NAME)
     }
+
+    // Any file type: a backup copied through a messaging app or a cloud drive often loses its
+    // extension and its type, and the cipher's own header check rejects anything that is not one.
+    content { openDocument.launch(arrayOf("*/*")) }
 }
 
 /**
@@ -268,6 +289,46 @@ private fun Context.writeBytes(
         contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) } ?: return false
         true
     }.getOrDefault(false)
+
+/**
+ * Reads a picked backup into memory, up to [MAX_BACKUP_BYTES].
+ * Why:    read here, not passed on as a `Uri`, because the `Uri`'s grant belongs to this Activity
+ *         and does not survive process death (`ArchiveSection.readText` records the argument).
+ *         **Bounded**, because the picker offers any file: an unbounded `readBytes` on a picked
+ *         video would take the app down with an out-of-memory crash before the cipher's header
+ *         check ever saw it. A real backup is a few hundred kilobytes; §22 caps the blob at 50 MB.
+ * Result: the bytes; `null` when the file could not be opened or is larger than a backup can be.
+ * Input:  the receiver; [uri]. Output: `ByteArray?`.
+ * Changelog: 2026-09-18 — Created for issue 8.2.
+ */
+private fun Context.readBytes(uri: Uri): ByteArray? =
+    runCatching {
+        contentResolver.openInputStream(uri)?.use { input -> input.readAtMost(MAX_BACKUP_BYTES) }
+    }.getOrNull()
+
+/**
+ * Reads a stream to its end, or gives up past [limit] bytes.
+ * Why:    `InputStream.readNBytes` is API 33 and minSdk is 26.
+ * Result: the bytes, or `null` when the stream holds more than [limit].
+ * Input:  the receiver; [limit] — the most bytes accepted. Output: `ByteArray?`.
+ * Changelog: 2026-09-18 — Created for issue 8.2.
+ */
+internal fun java.io.InputStream.readAtMost(limit: Int): ByteArray? {
+    val out = java.io.ByteArrayOutputStream()
+    val buffer = ByteArray(READ_BUFFER_BYTES)
+    while (true) {
+        val read = read(buffer)
+        if (read < 0) return out.toByteArray()
+        if (out.size() + read > limit) return null
+        out.write(buffer, 0, read)
+    }
+}
+
+/** §22's ceiling for a backup blob; anything larger is not a backup this app wrote. */
+internal const val MAX_BACKUP_BYTES = 50 * 1024 * 1024
+
+/** How much of a picked file is read at a time. */
+private const val READ_BUFFER_BYTES = 64 * 1024
 
 /** The file is opaque ciphertext; nothing should try to open it as anything else. */
 private const val BACKUP_MIME = "application/octet-stream"

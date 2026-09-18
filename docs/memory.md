@@ -8,6 +8,7 @@
     2026-07-18 — Created. Baseline: Epic 0 (blueprint) done; no Kotlin code yet.
     2026-09-17 — Issue 7.5 merged to dev; Epic 7 complete.
     2026-09-18 — Issue 8.1 (E2EE backup) merged to dev; Epic 8 opened at 0.8.0.
+    2026-09-18 — Issue 8.2 (restore on fresh device) merged to dev.
 -->
 
 # AI Personal CFO — Project Memory
@@ -19,12 +20,13 @@
 
 ## Current state
 
-- **Version:** `0.8.1` (see [`../VERSION`](../VERSION)) · **Phase:** 2–3. **Schema is v22**, unchanged by 8.1.
-- **Epics 1–7 are done; Epic 8 is open** — 8.1 (E2EE backup) shipped; **8.2 (restore on a fresh
-  device) is next**, then 8.3 (restore drill). Epic 9 (AI core engines, incl. the 9.2 forecast) is
+- **Version:** `0.8.2` (see [`../VERSION`](../VERSION)) · **Phase:** 2–3. **Schema is v22**, unchanged by 8.1.
+- **Epics 1–7 are done; Epic 8 is open** — 8.1 (E2EE backup) and 8.2 (restore) shipped; **8.3
+  (the restore drill, DRL-001) is next** and can reuse `BackupCipher.open` without applying. Epic 9 (AI core engines, incl. the 9.2 forecast) is
   still the one the goals work kept waiting on.
-- **Currently working file:** none. Issue **8.1 is merged to `dev`**
-  ([tracker](issues/8.1-e2ee-backup-argon2id-aes-256-gcm-tracker.md), ADR-0039).
+- **Currently working file:** none. Issues **8.1 and 8.2 are merged to `dev`**
+  ([8.1 tracker](issues/8.1-e2ee-backup-argon2id-aes-256-gcm-tracker.md), ADR-0039;
+  [8.2 tracker](issues/8.2-restore-on-fresh-device-tracker.md), ADR-0040).
 - **`origin/dev` is still at `6afa5f0`** — local `dev` is well ahead (7.4, 7.5, the card APR field,
   the FOO/goals agreement, 8.1 and their records),
   and **the push is blocked, not skipped**: this machine has no GitHub credentials (no helper, no
@@ -39,6 +41,22 @@
   1.1's placeholder, so 7.3 substituted an *observed* P50 surplus for §15.1's *forecast* one
   (ADR-0035), and 7.5 reuses that same figure (ADR-0037). When 9.2 lands, the change is one place:
   `GoalWaterfallRepository`.
+
+### What 8.2 changed that a future issue must know
+
+- **Restore = `BackupCipher.open` → `ArchiveRepository.import`**, no second path. Settings holds it;
+  **on a new phone onboarding comes first** (skippable) — restoring from onboarding is an open gap
+  (ADR-0040), as are the settings seeds, app lock and receipt images, which the archive never carried.
+- **The archive import now refuses another profile's archive (`archive.profile`)** — a demo backup used
+  to wipe the real profile and "succeed" over an empty app. Any backup made for testing must be made
+  **outside the demo** or it cannot be restored into the real profile.
+- **`:data:repository` has an instrumented source set now** (`BackupRestoreDeviceTest`), with the
+  AndroidX runner configured — the module no longer crashes with 0 tests under `connectedDebugAndroidTest`.
+- **`CfoSmokeTest` needs a clean install**; after any manual device run, `pm clear` before the suite.
+- **Emulator keyboard trap:** the first `input text` into a field can open Gboard's "Try out your
+  stylus" sheet and swallow the text. Cancel it (bottom-centre) and type again.
+- **Onboarding step 4 still says "this build has no settings screen"** — untrue since FR-SET-001.
+  Pre-existing copy, not fixed in 8.2.
 
 ### What 8.1 changed that a future issue must know
 

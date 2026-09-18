@@ -60,8 +60,9 @@ interface ArchiveRepository {
      *         halfway leaves the database exactly as it was. Importing is the one operation in this
      *         app that can destroy everything, and a half-applied one would be unrecoverable.
      * Result: `Ok(summary)` with the row count and the archive's own timestamp;
-     *         `Err(AppError.Validation)` when the JSON will not parse or its `schemaVersion` is not
-     *         this build's — **and in both cases nothing has been deleted**;
+     *         `Err(AppError.Validation)` when the JSON will not parse, its `schemaVersion` is not
+     *         this build's, or it belongs to another profile — **and in every case nothing has been
+     *         deleted**;
      *         `Err(AppError.Storage)` if the write fails, rolled back.
      * Input:  [json] — an archive as [export] wrote it. Output: `Result<ImportSummary, AppError>`.
      */
@@ -129,14 +130,14 @@ internal class RoomArchiveRepository(
             // that came from a schema this build cannot restore faithfully, must leave the user's
             // data exactly where it was — the failure mode this ordering exists to prevent is a
             // wipe followed by a parse error.
+            val profileId = activeProfileId.first()
             val archive =
-                when (val decoded = decode(json)) {
+                when (val decoded = decode(json, profileId)) {
                     is Ok -> decoded.value
                     is Err -> return@withContext decoded
                 }
 
             runCatchingToResult {
-                val profileId = activeProfileId.first()
                 database.withTransaction {
                     wipe(profileId)
                     restore(archive)
@@ -150,10 +151,23 @@ internal class RoomArchiveRepository(
      * Why:    split out so the ordering above is obvious — this runs, and only then does anything
      *         get deleted. A `Validation` error rather than `Storage`: nothing went wrong with the
      *         device, the file is simply not one this build can restore.
-     * Result: `Ok(archive)`, or `Err(AppError.Validation)` naming which version was found.
-     * Input:  [json]. Output: `Result<CfoArchive, AppError>`.
+     *
+     *         **The archive must belong to the profile it is replacing** (issue 8.2). The wipe
+     *         clears the *active* profile and the insert writes whatever profile the file carries, so
+     *         a demo archive imported into the real profile used to delete `local`, write rows under
+     *         `demo`, and report success over an app that then showed nothing. An archive with no
+     *         profile row at all (exported before one existed) carries no other profile's data and
+     *         is allowed.
+     * Result: `Ok(archive)`, or `Err(AppError.Validation)` naming what was wrong.
+     * Input:  [json]; [profileId] — the active profile, the one about to be replaced.
+     * Output: `Result<CfoArchive, AppError>`.
+     * Changelog: 2026-08-16 — Created for issue 5.4.
+     *   2026-09-18 — Issue 8.2 added the profile check.
      */
-    private fun decode(json: String): Result<CfoArchive, AppError> {
+    private fun decode(
+        json: String,
+        profileId: String,
+    ): Result<CfoArchive, AppError> {
         val archive =
             try {
                 JSON.decodeFromString<CfoArchive>(json)
@@ -166,6 +180,7 @@ internal class RoomArchiveRepository(
         return when {
             archive == null -> Err(AppError.Validation(field = FIELD_UNREADABLE))
             archive.schemaVersion != CfoDatabase.VERSION -> Err(AppError.Validation(field = FIELD_WRONG_SCHEMA))
+            archive.profiles.any { it.id != profileId } -> Err(AppError.Validation(field = FIELD_WRONG_PROFILE))
             else -> Ok(archive)
         }
     }
@@ -254,6 +269,9 @@ internal class RoomArchiveRepository(
          */
         const val FIELD_UNREADABLE = "archive.unreadable"
         const val FIELD_WRONG_SCHEMA = "archive.schemaVersion"
+
+        /** Issue 8.2: the archive is another profile's — in practice, one taken inside the demo. */
+        const val FIELD_WRONG_PROFILE = "archive.profile"
 
         /**
          * The archive's JSON settings.

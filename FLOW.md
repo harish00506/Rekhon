@@ -15,6 +15,7 @@
     2026-09-06 — Issue 7.4 added §2.7: goal progress derived from linked movements, and the write
     path that creates the links. Still Shape A.
     2026-09-18 — Issue 8.1 added §2.06: the encrypted backup. Shape A, wrapped around §2.05's export.
+        Issue 8.2 added its restore, wrapped around §2.05's import, and the import's profile check.
     2026-09-03 — Issue 7.3 added §2.6, the goal waterfall. Still Shape A — a screen — but the first
         read assembled from four repositories, and the first write driven by a gesture, so it is
         traced beside §2.5 rather than folded into it.
@@ -259,7 +260,7 @@ ArchiveHost └─ OpenDocument(["application/json"]) → context.readText(uri)
                 ├─ ImportCancelled → Idle            costs nothing
                 └─ ImportConfirmed
                     └─ ArchiveRepository.import(json)
-                        ├─ decode(json)              PARSE + schemaVersion CHECK **FIRST**
+                        ├─ decode(json, profileId)   PARSE + schemaVersion + profile CHECK **FIRST**
                         │   └─ Err → Validation(field), database untouched
                         └─ database.withTransaction {
                                wipe(profileId)       reuses DemoDao's 14 deletes, FK order
@@ -284,14 +285,14 @@ someone's data was gone.
 live in the stateful half; the body gets a plain lambda and the ViewModel deals in text. Putting them
 in the stateless body broke every Paparazzi baseline at once, which is how the constraint was found.
 
-### 2.06 · The encrypted backup — consent, then archive, then seal (issue 8.1)
+### 2.06 · The encrypted backup and its restore (issues 8.1, 8.2)
 
 Shape A again, from the settings screen. It reuses §2.05's export verbatim and adds two gates and a
 cipher around it; the database is never read a second way.
 
 ```
 SettingsEvent.CreateBackup
-└─ SettingsViewModel.createBackup()                   canCreateBackup re-checked, never trusted
+└─ BackupActions.createBackup()                       canCreateBackup re-checked, never trusted
     ├─ passphrase = passphraseText.toCharArray()
     ├─ BackupUiState(status = Sealing)               BOTH FIELDS CLEARED in the same update
     └─ BackupRepository.create(passphrase)            data/repository — ARC-005
@@ -316,8 +317,24 @@ ConsentToggled(CLOUD_BACKUP, false) → observeConsents → ReadyToWrite dropped
 ```
 
 **The file:** `"CFOB" | v1 | memoryKib | iterations | parallelism | saltLen | salt` (31 bytes, the
-GCM associated data) then Tink's `nonce | ciphertext | tag`. `BackupCipher.open` exists and is tested
-but has no caller until issue 8.2's restore.
+GCM associated data) then Tink's `nonce | ciphertext | tag`.
+
+**Restore (issue 8.2)** — every refusal lands before the transaction opens:
+
+```
+BackupFileHost └─ OpenDocument(["*/*"]) → context.readBytes(uri)
+    ⇡ SettingsEvent.RestoreFilePicked(bytes)  →  RestoreStatus.Picked(bytes)      NOTHING TOUCHED
+        └─ RestorePassphraseChanged … ConfirmRestore   ("Replace everything with this backup")
+            └─ BackupActions.confirmRestore()          passphrase cleared from state
+                └─ BackupRepository.restore(bytes, passphrase)    NO consent (data comes IN)
+                    ├─ BackupCipher.open               format + KDF bounds → GCM tag
+                    │   └─ Err → Crypto("backup.open") | Validation("backup.*")   passphrase zeroed
+                    ├─ ArchiveRepository.import(json)  §2.05's import:
+                    │   ├─ decode(json, activeProfile) parse · schemaVersion · **profile**   FIRST
+                    │   └─ withTransaction { wipe; restore }
+                    └─ audit.record(BACKUP_RESTORED)   only on Ok
+    ⇣  Restored(rows)  |  Picked(bytes, failure)  — a wrong passphrase keeps the file for a retry
+```
 
 ### 2.1 · The dashboard's headline figure (issue 5.2)
 

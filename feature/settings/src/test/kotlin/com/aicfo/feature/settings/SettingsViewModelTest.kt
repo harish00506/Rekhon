@@ -17,6 +17,7 @@ import com.aicfo.core.datastore.SettingsSnapshot
 import com.aicfo.core.datastore.SettingsStore
 import com.aicfo.core.datastore.ThemeSetting
 import com.aicfo.data.repository.BackupRepository
+import com.aicfo.data.repository.ImportSummary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -45,6 +46,7 @@ import org.junit.Test
  *       PIN-before-flag ordering, and the money plan's validation.
  * Result: the behaviour the golden rule depends on, assertable without a device.
  * Changelog: 2026-08-29 — Created for FR-SET-001.
+ *   2026-09-18 — Issue 8.2: restoring a backup — the pick, the passphrase, a retry after a wrong one.
  *   2026-09-18 — Issue 8.1: the encrypted-backup flow — its consent gate, the passphrase leaving
  *   state the moment it is used, and a revocation dropping a sealed backup nobody has saved yet.
  */
@@ -341,6 +343,87 @@ class SettingsViewModelTest {
             )
         }
 
+    // --- restoring a backup (issue 8.2; SEC-005) --------------------------------------------------
+
+    @Test
+    fun `picking a backup asks for its passphrase and cannot be confirmed without one`() =
+        runTest {
+            val vm = viewModel()
+
+            vm.onEvent(SettingsEvent.RestoreFilePicked(PICKED))
+
+            val restore = vm.uiState.value.restore
+            assertTrue(restore.status is RestoreStatus.Picked)
+            assertFalse(restore.canConfirm)
+            vm.onEvent(SettingsEvent.ConfirmRestore)
+            assertTrue("no passphrase, no restore", backups.restored.isEmpty())
+        }
+
+    @Test
+    fun `confirming hands over the file and passphrase, clears the passphrase and reports the rows`() =
+        runTest {
+            val vm = viewModel()
+            vm.onEvent(SettingsEvent.RestoreFilePicked(PICKED))
+            vm.onEvent(SettingsEvent.RestorePassphraseChanged(PASSPHRASE))
+            assertTrue(vm.uiState.value.restore.canConfirm)
+
+            vm.onEvent(SettingsEvent.ConfirmRestore)
+
+            val (bytes, passphrase) = backups.restored.single()
+            assertTrue(bytes.contentEquals(PICKED))
+            assertEquals(PASSPHRASE, passphrase)
+            assertEquals("", vm.uiState.value.restore.passphraseText)
+            assertEquals(RestoreStatus.Restored(rows = 42), vm.uiState.value.restore.status)
+        }
+
+    @Test
+    fun `a wrong passphrase keeps the file so the user can try again`() =
+        runTest {
+            backups.restoreResult = Err(AppError.Crypto("backup.open"))
+            val vm = viewModel()
+            vm.onEvent(SettingsEvent.RestoreFilePicked(PICKED))
+            vm.onEvent(SettingsEvent.RestorePassphraseChanged("the wrong one"))
+
+            vm.onEvent(SettingsEvent.ConfirmRestore)
+
+            val status = vm.uiState.value.restore.status
+            assertTrue(status is RestoreStatus.Picked)
+            status as RestoreStatus.Picked
+            assertTrue(status.bytes.contentEquals(PICKED))
+            assertEquals("crypto", status.failure)
+            assertEquals("", vm.uiState.value.restore.passphraseText)
+        }
+
+    @Test
+    fun `a refused archive reports the archive's own code`() =
+        runTest {
+            backups.restoreResult = Err(AppError.Validation("archive.profile"))
+            val vm = viewModel()
+            vm.onEvent(SettingsEvent.RestoreFilePicked(PICKED))
+            vm.onEvent(SettingsEvent.RestorePassphraseChanged(PASSPHRASE))
+
+            vm.onEvent(SettingsEvent.ConfirmRestore)
+
+            assertEquals("archive.profile", (vm.uiState.value.restore.status as RestoreStatus.Picked).failure)
+        }
+
+    @Test
+    fun `cancelling drops the file and an unreadable one says so`() =
+        runTest {
+            val vm = viewModel()
+            vm.onEvent(SettingsEvent.RestoreFilePicked(PICKED))
+            vm.onEvent(SettingsEvent.RestorePassphraseChanged(PASSPHRASE))
+
+            vm.onEvent(SettingsEvent.CancelRestore)
+            assertEquals(RestoreUiState(), vm.uiState.value.restore)
+
+            vm.onEvent(SettingsEvent.RestoreFileUnreadable)
+            assertEquals(RestoreStatus.Failed("restore.unreadable"), vm.uiState.value.restore.status)
+
+            vm.onEvent(SettingsEvent.CancelRestore)
+            assertEquals(RestoreStatus.Idle, vm.uiState.value.restore.status)
+        }
+
     // --- fakes ------------------------------------------------------------------------------------
 
     /** Input: none. Output: the backup form filled so only the consent can block it. */
@@ -479,6 +562,18 @@ class SettingsViewModelTest {
             return result
         }
 
+        val restored = mutableListOf<Pair<ByteArray, String>>()
+        var restoreResult: Result<ImportSummary, AppError> =
+            Ok(ImportSummary(rowsImported = 42, exportedAtUtcMillis = 0L))
+
+        override suspend fun restore(
+            sealed: ByteArray,
+            passphrase: CharArray,
+        ): Result<ImportSummary, AppError> {
+            restored += sealed to String(passphrase)
+            return restoreResult
+        }
+
         companion object {
             val SEALED = byteArrayOf(0x43, 0x46, 0x4F, 0x42)
         }
@@ -486,5 +581,6 @@ class SettingsViewModelTest {
 
     private companion object {
         const val PASSPHRASE = "correct horse battery staple"
+        val PICKED = byteArrayOf(0x43, 0x46, 0x4F, 0x42, 1)
     }
 }

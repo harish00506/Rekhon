@@ -11,6 +11,26 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > End-to-end-encrypted backup, restore on a fresh device, and an automated restore drill — so backups
 > are proven, not assumed (§23.3, §34.4).
 
+### [0.8.2] — Issue 8.2: Restore on fresh device  (2026-09-18)
+
+- **Implemented:** Settings → *Restore from a backup*. Pick the file, type its passphrase, then
+  *Replace everything with this backup* (**SEC-005**, **F6**, **P-07**). The file's format and KDF bounds,
+  the GCM tag (integrity and passphrase together), and the archive's parse, schema and profile are all
+  checked **before** one transaction replaces the profile. A wrong passphrase writes nothing and keeps
+  the file for a retry. No consent is asked: data comes in, not out (**P-01**, **ADR-0040**).
+- **Fixed (5.4 too):** importing another profile's archive — in practice a backup taken in the demo —
+  wiped the real profile and reported success over an empty app. The archive import now refuses it as
+  `archive.profile`, with the data untouched.
+- **Hardened:** a picked file is read only up to 50 MB (§22's blob ceiling), so picking a video cannot
+  crash the app. Audited as `BACKUP_RESTORED`.
+- **Tests:** 2,608 unit (0 skipped): +11 restore round-trip/refusal, +1 archive, +5 ViewModel, +6 Compose,
+  +6 bounded read. **Instrumented:** `BackupRestoreDeviceTest` 2/2 — backup, delete the SQLCipher file
+  and its key, open a fresh database, restore with amounts exact to the paisa, wrong passphrase writes
+  nothing. `:app` 7 passed + 2 skipped (widget bind grant), `:core:database` 26, `:feature:onboarding` 1.
+  **On the emulator:** real profile (₹12,345.67 opening, ₹1,234.57 spent) → backup → uninstall → reinstall
+  → onboarding skipped → wrong passphrase refused → restore in airplane mode → 18 items, net worth
+  +₹11,111.10, exact.
+
 ### [0.8.1] — Issue 8.1: E2EE backup (Argon2id + AES-256-GCM)  (2026-09-18)
 
 - **Implemented:** Settings → *Encrypted backup* seals the whole active-profile archive under a
