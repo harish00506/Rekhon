@@ -232,6 +232,71 @@ class GoalWaterfallEngineTest {
         assertTrue("$error", "place exactly what it was given" in error.message.orEmpty())
     }
 
+    // --- what §36's ranking hands down (ADR-0038) ---------------------------------------------
+
+    /**
+     * Input:  a plan whose month was partly claimed by the stages above goals.
+     * Output: asserts both echoes are carried through untouched, and that **the allocation is not
+     *         reduced a second time**: the surplus given is already net of what was claimed.
+     *
+     * They are echoes, not terms. Subtracting `claimedBeforeGoals` again here would quietly halve
+     * every goal's share while every total still reconciled, which is the kind of wrong that reads
+     * as plausible on a card.
+     */
+    @Test
+    fun `what the earlier stages claimed is carried, never subtracted twice`() {
+        val goal = projection(id = "trip", required = 8_000_00L)
+
+        val plan =
+            (
+                engine.allocate(
+                    GoalWaterfallInput(
+                        goals = listOf(goal),
+                        monthlySurplus = Money(20_000_00L),
+                        surplusBasis = SurplusBasis.OBSERVED_MEDIAN,
+                        // A clear runway: this test is about the echoes, not about the gate, and the
+                        // default null would hold every goal at zero for a different reason.
+                        emergencyRunwayMonthsBps = CLEAR_RUNWAY_BPS,
+                        claimedBeforeGoals = Money(10_000_00L),
+                        grossSurplus = Money(30_000_00L),
+                        today = TODAY,
+                    ),
+                ) as Ok
+            ).value
+
+        assertEquals(Money(10_000_00L), plan.claimedBeforeGoals)
+        assertEquals(Money(30_000_00L), plan.grossSurplus)
+        assertEquals("the goal is funded from the 20,000 given, not from 10,000", Money(8_000_00L), plan.totalAllocated)
+        assertEquals(Money(12_000_00L), plan.unallocated)
+    }
+
+    /**
+     * Input:  a negative claim by the earlier stages.
+     * Output: refused at construction. A stage cannot take less than nothing, and a negative claim
+     *         would make the card report that §36 *gave* the goals money it never had.
+     */
+    @Test
+    fun `a negative claim by the earlier stages cannot be constructed`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            GoalWaterfallInput(
+                goals = emptyList(),
+                monthlySurplus = Money.ZERO,
+                surplusBasis = SurplusBasis.OBSERVED_MEDIAN,
+                claimedBeforeGoals = Money(-1),
+                today = TODAY,
+            )
+        }
+    }
+
+    /** Result: a plan with neither echo set still reports them as absent — the pre-§36 shape. */
+    @Test
+    fun `a plan with no earlier stages reports nothing claimed and no gross figure`() {
+        val plan = allocate(goals = listOf(projection(id = "trip", required = 5_000_00L)), surplus = 9_000_00L)
+
+        assertEquals(Money.ZERO, plan.claimedBeforeGoals)
+        assertNull(plan.grossSurplus)
+    }
+
     // --- helpers ------------------------------------------------------------------------------
 
     /** Result: the waterfall for these goals. Input: the scenario's terms. Output: [GoalWaterfall]. */
