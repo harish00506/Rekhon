@@ -19,9 +19,10 @@ import kotlinx.coroutines.withContext
  *       the opposite artefact: it exists to leave the phone, so it must be unreadable to wherever it
  *       lands. This composes the two halves that already exist — the archive and the cipher — behind
  *       the one gate P-01 requires for anything that leaves the device: the user's consent.
- * What: consent → archive → seal → audit.
+ * What: backup: consent → archive → seal → audit. Restore: open → import → audit.
  * Result: sealed bytes the screen writes wherever the user picks, or a reason it refused.
  * Changelog: 2026-09-18 — Created for issue 8.1.
+ *   2026-09-18 — Issue 8.2 added [restore].
  *
  * **No network path, and no file I/O either.** Like `ArchiveRepository`, this hands back bytes and
  * the screen writes them through the system file picker (SEC-005: "local backup to user-chosen
@@ -48,6 +49,31 @@ interface BackupRepository {
      * Input:  [passphrase] — the user's; zero-filled on return. Output: `Result<ByteArray, AppError>`.
      */
     suspend fun create(passphrase: CharArray): Result<ByteArray, AppError>
+
+    /**
+     * Replaces the active profile's data with an encrypted backup's (issue 8.2; SEC-005, F6).
+     *
+     * Why:    the other half of a backup — a fresh device, or a wiped one, rebuilt from the file.
+     *         **Every check runs before anything is deleted**, in the order that costs least to
+     *         refuse: the file's format and KDF bounds, then the GCM tag (which is both the integrity
+     *         check and the passphrase check — one answer for either), then the archive's parse,
+     *         schema version and profile. Only then does `ArchiveRepository.import` wipe and insert,
+     *         inside one transaction, so a failure part-way leaves the database as it was.
+     *
+     *         **No consent is asked.** P-01 gates data leaving the device; a restore brings it in,
+     *         from a file the user picked themselves.
+     * Result: `Ok(summary)` — rows restored and when the backup was taken;
+     *         `Err(Crypto("backup.open"))` for a wrong passphrase or a tampered file;
+     *         `Err(Validation(...))` for `backup.format`, `backup.version`, `archive.unreadable`,
+     *         `archive.schemaVersion` or `archive.profile`; `Err(Storage)` if the write fails,
+     *         rolled back. **In every `Err` case nothing has been written.**
+     * Input:  [sealed] — the file's bytes; [passphrase] — zero-filled on return.
+     * Output: `Result<ImportSummary, AppError>`.
+     */
+    suspend fun restore(
+        sealed: ByteArray,
+        passphrase: CharArray,
+    ): Result<ImportSummary, AppError>
 }
 
 /**
@@ -82,6 +108,31 @@ internal class EncryptedBackupRepository(
         } finally {
             passphrase.fill('\u0000')
         }
+
+    override suspend fun restore(
+        sealed: ByteArray,
+        passphrase: CharArray,
+    ): Result<ImportSummary, AppError> {
+        val opened =
+            try {
+                withContext(dispatchers.default) { cipher.open(sealed, passphrase) }
+            } finally {
+                passphrase.fill('\u0000')
+            }
+        val plaintext =
+            when (opened) {
+                is Err -> return opened
+                is Ok -> opened.value
+            }
+        val restored =
+            try {
+                archive.import(plaintext.decodeToString())
+            } finally {
+                plaintext.fill(0)
+            }
+        if (restored is Ok) audit.record(AuditEvent.BACKUP_RESTORED)
+        return restored
+    }
 
     /**
      * Seals the plaintext and records the event.

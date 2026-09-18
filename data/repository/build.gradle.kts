@@ -10,6 +10,12 @@ plugins {
 android {
     namespace = "com.aicfo.data.repository"
 
+    defaultConfig {
+        // Issue 8.2: the backup → wipe → restore round trip on real SQLCipher. Without the AndroidX
+        // runner a library's instrumentation falls back to the legacy runner and crashes with 0 tests.
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
     testOptions {
         // Robolectric needs the merged Android resources to boot its runtime.
         unitTests.isIncludeAndroidResources = true
@@ -107,4 +113,14 @@ dependencies {
     testImplementation(libs.turbine)
     // FakeClock / TestDispatchers (issue 1.3).
     testImplementation(testFixtures(project(":core:common")))
+
+    // Issue 8.2: `BackupRestoreDeviceTest`. It runs in this module's own test package, so it opens
+    // an encrypted database of its own and never touches the installed app's. The database and
+    // datastore modules are named explicitly because the test builds the real stack by hand.
+    androidTestImplementation(libs.androidx.test.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.kotlinx.coroutines.test)
+    androidTestImplementation(project(":core:database"))
+    androidTestImplementation(project(":core:datastore"))
+    androidTestImplementation(testFixtures(project(":core:common")))
 }

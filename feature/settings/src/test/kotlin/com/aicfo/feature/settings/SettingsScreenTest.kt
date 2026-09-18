@@ -29,6 +29,8 @@ import org.robolectric.annotation.Config
  *       written and failed lines.
  * Result: the backup section exercised on every `unitTests` run, without a device.
  * Changelog: 2026-09-18 — Created for issue 8.1.
+ *   2026-09-18 — Issue 8.2: the restore card — the pick, the "replace everything" confirmation,
+ *   the retry after a wrong passphrase, and the row count.
  *
  * On the JVM via Robolectric, following `:feature:budgets`'s `BudgetsFlowTest`. Excluded from the
  * release variant by this module's build script, for the reason recorded there.
@@ -121,11 +123,87 @@ class SettingsScreenTest {
         compose.onNodeWithText(text(R.string.consent_cloud_backup)).performScrollTo().assertIsDisplayed()
     }
 
+    // --- restore (issue 8.2) ---------------------------------------------------------------------
+
+    @Test
+    fun `restore is offered without any consent, and asks the screen to open the picker`() {
+        var picks = 0
+        setContent(SettingsUiState(isLoading = false), onPickBackup = { picks++ })
+
+        compose.onNodeWithText(text(R.string.settings_restore_pick)).performScrollTo().assertIsEnabled().performClick()
+
+        assertEquals(1, picks)
+    }
+
+    @Test
+    fun `a picked backup says it will replace everything and waits for a passphrase`() {
+        setContent(SettingsUiState(isLoading = false, restore = RestoreUiState(status = RestoreStatus.Picked(BYTES))))
+
+        compose.onNodeWithText(text(R.string.settings_restore_warning)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.settings_restore_confirm)).performScrollTo().assertIsNotEnabled()
+    }
+
+    @Test
+    fun `with a passphrase the replace button asks for the restore`() {
+        setContent(
+            SettingsUiState(
+                isLoading = false,
+                restore = RestoreUiState(passphraseText = PASSPHRASE, status = RestoreStatus.Picked(BYTES)),
+            ),
+        )
+
+        compose.onNodeWithText(
+            text(R.string.settings_restore_confirm),
+        ).performScrollTo().assertIsEnabled().performClick()
+
+        assertEquals(SettingsEvent.ConfirmRestore, events.last())
+    }
+
+    @Test
+    fun `a wrong passphrase says so and keeps the form`() {
+        setContent(
+            SettingsUiState(
+                isLoading = false,
+                restore = RestoreUiState(status = RestoreStatus.Picked(BYTES, failure = "crypto")),
+            ),
+        )
+
+        compose.onNodeWithText(text(R.string.settings_restore_wrong_passphrase)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.settings_restore_confirm)).performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun `a demo backup is explained rather than reported as a generic failure`() {
+        setContent(
+            SettingsUiState(
+                isLoading = false,
+                restore = RestoreUiState(status = RestoreStatus.Picked(BYTES, failure = "archive.profile")),
+            ),
+        )
+
+        compose.onNodeWithText(text(R.string.settings_restore_wrong_profile)).performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun `a finished restore reports how many rows came back`() {
+        setContent(SettingsUiState(isLoading = false, restore = RestoreUiState(status = RestoreStatus.Restored(42))))
+
+        compose
+            .onNodeWithText(compose.activity.resources.getQuantityString(R.plurals.settings_restore_done, 42, 42))
+            .performScrollTo()
+            .assertIsDisplayed()
+    }
+
     // --- helpers ----------------------------------------------------------------------------------
 
-    private fun setContent(state: SettingsUiState) {
+    private fun setContent(
+        state: SettingsUiState,
+        onPickBackup: () -> Unit = {},
+    ) {
         compose.setContent {
-            CfoTheme { SettingsContent(uiState = state, onEvent = { events += it }, onDone = {}) }
+            CfoTheme {
+                SettingsContent(uiState = state, onEvent = { events += it }, onDone = {}, onPickBackup = onPickBackup)
+            }
         }
     }
 
@@ -138,5 +216,6 @@ class SettingsScreenTest {
 
     private companion object {
         const val PASSPHRASE = "correct horse battery staple"
+        val BYTES = byteArrayOf(0x43, 0x46, 0x4F, 0x42)
     }
 }

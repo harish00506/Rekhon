@@ -59,20 +59,25 @@ fun SettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    BackupFileHost(status = uiState.backup.status, onEvent = viewModel::onEvent)
-    SettingsContent(uiState = uiState, onEvent = viewModel::onEvent, onDone = onDone)
+    BackupFileHost(status = uiState.backup.status, onEvent = viewModel::onEvent) { onPickBackup ->
+        SettingsContent(uiState = uiState, onEvent = viewModel::onEvent, onDone = onDone, onPickBackup = onPickBackup)
+    }
 }
 
 /**
  * The screen, separated from Hilt so a test can drive it from a literal state.
- * Result: the composition. Input: [uiState]; [onEvent]; [onDone]. Output: none.
+ * Result: the composition. Input: [uiState]; [onEvent]; [onDone]; [onPickBackup] — opens the
+ * restore picker (issue 8.2), a no-op by default so a test or preview needs no Activity.
+ * Output: none.
  * Changelog: 2026-08-29 — Created for FR-SET-001.
+ *   2026-09-18 — Issue 8.2 added [onPickBackup] and the restore card.
  */
 @Composable
 internal fun SettingsContent(
     uiState: SettingsUiState,
     onEvent: (SettingsEvent) -> Unit,
     onDone: () -> Unit,
+    onPickBackup: () -> Unit = {},
 ) {
     Column(
         // imePadding before verticalScroll, for the reason AddTransactionScreen records: the app is
@@ -101,6 +106,7 @@ internal fun SettingsContent(
         ConsentSection(uiState = uiState, onEvent = onEvent)
         AppLockSection(uiState = uiState, onEvent = onEvent)
         BackupSection(uiState = uiState, onEvent = onEvent)
+        RestoreSection(state = uiState.restore, onEvent = onEvent, onPickBackup = onPickBackup)
 
         CfoSecondaryButton(text = stringResource(R.string.settings_done), onClick = onDone)
     }

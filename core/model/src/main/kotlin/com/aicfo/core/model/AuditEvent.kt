@@ -13,7 +13,7 @@ package com.aicfo.core.model
  * Result: an answerable "was there a burst of failed unlocks last Tuesday?" with nothing private
  *       stored to answer it.
  * Changelog: 2026-07-26 — Created for issue 2.2 (SEC-002).
- *   2026-09-18 — Issue 8.1 added [BACKUP_CREATED].
+ *   2026-09-18 — Issue 8.1 added [BACKUP_CREATED]; issue 8.2 added [BACKUP_RESTORED].
  *
  * Pure Kotlin so `:data:repository`, `:app` and any later feature can all name the same event
  * without importing a Room type (ARC-005).
@@ -52,6 +52,12 @@ enum class AuditEvent {
      * data now exists outside the database; never where it went, and never the passphrase.
      */
     BACKUP_CREATED,
+
+    /**
+     * An encrypted backup replaced this profile's data (issue 8.2). Recorded because it is the one
+     * operation, besides erase-all, that removes everything the user had on the device.
+     */
+    BACKUP_RESTORED,
 }
 
 /**

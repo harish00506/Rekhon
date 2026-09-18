@@ -120,6 +120,9 @@
     <string name="dashboard_archive_unreadable">That file isn\'t an AI Personal CFO backup.</string>
     <string name="dashboard_archive_wrong_version">That backup was made by a different version of the
         app. Nothing on this device has been changed.</string>
+    <!-- Issue 8.2: an archive exported inside the demo, imported into the real profile. -->
+    <string name="dashboard_archive_wrong_profile">That file was exported from the sample data, so it
+        holds none of your own. Nothing was changed.</string>
     <string name="dashboard_archive_write_failed">Couldn\'t write to that location. Try somewhere else.</string>
     <string name="dashboard_archive_failed">Something went wrong. Nothing on this device has been changed.</string>
 

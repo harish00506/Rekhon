@@ -284,6 +284,31 @@ class ArchiveRepositoryTest {
         }
 
     /**
+     * Input:  an archive exported from the demo profile, imported while the real profile is active.
+     * Output: asserts it is refused as `archive.profile`, with the real profile's data intact.
+     *
+     * Why:    issue 8.2. The import wipes the **active** profile and inserts whatever profile the file
+     *         carries, so a demo archive restored into the real profile used to wipe `local`, write
+     *         rows under `demo`, and report success over an app that then showed nothing. A restore
+     *         that says "done" over an empty screen is the worst outcome a backup feature has.
+     */
+    @Test
+    fun `an archive from another profile is refused with the data intact`() =
+        runTest(dispatcher) {
+            activeProfileId.value = DEMO_PROFILE
+            database.archiveDao().insertProfiles(listOf(profile(DEMO_PROFILE)))
+            val demoArchive = archive.export().expectOk()
+            activeProfileId.value = REAL_PROFILE
+            seedEveryTable()
+            val rowsBefore = database.demoDao().countRowsFor(REAL_PROFILE)
+
+            val outcome = archive.import(demoArchive)
+
+            assertEquals(Err(AppError.Validation("archive.profile")), outcome)
+            assertEquals(rowsBefore, database.demoDao().countRowsFor(REAL_PROFILE))
+        }
+
+    /**
      * Input:  the same profile exported twice.
      * Output: asserts the two archives differ only by their timestamp (P-08).
      *
