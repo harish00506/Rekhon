@@ -667,42 +667,44 @@ SafeToSpendRepository.observeSafeToSpend()
    }
 ```
 
-### 2.6 · Whether the goals fit, and who gets the surplus first (issue 7.3)
+### 2.6 · Whether the goals fit, and who gets the surplus first (issue 7.3; rewired 2026-09-18)
 
 §2.5 answers each goal as though it were the only claim on the month. This is the path that shares
-one surplus between all of them — and it is the first read in the app assembled from **four**
-repositories rather than from a table.
+**what §36 leaves** between all of them. Until 2026-09-18 it derived the month's surplus itself and
+poured all of it — which is why this screen and the dashboard disagreed past the emergency gate
+(ADR-0038). §2.8's ranking is now the base; this is the per-goal split of its remainder.
 
 ```
 GoalsScreen → GoalsViewModel.uiState                       :feature:goals
 ├─ GoalRepository.observeGoals()          §2.5, unchanged — the list half of the state
 └─ GoalWaterfallRepository.observeWaterfall()              :data:repository (ARC-005)
     │   TWO FLOWS INTO ONE STATE, NOT ONE COMBINED FLOW. The list is a plain table read; the
-    │   plan needs six months of ledger, the emergency fund and the onboarding envelopes.
-    │   Combining them would let a surplus problem blank a list that is perfectly readable.
+    │   plan needs the whole household ranked. Combining them would let a surplus problem blank
+    │   a list that is perfectly readable.
     └─ combine(
         ├─ goals.observeGoals()                            → List<GoalProjection>, in sort_order
-        ├─ transactions.observeMonthlyLedger(6)            → closed months only, live month excluded
-        ├─ emergencyFund.observeEmergencyFund()            → §2.4's runway and top-up
-        └─ quickSetup.observeLatestEnvelopes()             → the INVEST envelope, as fallback
+        ├─ ranking.observe()                               → §2.8's eight stages (AI-FOO)
+        └─ emergencyFund.observeEmergencyFund()            → §2.4's runway (for the gate wording)
        ) {
         ├─ clock.today()  READ ONCE PER EMISSION (TIM-001)
-        ├─ surplusFrom(history, envelopes)
-        │   │   §15.1 asks for the P50 FORECAST surplus. :domain:engines:forecast is still
-        │   │   issue 1.1's placeholder — 9.2 was never built — so this is the P50 of what the
-        │   │   closed months actually had spare, and SurplusBasis says so on the result.
-        │   ├─ ≥ 3 closed months → median(income − needs − wants)   OBSERVED_MEDIAN
-        │   │                       └─ `invested` is NOT subtracted: investing IS goal funding
-        │   ├─ else INVEST envelope > 0 →                            DECLARED_ENVELOPE
-        │   └─ else null                                             NONE → feasibility UNKNOWN
-        │                                                            (never zero — 7.2's lesson)
+        ├─ forGoals = max(surplus, 0) − Σ amount of every stage ABOVE GOAL_INVESTING
+        │   │   the starter buffer, high-interest debt and the emergency fund, already filled.
+        │   │   NULL STAYS NULL: an unknown surplus keeps feasibility UNKNOWN rather than
+        │   │   becoming INFEASIBLE (7.2's lesson, unchanged).
+        │   └─ claimedBeforeGoals + grossSurplus travel with it, as ECHOES the card reads —
+        │      without them a smaller figure here looks like money lost between two screens
+        ├─ emergencyTopUpMonthly = ZERO
+        │   └─ Stage 3 already claimed AI-EMF's pace; claiming it again here would hide a
+        │      month of it from the goals (ADR-0038)
         ├─ emergencyGateMonths = QuickSetupRules().emergencyRunwayMonths
         │   └─ the repository's ONE mirror of RULE-EMERG-FIRST. The engine holds the citation,
         │      not the number — a second mirror is ADR-0017 trigger 2 (ADR-0035).
         └─ GoalWaterfallEngine.allocate(...)               :domain:engines:goals
             ├─ gateHolds = runwayBps == null || runwayBps < gateMonths × 10 000
-            │              └─ UNKNOWN HOLDS THE GATE: no evidence of a buffer is not evidence
-            ├─ emergencyAllocated = gateHolds ? min(distributable, topUp) : 0
+            │              └─ UNKNOWN HOLDS THE GATE: no evidence of a buffer is not evidence.
+            │                 Below the gate §2.8 has already left nothing, so this decides the
+            │                 WORDING — blockedByEmergencyFund — rather than the amount
+            ├─ emergencyAllocated = gateHolds ? min(distributable, topUp) : 0   → now always 0
             ├─ per goal, IN THE CALLER'S ORDER:
             │      allocated = gateHolds ? 0 : min(remaining, requiredMonthly)
             │      └─ strict priority, never pro rata. Money.allocate is a SPLITTER and would
@@ -710,7 +712,7 @@ GoalsScreen → GoalsViewModel.uiState                       :feature:goals
             │         rounding rule appears anywhere in the engine.
             ├─ levers per under-funded goal, at the ALLOCATED rate (FR-GOAL-003)
             └─ init { require(emergencyAllocated + Σ allocated + unallocated == max(surplus,0)) }
-                └─ the invariant lives on the TYPE, so 7.5's AI-FOO is held to it too
+                └─ the invariant lives on the TYPE; it now holds over the REMAINDER §2.8 left
    }
 ```
 
@@ -837,10 +839,12 @@ DashboardScreen → DashboardViewModel.uiState.orderOfOperations        :feature
 │                   → OrderOfOperationsScreen → OrderOfOperationsViewModel
 └─ OrderOfOperationsRepository.observe()                               :data:repository (ARC-005)
     └─ combine(
-        ├─ GoalWaterfallRepository.observeWaterfall()                  §2.6 (7.3)
-        │      monthlySurplus + surplusBasis    ← REUSED, not re-derived: the two screens must pour
-        │                                         the same number (ADR-0035's observed-P50 stand-in)
-        │      totalRequiredMonthly, lines.size ← Stage 5's need and whether any goal exists
+        ├─ SurplusRepository.observeMonthlySurplus()                   extracted 2026-09-18
+        │      the P50 of observed surplus, else the declared envelope, else unknown — ADR-0035's
+        │      stand-in for the forecast 9.2 never built. Owned by neither screen, so §2.6 can
+        │      consume THIS path's remainder without a cycle (ADR-0038)
+        ├─ GoalRepository.observeGoals()                               §2.5
+        │      Σ requiredMonthly and the count ← Stage 5's need, before anything decides who gets it
         ├─ EmergencyFundRepository.observeEmergencyFund()               §2.6 (7.2)
         │      essentials, liquid               ← Stage 0
         │      shortfall, topUp, runway         ← Stage 3 and the gate

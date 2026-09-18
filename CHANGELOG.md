@@ -11,6 +11,32 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The goals engine, the emergency-fund engine, the feasibility waterfall, linked contributions and
 > the Financial Order of Operations.
 
+### [0.7.7] — Follow-up to 7.5: the goals screen and the ranking agree  (2026-09-18)
+
+- **One answer to "what do my goals get this month?"** (**§36**, **§15.1**, **ADR-0038**). Issue 7.5
+  shipped AI-FOO composing 7.3's goal waterfall and recorded the cost: past `RULE-EMERG-FIRST`'s gate
+  the dashboard gave the emergency fund its monthly pace before goals, while the goals screen poured
+  the whole surplus into them. Both were right about their own rule; a user reading both screens had
+  no way to tell which was true. The goal split now allocates **what the ranking leaves**.
+- **The dependency turned round.** The surplus derivation — ADR-0035's observed-P50 median with the
+  declared-envelope fallback, unchanged line for line — moved into its own `SurplusRepository`, so
+  neither screen owns it. AI-FOO now reads that and the goal projections directly, and the goal
+  waterfall consumes AI-FOO's remainder. Without the move it would have been a cycle.
+- **The goals card explains the smaller figure.** It names the month's own surplus, then says what
+  went to the starter buffer, high-interest debt and the emergency fund first and what is left —
+  otherwise money would appear to vanish between two screens. `GoalWaterfall` carries
+  `claimedBeforeGoals` and `grossSurplus` as echoes; the allocation is already net of them.
+- **What changes for a user:** a goal plan can now read as short because a credit card is being paid
+  off. That is the answer §36 intends — "the next best rupee" — and the card says so in words.
+  `GoalWaterfall.monthlySurplus` now means *what the goals may have*; the month's figure is
+  `grossSurplus`.
+- **Tests:** two repository tests pinning the agreement against the ranking itself (not a literal),
+  one of which needed a household **past** the gate with an unfinished fund — the only shape where
+  the old and new behaviours differ, found when the first version of the test passed under a
+  deliberate regression. Two existing tests updated for the new meaning; one Compose test for the new
+  line. Full gate green: 2,519 JVM tests, 0 failed, 0 skipped. Verified on `CfoTest`: with a 42% card
+  owing ₹92,534, both screens agree the goal gets ₹0.00 this month and say why.
+
 ### [0.7.6] — Follow-up to 7.5: the card's interest rate  (2026-09-17)
 
 - **The card editor has an interest-rate field** (**FR-ACC-002**, **MNY-002**, **§36**).
