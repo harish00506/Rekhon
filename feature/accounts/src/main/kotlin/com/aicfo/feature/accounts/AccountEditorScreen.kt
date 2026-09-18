@@ -215,6 +215,7 @@ private fun BalanceHelp() {
  *         answer a question about one particular month.
  * Result: the composition. Input: [uiState], [onEvent]. Output: none.
  * Changelog: 2026-08-17 — Created for issue 6.1.
+ *            2026-09-17 — The APR field (card APR follow-up to 7.5).
  */
 @Composable
 private fun CardFields(
@@ -248,6 +249,9 @@ private fun CardFields(
     }
     CardField(R.string.account_editor_card_last_statement, uiState.lastStatementText, CardField.LAST_STATEMENT, onEvent)
     CardField(R.string.account_editor_card_minimum_due, uiState.minimumDueText, CardField.MINIMUM_DUE, onEvent)
+    // The rate the order-of-operations screen ranks the card by (7.5). Percent, with a decimal pad —
+    // Indian card APRs are quoted like "42.5".
+    CardField(R.string.account_editor_card_apr, uiState.aprText, CardField.APR, onEvent)
     // P-02: the user should know why three of these are asked for together and two are not.
     Text(
         text = stringResource(R.string.account_editor_card_help),
@@ -257,7 +261,7 @@ private fun CardFields(
 
 /**
  * One card field.
- * Why:    five near-identical text fields, differing in label, value, which [CardField] they emit
+ * Why:    six near-identical text fields, differing in label, value, which [CardField] they emit
  *         and whether the keypad shows a decimal point. Writing them out five times is how one of
  *         them ends up wired to the wrong event.
  * Result: the composition.

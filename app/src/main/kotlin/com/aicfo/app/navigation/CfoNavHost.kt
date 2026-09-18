@@ -138,6 +138,7 @@ private fun NavGraphBuilder.planningDestinations(navController: NavHostControlle
                     onDone = { navController.popBackStack() },
                     onOpenGoals = { navController.navigate(CfoRoute.Goals) },
                     onOpenEmergencyFund = { navController.navigate(CfoRoute.EmergencyFund) },
+                    onOpenAccounts = { navController.navigate(CfoRoute.Accounts) },
                 ),
         )
     }

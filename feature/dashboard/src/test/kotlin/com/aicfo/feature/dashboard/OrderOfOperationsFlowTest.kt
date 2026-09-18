@@ -175,6 +175,7 @@ class OrderOfOperationsFlowTest {
                     onDone = { calls += "done" },
                     onOpenGoals = { calls += "goals" },
                     onOpenEmergencyFund = { calls += "fund" },
+                    onOpenAccounts = { calls += "accounts" },
                 ),
         )
 
@@ -187,19 +188,34 @@ class OrderOfOperationsFlowTest {
 
     /**
      * Input:  a card with a balance and no rate recorded.
-     * Output: the card is ranked as fire debt and says its rate was assumed — and **no button offers
-     *         to add the rate**. The card editor has no rate field (issue 6.1), which the 7.5 device
-     *         run found; a button promising one would lead to a screen that cannot keep the promise.
+     * Output: the card is ranked as fire debt, says its rate was assumed, and offers the one screen
+     *         where the rate can now be entered. The 7.5 device run withdrew this button because the
+     *         card editor had no rate field; the card APR follow-up added the field and the button.
      */
     @Test
-    fun `an unrated card says its rate was assumed and offers nothing it cannot deliver`() {
+    fun `an unrated card says its rate was assumed and links to where it is entered`() {
         val unrated = DebtPosition("axis", "Axis Card", DebtKind.CARD, Money(20_000_00L), null)
-        setScreen(rank(cardDebtInput().copy(debts = cardDebtInput().debts + unrated)))
+        val calls = mutableListOf<String>()
+        setScreen(
+            rank(cardDebtInput().copy(debts = cardDebtInput().debts + unrated)),
+            actions = noActions().copy(onOpenAccounts = { calls += "accounts" }),
+        )
 
         compose.onNodeWithText("Axis Card · ₹20,000.00 owed · rate not entered").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(
-            "No interest rate is recorded for this card, so it is treated as high-interest, as most cards are.",
+            "No interest rate is recorded for this card, so it is treated as high-interest, as most cards are. " +
+                "Add the rate in the card's details to be sure.",
         ).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Add the card's rate in Accounts").performScrollTo().performClick()
+
+        assertEquals(listOf("accounts"), calls)
+    }
+
+    /** Input: a household whose only card has a rate. Output: no rate prompt — there is nothing to add. */
+    @Test
+    fun `a rated card is not prompted for a rate`() {
+        setScreen(rank(cardDebtInput()))
+
         compose.onAllNodesWithText("rate in Accounts", substring = true).assertCountEquals(0)
     }
 
@@ -272,7 +288,8 @@ class OrderOfOperationsFlowTest {
         }
     }
 
-    private fun noActions() = OrderOfOperationsActions(onDone = {}, onOpenGoals = {}, onOpenEmergencyFund = {})
+    private fun noActions() =
+        OrderOfOperationsActions(onDone = {}, onOpenGoals = {}, onOpenEmergencyFund = {}, onOpenAccounts = {})
 
     /** A household with every stage done and ₹15,000 spare. */
     private fun doneHouseholdInput() =

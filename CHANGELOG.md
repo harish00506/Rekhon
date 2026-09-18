@@ -11,6 +11,28 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The goals engine, the emergency-fund engine, the feasibility waterfall, linked contributions and
 > the Financial Order of Operations.
 
+### [0.7.6] — Follow-up to 7.5: the card's interest rate  (2026-09-17)
+
+- **The card editor has an interest-rate field** (**FR-ACC-002**, **MNY-002**, **§36**).
+  `credit_card.apr_bps` has existed since issue 6.1, and nothing in the UI could set it — the 7.5
+  device run found that by following its own "add the rate" button. *Annual interest rate (%)* is
+  optional, typed in percent (`42.5`) and stored in basis points (`4250`) through the loan section's
+  existing conversion, so `8.555` is refused rather than rounded and a stored rate reopens as
+  `42.50`. Blank stays "not recorded".
+- **A card's rate now decides its order-of-operations stage.** A 12% card ranks as grey-zone debt
+  (Step 7) and a 42% card as high-interest (Step 3); only a card with no rate is still assumed to be
+  high-interest. The full-order screen's **"Add the card's rate in Accounts"** link is back, now
+  that the promise can be kept.
+- **A partial card section is reported instead of silently dropped.** A card needs its limit and
+  both days to be stored, so a rate — or a statement amount — typed without them has nowhere to go.
+  6.1 discarded it on save; it is now a validation error and the typing stays on screen. A wholly
+  blank card section still saves as "no terms yet".
+- **Tests:** 7 new editor ViewModel tests (the bps round trip, blank as unrecorded, invalid rates,
+  the partial section, every field edit) and 1 Compose test; the full-order Compose tests now assert
+  the link appears only for an unrated card and navigates. Proven red two ways (APR not carried; the
+  partial check removed). Full gate green. Driven on `CfoTest`: link → editor → 12% moves the card to
+  Step 7 → 42% moves it back to Step 3 → the rate reloads as `42.00`.
+
 ### [0.7.5] — Issue 7.5: Financial Order of Operations  (2026-09-17)
 
 - **The app now answers "what should my next rupee do?"** (**§36**, **AI-FOO**, **FOO-002**,

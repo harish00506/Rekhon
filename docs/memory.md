@@ -18,7 +18,7 @@
 
 ## Current state
 
-- **Version:** `0.7.5` (see [`../VERSION`](../VERSION)) · **Phase:** 3 — AI core & goals.
+- **Version:** `0.7.6` (see [`../VERSION`](../VERSION)) · **Phase:** 3 — AI core & goals.
   **Schema is v22**, unchanged by 7.5.
 - **Epics 1–7 are done** — 7.5 (Financial Order of Operations, AI-FOO) closed Epic 7. Epics 8 and 9
   are the open ones left in Phases 2–3; **Epic 9 (AI core engines, incl. the 9.2 forecast) is the
@@ -42,10 +42,11 @@
 
 ### What 7.5 changed that a future issue must know
 
-- **The card editor has no APR field** — `credit_card.apr_bps` has been in the schema since 6.1 and
-  **nothing in the UI writes it**. Found by following 7.5's own "add the rate" button on the device;
-  the button was removed. So **every card ranks as fire debt** in AI-FOO until the field exists. The
-  0.3.6 lesson again: a plumbed field is not evidence anything produces a value for it.
+- **The card editor had no APR field** — `credit_card.apr_bps` sat in the schema from 6.1 with
+  nothing in the UI to write it, found by following 7.5's own "add the rate" button on the device.
+  **Fixed the same day (0.7.6)**: the field exists, the button is back, and a partial card section is
+  now a validation error rather than a silent drop. The 0.3.6 lesson again: a plumbed field is not
+  evidence anything produces a value for it.
 - **AI-FOO reads `financial-order-of-operations.json`**, the first thing to read that file, through a
   typed mirror and a drift test that declares the file as a test input. **Stage citations are
   `FOO.<STAGE_ID>`** at the file's version. No rulebook row minted; rulebook still **1.15.0**.

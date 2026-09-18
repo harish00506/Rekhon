@@ -27,6 +27,7 @@ import com.aicfo.domain.engines.orderofoperations.DebtPosition
 import com.aicfo.domain.engines.orderofoperations.FooStage
 import com.aicfo.domain.engines.orderofoperations.OrderOfOperations
 import com.aicfo.domain.engines.orderofoperations.StageOutcome
+import com.aicfo.domain.engines.orderofoperations.StageReason
 import com.aicfo.domain.engines.orderofoperations.StageStatus
 
 /**
@@ -38,8 +39,8 @@ import com.aicfo.domain.engines.orderofoperations.StageStatus
  *       only showed the stages with work to do would hide exactly the ones the user most needs
  *       explained.
  * What: a stateful entry point over [OrderOfOperationsViewModel] and a stateless body.
- * Result: the ranking, with a way to the screen that acts on each stage it can (goals and the
- *       emergency fund).
+ * Result: the ranking, with a way to the screen that acts on each stage it can (goals, the
+ *       emergency fund, and a card's missing rate).
  * Changelog: 2026-09-17 — Created for issue 7.5.
  *
  * Lives in `:feature:dashboard` because the card that opens it does, and feature modules may not
@@ -207,14 +208,12 @@ private fun DebtLine(debt: DebtPosition) {
 /**
  * The one screen that acts on this stage, when there is one.
  * Why:    advice the user cannot act on from here is a dead end (P-07 keeps the acting to the user,
- *         not the looking). Two stages have a screen that moves them forward: the emergency fund and
- *         the goals.
+ *         not the looking). Three stages have a screen that moves them forward: the emergency fund,
+ *         the goals, and — for a card counted with no rate — Accounts, where the rate is entered.
  *
- *         **No button for a card with no rate**, though one was built. Running the app found that
- *         the card editor (issue 6.1) has no rate field at all — `credit_card.apr_bps` is in the
- *         schema and nothing in the UI writes it — so "add the rate in Accounts" sent the user to a
- *         screen where they could not. A button whose promise the app cannot keep is worse than none
- *         (ADR-0037).
+ *         **The Accounts button was withdrawn once and restored.** The 7.5 device run found the card
+ *         editor had no rate field, so the button led nowhere it could keep its promise and was
+ *         removed (ADR-0037). The card APR follow-up added the field, and the button came back.
  * Result: a button, or nothing. Input: [stage]; [actions]. Output: none.
  */
 @Composable
@@ -228,6 +227,8 @@ private fun StageAction(
                 R.string.foo_open_emergency_fund to actions.onOpenEmergencyFund
             stage.stage == FooStage.GOAL_INVESTING && stage.status != StageStatus.NOT_APPLICABLE ->
                 R.string.foo_open_goals to actions.onOpenGoals
+            stage.reason == StageReason.FIRE_DEBT_CARD_RATE_UNKNOWN ->
+                R.string.foo_open_accounts to actions.onOpenAccounts
             else -> return
         }
     CfoSecondaryButton(text = stringResource(label), onClick = onClick)
@@ -268,12 +269,15 @@ private fun statusColor(status: StageStatus): Color =
  *       Still lambdas, never a `NavController`: routing stays in `:app`.
  * Changelog: 2026-09-17 — Created for issue 7.5.
  *
- * Input:  [onDone] — back; [onOpenGoals]; [onOpenEmergencyFund].
+ * Input:  [onDone] — back; [onOpenGoals]; [onOpenEmergencyFund]; [onOpenAccounts] — where a card's
+ *         rate is entered.
  * Output: an immutable value.
+ * Changelog: 2026-09-17 — [onOpenAccounts] restored with the card APR field.
  */
 @Immutable
 data class OrderOfOperationsActions(
     val onDone: () -> Unit,
     val onOpenGoals: () -> Unit,
     val onOpenEmergencyFund: () -> Unit,
+    val onOpenAccounts: () -> Unit,
 )

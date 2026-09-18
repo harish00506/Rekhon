@@ -51,6 +51,24 @@ class AccountEditorCardFieldsTest {
         compose.onNodeWithText(text(R.string.account_editor_card_limit)).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(text(R.string.account_editor_card_statement_day)).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(text(R.string.account_editor_card_due_day)).performScrollTo().assertIsDisplayed()
+        // The field the 7.5 device run found missing: `credit_card.apr_bps` had nothing to fill it.
+        compose.onNodeWithText(text(R.string.account_editor_card_apr)).performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun `a stored APR shows in the form in percent`() {
+        renderEditor(
+            AccountEditorUiState(
+                name = "ICICI Card",
+                type = AccountType.CREDIT_CARD,
+                creditLimitText = "₹1,50,000.00",
+                statementDayText = "12",
+                dueDayText = "2",
+                aprText = "42.50",
+            ),
+        )
+
+        compose.onNodeWithText("42.50").performScrollTo().assertIsDisplayed()
     }
 
     @Test

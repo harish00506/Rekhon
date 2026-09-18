@@ -89,9 +89,9 @@ paise, so no rounding rule appears anywhere and `Money.allocate` is deliberately
   7.3's waterfall takes. While it holds, nothing below Stage 3 is funded, so Stage 3 may take its
   **whole** shortfall rather than idle money behind a rule that exists to build the fund.
 - **A card with no rate is fire debt.** §36 names credit cards as 36–42%; the reason says the rate was
-  assumed. The card editor (6.1) has **no rate field**, so today every card lands here — found on the
-  device run, recorded in ADR-0037. A **loan** with no terms is never sent — no band can be guessed
-  for it.
+  assumed and the screen links to Accounts, where the card editor's rate field (added the same day,
+  after the device run found it missing — ADR-0037) records it. A **loan** with no terms is never
+  sent — no band can be guessed for it.
 - **Stages 1 and 4 are always skipped, and say why** (§36: "every skipped stage shows why"). The app
   holds no EPF data; the §38 regime comparator is issue 13.4.
 - **Stage 7 proposes no amount.** §36 hands it to the prepay-vs-invest simulator (issue 10.3), which is
