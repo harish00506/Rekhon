@@ -23,11 +23,11 @@
 - **Epics 1–7 are done** — 7.5 (Financial Order of Operations, AI-FOO) closed Epic 7. Epics 8 and 9
   are the open ones left in Phases 2–3; **Epic 9 (AI core engines, incl. the 9.2 forecast) is the
   one the goals work kept waiting on.**
-- **Currently working file:** none. Issue **7.5 is merged to `dev`** at `6a25b13`, and the card APR
-  follow-up at `4eb998b` (0.7.6)
+- **Currently working file:** none. Issue **7.5 is merged to `dev`** at `6a25b13`, the card APR field
+  at `4eb998b` (0.7.6) and the FOO/goals agreement at `dev` HEAD (0.7.7, ADR-0038)
   ([tracker](issues/7.5-financial-order-of-operations-ai-foo-tracker.md)).
-- **`origin/dev` is still at `6afa5f0`** — local `dev` is eighteen commits ahead (7.4, 7.5, the card
-  APR follow-up and their records),
+- **`origin/dev` is still at `6afa5f0`** — local `dev` is twenty-three commits ahead (7.4, 7.5, the
+  card APR field, the FOO/goals agreement and their records),
   and **the push is blocked, not skipped**: this machine has no GitHub credentials (no helper, no
   `gh`, no token, and the one SSH key is for another host). Pushing needs an authenticated shell.
 - **This machine builds with Temurin JDK 21** (`~/.jdks/temurin-21`) and the SDK at `~/Android/Sdk`;
