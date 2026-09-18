@@ -71,6 +71,10 @@
     <!-- Where the surplus figure came from. P-02: never a number with no source. -->
     <string name="goals_plan_basis_observed">%1$s spare a month — the middle of your last 6 closed months</string>
     <string name="goals_plan_basis_declared">%1$s spare a month — what you said you\'d save at setup</string>
+    <!-- Issue 7.5 / ADR-0038: the goals get what the order of operations leaves, so a smaller figure
+         here has to say why rather than look like money going missing. -->
+    <string name="goals_plan_claimed_first">%1$s of that goes first to your starter buffer,
+        high-interest debt and emergency fund, leaving %2$s for goals.</string>
 
     <!-- RULE-EMERG-FIRST. severity: fail — this is a gate, not a nudge. -->
     <string name="goals_plan_emergency_first">%1$s goes to your emergency fund first. Until it covers 3 months, your other goals wait — that buffer is what stops the next surprise becoming card debt.</string>

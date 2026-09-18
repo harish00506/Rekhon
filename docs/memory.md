@@ -18,7 +18,7 @@
 
 ## Current state
 
-- **Version:** `0.7.6` (see [`../VERSION`](../VERSION)) · **Phase:** 3 — AI core & goals.
+- **Version:** `0.7.7` (see [`../VERSION`](../VERSION)) · **Phase:** 3 — AI core & goals.
   **Schema is v22**, unchanged by 7.5.
 - **Epics 1–7 are done** — 7.5 (Financial Order of Operations, AI-FOO) closed Epic 7. Epics 8 and 9
   are the open ones left in Phases 2–3; **Epic 9 (AI core engines, incl. the 9.2 forecast) is the
@@ -53,9 +53,10 @@
   `FOO.<STAGE_ID>`** at the file's version. No rulebook row minted; rulebook still **1.15.0**.
 - **`RULE-EMERG-FIRST`'s number still has exactly one mirror** (`QuickSetupRules`); 7.3 and 7.5 both
   take it as an input. The next engine that needs it should build the runtime loader (ADR-0017 trigger 2).
-- **AI-FOO and 7.3's goal waterfall disagree past the gate** about whether the emergency fund's pace
-  comes before the goals. Recorded, not fixed — ADR-0037's first follow-up is re-pointing 7.3 at what
-  AI-FOO leaves after Stage 3.
+- **AI-FOO is the base; 7.3's goal waterfall splits what it leaves** (ADR-0038, 0.7.7). They used to
+  disagree past the emergency gate. The surplus derivation lives in `SurplusRepository` so neither
+  owns it. **`GoalWaterfall.monthlySurplus` means what the goals may have** — the month's own figure
+  is `grossSurplus`, and `claimedBeforeGoals` says what the earlier stages took.
 - **The dashboard's populated fixture now includes a ranking**, so the privacy-blur test and the five
   Paparazzi baselines cover the next-best-rupee card. Any change to the card's copy re-records them.
 - **Automating the device:** `adb shell input keyevent 111` (ESC) does **not** dismiss the numeric

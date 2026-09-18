@@ -56,6 +56,9 @@ internal class DefaultGoalWaterfallEngine : GoalWaterfallEngine {
                 emergencyAllocated = emergencyAllocated,
                 lines = lines,
                 unallocated = distributable - emergencyAllocated - totalAllocated,
+                // Echoes, carried untouched: the allocation above is already net of them.
+                claimedBeforeGoals = input.claimedBeforeGoals,
+                grossSurplus = input.grossSurplus,
                 provenance = provenanceFor(input),
             )
         }

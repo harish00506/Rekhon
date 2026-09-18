@@ -20,6 +20,8 @@ import com.aicfo.domain.engines.goals.GoalWaterfall
 import com.aicfo.domain.engines.goals.GoalWaterfallEngineFactory
 import com.aicfo.domain.engines.goals.SurplusBasis
 import com.aicfo.domain.engines.nature.NatureEngineFactory
+import com.aicfo.domain.engines.orderofoperations.FooStage
+import com.aicfo.domain.engines.orderofoperations.OrderOfOperationsEngineFactory
 import com.aicfo.domain.engines.quicksetup.QuickSetupEngineFactory
 import com.aicfo.domain.engines.quicksetup.QuickSetupInput
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -80,6 +82,7 @@ class GoalWaterfallRepositoryTest {
     private lateinit var quickSetup: QuickSetupRepository
     private lateinit var goals: GoalRepository
     private lateinit var waterfall: GoalWaterfallRepository
+    private lateinit var ranking: OrderOfOperationsRepository
 
     // Mid-month on purpose: the history window is the *closed* months behind this one, and a clock
     // on the 1st or the 31st would let an off-by-one bound pass unnoticed.
@@ -114,21 +117,50 @@ class GoalWaterfallRepositoryTest {
                 RepositoryFactory.goals(
                     database, GoalEngineFactory.create(), clock, ids, dispatchers, activeProfileId,
                 )
-            waterfall =
-                RepositoryFactory.goalWaterfall(
-                    goals = goals,
-                    transactions = transactions,
-                    emergencyFund =
-                        RepositoryFactory.emergencyFund(
-                            transactions, accounts, quickSetup,
-                            EmergencyFundEngineFactory.create(), clock, dispatchers,
-                        ),
-                    quickSetup = quickSetup,
-                    engine = GoalWaterfallEngineFactory.create(),
-                    clock = clock,
-                    dispatchers = dispatchers,
-                )
+            buildRanking()
         }
+
+    /**
+     * Builds the emergency fund, §36's ranking and the goal waterfall over the repositories [setUp]
+     * made — the same composition `RepositoryModule` wires in `:app`.
+     *
+     * **The real ranking, not a stand-in:** what the goals may have is what §36 leaves after the
+     * starter buffer, high-interest debt and the emergency fund (ADR-0038), and a fake could leave an
+     * amount the ranking never would.
+     * Input: none. Output: none (sets [ranking] and [waterfall]).
+     */
+    private fun buildRanking() {
+        val dispatchers = TestDispatchers(dispatcher)
+        val emergencyFund =
+            RepositoryFactory.emergencyFund(
+                transactions,
+                accounts,
+                quickSetup,
+                EmergencyFundEngineFactory.create(),
+                clock,
+                dispatchers,
+            )
+        ranking =
+            RepositoryFactory.orderOfOperations(
+                database = database,
+                goals = goals,
+                surplus = RepositoryFactory.surplus(transactions, quickSetup, dispatchers),
+                emergencyFund = emergencyFund,
+                engine = OrderOfOperationsEngineFactory.create(),
+                clock = clock,
+                dispatchers = dispatchers,
+                activeProfileId = activeProfileId,
+            )
+        waterfall =
+            RepositoryFactory.goalWaterfall(
+                goals = goals,
+                ranking = ranking,
+                emergencyFund = emergencyFund,
+                engine = GoalWaterfallEngineFactory.create(),
+                clock = clock,
+                dispatchers = dispatchers,
+            )
+    }
 
     /** Input: none. Output: closes the database between tests. */
     @After
@@ -162,6 +194,10 @@ class GoalWaterfallRepositoryTest {
      * A live month is partly unspent by definition. Counting it would make the surplus sag through
      * every month and jump back on the 1st, which is the kind of wrong nobody reports as a bug
      * because each individual reading looks reasonable.
+     *
+     * Asserted on `grossSurplus`, the month's own figure. What reaches the goals legitimately *does*
+     * move here (ADR-0038): the ₹3,00,000 leaving the bank empties the starter buffer, and §36 fills
+     * that before any goal — which is the whole behaviour this change exists to make consistent.
      */
     @Test
     fun `the live month is excluded from the surplus history`() =
@@ -169,7 +205,13 @@ class GoalWaterfallRepositoryTest {
             seedThreeMonths()
             expense(bankId(), Money(-3_00_000_00L), LocalDate.parse("2026-09-02"))
 
-            assertEquals(Money(60_000_00L), plan().monthlySurplus)
+            val plan = plan()
+
+            assertEquals(Money(60_000_00L), plan.grossSurplus)
+            assertTrue(
+                "the emptied buffer is refilled before the goals, so they get less than the surplus",
+                plan.claimedBeforeGoals > Money.ZERO,
+            )
         }
 
     /**
@@ -204,11 +246,15 @@ class GoalWaterfallRepositoryTest {
 
     /**
      * Input:  a profile spending more than it earns across three closed months.
-     * Output: a **negative** surplus, reported as such, and nothing allocated.
+     * Output: a **negative** surplus, reported as such on `grossSurplus`, and nothing allocated.
      *
      * Unlike the essentials median, a surplus median may legitimately be negative, and saying so is
      * more use than clamping it out of sight. The engine still pours nothing — you cannot allocate
      * money that is not there — but the headline tells the truth about why.
+     *
+     * **`monthlySurplus` is now what the goals may have** (ADR-0038), which is never negative: §36's
+     * earlier stages cannot be funded from a deficit either. The month's own figure travels as
+     * `grossSurplus`, which is what the card's basis line reads.
      */
     @Test
     fun `a profile spending more than it earns reports a negative surplus`() =
@@ -222,7 +268,8 @@ class GoalWaterfallRepositoryTest {
 
             val plan = plan()
 
-            assertEquals(Money(-10_000_00L), plan.monthlySurplus)
+            assertEquals("the month's own figure, negative and said so", Money(-10_000_00L), plan.grossSurplus)
+            assertEquals("nothing can reach the goals from a deficit", Money.ZERO, plan.monthlySurplus)
             assertEquals(Feasibility.INFEASIBLE, plan.feasibility)
             assertEquals(Money.ZERO, plan.totalAllocated)
             assertEquals("nothing to leave over either", Money.ZERO, plan.unallocated)
@@ -363,7 +410,82 @@ class GoalWaterfallRepositoryTest {
             assertEquals(listOf(laptop, trip), plan().lines.map { it.goalId })
         }
 
+    // --- agreement with §36's ranking (ADR-0038) ----------------------------------------------
+
+    /**
+     * Input:  a household with three closed months and a goal it cannot fully fund.
+     * Output: asserts the goals get **exactly what the ranking leaves** — the same figure Stage 5
+     *         shows on the dashboard — that what the earlier stages took is named, and that the
+     *         month's own surplus is still reported.
+     *
+     * The divergence this repository was changed to close (ADR-0037's first follow-up, ADR-0038):
+     * §36 fills the starter buffer, high-interest debt and the emergency fund before goals, while
+     * this repository used to hand the goals the whole surplus. Both screens were right about their
+     * own rule and disagreed about the goals' share. Asserted **against the ranking** rather than a
+     * literal, because the claim is precisely that the two agree.
+     */
+    @Test
+    fun `the goals get exactly what the ranking leaves, and the plan says what took the rest`() =
+        runTest(dispatcher) {
+            seedGateClearButFundShort()
+            newGoal("Kerala trip", target = Money(6_00_000_00L), on = "2027-09-14")
+
+            val order = ranking.observe().first()
+            val plan = plan()
+
+            val stageFive = order.stages.single { it.stage == FooStage.GOAL_INVESTING }
+            assertEquals("the two screens must agree", stageFive.amountMonthly, plan.totalAllocated)
+            val claimedEarlier =
+                order.stages.takeWhile { it.stage != FooStage.GOAL_INVESTING }
+                    .fold(Money.ZERO) { sum, stage -> sum + stage.amountMonthly }
+            assertEquals(claimedEarlier, plan.claimedBeforeGoals)
+            assertEquals("the month's own figure is still reported", order.monthlySurplus, plan.grossSurplus)
+            // The assertion that makes this a test of the fix rather than of a coincidence: §36
+            // genuinely took a share here, so pouring the whole surplus would give a different answer.
+            assertTrue("the fund's pace must have been claimed first", plan.claimedBeforeGoals > Money.ZERO)
+            assertEquals(plan.grossSurplus!! - plan.claimedBeforeGoals, plan.monthlySurplus)
+        }
+
+    /**
+     * Input:  a household that spends everything it earns, so the emergency fund is unbuilt.
+     * Output: asserts the goals get nothing and the plan says the earlier stages took the month —
+     *         rather than funding a goal from money §36 has already spent on the buffer.
+     */
+    @Test
+    fun `the buffer and the fund are filled before the goals`() =
+        runTest(dispatcher) {
+            seedThreeMonthsSpendingEverything()
+            newGoal("Kerala trip", target = Money(6_00_000_00L), on = "2027-09-14")
+
+            val plan = plan()
+
+            assertEquals(Money.ZERO, plan.totalAllocated)
+            assertTrue("the earlier stages took the month", plan.claimedBeforeGoals > Money.ZERO)
+            assertEquals(Feasibility.INFEASIBLE, plan.feasibility)
+        }
+
     // --- helpers ----------------------------------------------------------------------------------
+
+    /**
+     * Seeds a household **past** `RULE-EMERG-FIRST`'s gate whose emergency fund is still short.
+     *
+     * The one shape that tells the two behaviours apart. Below the gate every stage under the fund is
+     * blocked, and with a full fund nothing is claimed — in both cases pouring the whole surplus and
+     * pouring the remainder give the same answer. Here they do not: three closed months of ₹1,00,000
+     * income and ₹40,000 of needs leave ₹60,000 a month and ₹1,80,000 in the bank, which is 4.5 months
+     * of cover (the gate is 3) against a six-month target of ₹2,40,000 — so AI-EMF's pace claims
+     * ₹10,000 of the month before any goal sees it.
+     *
+     * Result: none. Input: none. Output: none.
+     */
+    private suspend fun seedGateClearButFundShort() {
+        val bank = newAccount(AccountType.BANK, "HDFC Savings", Money.ZERO)
+        val groceries = idOf("Groceries")
+        listOf("2026-06", "2026-07", "2026-08").forEach { month ->
+            income(bank.id, Money(1_00_000_00L), LocalDate.parse("$month-01"))
+            expense(bank.id, Money(-40_000_00L), LocalDate.parse("$month-10"), groceries)
+        }
+    }
 
     /** Result: the current plan. Input: none. Output: [GoalWaterfall]. */
     private suspend fun plan(): GoalWaterfall = waterfall.observeWaterfall().first()

@@ -27,6 +27,7 @@ import com.aicfo.data.repository.RecurringRepository
 import com.aicfo.data.repository.RepositoryFactory
 import com.aicfo.data.repository.SafeToSpendRepository
 import com.aicfo.data.repository.SmsRepository
+import com.aicfo.data.repository.SurplusRepository
 import com.aicfo.data.repository.TransactionRepository
 import com.aicfo.data.sms.SmsInboxReader
 import com.aicfo.domain.engines.budget.BudgetEngine
@@ -393,29 +394,44 @@ object RepositoryModule {
     @Suppress("LongParameterList") // Hilt reads the signature; each argument is one binding.
     fun provideGoalWaterfallRepository(
         goals: GoalRepository,
-        transactions: TransactionRepository,
+        ranking: OrderOfOperationsRepository,
         emergencyFund: EmergencyFundRepository,
-        quickSetup: QuickSetupRepository,
         engine: GoalWaterfallEngine,
         clock: Clock,
         dispatchers: DispatcherProvider,
     ): GoalWaterfallRepository =
         RepositoryFactory.goalWaterfall(
             goals = goals,
-            transactions = transactions,
+            ranking = ranking,
             emergencyFund = emergencyFund,
-            quickSetup = quickSetup,
             engine = engine,
             clock = clock,
             dispatchers = dispatchers,
         )
 
     /**
+     * The month's surplus, shared by §36's ranking and §15.1's goal split (extracted 2026-09-18).
+     * Why:    whichever of the two derived it would be depended on by the other; extracting it lets
+     *         AI-FOO be the base and the goal waterfall consume its remainder (ADR-0038).
+     * Result: a [SurplusRepository]. Input: the graph's shared dependencies. Output: the repository.
+     * Changelog: 2026-09-18 — Created.
+     */
+    @Provides
+    @Singleton
+    fun provideSurplusRepository(
+        transactions: TransactionRepository,
+        quickSetup: QuickSetupRepository,
+        dispatchers: DispatcherProvider,
+    ): SurplusRepository = RepositoryFactory.surplus(transactions, quickSetup, dispatchers)
+
+    /**
      * The Financial Order of Operations (issue 7.5; §36, AI-FOO).
-     * Why:    built on [provideGoalWaterfallRepository] and [provideEmergencyFundRepository] for the
-     *         surplus, the goals' need and the runway — resolving those again would give the dashboard
-     *         and the goals screen two answers to one question. Takes the gated [CfoDatabase] only for
-     *         what nobody resolved before, each debt's rate, so a card's APR is no more readable before
+     * Why:    built on [provideSurplusRepository], [provideGoalRepository] and
+     *         [provideEmergencyFundRepository] — resolving any of those again would give the dashboard
+     *         and the goals screen two answers to one question. **This binding is the base of the
+     *         pair**: [provideGoalWaterfallRepository] consumes what this ranking leaves (ADR-0038).
+     *         Takes the gated [CfoDatabase] only for what nobody resolved before, each debt's rate,
+     *         so a card's APR is no more readable before
      *         an unlock than its balance is (SEC-002). Follows the demo (ADR-0006) like every
      *         profile-scoped binding here.
      * Result: an [OrderOfOperationsRepository].
@@ -428,7 +444,8 @@ object RepositoryModule {
     @Suppress("LongParameterList") // Hilt reads the signature; each argument is one binding.
     fun provideOrderOfOperationsRepository(
         database: CfoDatabase,
-        waterfall: GoalWaterfallRepository,
+        goals: GoalRepository,
+        surplus: SurplusRepository,
         emergencyFund: EmergencyFundRepository,
         engine: OrderOfOperationsEngine,
         clock: Clock,
@@ -437,7 +454,8 @@ object RepositoryModule {
     ): OrderOfOperationsRepository =
         RepositoryFactory.orderOfOperations(
             database = database,
-            waterfall = waterfall,
+            goals = goals,
+            surplus = surplus,
             emergencyFund = emergencyFund,
             engine = engine,
             clock = clock,

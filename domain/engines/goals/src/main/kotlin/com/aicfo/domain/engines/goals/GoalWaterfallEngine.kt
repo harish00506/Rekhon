@@ -82,6 +82,13 @@ interface GoalWaterfallEngine {
  *   exists, funding a holiday ahead of it is the mistake that costs the most.
  * @property emergencyGateMonths `RULE-EMERG-FIRST.min_runway_months`, resolved by the caller. See
  *   [GoalWaterfall] on why the *number* lives outside this module while the *citation* lives in it.
+ * @property claimedBeforeGoals what the stages **above** goals in §36's order already took from the
+ *   month — the starter buffer, high-interest debt and the emergency fund (issue 7.5's AI-FOO).
+ *   Zero before AI-FOO existed, and zero in any test that does not care. It is an **echo, not a
+ *   term**: [monthlySurplus] is already net of it, so nothing here subtracts it again. It exists so
+ *   the goals card can explain a smaller figure rather than appearing to lose money (ADR-0038).
+ * @property grossSurplus the month's whole surplus before those stages took their share, carried for
+ *   the same reason. Null when it was never known, or when it equals [monthlySurplus].
  * @property today the day to reckon from, already resolved in the profile's time zone.
  * @property nowUtcMillis the caller's instant, stamped onto the provenance and **never read as a
  *   clock** — the shape every input in this codebase uses.
@@ -93,6 +100,8 @@ data class GoalWaterfallInput(
     val emergencyTopUpMonthly: Money = Money.ZERO,
     val emergencyRunwayMonthsBps: Int? = null,
     val emergencyGateMonths: Int = DEFAULT_EMERGENCY_GATE_MONTHS,
+    val claimedBeforeGoals: Money = Money.ZERO,
+    val grossSurplus: Money? = null,
     val today: LocalDate,
     val nowUtcMillis: Long = 0L,
 ) {
@@ -108,6 +117,9 @@ data class GoalWaterfallInput(
         require(emergencyGateMonths >= 0) {
             "RULE-EMERG-FIRST's minimum runway is a count of months and must not be negative, was " +
                 "$emergencyGateMonths"
+        }
+        require(claimedBeforeGoals >= Money.ZERO) {
+            "What the earlier stages took is a magnitude, was $claimedBeforeGoals"
         }
         require(surplusBasis == SurplusBasis.NONE || monthlySurplus != null) {
             "A surplus basis of $surplusBasis claims a figure was resolved, but none was given: " +
@@ -161,6 +173,11 @@ data class GoalWaterfallInput(
  * @property unallocated what is left after every claim is met. Positive only when the month has more
  *   surplus than the goals and the buffer can absorb — which is the app's cue that the money is
  *   idle, not that the plan is finished.
+ * @property claimedBeforeGoals what §36's earlier stages took before goals were considered — the
+ *   buffer, high-interest debt and the emergency fund. Zero when nothing did. [monthlySurplus] is
+ *   already net of it; this is what lets the card say *why* it is smaller (issue 7.5, ADR-0038).
+ * @property grossSurplus the whole surplus before those stages, or null when it was never known or
+ *   is the same figure.
  * @property provenance which engine, which version, when, and which rules — the citation is required
  *   by the `init` below, so a plan that cannot name the rules that shaped it cannot be constructed.
  */
@@ -175,6 +192,8 @@ data class GoalWaterfall(
     val emergencyAllocated: Money,
     val lines: List<GoalAllocation>,
     val unallocated: Money,
+    val claimedBeforeGoals: Money = Money.ZERO,
+    val grossSurplus: Money? = null,
     val provenance: EngineProvenance,
 ) {
     init {
