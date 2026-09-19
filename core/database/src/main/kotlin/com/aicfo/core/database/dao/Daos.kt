@@ -380,6 +380,23 @@ interface AccountDao {
 // Splitting by query kind would put two DAOs on one table, which is worse than the count.
 @Suppress("TooManyFunctions")
 interface TransactionDao {
+    /**
+     * Observes the first day the profile's ledger has anything on (issue 9.2; AI-FCT).
+     *
+     * Why:  the forecast's spend model must tell "no spend that day" from "the app was not in use
+     *       yet". Inside the ledger's life a day without a row is a zero; before its first row the day
+     *       is unknown, and averaging it in as zero would understate a new user's spending by however
+     *       long the lookback outruns their history.
+     * Result: the earliest live `booked_on_iso_date`, or `null` for an empty ledger.
+     * Input:  [profileId]. Output: `Flow<String?>` — an ISO date (TIM-002).
+     * Changelog: 2026-09-19 — Created for issue 9.2. A read only; no schema change.
+     */
+    @Query(
+        "SELECT MIN(booked_on_iso_date) FROM transactions " +
+            "WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL",
+    )
+    fun observeFirstBookedIsoDate(profileId: String): Flow<String?>
+
     /** Inserts a transaction, replacing one with the same id. Input: [transaction]. Output: none. */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(transaction: TransactionEntity)

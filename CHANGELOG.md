@@ -11,6 +11,38 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The deterministic engine layer: fixed/variable + nature, cash-flow forecast, seasonality, health
 > score, the Insight Orchestrator, notifications, and the numeric guardrail.
 
+### [0.9.2] — Issue 9.2: Cash-flow forecast (AI-FCT)  (2026-09-19)
+
+- **Implemented:** `:domain:engines:forecast` (`AI-FCT` 1.0) replaces issue 1.1's placeholder. It
+  gives a 90-day daily forecast of the consolidated liquid balance, with **P10/P50/P90** bands from
+  500 seeded resamplings of past residuals, and flags **crunch days** where P50 is below the ₹5,000
+  buffer (**§9.2**, **AI-FCT-001..003**, **AI-ARC-003**, **ADR-0043**).
+  - **Scheduled items:** confirmed recurring rules (3.7), streams 9.1 scored FIXED (projected on their
+    usual day), and future-dated rows.
+  - **Everyday spend:** the §9.2 trimmed mean × a weekend ratio × a pay-cycle ratio. It is taken from
+    liquid outflows with the scheduled ones removed, so nothing counts twice.
+- **Data, not code:** `RULE-FCT-METHOD` and `RULE-FCT-CRUNCH`, with rules-kb at **1.16.0**; six mirrors
+  restated it.
+- **On screen:** a dashboard card, "The next 90 days". It shows the lowest point with its likely
+  range, the crunch days or "stays above your buffer", coming in / going out / everyday, the next
+  scheduled items with their source, how much history the estimate rests on, and the rules. All of
+  it is masked by the privacy blur.
+- **Not yet** (ADR-0043):
+  - per-account forecasts and the Pro 12-month horizon;
+  - on-device snapshots and MAPE (AI-FCT-004);
+  - the crunch alert (9.6);
+  - a user buffer setting;
+  - seasonality (9.3);
+  - irregular income;
+  - EMIs not confirmed as a rule;
+  - the goals surplus switching to the forecast.
+- **Tests:** 2,712 unit tests pass, 0 skipped, including 19 behaviour tests; 11 property identities over 200 generated ledgers each; a golden
+  file from an independent decimal oracle; 5 drift and 8 repository tests; 2 ViewModel and 6 render
+  tests; 5 re-recorded baselines. The **backtest** runs 20 frozen synthetic ledgers against
+  thresholds fixed before the first run. Median 90-day spend error is **12.6%** (≤ 15%) and mean
+  P10–P90 coverage is **70.3%** (≥ 70%, a thin margin). Removing the trim and editing the KB buffer
+  were each watched go red.
+
 ### [0.9.1] — Issue 9.1: Fixed/Variable + Nature engine (AI-CLS Stage 2)  (2026-09-19)
 
 - **Implemented:** a new engine, `:domain:engines:stream` (`AI-CLS.stream` 1.0). It classifies every

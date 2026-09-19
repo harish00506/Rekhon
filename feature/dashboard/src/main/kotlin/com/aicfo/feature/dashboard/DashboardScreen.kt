@@ -126,6 +126,8 @@ fun DashboardContent(
         // Issue 9.1: what of that recurs. The outcome above says what the money became; this says
         // which of it the user is committed to next month too.
         StreamLoadSection(uiState.streamProfile)
+        // Issue 9.2: what that means for the next ninety days.
+        ForecastSection(uiState.forecast)
         // Issue 5.1: three more figures, each already real from its own repository — none computed
         // on this screen (P-03).
         CashFlowSection(uiState)

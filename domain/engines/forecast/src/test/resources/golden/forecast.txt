@@ -1,0 +1,20 @@
+# Golden file for :domain:engines:forecast (issue 9.2; AI-FCT, RULE-FCT-METHOD v1.0, rules-kb 1.16.0).
+#
+# One realistic scenario, every multiplier active: today 2026-09-19, opening ₹25,000.00; ninety days
+# of history at ₹1,000 a weekday and ₹1,800 a weekend day, ×1.3 on days 1–5 and ×0.8 on days 25–31,
+# with every tenth day (by ordinal) a zero; a monthly salary of ₹60,000 from 1 Oct, rent of ₹20,000
+# from 5 Oct, a weekly ₹500 from 22 Sep, and a one-off ₹15,000 on 10 Nov.
+#
+# THE EXPECTED VALUES WERE NOT PRODUCED BY THE ENGINE. They come from `forecast_oracle.py` beside this
+# file — §9.2 written from the SRS text in Python `decimal` at 50 digits — so a mistake in the engine's
+# arithmetic is not a mistake this file shares. The bands are not here: they depend on Kotlin's seeded
+# generator, and are covered by ForecastPropertyTest's identities instead. Amounts are paise.
+base 112000
+predicted_first_14 197935,109964,109964,109964,109964,101004,181807,181807,101004,101004,101004,134128,134128,241431
+predicted_total 12322575
+expected_day_30 2117953
+expected_day_60 302169
+expected_day_90 27425
+scheduled_count 20
+scheduled_income 18000000
+scheduled_outflow 8150000

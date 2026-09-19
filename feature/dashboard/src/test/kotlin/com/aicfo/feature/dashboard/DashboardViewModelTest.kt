@@ -50,9 +50,20 @@ class DashboardViewModelTest {
     private val archives = FakeArchiveRepository()
     private val orderOfOperations = FakeOrderOfOperationsRepository()
     private val streams = FakeStreamRepository()
+    private val forecasts = FakeForecastRepository()
 
     private fun viewModel() =
-        DashboardViewModel(budget, netWorth, transactions, budgets, safeToSpend, archives, orderOfOperations, streams)
+        DashboardViewModel(
+            budget,
+            netWorth,
+            transactions,
+            budgets,
+            safeToSpend,
+            archives,
+            orderOfOperations,
+            streams,
+            forecasts,
+        )
 
     /** `viewModelScope` runs on `Dispatchers.Main`, which has no factory on a plain JVM. */
     @Before
@@ -434,6 +445,32 @@ class DashboardViewModelTest {
             streams.fail()
 
             assertNull(vm.uiState.value.streamProfile)
+        }
+
+    // --- issue 9.2: the next ninety days (§9) ------------------------------------------------------
+
+    @Test
+    fun `the forecast reaches the screen as the engine computed it`() =
+        runTest {
+            val vm = viewModel()
+
+            forecasts.emit()
+
+            val forecast = vm.uiState.value.forecast!!
+            assertEquals(90, forecast.days.size)
+            assertEquals(Money(3 * 60_000_00L), forecast.scheduledIncome)
+            assertEquals(Money(200_00L), forecast.dailyBase)
+        }
+
+    @Test
+    fun `a refused forecast clears the card rather than showing a stale one`() =
+        runTest {
+            val vm = viewModel()
+            forecasts.emit()
+
+            forecasts.fail()
+
+            assertNull(vm.uiState.value.forecast)
         }
 
     // --- this month's cash flow (issue 5.1) ---------------------------------------------------

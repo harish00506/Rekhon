@@ -11,6 +11,7 @@
 # Changelog:
 #   2026-07-17 — Created from SRS v1.7 §7, §21.2 (module list) and the engine sections.
 #   2026-09-19 — Issue 9.1: AI-CLS.stream — Stage 2 has its own module and version (ADR-0042).
+#   2026-09-19 — Issue 9.2: AI-FCT built; its contract and inputs restated (ADR-0043).
 # =============================================================================
 
 version: "1.1"
@@ -46,8 +47,10 @@ engines:
     layer: L4
     module: ":domain:engines:forecast"
     version: "1.0"
-    contract: "FeatureSnapshot -> Forecast{P10,P50,P90 per day, crunch days}"
-    reads: [../knowledge/calendar-seasonality.json]
+    # Issue 9.2 built it (ADR-0043): §9.2's heuristic method; reads its parameters from the rulebook.
+    # The seasonality file is issue 9.3's input and contributes nothing yet.
+    contract: "opening balance + scheduled items (confirmed rules, FIXED streams, future-dated) + daily everyday spend -> CashFlowForecast{P10,P50,P90 per day, crunch days, components}"
+    reads: [../rules/rules-kb.json, ../knowledge/calendar-seasonality.json]
     srs: "§9"
 
   - id: AI-SEAS

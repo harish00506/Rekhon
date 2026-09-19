@@ -34,10 +34,10 @@ import java.time.LocalDate
  *
  * **The surplus arrives resolved, and where it comes from is not this engine's business** (ARC-005).
  * That matters more than usual here, because §15.1 asks for the *P50 forecast* surplus and
- * `:domain:engines:forecast` is still a stub — issue 9.2 was never built. `GoalWaterfallRepository`
- * substitutes the P50 of *observed* surplus and says so through [SurplusBasis]; ADR-0035 records
- * why, and what has to change when the forecast lands. Keeping the substitution on the far side of
- * this interface is what makes it a one-line change then instead of a rewrite.
+ * this was written before the forecast existed. Issue 9.2 has since built it (ADR-0043), but the
+ * goals still read the P50 of *observed* surplus, named through [SurplusBasis]; ADR-0035 records
+ * why, and switching `SurplusRepository` to the forecast is ADR-0043's recorded follow-up. Keeping
+ * the substitution on the far side of this interface is what makes it a one-line change then instead of a rewrite.
  *
  * Pure Kotlin (ARC-002); the caller supplies the day, so no wall clock is read here (TIM-001).
  */
@@ -309,8 +309,8 @@ enum class Feasibility {
 /**
  * Where the month's surplus figure came from (issue 7.3; §15.1, ADR-0035).
  *
- * Why:  §15.1 asks for the **P50 forecast** surplus, and this app has no forecast — issue 9.2's
- *       `:domain:engines:forecast` is still a placeholder. Rather than quietly substituting
+ * Why:  §15.1 asks for the **P50 forecast** surplus. When this was written the app had no forecast;
+ *       issue 9.2 built one (ADR-0043) but the goals do not read it yet. Rather than quietly substituting
  *       something else and calling it the same thing, the substitution is named on the result and
  *       shown to the user (P-02).
  * What: the three sources, best first.

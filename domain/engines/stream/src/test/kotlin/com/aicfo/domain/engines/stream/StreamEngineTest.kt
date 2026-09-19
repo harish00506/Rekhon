@@ -93,6 +93,15 @@ class StreamEngineTest {
     }
 
     @Test
+    fun `the modal day is reported, ties going to the earliest day`() {
+        val rent = classifyOne(history(monthly(day = 3, amount = 1_000L)))
+        val tied = listOf("2026-06-09", "2026-07-02", "2026-08-09", "2026-08-02").map { occurrence(it, 10_000L) }
+
+        assertEquals(3, rent.metrics!!.modalDayOfMonth)
+        assertEquals(2, classifyOne(history(tied)).metrics!!.modalDayOfMonth)
+    }
+
+    @Test
     fun `weights that do not sum to one are refused at construction`() {
         val refused = runCatching { StreamRules(cvWeightBps = 5_000) }
         assertTrue(refused.isFailure)

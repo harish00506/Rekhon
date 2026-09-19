@@ -120,3 +120,4 @@ prior (§8.2 requires the label), and "Rules: …" listing every row that fired.
 | Version | Date | Change |
 |---------|------|--------|
 | 1.0 | 2026-09-19 | Initial implementation from SRS §8.2 (issue 9.1). |
+| 1.0 | 2026-09-19 | Issue 9.2: `StreamMetrics.modalDayOfMonth` added (additive, no verdict changes). |

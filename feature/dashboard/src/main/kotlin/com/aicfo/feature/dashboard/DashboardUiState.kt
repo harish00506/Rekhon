@@ -6,6 +6,7 @@ import com.aicfo.data.repository.CashFlowSummary
 import com.aicfo.data.repository.CategoryBudget
 import com.aicfo.data.repository.CategoryBudgetAlert
 import com.aicfo.data.repository.FilteredTransaction
+import com.aicfo.domain.engines.forecast.CashFlowForecast
 import com.aicfo.domain.engines.nature.NatureBreakdown
 import com.aicfo.domain.engines.orderofoperations.OrderOfOperations
 import com.aicfo.domain.engines.safetospend.SafeToSpend
@@ -87,6 +88,13 @@ data class DashboardUiState(
      * recorded (P-03).
      */
     val streamProfile: StreamProfile? = null,
+    /**
+     * The next ninety days (issue 9.2; §9 AI-FCT).
+     *
+     * `null` until the first emission and when the forecast fails — a stale forecast shown as current
+     * would be worse than none.
+     */
+    val forecast: CashFlowForecast? = null,
     /**
      * This month's income, expense and net (issue 5.1; FR-DASH-*).
      *

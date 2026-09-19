@@ -55,7 +55,7 @@ include(":core:crypto")         // Tink / Keystore key management
 include(":core:designsystem")   // M3 theme tokens + Compose components
 
 // :domain:*                pure-Kotlin engines + use cases (ARC-002/003)
-include(":domain:engines:forecast") // representative engine stub
+include(":domain:engines:forecast") // §9 AI-FCT — 90-day liquid-balance forecast, P10/P50/P90, crunch days
 include(":domain:engines:quicksetup") // FR-ONB-002 seeds -> budget envelopes + emergency target
 include(":domain:engines:networth")    // FR-ACC-005 assets - liabilities + the daily snapshot
 include(":domain:engines:recurring")   // FR-TXN-006 proposes recurring series from the ledger

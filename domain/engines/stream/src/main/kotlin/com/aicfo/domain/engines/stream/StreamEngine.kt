@@ -143,9 +143,12 @@ enum class StreamBasis(val isEstimate: Boolean) {
  *         of the monthly totals, uncapped; [cadenceBps] — MAD of gaps ÷ median gap, uncapped;
  *         [dayLockBps] — share of occurrences within the day-lock window of the modal day;
  *         [scoreBps] — the weighted score, 0..10 000, rounded HALF_EVEN for display only (the class
- *         is decided on the exact value).
+ *         is decided on the exact value); [modalDayOfMonth] — the day the stream usually lands on,
+ *         1..31, the centre of the day-lock window (ties to the earliest).
  * Output: an immutable value.
  * Changelog: 2026-09-19 — Created for issue 9.1.
+ *   2026-09-19 — Issue 9.2 added [modalDayOfMonth], so the forecast projects a FIXED stream on the
+ *   day it actually lands. Additive: no verdict changes, so the engine stays at 1.0.
  */
 data class StreamMetrics(
     val activeMonths: Int,
@@ -153,6 +156,7 @@ data class StreamMetrics(
     val cadenceBps: Int,
     val dayLockBps: Int,
     val scoreBps: Int,
+    val modalDayOfMonth: Int,
 )
 
 /**

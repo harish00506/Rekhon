@@ -96,6 +96,8 @@ dependencies {
     // Issue 9.1: AI-CLS Stage 2. `api` — StreamProfile is what StreamRepository emits, so the
     // dashboard must be able to name it (the reasoning every engine above gives).
     api(project(":domain:engines:stream"))
+    // Issue 9.2: AI-FCT. `api` — CashFlowForecast is what ForecastRepository emits.
+    api(project(":domain:engines:forecast"))
 
     // withTransaction — the atomicity guarantee applySeeds is built on (issue 2.3).
     // api, not implementation: MarketDataApi is a parameter of RepositoryFactory.marketPrice, so

@@ -14,6 +14,7 @@ import com.aicfo.domain.engines.budget.BudgetEngine
 import com.aicfo.domain.engines.card.CardEngine
 import com.aicfo.domain.engines.classification.ClassificationEngine
 import com.aicfo.domain.engines.emergencyfund.EmergencyFundEngine
+import com.aicfo.domain.engines.forecast.ForecastEngine
 import com.aicfo.domain.engines.goals.GoalEngine
 import com.aicfo.domain.engines.goals.GoalWaterfallEngine
 import com.aicfo.domain.engines.investment.InvestmentEngine
@@ -604,6 +605,35 @@ object RepositoryFactory {
         dispatchers: DispatcherProvider,
         activeProfileId: Flow<String>,
     ): StreamRepository = RoomStreamRepository(database, engine, clock, dispatchers, activeProfileId)
+
+    /**
+     * Builds AI-FCT over the ledger (issue 9.2; §9).
+     * Why:    takes the account and stream repositories rather than re-deriving balances or streams,
+     *         so the forecast and the screens beside it agree on both (ADR-0007, ADR-0043).
+     * Result: a [ForecastRepository].
+     * Input:  [database]; [accounts]; [streams]; [engine]; [clock]; [dispatchers]; [activeProfileId].
+     * Output: [ForecastRepository].
+     * Changelog: 2026-09-19 — Created for issue 9.2.
+     */
+    @Suppress("LongParameterList") // seven sources, each one the forecast reads
+    fun forecast(
+        database: CfoDatabase,
+        accounts: AccountRepository,
+        streams: StreamRepository,
+        engine: ForecastEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        activeProfileId: Flow<String>,
+    ): ForecastRepository =
+        RoomForecastRepository(
+            database,
+            accounts,
+            streams,
+            engine,
+            clock,
+            dispatchers,
+            activeProfileId,
+        )
 
     /**
      * Builds the Safe-to-Spend store (issue 5.2; §5.2, §14, AI-STS).

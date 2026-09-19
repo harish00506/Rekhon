@@ -228,7 +228,15 @@ internal class DefaultStreamEngine : StreamEngine {
                         fraction(rules.dayLockWeightBps).multiply(dayLock, MATH)
                 return Measured(
                     score = score,
-                    metrics = StreamMetrics(monthly.size, bps(cv), bps(cadence), bps(dayLock), bps(score)),
+                    metrics =
+                        StreamMetrics(
+                            activeMonths = monthly.size,
+                            cvBps = bps(cv),
+                            cadenceBps = bps(cadence),
+                            dayLockBps = bps(dayLock),
+                            scoreBps = bps(score),
+                            modalDayOfMonth = modalDay(occurrences.map { it.bookedOn.dayOfMonth }),
+                        ),
                 )
             }
         }
@@ -298,8 +306,7 @@ private fun dayLock(
     days: List<Int>,
     windowDays: Int,
 ): BigDecimal {
-    val counts = days.groupingBy { it }.eachCount()
-    val modal = counts.entries.sortedWith(compareBy({ -it.value }, { it.key })).first().key
+    val modal = modalDay(days)
     val within =
         days.count { day ->
             val distance = kotlin.math.abs(day - modal)
@@ -307,6 +314,16 @@ private fun dayLock(
         }
     return BigDecimal.valueOf(within.toLong()).divide(BigDecimal.valueOf(days.size.toLong()), MATH)
 }
+
+/**
+ * The most common day of the month, ties to the earliest (P-08: never iteration order).
+ * Why:    shared by [dayLock] and [StreamMetrics.modalDayOfMonth], so the day the lock is measured
+ *         around is the day a forecast projects the stream on (issue 9.2).
+ * Result: 1..31. Input: [days] — at least one. Output: [Int].
+ * Changelog: 2026-09-19 — Extracted for issue 9.2.
+ */
+private fun modalDay(days: List<Int>): Int =
+    days.groupingBy { it }.eachCount().entries.sortedWith(compareBy({ -it.value }, { it.key })).first().key
 
 /** The day-of-month cycle the day-lock distance wraps over. */
 private const val DAYS_IN_CYCLE = 31

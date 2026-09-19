@@ -54,6 +54,9 @@ internal fun populatedDashboardState(): DashboardUiState =
         // Issue 9.1: the fixed/semi-fixed/flexible line, with an estimate in it, so the blur test
         // proves its three amounts are masked and the screenshots show the note.
         streamProfile = classify(fixtureStreams()),
+        // Issue 9.2: a forecast with a crunch in it, so the blur test proves its amounts are masked
+        // and the screenshots show the negative line.
+        forecast = fixtureForecast(opening = 4_000_00L),
     )
 
 /**
