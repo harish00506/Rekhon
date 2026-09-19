@@ -11,6 +11,7 @@
     2026-09-18 — Issue 8.2 (restore on fresh device) merged to dev.
     2026-09-19 — Issue 8.3 (restore drill) merged to dev; Epic 8 complete.
     2026-09-19 — Issue 9.1 (AI-CLS Stage 2) merged to dev; Epic 9 opened at 0.9.0.
+    2026-09-19 — Issue 9.2 (AI-FCT forecast) merged to dev.
 -->
 
 # AI Personal CFO — Project Memory
@@ -22,15 +23,16 @@
 
 ## Current state
 
-- **Version:** `0.9.1` (see [`../VERSION`](../VERSION)) · **Phase:** 2–3. **Schema is v22**, unchanged by 8.1.
-- **Epics 1–8 are done; Epic 9 is open** — 9.1 (AI-CLS Stage 2, stream classification) shipped;
-  **9.2 (the cash-flow forecast) is next**, and it is the one the goals work kept waiting on. Epic 9 (AI core engines, incl. the 9.2 forecast) is
+- **Version:** `0.9.2` (see [`../VERSION`](../VERSION)) · **Phase:** 2–3. **Schema is v22**, unchanged by 8.1.
+- **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification) and 9.2 (the cash-flow
+  forecast) shipped; **9.3 (seasonality) is next** and plugs into the forecast's zero seasonal term. Epic 9 (AI core engines, incl. the 9.2 forecast) is
   still the one the goals work kept waiting on.
-- **Currently working file:** none. Issues **8.1–8.3 and 9.1 are merged to `dev`**
+- **Currently working file:** none. Issues **8.1–8.3, 9.1 and 9.2 are merged to `dev`**
   ([8.1 tracker](issues/8.1-e2ee-backup-argon2id-aes-256-gcm-tracker.md), ADR-0039;
   [8.2 tracker](issues/8.2-restore-on-fresh-device-tracker.md), ADR-0040;
   [8.3 tracker](issues/8.3-backup-restore-drill-tracker.md), ADR-0041;
-  [9.1 tracker](issues/9.1-fixed-variable-nature-engine-ai-cls-stage-2-tracker.md), ADR-0042).
+  [9.1 tracker](issues/9.1-fixed-variable-nature-engine-ai-cls-stage-2-tracker.md), ADR-0042;
+  [9.2 tracker](issues/9.2-cash-flow-forecast-ai-fct-tracker.md), ADR-0043).
 - **`origin/dev` is still at `6afa5f0`** — local `dev` is well ahead (7.4, 7.5, the card APR field,
   the FOO/goals agreement, 8.1 and their records),
   and **the push is blocked, not skipped**: this machine has no GitHub credentials (no helper, no
@@ -41,10 +43,19 @@
   **`CfoTest`** (API 36, Google APIs x86_64).
 - **Check `git log dev` against `VERSION` before starting an issue**, not just the issue tracker.
   `dev` was two issues behind once and nobody noticed.
-- **Epic 9 was skipped, and Epic 7 paid for it twice.** `:domain:engines:forecast` is still issue
-  1.1's placeholder, so 7.3 substituted an *observed* P50 surplus for §15.1's *forecast* one
-  (ADR-0035), and 7.5 reuses that same figure (ADR-0037). When 9.2 lands, the change is one place:
-  `GoalWaterfallRepository`.
+- **The forecast exists now (9.2), but the goals still use the observed P50 surplus** (ADR-0035,
+  ADR-0037). Switching `SurplusRepository` to `ForecastRepository` is ADR-0043's recorded follow-up.
+
+### What 9.2 changed that a future issue must know
+
+- **`ForecastRepository.observeForecast()`** — 90 days, P10/P50/P90, crunch days, components. Its
+  scheduled items are confirmed rules + FIXED streams + future-dated rows; its everyday spend is
+  liquid outflow minus those. **Anything scheduled elsewhere must also be removed from the pool.**
+- **The backtest coverage gate sits at 70.3% against 70%.** A model change that lowers it fails the
+  build — that is the gate working; do not relax it.
+- **rules-kb is 1.16.0**; six `*Rules.kt` mirrors restate it. `LIQUID_ACCOUNT_TYPES` is the one
+  liquid definition (emergency fund and forecast).
+- **The seasonal term is zero** until 9.3; the crunch alert waits for 9.6.
 
 ### What 9.1 changed that a future issue must know
 

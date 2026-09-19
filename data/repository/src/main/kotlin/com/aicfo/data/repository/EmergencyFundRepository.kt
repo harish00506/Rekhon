@@ -4,7 +4,6 @@ import com.aicfo.core.common.Clock
 import com.aicfo.core.common.DispatcherProvider
 import com.aicfo.core.common.Ok
 import com.aicfo.core.model.Account
-import com.aicfo.core.model.AccountType
 import com.aicfo.core.model.Money
 import com.aicfo.domain.engines.emergencyfund.EmergencyFundEngine
 import com.aicfo.domain.engines.emergencyfund.EmergencyFundInput
@@ -203,7 +202,7 @@ internal class RoomEmergencyFundRepository(
          * schema does not have — an `INVESTMENT` row is an FD or an equity fund or a PPF lock-in,
          * and the column that would tell them apart is a future issue (ADR-0034).
          */
-        val LIQUID_TYPES = setOf(AccountType.BANK, AccountType.CASH)
+        val LIQUID_TYPES = LIQUID_ACCOUNT_TYPES // shared with the forecast (issue 9.2)
 
         /**
          * What counted as essential, for the evidence §10.1 requires.

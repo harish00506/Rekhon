@@ -17,6 +17,7 @@ import com.aicfo.data.repository.CategoryRepository
 import com.aicfo.data.repository.CreditCardRepository
 import com.aicfo.data.repository.DemoModeRepository
 import com.aicfo.data.repository.EmergencyFundRepository
+import com.aicfo.data.repository.ForecastRepository
 import com.aicfo.data.repository.GoalContributionRepository
 import com.aicfo.data.repository.GoalRepository
 import com.aicfo.data.repository.GoalWaterfallRepository
@@ -38,6 +39,8 @@ import com.aicfo.domain.engines.budget.BudgetEngine
 import com.aicfo.domain.engines.card.CardEngine
 import com.aicfo.domain.engines.classification.ClassificationEngine
 import com.aicfo.domain.engines.emergencyfund.EmergencyFundEngine
+import com.aicfo.domain.engines.forecast.ForecastEngine
+import com.aicfo.domain.engines.forecast.ForecastEngineFactory
 import com.aicfo.domain.engines.goals.GoalEngine
 import com.aicfo.domain.engines.goals.GoalWaterfallEngine
 import com.aicfo.domain.engines.investment.InvestmentEngine
@@ -516,6 +519,40 @@ object RepositoryModule {
         dispatchers: DispatcherProvider,
         demoMode: DemoModeRepository,
     ): StreamRepository = RepositoryFactory.streams(database, engine, clock, dispatchers, demoMode.activeProfileId)
+
+    /**
+     * AI-FCT (issue 9.2; §9).
+     * Why:    stateless and pure, so one instance serves every caller (ARC-003).
+     * Result: a [ForecastEngine]. Input: none. Output: the engine.
+     * Changelog: 2026-09-19 — Created for issue 9.2.
+     */
+    @Provides
+    @Singleton
+    fun provideForecastEngine(): ForecastEngine = ForecastEngineFactory.create()
+
+    /**
+     * The 90-day cash-flow forecast (issue 9.2; §9).
+     * Why:    built over the account and stream repositories, so the forecast's opening balance is
+     *         the accounts screen's and its FIXED streams are the dashboard's (ADR-0007, ADR-0043);
+     *         follows the demo (ADR-0006).
+     * Result: a [ForecastRepository].
+     * Input:  [database]; [accounts]; [streams]; [engine]; [clock]; [dispatchers]; [demoMode].
+     * Output: the repository.
+     * Changelog: 2026-09-19 — Created for issue 9.2.
+     */
+    @Provides
+    @Singleton
+    @Suppress("LongParameterList") // seven, each one source the forecast reads
+    fun provideForecastRepository(
+        database: CfoDatabase,
+        accounts: AccountRepository,
+        streams: StreamRepository,
+        engine: ForecastEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        demoMode: DemoModeRepository,
+    ): ForecastRepository =
+        RepositoryFactory.forecast(database, accounts, streams, engine, clock, dispatchers, demoMode.activeProfileId)
 
     /**
      * The end-to-end-encrypted backup store (issue 8.1; SEC-005, §23.3, P-01).

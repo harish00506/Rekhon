@@ -8,6 +8,7 @@ import com.aicfo.core.common.fold
 import com.aicfo.core.common.toAppError
 import com.aicfo.data.repository.ArchiveRepository
 import com.aicfo.data.repository.BudgetRepository
+import com.aicfo.data.repository.ForecastRepository
 import com.aicfo.data.repository.NetWorthRepository
 import com.aicfo.data.repository.OrderOfOperationsRepository
 import com.aicfo.data.repository.QuickSetupRepository
@@ -68,7 +69,7 @@ import javax.inject.Inject
 // ViewModels for one screen and two StateFlows for one UiState, which ARC-004 exists to prevent.
 // LongParameterList for the same reason (issue 7.5): Hilt reads the constructor, and each argument is
 // one repository behind one figure on the screen — the next-best-rupee card brought the seventh, and
-// issue 9.1's fixed/flexible split the eighth.
+// issue 9.1's fixed/flexible split the eighth, issue 9.2's forecast the ninth.
 @Suppress("TooManyFunctions", "LongParameterList")
 class DashboardViewModel
     @Inject
@@ -81,6 +82,7 @@ class DashboardViewModel
         private val archiveRepository: ArchiveRepository,
         private val orderOfOperationsRepository: OrderOfOperationsRepository,
         private val streamRepository: StreamRepository,
+        private val forecastRepository: ForecastRepository,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(DashboardUiState())
 
@@ -102,6 +104,7 @@ class DashboardViewModel
             observeRecentActivity()
             observeOrderOfOperations()
             observeStreams()
+            observeForecast()
         }
 
         /**
@@ -219,6 +222,20 @@ class DashboardViewModel
             transactionRepository.observeNatureBreakdown()
                 .onEach { breakdown -> _uiState.update { it.copy(natureBreakdown = breakdown) } }
                 .catch { _uiState.update { it.copy(natureBreakdown = null) } }
+                .launchIn(viewModelScope)
+        }
+
+        /**
+         * Keeps the 90-day forecast in step with the ledger (issue 9.2; §9).
+         * Why:    a failure clears the card rather than raising a banner, as [observeStreams] does.
+         * Result: [uiState] carries the forecast, or `null`.
+         * Input:  none. Output: none (launches a collector).
+         * Changelog: 2026-09-19 — Created for issue 9.2.
+         */
+        private fun observeForecast() {
+            forecastRepository.observeForecast()
+                .onEach { result -> _uiState.update { it.copy(forecast = (result as? Ok)?.value) } }
+                .catch { _uiState.update { it.copy(forecast = null) } }
                 .launchIn(viewModelScope)
         }
 

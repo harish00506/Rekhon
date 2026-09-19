@@ -17,6 +17,7 @@
     2026-09-18 — Issue 8.1 added §2.06: the encrypted backup. Shape A, wrapped around §2.05's export.
         Issue 8.2 added its restore, wrapped around §2.05's import, and the import's profile check.
     2026-09-19 — Issue 9.1 added §2.07: AI-CLS Stage 2 on the dashboard.
+    2026-09-19 — Issue 9.2 added §2.08: the 90-day forecast.
     2026-09-03 — Issue 7.3 added §2.6, the goal waterfall. Still Shape A — a screen — but the first
         read assembled from four repositories, and the first write driven by a gesture, so it is
         traced beside §2.5 rather than folded into it.
@@ -358,6 +359,31 @@ DashboardViewModel.observeStreams()
        }
     ⇣  Result<StreamProfile>  →  uiState.streamProfile  →  StreamLoadSection
        "Fixed · Semi-fixed · Flexible", estimate note, "Rules: CLS-STR-… CLS-CAT-…"   (masked when blurred)
+```
+
+### 2.08 · The next 90 days — AI-FCT (issue 9.2)
+
+Shape A. The one read that joins four repositories' worth of sources — and it takes balances and
+streams from their own repositories rather than re-deriving them (ADR-0007, ADR-0043).
+
+```
+DashboardViewModel.observeForecast()
+└─ ForecastRepository.observeForecast()              data/repository — ARC-005
+    ├─ today = clock.today(); seed = today.toEpochDay()                  (TIM-001, P-08)
+    └─ combine(
+         AccountRepository.observeAccounts()          opening = Σ live bank + cash balances
+         StreamRepository.observeStreams()            §2.07 — FIXED streams → monthly commitments
+         recurringRuleDao().observeForProfile()       confirmed rules → commitments; Obligations.of
+         categoryDao().observeForProfile()            names for FIXED streams / one-offs
+         transactionDao().observeFirstBookedIsoDate() where "unknown" ends
+         transactionDao().observeNatureCandidates(today−90 … today+90)
+           ├─ ≤ today: liquid outflows − liquid↔liquid transfers − scheduled rows → dailySpend
+           └─ > today: liquid rows → one-offs (future-dated)
+       ) → ForecastEngine.forecast(ForecastInput)     domain/engines/forecast — pure
+            ├─ project commitments by cadence from their anchors
+            ├─ SpendModel.fit: trimmed mean × weekend ratio × pay-cycle ratio; residuals
+            └─ Bands.simulate: 500 seeded paths → P10/P50/P90; crunch = P50 < buffer
+    ⇣  Result<CashFlowForecast> → uiState.forecast → ForecastSection   (masked when blurred)
 ```
 
 ### 2.1 · The dashboard's headline figure (issue 5.2)

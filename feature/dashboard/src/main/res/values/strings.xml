@@ -77,6 +77,31 @@
         months of history. It improves as you record more.</string>
     <string name="dashboard_streams_rules">Rules: %1$s</string>
 
+    <!-- Issue 9.2 (§9, AI-FCT): the next ninety days. "Likely between" is the P10–P90 band, said as a
+         range rather than as percentiles. -->
+    <string name="dashboard_forecast_label">The next 90 days</string>
+    <string name="dashboard_forecast_lowest">Lowest point: %1$s on %2$s (likely between %3$s and %4$s)</string>
+    <string name="dashboard_forecast_no_crunch">Stays above your %1$s buffer every day.</string>
+    <plurals name="dashboard_forecast_crunch">
+        <item quantity="one">Below your %2$s buffer on %1$d day, first on %3$s.</item>
+        <item quantity="other">Below your %2$s buffer on %1$d days, first on %3$s.</item>
+    </plurals>
+    <string name="dashboard_forecast_components">Coming in %1$s · Going out %2$s · Everyday spending %3$s</string>
+    <string name="dashboard_forecast_item">%1$s · %2$s %3$s (%4$s)</string>
+    <string name="dashboard_forecast_source_rule">repeats</string>
+    <string name="dashboard_forecast_source_fixed">fixed each month</string>
+    <string name="dashboard_forecast_source_future">scheduled</string>
+    <string name="dashboard_forecast_unnamed_rule">A repeating payment</string>
+    <string name="dashboard_forecast_unnamed_fixed">A fixed monthly cost</string>
+    <string name="dashboard_forecast_unnamed_future">A scheduled payment</string>
+    <plurals name="dashboard_forecast_history">
+        <item quantity="one">Everyday spending is estimated from %1$d day of history. Income counts only repeats you have confirmed.</item>
+        <item quantity="other">Everyday spending is estimated from %1$d days of history. Income counts only repeats you have confirmed.</item>
+    </plurals>
+    <!-- English never selects a plural "zero" form, so no history has its own string. -->
+    <string name="dashboard_forecast_no_history">No spending history yet, so everyday spending is not predicted. Income counts only repeats you have confirmed.</string>
+    <string name="dashboard_forecast_rules">Rules: %1$s</string>
+
     <!-- Issue 5.1 — this month's cash flow, beside the plan/actual pair above it. -->
     <string name="dashboard_cash_flow_label">This month\'s cash flow</string>
     <string name="dashboard_cash_flow_values">Received %1$s · Spent %2$s</string>
