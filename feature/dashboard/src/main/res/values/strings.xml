@@ -69,6 +69,13 @@
     <string name="dashboard_actual_label">This month, actually</string>
     <string name="dashboard_actual_values">Needs %1$s · Wants %2$s · Kept %3$s</string>
     <string name="dashboard_actual_debt_note">Loan repayments are shown separately and aren\'t counted as spending yet.</string>
+    <!-- Issue 9.1 (§8.2, AI-CLS Stage 2): what recurs. "Flexible" rather than "variable" — the word
+         a person uses for spending they can cut. -->
+    <string name="dashboard_streams_label">Every month, typically</string>
+    <string name="dashboard_streams_values">Fixed %1$s · Semi-fixed %2$s · Flexible %3$s</string>
+    <string name="dashboard_streams_estimate">Partly an estimate: some of this has less than two
+        months of history. It improves as you record more.</string>
+    <string name="dashboard_streams_rules">Rules: %1$s</string>
 
     <!-- Issue 5.1 — this month's cash flow, beside the plan/actual pair above it. -->
     <string name="dashboard_cash_flow_label">This month\'s cash flow</string>

@@ -1,0 +1,46 @@
+# Golden file for :domain:engines:stream (issue 9.1; AI-CLS Stage 2, §8.2, CLS-STR-001..004 v1.0,
+# classification-kb.json v1.4).
+#
+# Every record is one stream, classified alone over the window 2026-03-01 .. 2026-08-31.
+# Amounts are PAISE (MNY-001). Ratios are BASIS POINTS (MNY-002): 10 000 is 100%.
+#
+# THE EXPECTED VALUES WERE NOT PRODUCED BY THE ENGINE. They come from an independent oracle — the
+# §8.2 formula written literally in Python floating point with `statistics.median` — so a mistake
+# the engine's integer arithmetic makes is not a mistake this file shares. The oracle also checked
+# that no measured value sits within half a basis point of a rounding edge, where float and exact
+# arithmetic could legitimately disagree.
+#
+# Format (one record per line, ` | ` separated):
+#   label | priorKey or - | knownObligation yes/no | pin or - | class | basis |
+#   n/cvBps/cadenceBps/dayLockBps/scoreBps  (or - when fewer than two months had activity) |
+#   typicalMonthly paise | date:paise,date:paise,...
+#
+# What the records pin, beyond "the formula works":
+#   * perfect-score-in-two-months: payments on the 1st and 2nd of two months score a perfect 10 000
+#     and are still SEMI_FIXED, because FIXED also needs n >= 3 — the half of CLS-STR-001 a
+#     score-only implementation drops. (subscription-two-months cannot show this: two monthly
+#     payments leave one gap, cadence is the worst possible, and 6 500 is below the line anyway. An
+#     earlier draft of this file claimed it did, and a mutation removing the n >= 3 check passed.)
+#   * irregular-but-a-known-obligation: VARIABLE by score, FIXED by CLS-STR-002 — the metrics are
+#     still reported, so the screen can say "irregular, but you told us it is a commitment";
+#   * pin-beats-obligation: a pin wins even over a known obligation (CLS-STR-003 is step 1);
+#   * month-end-wrap: payments on the 30th, 31st and 1st are within three days of each other;
+#   * outside-window-ignored: February and September rows are dropped, not counted;
+#   * the two even-median records: 100.5 paise rounds to 100 and 101.5 to 102 (HALF_EVEN);
+#   * same-day-duplicates: a median gap of zero days is "no cadence", scored 10 000.
+rent-six-months-same-day | rent | no | - | FIXED | SCORED | 6/0/0/10000/10000 | 2500000 | 2026-03-01:2500000,2026-04-01:2500000,2026-05-01:2500000,2026-06-01:2500000,2026-07-01:2500000,2026-08-01:2500000
+subscription-three-months | subscriptions | no | - | FIXED | SCORED | 3/0/164/10000/9943 | 64900 | 2026-06-03:64900,2026-07-03:64900,2026-08-03:64900
+subscription-two-months-single-gap | subscriptions | no | - | SEMI_FIXED | SCORED | 2/0/10000/10000/6500 | 64900 | 2026-07-03:64900,2026-08-03:64900
+perfect-score-in-two-months-is-not-fixed | - | no | - | SEMI_FIXED | SCORED | 2/0/0/10000/10000 | 40000 | 2026-07-01:20000,2026-07-02:20000,2026-08-01:20000,2026-08-02:20000
+groceries-semi-fixed | groceries | no | - | SEMI_FIXED | SCORED | 6/2461/476/2000/7126 | 666500 | 2026-03-02:310000,2026-03-19:420000,2026-04-06:365000,2026-04-27:290000,2026-05-11:455000,2026-06-01:330000,2026-06-22:398000,2026-07-14:342000,2026-08-05:377000,2026-08-26:301000
+dining-variable | dining | no | - | VARIABLE | SCORED | 4/3729/8333/4286/4262 | 231500 | 2026-03-04:45000,2026-03-09:120000,2026-03-28:38000,2026-05-16:260000,2026-06-02:52000,2026-06-03:41000,2026-08-21:310000
+utilities-one-month-prior | utilities | no | - | SEMI_FIXED | COLD_START_PRIOR | - | 184000 | 2026-08-10:184000
+custom-one-month-no-prior | - | no | - | VARIABLE | COLD_START_NO_PRIOR | - | 50000 | 2026-08-12:50000
+irregular-but-a-known-obligation | dining | yes | - | FIXED | KNOWN_OBLIGATION | 4/3729/8333/4286/4262 | 231500 | 2026-03-04:45000,2026-03-09:120000,2026-03-28:38000,2026-05-16:260000,2026-06-02:52000,2026-06-03:41000,2026-08-21:310000
+rent-pinned-variable | rent | no | VARIABLE | VARIABLE | PINNED | 6/0/0/10000/10000 | 2500000 | 2026-03-01:2500000,2026-04-01:2500000,2026-05-01:2500000,2026-06-01:2500000,2026-07-01:2500000,2026-08-01:2500000
+pin-beats-obligation | rent | yes | SEMI_FIXED | SEMI_FIXED | PINNED | 6/0/0/10000/10000 | 2500000 | 2026-03-01:2500000,2026-04-01:2500000,2026-05-01:2500000,2026-06-01:2500000,2026-07-01:2500000,2026-08-01:2500000
+month-end-wrap-still-day-locked | - | no | - | FIXED | SCORED | 4/3333/323/10000/8387 | 1500000 | 2026-03-30:1000000,2026-05-01:1000000,2026-05-31:1000000,2026-07-01:1000000,2026-07-30:1000000,2026-08-31:1000000
+outside-window-ignored | rent | no | - | FIXED | SCORED | 6/0/0/10000/10000 | 2500000 | 2026-02-01:2500000,2026-03-01:2500000,2026-04-01:2500000,2026-05-01:2500000,2026-06-01:2500000,2026-07-01:2500000,2026-08-01:2500000,2026-09-01:2500000
+even-median-rounds-half-even-down | - | no | - | SEMI_FIXED | SCORED | 2/50/10000/10000/6478 | 100 | 2026-07-05:100,2026-08-05:101
+even-median-rounds-half-even-up | - | no | - | SEMI_FIXED | SCORED | 2/49/10000/10000/6478 | 102 | 2026-07-05:101,2026-08-05:102
+same-day-duplicates-no-cadence | - | no | - | SEMI_FIXED | SCORED | 2/0/10000/10000/6500 | 1000 | 2026-07-05:500,2026-07-05:500,2026-08-05:500,2026-08-05:500

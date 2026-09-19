@@ -122,8 +122,11 @@ data class NatureRules(
         /** §8.3.1 step 6 — the modifier: unusually large for this category. */
         val UNUSUAL_AMOUNT = RuleCitation("CLS-NAT-006", "1.0")
 
-        /** The knowledge-base file these steps and thresholds were copied from, as `_meta.version`. */
-        const val KB_VERSION = "1.3"
+        /**
+         * The knowledge-base file these steps and thresholds were copied from, as `_meta.version`.
+         * Changelog: 2026-09-19 — `"1.4"` for issue 9.1 (`CLS-STR-*` rows); nothing mirrored here changed.
+         */
+        const val KB_VERSION = "1.4"
     }
 }
 

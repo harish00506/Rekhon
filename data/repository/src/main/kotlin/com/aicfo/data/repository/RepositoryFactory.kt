@@ -25,6 +25,7 @@ import com.aicfo.domain.engines.receipt.ReceiptEngine
 import com.aicfo.domain.engines.recurring.RecurringEngine
 import com.aicfo.domain.engines.safetospend.SafeToSpendEngine
 import com.aicfo.domain.engines.sms.SmsEngine
+import com.aicfo.domain.engines.stream.StreamEngine
 import com.aicfo.ml.ocr.ReceiptTextRecognizer
 import kotlinx.coroutines.flow.Flow
 
@@ -585,6 +586,24 @@ object RepositoryFactory {
         audit: AuditLogRepository,
         dispatchers: DispatcherProvider,
     ): BackupRepository = EncryptedBackupRepository(archive, cipher, consents, audit, dispatchers)
+
+    /**
+     * Builds AI-CLS Stage 2 over the ledger (issue 9.1; §8.2).
+     * Why:    takes the engine rather than building one (ARC-003, P-03): the repository joins, the
+     *         engine scores.
+     * Result: a [StreamRepository].
+     * Input:  [database]; [engine]; [clock] — the six-closed-month window (TIM-001); [dispatchers];
+     *         [activeProfileId] — follows the demo (ADR-0006).
+     * Output: [StreamRepository].
+     * Changelog: 2026-09-19 — Created for issue 9.1.
+     */
+    fun streams(
+        database: CfoDatabase,
+        engine: StreamEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        activeProfileId: Flow<String>,
+    ): StreamRepository = RoomStreamRepository(database, engine, clock, dispatchers, activeProfileId)
 
     /**
      * Builds the Safe-to-Spend store (issue 5.2; §5.2, §14, AI-STS).

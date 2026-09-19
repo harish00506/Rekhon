@@ -51,6 +51,9 @@ internal fun populatedDashboardState(): DashboardUiState =
         // Issue 7.5: a real ranking with amounts on the card, so the privacy-blur test proves the
         // next-best-rupee card hides them too, and the screenshots show it populated.
         orderOfOperations = rank(cardDebtInput()),
+        // Issue 9.1: the fixed/semi-fixed/flexible line, with an estimate in it, so the blur test
+        // proves its three amounts are masked and the screenshots show the note.
+        streamProfile = classify(fixtureStreams()),
     )
 
 /**

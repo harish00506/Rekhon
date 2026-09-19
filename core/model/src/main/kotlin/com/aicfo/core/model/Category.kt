@@ -183,6 +183,8 @@ object CategorySeed {
      *            file states are allowed to describe different edits — they are not allowed to differ.
      *            2026-08-10 — `"1.3"` for issue 4.3 (`CLS-NAT-*` ids and `stage_nature`); again none
      *            of the rows below changed.
+     *            2026-09-19 — `"1.4"` for issue 9.1 (`CLS-STR-*` rows on `stream_classification`);
+     *            none of the rows below changed.
      */
-    const val KB_VERSION = "1.3"
+    const val KB_VERSION = "1.4"
 }

@@ -49,9 +49,10 @@ class DashboardViewModelTest {
     private val safeToSpend = FakeSafeToSpendRepository()
     private val archives = FakeArchiveRepository()
     private val orderOfOperations = FakeOrderOfOperationsRepository()
+    private val streams = FakeStreamRepository()
 
     private fun viewModel() =
-        DashboardViewModel(budget, netWorth, transactions, budgets, safeToSpend, archives, orderOfOperations)
+        DashboardViewModel(budget, netWorth, transactions, budgets, safeToSpend, archives, orderOfOperations, streams)
 
     /** `viewModelScope` runs on `Dispatchers.Main`, which has no factory on a plain JVM. */
     @Before
@@ -405,6 +406,34 @@ class DashboardViewModelTest {
 
             assertNull(state.natureBreakdown)
             assertNull("a failed nature read raised a banner", state.errorCode)
+        }
+
+    // --- issue 9.1: what recurs (§8.2) -------------------------------------------------------------
+
+    @Test
+    fun `the stream profile reaches the screen as the engine computed it`() =
+        runTest {
+            val vm = viewModel()
+
+            streams.emit(fixtureStreams())
+
+            val profile = vm.uiState.value.streamProfile!!
+            // Rent is measured FIXED; one month of utilities is SEMI_FIXED from the category prior.
+            assertEquals(Money(25_000_00L), profile.fixedLoad)
+            assertEquals(Money(1_840_00L), profile.semiFixedExpected)
+            assertEquals(Money(0L), profile.variableBudgetable)
+            assertTrue("the prior-based stream must be flagged as an estimate", profile.hasEstimates)
+        }
+
+    @Test
+    fun `a refused classification clears the section rather than showing a stale one`() =
+        runTest {
+            val vm = viewModel()
+            streams.emit(fixtureStreams())
+
+            streams.fail()
+
+            assertNull(vm.uiState.value.streamProfile)
         }
 
     // --- this month's cash flow (issue 5.1) ---------------------------------------------------

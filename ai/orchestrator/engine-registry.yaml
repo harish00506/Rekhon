@@ -10,9 +10,10 @@
 #         reviewers see every AI capability and where its logic/data lives.
 # Changelog:
 #   2026-07-17 — Created from SRS v1.7 §7, §21.2 (module list) and the engine sections.
+#   2026-09-19 — Issue 9.1: AI-CLS.stream — Stage 2 has its own module and version (ADR-0042).
 # =============================================================================
 
-version: "1.0"
+version: "1.1"
 source_section: "§7, §21.2"
 
 # Provenance every engine result MUST carry (AI-ARC-003):
@@ -28,6 +29,17 @@ engines:
     contract: "transactions + corrections -> {classification, nature} per txn/stream"
     reads: [../knowledge/classification-kb.json]
     srs: "§8"
+
+  # Stage 2 of AI-CLS (§8.2): its own module, so its version moves independently of Stage 1's
+  # category assignment (AI-ARC-006). The id is what every StreamVerdict's provenance carries.
+  - id: AI-CLS.stream
+    name: Stream Classification (AI-CLS Stage 2)
+    layer: L2
+    module: ":domain:engines:stream"
+    version: "1.0"
+    contract: "expense streams (per category, last 6 closed months) -> {FIXED|SEMI_FIXED|VARIABLE, score, evidence} + FixedLoad/SemiFixedExpected/VariableBudgetable"
+    reads: [../knowledge/classification-kb.json]
+    srs: "§8.2"
 
   - id: AI-FCT
     name: Cash-Flow Forecasting
