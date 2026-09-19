@@ -16,6 +16,7 @@
     path that creates the links. Still Shape A.
     2026-09-18 — Issue 8.1 added §2.06: the encrypted backup. Shape A, wrapped around §2.05's export.
         Issue 8.2 added its restore, wrapped around §2.05's import, and the import's profile check.
+    2026-09-19 — Issue 9.1 added §2.07: AI-CLS Stage 2 on the dashboard.
     2026-09-03 — Issue 7.3 added §2.6, the goal waterfall. Still Shape A — a screen — but the first
         read assembled from four repositories, and the first write driven by a gesture, so it is
         traced beside §2.5 rather than folded into it.
@@ -334,6 +335,29 @@ BackupFileHost └─ OpenDocument(["*/*"]) → context.readBytes(uri)
                     │   └─ withTransaction { wipe; restore }
                     └─ audit.record(BACKUP_RESTORED)   only on Ok
     ⇣  Restored(rows)  |  Picked(bytes, failure)  — a wrong passphrase keeps the file for a retry
+```
+
+### 2.07 · What recurs — AI-CLS Stage 2 (issue 9.1)
+
+Shape A. The ledger read is §4.3's split-aware one. The engine only scores.
+
+```
+DashboardViewModel.observeStreams()
+└─ StreamRepository.observeStreams()                 data/repository — ARC-005
+    ├─ window = the 6 closed months before today     MonthWindow (TIM-001)
+    └─ combine(
+         transactionDao().observeNatureCandidates()  one row per unsplit txn / live split line
+         recurringRuleDao().observeForProfile()      confirmed, live, outflow → Obligations.of()
+       ) { rows, rules ->
+         streams = expense rows (amount < 0) grouped by:
+                   a confirmed rule's merchant → "recurring:<merchant>" (FIXED, CLS-STR-002)
+                   else category id ("uncategorised" if none); a rule-named category → obligation
+                   priorKey = "<profile>:category:<key>" → key, else null
+         StreamEngine.classify(StreamInput)          domain/engines/stream — pure, exact BigDecimal
+           └─ per stream: pin → obligation → cold start (n < 2: prior) → §8.2 score
+       }
+    ⇣  Result<StreamProfile>  →  uiState.streamProfile  →  StreamLoadSection
+       "Fixed · Semi-fixed · Flexible", estimate note, "Rules: CLS-STR-… CLS-CAT-…"   (masked when blurred)
 ```
 
 ### 2.1 · The dashboard's headline figure (issue 5.2)

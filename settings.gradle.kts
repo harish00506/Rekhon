@@ -71,6 +71,7 @@ include(":domain:engines:investment") // §11 AI-INV — a holding's value, gain
 include(":domain:engines:goals")      // §15 AI-GOAL — target + date -> required monthly, ETA, horizon
 include(":domain:engines:emergencyfund") // §10.1 AI-EMF — essentials × multiplier M -> target, runway, coach
 include(":domain:engines:orderofoperations") // §36 AI-FOO — the surplus down the eight-stage waterfall
+include(":domain:engines:stream")      // §8.2 AI-CLS Stage 2 — each expense stream FIXED / SEMI_FIXED / VARIABLE
 include(":domain:usecase")
 
 // :data:*                  the ONLY DAO/network touchers (ARC-005)

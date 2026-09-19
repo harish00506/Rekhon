@@ -6,6 +6,40 @@ Single source of truth for the version number is the repo-root [`VERSION`](VERSI
 `app/build.gradle.kts` `versionName` equal to it. Epics map to the SRS roadmap (§26); every
 entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`](docs/issues/00-issue-workflow.md).
 
+## [0.9.0] — Epic 9: AI Core Engines
+
+> The deterministic engine layer: fixed/variable + nature, cash-flow forecast, seasonality, health
+> score, the Insight Orchestrator, notifications, and the numeric guardrail.
+
+### [0.9.1] — Issue 9.1: Fixed/Variable + Nature engine (AI-CLS Stage 2)  (2026-09-19)
+
+- **Implemented:** a new engine, `:domain:engines:stream` (`AI-CLS.stream` 1.0). It classifies every
+  expense stream (a Stage-1 category) over the last six closed months as **FIXED / SEMI_FIXED /
+  VARIABLE** by **§8.2**'s score, and totals the month's fixed load, expected semi-fixed spend and
+  flexible spend (**AI-CLS**, **AI-ARC-003**, **ADR-0042**).
+  - **Precedence:** pin → known obligation (payments to a confirmed recurring merchant form their
+    own FIXED stream; a rule-named category counts whole) → cold start (fewer than
+    two months: the category's `typical_stream` prior, labelled an estimate) → score.
+  - **Maths:** exact `BigDecimal`, with the class decided on the exact score.
+  - **Provenance:** every verdict cites its `CLS-STR-*` row (and `CLS-CAT-*` for a prior), with a
+    confidence and the input window.
+- **Data, not code:** `classification-kb.json` 1.4 adds `CLS-STR-001..004` with versions and
+  confidences, plus §8.2's prose parameters. `StreamKbDriftTest` holds the mirror to them.
+- **On screen:** the dashboard gains "Every month, typically — Fixed · Semi-fixed · Flexible". It is
+  masked by the privacy blur, says when part of it is an estimate, and names the rules that fired
+  (**P-02**).
+- **Nature is unchanged:** AI-CLS-N (4.3) stays its only writer.
+- **Not yet:** pins have no store or UI, and loan EMIs and insurance premia have no category link,
+  so they reach FIXED only through their category prior (ADR-0042).
+- **Tests:** 2,657 unit tests pass, 0 skipped, including a golden file of 16 records whose expected values come from an **independent** oracle;
+  20 behaviour tests (threshold edges one basis point either side of the exact score); 7 drift tests;
+  9 repository tests; 2 ViewModel and 5 render tests; 5 re-recorded baselines. Two mutations, one in
+  the engine and one in the KB, were each watched go red.
+- **Found on the device:** after confirming the demo's rent series, Fixed still read ₹0.00, because
+  a detected rule stores no category. Obligations now match by merchant too, and the device then
+  read Fixed ₹28,000.00 · Semi-fixed ₹45,368.50, citing CLS-STR-002. The demo's two closed months
+  alone correctly give no FIXED-by-score stream (it needs three).
+
 ## [0.8.0] — Epic 8: Backup & Restore
 
 > End-to-end-encrypted backup, restore on a fresh device, and an automated restore drill — so backups

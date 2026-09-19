@@ -31,6 +31,8 @@ tasks.withType<Test>()
         // manifest's activity. Adding a Compose test without adding it here is how 7.4's release
         // variant went red.
         exclude("**/OrderOfOperationsFlowTest.class")
+        // Issue 9.1: the stream section's render test, for the same reason.
+        exclude("**/StreamLoadSectionTest.class")
     }
 
 dependencies {

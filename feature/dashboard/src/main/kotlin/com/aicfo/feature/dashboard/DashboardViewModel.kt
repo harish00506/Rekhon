@@ -3,6 +3,7 @@ package com.aicfo.feature.dashboard
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aicfo.core.common.AppError
+import com.aicfo.core.common.Ok
 import com.aicfo.core.common.fold
 import com.aicfo.core.common.toAppError
 import com.aicfo.data.repository.ArchiveRepository
@@ -11,6 +12,7 @@ import com.aicfo.data.repository.NetWorthRepository
 import com.aicfo.data.repository.OrderOfOperationsRepository
 import com.aicfo.data.repository.QuickSetupRepository
 import com.aicfo.data.repository.SafeToSpendRepository
+import com.aicfo.data.repository.StreamRepository
 import com.aicfo.data.repository.TransactionRepository
 import com.aicfo.domain.engines.quicksetup.BudgetEnvelope
 import com.aicfo.domain.engines.quicksetup.BudgetNature
@@ -65,7 +67,8 @@ import javax.inject.Inject
 // count is the number of things on the screen, not a design choice — splitting it would mean two
 // ViewModels for one screen and two StateFlows for one UiState, which ARC-004 exists to prevent.
 // LongParameterList for the same reason (issue 7.5): Hilt reads the constructor, and each argument is
-// one repository behind one figure on the screen — the next-best-rupee card brought the seventh.
+// one repository behind one figure on the screen — the next-best-rupee card brought the seventh, and
+// issue 9.1's fixed/flexible split the eighth.
 @Suppress("TooManyFunctions", "LongParameterList")
 class DashboardViewModel
     @Inject
@@ -77,6 +80,7 @@ class DashboardViewModel
         private val safeToSpendRepository: SafeToSpendRepository,
         private val archiveRepository: ArchiveRepository,
         private val orderOfOperationsRepository: OrderOfOperationsRepository,
+        private val streamRepository: StreamRepository,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(DashboardUiState())
 
@@ -97,6 +101,7 @@ class DashboardViewModel
             observeBudgetStatus()
             observeRecentActivity()
             observeOrderOfOperations()
+            observeStreams()
         }
 
         /**
@@ -214,6 +219,22 @@ class DashboardViewModel
             transactionRepository.observeNatureBreakdown()
                 .onEach { breakdown -> _uiState.update { it.copy(natureBreakdown = breakdown) } }
                 .catch { _uiState.update { it.copy(natureBreakdown = null) } }
+                .launchIn(viewModelScope)
+        }
+
+        /**
+         * Keeps the fixed / semi-fixed / flexible split in step with the ledger (issue 9.1; §8.2).
+         * Why:    a failure clears the section rather than raising a banner, as [observeNature] does —
+         *         the other figures on the screen are still true, and a stale classification shown
+         *         as current would be worse than none.
+         * Result: [uiState] carries the stream profile, or `null`.
+         * Input:  none. Output: none (launches a collector).
+         * Changelog: 2026-09-19 — Created for issue 9.1.
+         */
+        private fun observeStreams() {
+            streamRepository.observeStreams()
+                .onEach { result -> _uiState.update { it.copy(streamProfile = (result as? Ok)?.value) } }
+                .catch { _uiState.update { it.copy(streamProfile = null) } }
                 .launchIn(viewModelScope)
         }
 

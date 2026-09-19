@@ -37,9 +37,10 @@ class DashboardArchiveTest {
     private val safeToSpend = FakeSafeToSpendRepository()
     private val archives = FakeArchiveRepository()
     private val orderOfOperations = FakeOrderOfOperationsRepository()
+    private val streams = FakeStreamRepository()
 
     private fun viewModel() =
-        DashboardViewModel(budget, netWorth, transactions, budgets, safeToSpend, archives, orderOfOperations)
+        DashboardViewModel(budget, netWorth, transactions, budgets, safeToSpend, archives, orderOfOperations, streams)
 
     /** `viewModelScope` runs on `Dispatchers.Main`, which has no factory on a plain JVM. */
     @Before

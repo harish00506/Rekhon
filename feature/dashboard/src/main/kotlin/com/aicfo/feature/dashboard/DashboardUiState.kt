@@ -9,6 +9,7 @@ import com.aicfo.data.repository.FilteredTransaction
 import com.aicfo.domain.engines.nature.NatureBreakdown
 import com.aicfo.domain.engines.orderofoperations.OrderOfOperations
 import com.aicfo.domain.engines.safetospend.SafeToSpend
+import com.aicfo.domain.engines.stream.StreamProfile
 
 /**
  * Everything the dashboard renders, as one value (ARC-004).
@@ -77,6 +78,15 @@ data class DashboardUiState(
      * the app made up (P-03), the same rule [spendSplit] follows.
      */
     val natureBreakdown: NatureBreakdown? = null,
+    /**
+     * What recurs and what is budgetable, over the last six closed months (issue 9.1; §8.2 AI-CLS
+     * Stage 2).
+     *
+     * `null` until the first emission and when the classification fails; a profile with no expense
+     * streams renders nothing either — "fixed ₹0.00" would be a claim about commitments nobody has
+     * recorded (P-03).
+     */
+    val streamProfile: StreamProfile? = null,
     /**
      * This month's income, expense and net (issue 5.1; FR-DASH-*).
      *

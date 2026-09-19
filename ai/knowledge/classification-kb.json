@@ -5,13 +5,14 @@
     "what": "Seed knowledge for AI-CLS: (a) merchant->category rules for Indian merchants, (b) category defaults incl. default_nature, (c) stream-classification thresholds (§8.2), (d) the nature auto-classification order (§8.3.1), (e) the Stage-1 matching thresholds (§8.1). Precedence at runtime: user rule > learned model (>=0.85) > this knowledge base > 'Uncategorised' prompt.",
     "result": "A fresh install classifies Swiggy as Dining/WANT and BESCOM as Utilities/NEED with clearly-labelled 'estimate - improves with data' confidence.",
     "source_section": "§8",
-    "version": "1.3",
+    "version": "1.4",
     "changelog": [
       "2026-07-17 — Created from SRS v1.7 §8.1, §8.2, §8.3; merchant list is a starter set, extended by user corrections.",
       "2026-08-08 — Issue 4.1: every merchant_rules and category_defaults row gains a stable rule_id and its own version (AI-ARC-006), and category_defaults gains `key` — the id the seeded `category` row is derived from, so renaming a category in the editor never changes which row it is. category_defaults is now read by CategorySeed (:core:model); merchant_rules still has no runtime consumer — see ADR-0014.",
       "2026-08-10 — Issue 4.2: merchant_rules gains its consumer (:domain:engines:classification) and this file gains `stage1` — the confidence a match is worth and the floor below which Stage 1 defers to the user instead of guessing. CLS-USER-HISTORY is the id the §8.1(a) correction-history tier cites; it names no merchant because the user's own past corrections are its rows. §8.1(c), the on-device TF-IDF + logistic model, is still unbuilt — see ADR-0015.",
       "2026-08-10 — CLS-MER-011 -> v1.1: `coin` dropped from its alternatives. Read as a rule for the first time, it files any merchant with `coin` as a word — a laundromat, a coin dealer — under Investment. Zerodha's Coin is always described as `ZERODHA COIN` or `COIN BY ZERODHA`, both of which `zerodha` already matches, so nothing is lost. Found by the eval set in issue 4.2; the id is kept and the version bumped, never renamed (id_policy).",
-      "2026-08-10 — Issue 4.3: nature_classification.order gains CLS-NAT-001..006 ids and versions (AI-ARC-006), so a stored nature verdict can cite the step that decided it, and the file gains `stage_nature` — the confidence each step is worth, the floor below which a verdict is flagged, and the §8.3 true-spend split. Steps 1-3 fire on the account TYPE because the tables §8.3.1 names (loan_amortization_rows, goals, holdings) do not exist yet; see ADR-0016."
+      "2026-08-10 — Issue 4.3: nature_classification.order gains CLS-NAT-001..006 ids and versions (AI-ARC-006), so a stored nature verdict can cite the step that decided it, and the file gains `stage_nature` — the confidence each step is worth, the floor below which a verdict is flagged, and the §8.3 true-spend split. Steps 1-3 fire on the account TYPE because the tables §8.3.1 names (loan_amortization_rows, goals, holdings) do not exist yet; see ADR-0016.",
+      "2026-09-19 — Issue 9.1: stream_classification gains CLS-STR-001..004 ids and versions (AI-ARC-006), so a stored stream verdict can cite the step that decided it, plus the parameters §8.2 states in prose (window_months, day_lock_window_days, cold_start_min_months) and a confidence per step. Its first consumer is :domain:engines:stream (AI-CLS Stage 2). The weights and thresholds are unchanged; category_defaults.typical_stream becomes the §8.2 cold-start prior. See ADR-0042."
     ],
     "precedence": ["user_rule", "learned_model>=0.85", "knowledge_base", "uncategorised_prompt"],
     "id_policy": "rule_id is permanent. To retire a row set `enabled: false` — never rename or delete an id that may already be cited in a stored insight (AI-ARC-006)."
@@ -76,7 +77,16 @@
       "user_pin_beats_model": true,
       "cold_start": "with < 2 months data, use category-level Indian priors labelled 'estimate - improves with data'"
     },
-    "learned_model_confidence_gate": 0.85
+    "learned_model_confidence_gate": 0.85,
+    "window_months": 6,
+    "day_lock_window_days": 3,
+    "cold_start_min_months": 2,
+    "steps": [
+      {"rule_id": "CLS-STR-003", "version": "1.0", "step": 1, "confidence_bps": 10000, "rule": "the user pinned this stream's class -> that class (pins beat the model, §8.2)"},
+      {"rule_id": "CLS-STR-002", "version": "1.0", "step": 2, "confidence_bps": 9500, "rule": "known obligation: a confirmed recurring rule names the stream's category -> FIXED regardless of score"},
+      {"rule_id": "CLS-STR-004", "version": "1.0", "step": 3, "confidence_bps": 4000, "no_prior_confidence_bps": 2000, "rule": "cold start: fewer than cold_start_min_months months with activity -> the category's category_defaults.typical_stream, labelled 'estimate - improves with data'; no prior -> VARIABLE"},
+      {"rule_id": "CLS-STR-001", "version": "1.0", "step": 4, "confidence_bps": 8000, "rule": "score = weights.cv*(1-min(cv,1)) + weights.cadence*(1-min(cadence,1)) + weights.dayLock*dayLock; >= FIXED.min_score and n >= FIXED.min_months -> FIXED; >= SEMI_FIXED.min_score -> SEMI_FIXED; else VARIABLE"}
+    ]
   },
 
   "nature_classification": {

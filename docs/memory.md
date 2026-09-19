@@ -10,6 +10,7 @@
     2026-09-18 — Issue 8.1 (E2EE backup) merged to dev; Epic 8 opened at 0.8.0.
     2026-09-18 — Issue 8.2 (restore on fresh device) merged to dev.
     2026-09-19 — Issue 8.3 (restore drill) merged to dev; Epic 8 complete.
+    2026-09-19 — Issue 9.1 (AI-CLS Stage 2) merged to dev; Epic 9 opened at 0.9.0.
 -->
 
 # AI Personal CFO — Project Memory
@@ -21,14 +22,15 @@
 
 ## Current state
 
-- **Version:** `0.8.3` (see [`../VERSION`](../VERSION)) · **Phase:** 2–3. **Schema is v22**, unchanged by 8.1.
-- **Epics 1–8 are done** — 8.3 (the restore drill) closed Epic 8. Epic 9 (AI core engines, incl. the
-  9.2 forecast) is the open one left in Phases 2–3. Epic 9 (AI core engines, incl. the 9.2 forecast) is
+- **Version:** `0.9.1` (see [`../VERSION`](../VERSION)) · **Phase:** 2–3. **Schema is v22**, unchanged by 8.1.
+- **Epics 1–8 are done; Epic 9 is open** — 9.1 (AI-CLS Stage 2, stream classification) shipped;
+  **9.2 (the cash-flow forecast) is next**, and it is the one the goals work kept waiting on. Epic 9 (AI core engines, incl. the 9.2 forecast) is
   still the one the goals work kept waiting on.
-- **Currently working file:** none. Issues **8.1, 8.2 and 8.3 are merged to `dev`**
+- **Currently working file:** none. Issues **8.1–8.3 and 9.1 are merged to `dev`**
   ([8.1 tracker](issues/8.1-e2ee-backup-argon2id-aes-256-gcm-tracker.md), ADR-0039;
   [8.2 tracker](issues/8.2-restore-on-fresh-device-tracker.md), ADR-0040;
-  [8.3 tracker](issues/8.3-backup-restore-drill-tracker.md), ADR-0041).
+  [8.3 tracker](issues/8.3-backup-restore-drill-tracker.md), ADR-0041;
+  [9.1 tracker](issues/9.1-fixed-variable-nature-engine-ai-cls-stage-2-tracker.md), ADR-0042).
 - **`origin/dev` is still at `6afa5f0`** — local `dev` is well ahead (7.4, 7.5, the card APR field,
   the FOO/goals agreement, 8.1 and their records),
   and **the push is blocked, not skipped**: this machine has no GitHub credentials (no helper, no
@@ -43,6 +45,21 @@
   1.1's placeholder, so 7.3 substituted an *observed* P50 surplus for §15.1's *forecast* one
   (ADR-0035), and 7.5 reuses that same figure (ADR-0037). When 9.2 lands, the change is one place:
   `GoalWaterfallRepository`.
+
+### What 9.1 changed that a future issue must know
+
+- **`StreamRepository.observeStreams()` is 9.2's and 9.4's input** — `fixedLoad`,
+  `semiFixedExpected`, `variableBudgetable`, and a verdict per stream with provenance
+  (`AI-CLS.stream` 1.0). Streams are Stage-1 categories, **plus one `recurring:<merchant>` stream per
+  confirmed detected recurring rule**.
+- **A confirmed detected recurring rule stores no `categoryId`** (issue 3.7 keys it by merchant).
+  Anything joining obligations to categories must match the merchant too — found only on the device.
+- **FIXED by score needs n ≥ 3 closed months**, so the demo (two closed months) shows Fixed ₹0.00
+  until a recurring series is confirmed. That is correct, not a bug.
+- **`classification-kb.json` is 1.4.** Three mirrors restate it (`ClassificationRules`,
+  `NatureRules`, `CategorySeed`), plus `StreamRules`. `NatureKbDriftTest` reads the **first**
+  `"order"` key in the file, so never add another `"order"` array above `nature_classification`.
+- **Pins have no store or UI yet** (ADR-0042) — the engine precedence is ready.
 
 ### What 8.3 changed that a future issue must know
 

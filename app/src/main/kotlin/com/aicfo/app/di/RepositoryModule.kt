@@ -30,6 +30,7 @@ import com.aicfo.data.repository.RecurringRepository
 import com.aicfo.data.repository.RepositoryFactory
 import com.aicfo.data.repository.SafeToSpendRepository
 import com.aicfo.data.repository.SmsRepository
+import com.aicfo.data.repository.StreamRepository
 import com.aicfo.data.repository.SurplusRepository
 import com.aicfo.data.repository.TransactionRepository
 import com.aicfo.data.sms.SmsInboxReader
@@ -48,6 +49,8 @@ import com.aicfo.domain.engines.receipt.ReceiptEngine
 import com.aicfo.domain.engines.recurring.RecurringEngine
 import com.aicfo.domain.engines.safetospend.SafeToSpendEngine
 import com.aicfo.domain.engines.sms.SmsEngine
+import com.aicfo.domain.engines.stream.StreamEngine
+import com.aicfo.domain.engines.stream.StreamEngineFactory
 import com.aicfo.ml.ocr.ReceiptTextRecognizer
 import dagger.Module
 import dagger.Provides
@@ -484,6 +487,35 @@ object RepositoryModule {
         dispatchers: DispatcherProvider,
         demoMode: DemoModeRepository,
     ): ArchiveRepository = RepositoryFactory.archive(database, clock, dispatchers, demoMode.activeProfileId)
+
+    /**
+     * AI-CLS Stage 2 (issue 9.1; §8.2).
+     * Why:    stateless and pure — it reads no clock and holds no threshold beyond its typed
+     *         knowledge-base mirror — so one instance serves every caller (ARC-003).
+     * Result: a [StreamEngine]. Input: none. Output: the engine.
+     * Changelog: 2026-09-19 — Created for issue 9.1.
+     */
+    @Provides
+    @Singleton
+    fun provideStreamEngine(): StreamEngine = StreamEngineFactory.create()
+
+    /**
+     * The profile's expense streams, classified (issue 9.1; §8.2).
+     * Why:    reads the gated [CfoDatabase] like every binding here, and follows the demo
+     *         (ADR-0006), so the sample household's rent is never classified as the user's.
+     * Result: a [StreamRepository]. Input: [database]; [engine]; [clock]; [dispatchers]; [demoMode].
+     * Output: the repository.
+     * Changelog: 2026-09-19 — Created for issue 9.1.
+     */
+    @Provides
+    @Singleton
+    fun provideStreamRepository(
+        database: CfoDatabase,
+        engine: StreamEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        demoMode: DemoModeRepository,
+    ): StreamRepository = RepositoryFactory.streams(database, engine, clock, dispatchers, demoMode.activeProfileId)
 
     /**
      * The end-to-end-encrypted backup store (issue 8.1; SEC-005, §23.3, P-01).

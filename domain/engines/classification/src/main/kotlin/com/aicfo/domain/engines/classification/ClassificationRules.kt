@@ -254,8 +254,10 @@ data class ClassificationRules(
          *            2026-08-10 — `"1.3"` for issue 4.3, which added `CLS-NAT-*` ids and
          *            `stage_nature`. **Nothing this file mirrors changed**; the bump records that
          *            the file moved, which is what the drift test compares.
+         *            2026-09-19 — `"1.4"` for issue 9.1 (`CLS-STR-*` ids on `stream_classification`);
+         *            again nothing this file mirrors changed.
          */
-        const val KB_VERSION = "1.3"
+        const val KB_VERSION = "1.4"
     }
 }
 
