@@ -3,9 +3,11 @@ package com.aicfo.data.repository
 import com.aicfo.core.common.AppError
 import com.aicfo.core.common.Clock
 import com.aicfo.core.common.DispatcherProvider
+import com.aicfo.core.common.Err
 import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
 import com.aicfo.core.database.CfoDatabase
+import com.aicfo.core.database.dao.MonthlyCategorySpendRow
 import com.aicfo.core.database.dao.NatureCandidateRow
 import com.aicfo.core.database.entity.RecurringRuleEntity
 import com.aicfo.core.model.Account
@@ -19,6 +21,11 @@ import com.aicfo.domain.engines.forecast.ForecastInput
 import com.aicfo.domain.engines.forecast.ForecastRules
 import com.aicfo.domain.engines.forecast.ItemSource
 import com.aicfo.domain.engines.forecast.ScheduledItem
+import com.aicfo.domain.engines.seasonality.CategoryMonthSpend
+import com.aicfo.domain.engines.seasonality.CategorySpend
+import com.aicfo.domain.engines.seasonality.SeasonalityEngine
+import com.aicfo.domain.engines.seasonality.SeasonalityInput
+import com.aicfo.domain.engines.seasonality.SeasonalityRules
 import com.aicfo.domain.engines.stream.StreamBasis
 import com.aicfo.domain.engines.stream.StreamClass
 import com.aicfo.domain.engines.stream.StreamProfile
@@ -28,6 +35,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOn
 import java.time.LocalDate
+import java.time.YearMonth
 
 /**
  * AI-FCT over the ledger (issue 9.2; SRS §9.1, §9.2, ARC-005).
@@ -68,16 +76,18 @@ interface ForecastRepository {
  *         horizon size the queries, so a test that moves them moves the window too.
  * Output: a working repository.
  */
-@Suppress("LongParameterList") // Eight, each one input the join needs; the last is the rules seam.
+@Suppress("LongParameterList") // Ten, each one input the join needs; the last two are the rules seams.
 internal class RoomForecastRepository(
     private val database: CfoDatabase,
     private val accounts: AccountRepository,
     private val streams: StreamRepository,
     private val engine: ForecastEngine,
+    private val seasonality: SeasonalityEngine,
     private val clock: Clock,
     private val dispatchers: DispatcherProvider,
     private val activeProfileId: Flow<String>,
     private val rules: ForecastRules = ForecastRules(),
+    private val seasonalityRules: SeasonalityRules = SeasonalityRules(),
 ) : ForecastRepository {
     @OptIn(ExperimentalCoroutinesApi::class)
     override fun observeForecast(): Flow<Result<CashFlowForecast, AppError>> =
@@ -105,29 +115,106 @@ internal class RoomForecastRepository(
                         firstDate,
                     )
                 }
-            combine(context, ledger) { ctx, rows -> engine.forecast(inputOf(today, ctx, rows)) }.flowOn(dispatchers.io)
+            val history =
+                database.transactionDao().observeMonthlyCategorySpend(
+                    profileId,
+                    today.withDayOfMonth(1).minusMonths(seasonalityRules.historyMonths.toLong()).toString(),
+                    today.withDayOfMonth(1).minusDays(1).toString(),
+                )
+            combine(context, ledger, history) { ctx, rows, months -> forecastOf(today, ctx, rows, months) }
+                .flowOn(dispatchers.io)
         }
 
     /**
+     * One forecast from one consistent read: AI-SEAS first, then AI-FCT with its result (issue 9.3).
+     * Why:    the seasonal factor is weighted by the **same** everyday rows the forecast predicts
+     *         from, so the two engines cannot disagree about what "everyday" means.
+     * Result: the forecast, or the first engine's refusal. Input: [today]; [ctx]; [rows] — the ledger
+     *         from the lookback's start to the horizon's end; [history] — closed months per category.
+     * Output: `Result<CashFlowForecast, AppError>`.
+     */
+    private fun forecastOf(
+        today: LocalDate,
+        ctx: Context,
+        rows: List<NatureCandidateRow>,
+        history: List<MonthlyCategorySpendRow>,
+    ): Result<CashFlowForecast, AppError> {
+        val liquid = rows.filter(::movesLiquidMoney)
+        val everyday = everydayRows(liquid, today, Obligations.of(ctx.recurring), fixedStreams(ctx.streams).keys)
+        return when (val seasonal = seasonality.index(seasonalityInput(today, ctx, everyday, history))) {
+            is Err -> Err(seasonal.error)
+            is Ok -> engine.forecast(inputOf(today, ctx, liquid, everyday).copy(seasonality = seasonal.value))
+        }
+    }
+
+    /**
+     * AI-SEAS's input: the closed-month history, and the lookback's everyday spend per category.
+     * Why:    the lookback is the forecast's own — from the ledger's first day or ninety days back,
+     *         whichever is later, to yesterday — so the factor divides out exactly the season the
+     *         daily base was measured in. With no ledger yet there is no lookback, and every month
+     *         is ×1.
+     * Result: the input. Input: [today]; [ctx]; [everyday] rows; [history]. Output: [SeasonalityInput].
+     */
+    private fun seasonalityInput(
+        today: LocalDate,
+        ctx: Context,
+        everyday: List<NatureCandidateRow>,
+        history: List<MonthlyCategorySpendRow>,
+    ): SeasonalityInput {
+        val end = today.minusDays(1)
+        val start = ctx.firstDate?.let { maxOf(LocalDate.parse(it), today.minusDays(rules.lookbackDays.toLong())) }
+        val hasLookback = start != null && start <= end
+        return SeasonalityInput(
+            history =
+                history.map {
+                    CategoryMonthSpend(
+                        it.categoryId,
+                        it.categoryId?.let(ctx.categoryNames::get),
+                        YearMonth.parse(it.monthKey),
+                        Money(it.spentMinor),
+                    )
+                },
+            lookback =
+                if (!hasLookback) {
+                    emptyList()
+                } else {
+                    everyday.groupBy { it.categoryId }.map { (id, spent) ->
+                        CategorySpend(id, id?.let(ctx.categoryNames::get), Money(-spent.sumOf { it.amountMinor }))
+                    }
+                },
+            lookbackStart = if (hasLookback) start!! else end,
+            lookbackEnd = end,
+            months = (1L..rules.horizonDays).map { YearMonth.from(today.plusDays(it)) }.distinct(),
+            nowUtcMillis = clock.nowUtcMillis(),
+            rules = seasonalityRules,
+        )
+    }
+
+    /**
      * Builds the engine's input from one consistent read.
-     * Result: the input. Input: [today]; [ctx]; [rows] — the ledger from the lookback's start to the
-     * horizon's end. Output: [ForecastInput].
+     * Result: the input, without seasonality (the caller adds AI-SEAS's result). Input: [today];
+     *         [ctx]; [liquid] — the ledger's liquid-money rows from the lookback's start to the
+     *         horizon's end; [everyday] — the lookback's everyday rows. Output: [ForecastInput].
+     * Changelog: 2026-09-19 — Created for issue 9.2; issue 9.3 passes the rows in pre-filtered.
      */
     private fun inputOf(
         today: LocalDate,
         ctx: Context,
-        rows: List<NatureCandidateRow>,
+        liquid: List<NatureCandidateRow>,
+        everyday: List<NatureCandidateRow>,
     ): ForecastInput {
         val live =
             ctx.recurring.filter {
                 it.isConfirmed && it.dismissedAtUtcMillis == null && it.deletedAtUtcMillis == null
             }
-        val obligations = Obligations.of(ctx.recurring)
         val fixed = fixedStreams(ctx.streams)
-        val (past, future) = rows.filter(::movesLiquidMoney).partition { LocalDate.parse(it.bookedOnIsoDate) <= today }
+        val future = liquid.filter { LocalDate.parse(it.bookedOnIsoDate) > today }
         return ForecastInput(
             today = today,
-            openingBalance = ctx.accounts.filter(::isLiquid).fold(Money.ZERO) { sum, account -> sum + account.balance },
+            openingBalance =
+                ctx.accounts.filter(
+                    ::isLiquidAccount,
+                ).fold(Money.ZERO) { sum, account -> sum + account.balance },
             commitments =
                 live.mapNotNull(::commitmentOf) +
                     fixed.map {
@@ -135,7 +222,10 @@ internal class RoomForecastRepository(
                         fixedCommitment(key, amount, today, ctx)
                     },
             oneOffs = future.map { row -> oneOffOf(row, ctx) },
-            dailySpend = everydaySpend(past, today, obligations, fixed.keys),
+            dailySpend =
+                everyday.groupBy { it.bookedOnIsoDate }.map { (date, dayRows) ->
+                    DailySpend(LocalDate.parse(date), Money(-dayRows.sumOf { it.amountMinor }))
+                },
             historyStart = ctx.firstDate?.let(LocalDate::parse),
             seed = today.toEpochDay(),
             nowUtcMillis = clock.nowUtcMillis(),
@@ -144,25 +234,25 @@ internal class RoomForecastRepository(
     }
 
     /**
-     * The everyday outflows of the lookback, per day, with the scheduled ones taken out.
+     * The everyday outflows of the lookback, with the scheduled ones taken out.
      * Why:    a payment to a confirmed recurring merchant, or in a category AI-CLS scored FIXED, is
      *         projected as a scheduled item; leaving it in the everyday pool as well would count it
      *         twice — once on its day and once smeared across every day. Income is not spend, and
      *         today is not over, so both are out.
-     * Result: one [DailySpend] per day with any. Input: [rows] — liquid-money rows up to today;
-     *         [today]; [obligations]; [fixedCategories]. Output: `List<DailySpend>`.
+     *         Issue 9.3 made this return rows rather than per-day sums, so AI-SEAS can weight the same
+     *         pool by category.
+     * Result: the everyday rows. Input: [rows] — liquid-money rows; [today]; [obligations];
+     *         [fixedCategories]. Output: `List<NatureCandidateRow>`.
      */
-    private fun everydaySpend(
+    private fun everydayRows(
         rows: List<NatureCandidateRow>,
         today: LocalDate,
         obligations: Obligations,
         fixedCategories: Set<String>,
-    ): List<DailySpend> =
+    ): List<NatureCandidateRow> =
         rows
             .filter { it.amountMinor < 0L && LocalDate.parse(it.bookedOnIsoDate) < today }
             .filter { obligations.merchantKeyOf(it.merchant) == null && it.categoryId !in fixedCategories }
-            .groupBy { it.bookedOnIsoDate }
-            .map { (date, dayRows) -> DailySpend(LocalDate.parse(date), Money(-dayRows.sumOf { it.amountMinor })) }
 
     /**
      * Whether a row moves money into or out of the liquid balance.
@@ -242,10 +332,6 @@ internal class RoomForecastRepository(
             source = ItemSource.FUTURE_DATED,
         )
 
-    /** Whether [account] is a live, counted, liquid account (bank or cash). */
-    private fun isLiquid(account: Account): Boolean =
-        account.type in LIQUID_ACCOUNT_TYPES && account.includeInNetWorth && !account.isArchived
-
     /** What one consistent read of the non-ledger sources gives. */
     private data class Context(
         val accounts: List<Account>,
@@ -259,3 +345,12 @@ internal class RoomForecastRepository(
         const val TRANSFER = "transfer"
     }
 }
+
+/**
+ * Whether [account] is a live, counted, liquid account (bank or cash).
+ * Why:    a pure test of one row, so it sits outside the repository class (issue 9.3 moved it here
+ *         when the class gained AI-SEAS's input builder).
+ * Result: `true` when the account's balance is part of the opening. Input: [account]. Output: [Boolean].
+ */
+private fun isLiquidAccount(account: Account): Boolean =
+    account.type in LIQUID_ACCOUNT_TYPES && account.includeInNetWorth && !account.isArchived

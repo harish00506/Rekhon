@@ -5,12 +5,23 @@
     "what": "Indian calendar events with the categories they inflate and a prior multiplier, plus the shrinkage rule that blends these priors with the user's observed history.",
     "result": "'October festival spending typically +38% for you - plan INR 6,500 extra' style insights and inputs to the cash-flow forecast and budget suggestions.",
     "source_section": "§9.3",
-    "version": "1.0",
+    "version": "1.1",
     "changelog": [
-      "2026-07-17 — Created from SRS v1.7 §9.3. Priors are starter multipliers, superseded by the user's own seasonal index as data accrues."
+      "2026-07-17 — Created from SRS v1.7 §9.3. Priors are starter multipliers, superseded by the user's own seasonal index as data accrues.",
+      "2026-09-19 — 1.1 (issue 9.3): added the `method` block, SEAS-INDEX, so the shrinkage denominator, the history window and the minimum effect the seasonality engine reads are data with an id and a version, not prose. No event changed."
     ],
     "shrinkage_rule": "seasonal_index = 1 + k*(raw-1), k = months_observed/24. Priors below are the 'raw' expectation used until the user's own median-based index dominates.",
     "note": "Dates are approximate windows (many festivals follow the lunar calendar); the app resolves exact dates from the /v1/knowledge/calendar feed per year."
+  },
+
+  "method": {
+    "id": "SEAS-INDEX",
+    "version": "1.0",
+    "why": "§9.3's index needs numbers the prose rule above leaves implicit: the shrinkage denominator (k = months_observed/24), how many closed months of history the per-category median reads, and how large an effect on a month's everyday spend must be before it counts at all — smaller effects are noise, neither applied to the forecast nor named to the user. As a row they are cited in evidence (AI-ARC-006) and edited here, not in an engine.",
+    "shrinkage_denominator_months": 24,
+    "history_months": 36,
+    "min_effect_bps": 100,
+    "consumed_by": ["AI-SEAS", "AI-FCT"]
   },
 
   "events": [

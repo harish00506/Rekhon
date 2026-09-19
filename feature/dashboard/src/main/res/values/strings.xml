@@ -101,6 +101,22 @@
     <!-- English never selects a plural "zero" form, so no history has its own string. -->
     <string name="dashboard_forecast_no_history">No spending history yet, so everyday spending is not predicted. Income counts only repeats you have confirmed.</string>
     <string name="dashboard_forecast_rules">Rules: %1$s</string>
+    <string name="dashboard_forecast_components_extra">Coming in %1$s · Going out %2$s · Everyday spending %3$s · Seasonal extra %4$s</string>
+    <string name="dashboard_forecast_components_saving">Coming in %1$s · Going out %2$s · Everyday spending %3$s · Seasonal saving %4$s</string>
+    <string name="dashboard_forecast_seasonal_up">%1$s: %2$s%% more everyday spending than the last 90 days (%3$s extra) — %4$s</string>
+    <string name="dashboard_forecast_seasonal_down">%1$s: %2$s%% less everyday spending than the last 90 days (%3$s less) — %4$s</string>
+    <string name="dashboard_season_after">after %1$s</string>
+    <string name="dashboard_season_own">as in your past years</string>
+    <string name="dashboard_season_generic">the season</string>
+    <string name="dashboard_season_diwali">Diwali</string>
+    <string name="dashboard_season_dussehra_navratri">Dussehra and Navratri</string>
+    <string name="dashboard_season_wedding">the wedding season</string>
+    <string name="dashboard_season_tax_saving">the tax-saving season</string>
+    <string name="dashboard_season_school_admission">school admissions</string>
+    <string name="dashboard_season_monsoon">the monsoon</string>
+    <string name="dashboard_season_summer">the summer</string>
+    <string name="dashboard_season_onam_pongal">Onam and Pongal</string>
+    <string name="dashboard_season_akshaya_tritiya">Akshaya Tritiya</string>
 
     <!-- Issue 5.1 — this month's cash flow, beside the plan/actual pair above it. -->
     <string name="dashboard_cash_flow_label">This month\'s cash flow</string>

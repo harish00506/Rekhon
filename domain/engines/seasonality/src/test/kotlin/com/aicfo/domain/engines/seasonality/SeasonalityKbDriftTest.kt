@@ -1,4 +1,4 @@
-package com.aicfo.domain.engines.budget
+package com.aicfo.domain.engines.seasonality
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -7,9 +7,10 @@ import org.junit.Test
 import java.io.File
 
 /**
- * Keeps [SeasonalityPriors] honest against `ai/knowledge/calendar-seasonality.json` (§6, ADR-0017).
+ * Keeps [SeasonalityPriors] and [SeasonalityRules] honest against
+ * `ai/knowledge/calendar-seasonality.json` (§6, ADR-0017).
  *
- * Why:  the same deferral [RulebookDriftTest] guards, for the other file this engine mirrors. The
+ * Why:  the same deferral the rulebook drift tests guard, for the calendar file. The
  *       seasonality KB is the more dangerous of the two to let drift, because its errors are
  *       invisible: a multiplier copied wrong, or a window shifted by one month, still produces a
  *       plausible budget in every month except the one it was supposed to help with.
@@ -17,6 +18,9 @@ import java.io.File
  *       multiplier of each — as an **ordered list**, so a reordered or added event is noticed.
  * Result: the mirror cannot silently disagree with the knowledge base it claims to be a copy of.
  * Changelog: 2026-08-11 — Created for issue 4.4.
+ *            2026-09-19 — Moved from `:domain:engines:budget` for issue 9.3; the shrinkage
+ *            denominator is now checked against [SeasonalityRules] and the KB's `method` block
+ *            (SEAS-INDEX), as well as the prose rule.
  *
  * **The window is re-derived here, not copied.** The mirror stores months as integers; the KB
  * stores them as `"Oct-Nov"`. This test parses the KB's own strings back into months, so the
@@ -118,8 +122,32 @@ class SeasonalityKbDriftTest {
     fun `the shrinkage denominator matches the rule the knowledge base states`() {
         val match = Regex("months_observed\\s*/\\s*(\\d+)").find(kb)
         assertNotNull("no 'k = months_observed/N' shrinkage rule found in the KB", match)
-        assertEquals(BudgetRules().shrinkageDenominatorMonths, match!!.groupValues[1].toInt())
+        assertEquals(SeasonalityRules().shrinkageDenominatorMonths, match!!.groupValues[1].toInt())
     }
+
+    /**
+     * Input:  the KB's `method` block (SEAS-INDEX, issue 9.3).
+     * Output: asserts the mirror's id, version and both parameters are the file's. The prose rule
+     *         and the structured row must also agree with each other, which the test above and this
+     *         one together enforce.
+     */
+    @Test
+    fun `the SEAS-INDEX method row matches its mirror`() {
+        val method = kb.substringAfter("\"method\"").substringBefore("\"events\"")
+        assertEquals(SeasonalityRules.INDEX.ruleId, method.stringField("id"))
+        assertEquals(SeasonalityRules.INDEX.ruleVersion, method.stringField("version"))
+        assertEquals(SeasonalityRules().shrinkageDenominatorMonths, method.intField("shrinkage_denominator_months"))
+        assertEquals(SeasonalityRules().historyMonths, method.intField("history_months"))
+        assertEquals(SeasonalityRules().minEffectBps, method.intField("min_effect_bps"))
+    }
+
+    private fun String.stringField(name: String): String =
+        Regex("\"$name\"\\s*:\\s*\"([^\"]+)\"").find(this)?.groupValues?.get(1)
+            ?: throw AssertionError("no \"$name\" in the KB's method block")
+
+    private fun String.intField(name: String): Int =
+        Regex("\"$name\"\\s*:\\s*(\\d+)").find(this)?.groupValues?.get(1)?.toInt()
+            ?: throw AssertionError("no \"$name\" in the KB's method block")
 
     // --- parsing ------------------------------------------------------------------------------
 
@@ -178,7 +206,7 @@ class SeasonalityKbDriftTest {
 
     /**
      * Finds the KB by walking up from the test's working directory — same reasoning as
-     * [RulebookDriftTest.rulebookFile].
+     * the rulebook drift tests (`RulebookDriftTest.rulebookFile` in `:domain:engines:budget`).
      * Result: the file. Input: none. Output: [File].
      */
     private fun kbFile(): File {

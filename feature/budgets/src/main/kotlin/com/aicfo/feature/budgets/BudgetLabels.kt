@@ -6,7 +6,8 @@ import com.aicfo.core.common.AppError
 /**
  * Maps the domain's closed sets to this feature's strings (issue 4.4; §21.6).
  *
- * Why:  `SeasonalityPriors` lives in `:domain:engines:budget`, which is pure Kotlin and must stay
+ * Why:  `SeasonalityPriors` lives in `:domain:engines:seasonality` (in `:domain:engines:budget` until
+ *       issue 9.3), which is pure Kotlin and must stay
  *       that way (ARC-002) — an `@StringRes` on a seasonal event would drag Android into an engine
  *       module. And `AppError` carries a **code**, never a message, so the wording lives where it can
  *       be translated. Both mappings therefore belong here, in the feature that renders them, exactly

@@ -69,6 +69,21 @@ class RulebookDriftTest {
         assertEquals(BudgetRules.SUGGESTION.ruleVersion, row.version())
     }
 
+    /**
+     * Input:  the two mirrors of the `k = months_observed / 24` denominator.
+     * Output: asserts the budget suggestion shrinks a prior exactly as AI-SEAS does. Until issue 9.3
+     *         the calendar drift test lived here and checked this against the KB's prose; it moved
+     *         with the calendar mirror, and this keeps the two engines from disagreeing about the
+     *         same Diwali (ADR-0044).
+     */
+    @Test
+    fun `the suggestion shrinks a prior with the same denominator as AI-SEAS`() {
+        assertEquals(
+            com.aicfo.domain.engines.seasonality.SeasonalityRules().shrinkageDenominatorMonths,
+            BudgetRules().shrinkageDenominatorMonths,
+        )
+    }
+
     /** Input: RULE-BUD-PACE's params. Output: asserts the projection floor matches. */
     @Test
     fun `the pace thresholds match RULE-BUD-PACE`() {

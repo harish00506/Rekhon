@@ -12,6 +12,7 @@
     2026-09-19 — Issue 8.3 (restore drill) merged to dev; Epic 8 complete.
     2026-09-19 — Issue 9.1 (AI-CLS Stage 2) merged to dev; Epic 9 opened at 0.9.0.
     2026-09-19 — Issue 9.2 (AI-FCT forecast) merged to dev.
+    2026-09-19 — Issue 9.3 (AI-SEAS seasonality) merged to dev.
 -->
 
 # AI Personal CFO — Project Memory
@@ -23,16 +24,18 @@
 
 ## Current state
 
-- **Version:** `0.9.2` (see [`../VERSION`](../VERSION)) · **Phase:** 2–3. **Schema is v22**, unchanged by 8.1.
-- **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification) and 9.2 (the cash-flow
-  forecast) shipped; **9.3 (seasonality) is next** and plugs into the forecast's zero seasonal term. Epic 9 (AI core engines, incl. the 9.2 forecast) is
+- **Version:** `0.9.3` (see [`../VERSION`](../VERSION)) · **Phase:** 2–3. **Schema is v22**, unchanged by 8.1.
+- **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
+  forecast) and 9.3 (seasonality, now the forecast's seasonal term) shipped; **9.4 (the financial
+  health score) is next**. Epic 9 (AI core engines, incl. the 9.2 forecast) is
   still the one the goals work kept waiting on.
-- **Currently working file:** none. Issues **8.1–8.3, 9.1 and 9.2 are merged to `dev`**
+- **Currently working file:** none. Issues **8.1–8.3 and 9.1–9.3 are merged to `dev`**
   ([8.1 tracker](issues/8.1-e2ee-backup-argon2id-aes-256-gcm-tracker.md), ADR-0039;
   [8.2 tracker](issues/8.2-restore-on-fresh-device-tracker.md), ADR-0040;
   [8.3 tracker](issues/8.3-backup-restore-drill-tracker.md), ADR-0041;
   [9.1 tracker](issues/9.1-fixed-variable-nature-engine-ai-cls-stage-2-tracker.md), ADR-0042;
-  [9.2 tracker](issues/9.2-cash-flow-forecast-ai-fct-tracker.md), ADR-0043).
+  [9.2 tracker](issues/9.2-cash-flow-forecast-ai-fct-tracker.md), ADR-0043;
+  [9.3 tracker](issues/9.3-seasonality-ai-seas-tracker.md), ADR-0044).
 - **`origin/dev` is still at `6afa5f0`** — local `dev` is well ahead (7.4, 7.5, the card APR field,
   the FOO/goals agreement, 8.1 and their records),
   and **the push is blocked, not skipped**: this machine has no GitHub credentials (no helper, no
@@ -46,6 +49,15 @@
 - **The forecast exists now (9.2), but the goals still use the observed P50 surplus** (ADR-0035,
   ADR-0037). Switching `SurplusRepository` to `ForecastRepository` is ADR-0043's recorded follow-up.
 
+### What 9.3 changed that a future issue must know
+
+- **The calendar KB's one mirror is in `:domain:engines:seasonality`** (`SeasonalityPriors`,
+  `SeasonalityRules` = SEAS-INDEX). The budget engine depends on it; do not add a second copy.
+- **AI-FCT is 1.1:** `ForecastDay.seasonal`, `CashFlowForecast.seasonalAdjustment/seasonalMonths`.
+  Its evidence carries AI-SEAS's when an adjustment applies.
+- **Category names match the KB exactly** (case aside) — the demo's "Dining Out" gets no prior.
+- **Seasonal factors below ×1 are real** (the lookback's season divided out) and are shown as savings.
+
 ### What 9.2 changed that a future issue must know
 
 - **`ForecastRepository.observeForecast()`** — 90 days, P10/P50/P90, crunch days, components. Its
@@ -55,7 +67,7 @@
   build — that is the gate working; do not relax it.
 - **rules-kb is 1.16.0**; six `*Rules.kt` mirrors restate it. `LIQUID_ACCOUNT_TYPES` is the one
   liquid definition (emergency fund and forecast).
-- **The seasonal term is zero** until 9.3; the crunch alert waits for 9.6.
+- **The crunch alert waits for 9.6.**
 
 ### What 9.1 changed that a future issue must know
 

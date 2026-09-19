@@ -1,4 +1,4 @@
-package com.aicfo.domain.engines.budget
+package com.aicfo.domain.engines.seasonality
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull

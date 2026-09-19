@@ -8,6 +8,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import com.aicfo.core.designsystem.theme.CfoTheme
 import com.aicfo.core.model.DateFormatter
+import com.aicfo.core.model.Money
 import com.aicfo.core.model.MoneyFormatter
 import com.aicfo.domain.engines.forecast.CashFlowForecast
 import org.junit.Assert.assertEquals
@@ -27,6 +28,7 @@ import org.robolectric.RobolectricTestRunner
  *       history note and the rules; the empty case.
  * Result: the card's copy is checked on every `unitTests` run.
  * Changelog: 2026-09-19 — Created for issue 9.2.
+ *            2026-09-19 — Issue 9.3: the seasonal components line, the month lines, and their absence.
  */
 @RunWith(RobolectricTestRunner::class)
 class ForecastSectionTest {
@@ -77,7 +79,7 @@ class ForecastSectionTest {
 
     @Test
     fun `the components and the next scheduled item are inspectable`() {
-        val forecast = fixtureForecast()
+        val forecast = fixtureForecast(seasonal = false)
         render(forecast)
 
         compose.onNodeWithText(
@@ -108,8 +110,53 @@ class ForecastSectionTest {
             compose.activity.resources.getQuantityString(R.plurals.dashboard_forecast_history, 90, 90),
         )
             .assertIsDisplayed()
-        compose.onNodeWithText(text(R.string.dashboard_forecast_rules, "RULE-FCT-METHOD v1.0, RULE-FCT-CRUNCH v1.0"))
-            .assertIsDisplayed()
+        compose.onNodeWithText(
+            text(R.string.dashboard_forecast_rules, "RULE-FCT-METHOD v1.0, RULE-FCT-CRUNCH v1.0, SEAS-INDEX v1.0"),
+        ).assertIsDisplayed()
+    }
+
+    @Test
+    fun `the seasonal term is named beside the components as an extra or a saving`() {
+        val forecast = fixtureForecast()
+        render(forecast)
+
+        // October +20% of ₹200 a day for 31 days; November −10% for 30: ₹1,240 − ₹600 = ₹640 extra.
+        assertEquals(Money(640_00L), forecast.seasonalAdjustment)
+        compose.onNodeWithText(
+            text(
+                R.string.dashboard_forecast_components_extra,
+                MoneyFormatter.format(forecast.scheduledIncome),
+                MoneyFormatter.format(forecast.scheduledOutflow),
+                MoneyFormatter.format(forecast.predictedSpend),
+                "₹640.00",
+            ),
+        ).assertIsDisplayed()
+    }
+
+    @Test
+    fun `each month the season moves says how much, against what, and why`() {
+        render(fixtureForecast())
+
+        compose.onNodeWithText(
+            text(R.string.dashboard_forecast_seasonal_up, "October 2026", "20.0", "₹1,240.00", "Diwali"),
+        ).assertIsDisplayed()
+        compose.onNodeWithText(
+            text(R.string.dashboard_forecast_seasonal_down, "November 2026", "10.0", "₹600.00", "after the monsoon"),
+        ).assertIsDisplayed()
+    }
+
+    @Test
+    fun `with no seasonal term there is no seasonal line and the plain components`() {
+        val forecast = fixtureForecast(seasonal = false)
+        render(forecast)
+
+        assertEquals(
+            0,
+            compose.onAllNodes(
+                hasText("everyday spending than the last 90 days", substring = true),
+            ).fetchSemanticsNodes().size,
+        )
+        assertEquals(0, compose.onAllNodes(hasText("Seasonal", substring = true)).fetchSemanticsNodes().size)
     }
 
     @Test

@@ -51,6 +51,8 @@ import com.aicfo.domain.engines.orderofoperations.OrderOfOperationsEngine
 import com.aicfo.domain.engines.receipt.ReceiptEngine
 import com.aicfo.domain.engines.recurring.RecurringEngine
 import com.aicfo.domain.engines.safetospend.SafeToSpendEngine
+import com.aicfo.domain.engines.seasonality.SeasonalityEngine
+import com.aicfo.domain.engines.seasonality.SeasonalityEngineFactory
 import com.aicfo.domain.engines.sms.SmsEngine
 import com.aicfo.domain.engines.stream.StreamEngine
 import com.aicfo.domain.engines.stream.StreamEngineFactory
@@ -531,28 +533,51 @@ object RepositoryModule {
     fun provideForecastEngine(): ForecastEngine = ForecastEngineFactory.create()
 
     /**
+     * AI-SEAS, §9.3's seasonal index (issue 9.3).
+     * Why:    pure and stateless, so one instance serves every forecast; built by its factory
+     *         because the implementation is `internal` to its module (ARC-003).
+     * Result: a [SeasonalityEngine]. Input: none. Output: the engine.
+     * Changelog: 2026-09-19 — Created for issue 9.3.
+     */
+    @Provides
+    @Singleton
+    fun provideSeasonalityEngine(): SeasonalityEngine = SeasonalityEngineFactory.create()
+
+    /**
      * The 90-day cash-flow forecast (issue 9.2; §9).
      * Why:    built over the account and stream repositories, so the forecast's opening balance is
      *         the accounts screen's and its FIXED streams are the dashboard's (ADR-0007, ADR-0043);
      *         follows the demo (ADR-0006).
      * Result: a [ForecastRepository].
-     * Input:  [database]; [accounts]; [streams]; [engine]; [clock]; [dispatchers]; [demoMode].
+     * Input:  [database]; [accounts]; [streams]; [engine]; [seasonality]; [clock]; [dispatchers];
+     *         [demoMode].
      * Output: the repository.
      * Changelog: 2026-09-19 — Created for issue 9.2.
+     *            2026-09-19 — [seasonality] added for issue 9.3.
      */
     @Provides
     @Singleton
-    @Suppress("LongParameterList") // seven, each one source the forecast reads
+    @Suppress("LongParameterList") // eight, each one source the forecast reads
     fun provideForecastRepository(
         database: CfoDatabase,
         accounts: AccountRepository,
         streams: StreamRepository,
         engine: ForecastEngine,
+        seasonality: SeasonalityEngine,
         clock: Clock,
         dispatchers: DispatcherProvider,
         demoMode: DemoModeRepository,
     ): ForecastRepository =
-        RepositoryFactory.forecast(database, accounts, streams, engine, clock, dispatchers, demoMode.activeProfileId)
+        RepositoryFactory.forecast(
+            database,
+            accounts,
+            streams,
+            engine,
+            seasonality,
+            clock,
+            dispatchers,
+            demoMode.activeProfileId,
+        )
 
     /**
      * The end-to-end-encrypted backup store (issue 8.1; SEC-005, §23.3, P-01).

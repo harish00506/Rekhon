@@ -54,7 +54,7 @@ External-data engines (market, tax) sit alongside L3–L5 and read
 | **Other** | `knowledge/classification-kb.json` | AI-CLS category + nature classification | §8 |
 | **Other** | `knowledge/market-signals.json` | AI-MKT signal library + backtest policy | §30 |
 | **Other** | `knowledge/tax-kb-fy2025-26.json` | AI-TAX FY2025-26 parameters | §38 |
-| **Other** | `knowledge/calendar-seasonality.json` | AI-FCT seasonality priors | §9.3 |
+| **Other** | `knowledge/calendar-seasonality.json` | AI-SEAS calendar priors + `SEAS-INDEX` (read by the budget suggestion and, through AI-SEAS, the forecast) | §9.3 |
 | **Other** | `knowledge/vehicle-maintenance-kb.json` | AI-VEH service intervals + cost ranges | §12 |
 
 ## Rules for editing these files (binding)

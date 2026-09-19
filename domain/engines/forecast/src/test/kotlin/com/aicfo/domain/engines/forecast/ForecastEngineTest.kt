@@ -197,7 +197,7 @@ class ForecastEngineTest {
         val forecast = forecast(dailySpend = steady(100_00L))
 
         assertEquals("AI-FCT", forecast.provenance.engineId)
-        assertEquals("1.0", forecast.provenance.engineVersion)
+        assertEquals("1.1", forecast.provenance.engineVersion)
         assertEquals(NOW, forecast.provenance.computedAtUtcMillis)
         assertEquals(10_000, forecast.provenance.confidenceBps)
         assertEquals(listOf(ForecastRules.METHOD, ForecastRules.CRUNCH), forecast.provenance.evidence)

@@ -11,6 +11,43 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The deterministic engine layer: fixed/variable + nature, cash-flow forecast, seasonality, health
 > score, the Insight Orchestrator, notifications, and the numeric guardrail.
 
+### [0.9.3] — Issue 9.3: Seasonality (AI-SEAS)  (2026-09-19)
+
+- **Implemented:** `:domain:engines:seasonality` (`AI-SEAS` 1.0). §9.3's monthly index per category
+  is the user's own median for that month over their typical month when their history shows it,
+  and the calendar knowledge base's prior otherwise. Both are shrunk by `k = months/24`
+  (**§9.3**, **AI-ARC-003**, **ADR-0044**).
+- **Forecast 1.1:** §9.2's `seasonalAdjustment(d)` term is now live. It is one factor per month,
+  weighted by the forecast's own everyday spend, with the last ninety days' season divided out, so a
+  monsoon lookback does not carry the monsoon into October. It is kept as its own term; the bands
+  move with it, and it is never allowed to push a day's spend below zero.
+- **Data, not code:**
+  - The calendar KB (1.1) gains `SEAS-INDEX`: the denominator 24, 36 months of history, and a 1%
+    minimum effect (a smaller move is noise, neither applied nor named).
+  - The KB's one typed mirror moved from the budget engine into AI-SEAS; budget figures are
+    unchanged.
+- **On screen:** "The next 90 days" names the seasonal term beside its components as an extra or a
+  saving. Each month the season moves gets a line, for example *"October 2026: 20.0% more everyday
+  spending than the last 90 days (₹1,240.00 extra) — Diwali"*, and SEAS-INDEX is added to the
+  rules. All of it is masked by the privacy blur.
+- **Not yet** (ADR-0044):
+  - exact festival dates (§22.2);
+  - category synonyms (the demo's "Dining Out");
+  - budget suggestions using the user's own index;
+  - seasonal notifications (9.6);
+  - persisted indices.
+- **Tests:** 2,758 unit tests pass, 0 skipped, including:
+  - 20 behaviour tests;
+  - 8 identities × 200 cases;
+  - a golden file of 60 indices and 12 factors across Sep 2026 – Aug 2027, from an independent
+    exact-fraction oracle that reads the KB itself;
+  - 8 drift tests;
+  - 9 forecast seasonal tests;
+  - 2 repository tests and 3 render tests.
+
+  The zero fallback, the lookback division, the KB threshold and the repository join were each
+  watched go red.
+
 ### [0.9.2] — Issue 9.2: Cash-flow forecast (AI-FCT)  (2026-09-19)
 
 - **Implemented:** `:domain:engines:forecast` (`AI-FCT` 1.0) replaces issue 1.1's placeholder. It

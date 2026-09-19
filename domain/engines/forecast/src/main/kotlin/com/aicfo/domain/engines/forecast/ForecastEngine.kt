@@ -4,6 +4,8 @@ import com.aicfo.core.common.AppError
 import com.aicfo.core.common.Result
 import com.aicfo.core.model.EngineProvenance
 import com.aicfo.core.model.Money
+import com.aicfo.domain.engines.seasonality.SeasonalityResult
+import com.aicfo.domain.engines.seasonality.SpendFactor
 import java.time.LocalDate
 
 /**
@@ -19,6 +21,7 @@ import java.time.LocalDate
  *       resampling of past residuals, the crunch days below the buffer, and the three components.
  * Result: a [CashFlowForecast].
  * Changelog: 2026-09-19 — Created for issue 9.2.
+ *            2026-09-19 — 1.1 for issue 9.3: §9.2's `seasonalAdjustment(d)` term, from AI-SEAS.
  *
  * One public interface; the implementation is internal (ARC-003). **§9.2's upgrade path — a learned
  * variable-spend model in Phase 4 — replaces the implementation behind this interface; the contract
@@ -61,8 +64,11 @@ object ForecastEngineFactory {
  *         it is on or after [historyStart]. [historyStart] — the first day the ledger has anything,
  *         or `null` for none; days before it are not "zero spend", they are unknown. [seed] — the
  *         Monte Carlo seed (P-08). [nowUtcMillis] — stamped on the provenance. [rules] — RULE-FCT-*.
+ *         [seasonality] — AI-SEAS's result for the horizon's months (issue 9.3), or `null` for none;
+ *         a month it gives no factor for is ×1.
  * Output: an immutable value.
  * Changelog: 2026-09-19 — Created for issue 9.2.
+ *            2026-09-19 — [seasonality] added for issue 9.3.
  */
 data class ForecastInput(
     val today: LocalDate,
@@ -74,6 +80,7 @@ data class ForecastInput(
     val seed: Long,
     val nowUtcMillis: Long,
     val rules: ForecastRules = ForecastRules(),
+    val seasonality: SeasonalityResult? = null,
 )
 
 /**
@@ -144,10 +151,13 @@ data class DailySpend(
  *
  * Input:  [date]; [p10], [p50], [p90] — balance bands (P10 ≤ P50 ≤ P90); [scheduledNet] — that
  *         day's scheduled items summed, signed; [predictedSpend] — that day's predicted everyday
- *         outflow, positive; [expected] — the path with no surprises: opening + Σ scheduled − Σ
- *         predicted up to and including this day.
+ *         outflow, positive; [seasonal] — §9.2's `seasonalAdjustment(d)`: the predicted spend times
+ *         (the month's AI-SEAS factor − 1), HALF_EVEN, signed — positive is extra spend, and
+ *         `predictedSpend + seasonal` is never negative; [expected] — the path with no surprises:
+ *         opening + Σ scheduled − Σ (predicted + seasonal) up to and including this day.
  * Output: an immutable value.
  * Changelog: 2026-09-19 — Created for issue 9.2.
+ *            2026-09-19 — [seasonal] added for issue 9.3.
  */
 data class ForecastDay(
     val date: LocalDate,
@@ -157,6 +167,19 @@ data class ForecastDay(
     val scheduledNet: Money,
     val predictedSpend: Money,
     val expected: Money,
+    val seasonal: Money = Money.ZERO,
+)
+
+/**
+ * One month the seasonal term moved, as the screen shows it (issue 9.3; P-02).
+ * Input:  [factor] — AI-SEAS's factor for the month, with the events it names; [adjustment] — Σ of
+ *         the month's [ForecastDay.seasonal] **inside the horizon**, signed.
+ * Output: an immutable value.
+ * Changelog: 2026-09-19 — Created for issue 9.3.
+ */
+data class SeasonalMonth(
+    val factor: SpendFactor,
+    val adjustment: Money,
 )
 
 /**
@@ -170,9 +193,13 @@ data class ForecastDay(
  *         outflow over the horizon; [dailyBase] — §9.2's trimmed-mean base, paise per day;
  *         [crunchDays] — days whose P50 is below [buffer] (RULE-FCT-CRUNCH); [lowest] — the day
  *         with the lowest P50 (earliest on a tie), `null` only for an empty horizon;
- *         [historyDays] — lookback days that had data; [provenance].
+ *         [historyDays] — lookback days that had data; [seasonalAdjustment] — Σ of every day's
+ *         seasonal amount, signed; [seasonalMonths] — the horizon's months whose adjustment is not
+ *         zero, in order; [provenance] — AI-SEAS's evidence follows the forecast's own rules when an
+ *         adjustment applies.
  * Output: an immutable value.
  * Changelog: 2026-09-19 — Created for issue 9.2.
+ *            2026-09-19 — [seasonalAdjustment] and [seasonalMonths] added for issue 9.3.
  */
 data class CashFlowForecast(
     val openingBalance: Money,
@@ -187,4 +214,6 @@ data class CashFlowForecast(
     val lowest: ForecastDay?,
     val historyDays: Int,
     val provenance: EngineProvenance,
+    val seasonalAdjustment: Money = Money.ZERO,
+    val seasonalMonths: List<SeasonalMonth> = emptyList(),
 )
