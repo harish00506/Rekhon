@@ -100,3 +100,21 @@ subprojects {
         }
     }
 }
+
+/**
+ * `restoreDrill` — the backup restore drill, the release-gate step (issue 8.3; §21.5, DRL-001).
+ *
+ * Why:  one memorable name for the step `docs/issues/00-issue-workflow.md` requires before every
+ *       promotion to `stage` or `main`, and the one CI's `restore-drill` job runs. Without it the
+ *       step would be a long module-task path somebody has to remember exactly.
+ * What: `:data:repository:connectedDebugAndroidTest` — `BackupRestoreDrillDeviceTest` plus 8.2's
+ *       `BackupRestoreDeviceTest`, the module's only instrumented tests. Needs a device or emulator.
+ * Result: green only if a backup made by this build restores onto a clean encrypted database with
+ *       every table's rows intact.
+ * Changelog: 2026-09-19 — Created for issue 8.3.
+ */
+tasks.register("restoreDrill") {
+    group = "verification"
+    description = "Backup → destroy → restore on a device; every table must match (release gate, DRL-001)."
+    dependsOn(":data:repository:connectedDebugAndroidTest")
+}
