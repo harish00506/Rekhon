@@ -9,7 +9,24 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 ## [0.8.0] — Epic 8: Backup & Restore
 
 > End-to-end-encrypted backup, restore on a fresh device, and an automated restore drill — so backups
-> are proven, not assumed (§23.3, §34.4).
+> are proven, not assumed (§23.3, §34.4). **Complete at 0.8.3.**
+
+### [0.8.3] — Issue 8.3: Backup restore drill  (2026-09-19)
+
+- **Implemented:** the backup restore drill as a **release gate** (**§21.5**, **§34.4 DRL-001**,
+  **ADR-0041**). It seeds one row, every nullable column set, in all 22 profile-scoped tables; seals
+  a backup; restores it onto a **clean** instance; and compares every table row by row, read straight
+  from `sqlite_master`, not from the archive. That means a table the archive forgets can't hide on
+  both sides. A new table fails the drill until it is seeded.
+- **Where it runs:** as a JVM test in `unitTests` (every PR), and as `./gradlew restoreDrill` on a device.
+  The device run destroys the SQLCipher file **and its key** between backup and restore. A new CI job,
+  `restore-drill`, runs it on an emulator for every PR into `stage`/`main`. It is documented as a
+  recurring step in `00-issue-workflow.md`, `CLAUDE.md` §7 and `/pre-merge`.
+- **Not yet:** DRL-001's twice-yearly in-app drill (needs `backups_log`, the insight feed and a backup
+  the app can re-open). The CI job blocks only once branch protection requires it.
+- **Tests:** 4 JVM drill tests, 1 device drill. **Both were watched go red:** removing `insertGoals` from
+  the restore failed both on "row counts per table … goal" and made `restoreDrill` exit 1. No app code
+  changed.
 
 ### [0.8.2] — Issue 8.2: Restore on fresh device  (2026-09-18)
 

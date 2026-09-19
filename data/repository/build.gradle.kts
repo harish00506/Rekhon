@@ -10,6 +10,13 @@ plugins {
 android {
     namespace = "com.aicfo.data.repository"
 
+    // Issue 8.3: the restore drill's fixture and parity reader are shared by the JVM drill and the
+    // instrumented one, so both seed the same rows and compare them the same way.
+    sourceSets {
+        getByName("test").kotlin.srcDir("src/sharedTest/kotlin")
+        getByName("androidTest").kotlin.srcDir("src/sharedTest/kotlin")
+    }
+
     defaultConfig {
         // Issue 8.2: the backup → wipe → restore round trip on real SQLCipher. Without the AndroidX
         // runner a library's instrumentation falls back to the legacy runner and crashes with 0 tests.

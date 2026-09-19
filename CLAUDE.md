@@ -139,6 +139,8 @@ engine. Every row is versioned and cited by ID in evidence (AI-ARC-006). See `ai
   asked while on `main` or `stage`, branch to `dev`/a feature branch first.
 - **Promote by PR:** `feature → dev` (per issue) → `dev → stage` (live testing) → `stage → main`
   (release). Before opening a PR, run the **Definition of Done** (`/pre-merge`, and the PR template).
+  **Every promotion into `stage` or `main` first passes the backup restore drill** — `./gradlew
+  restoreDrill` on a device; red blocks the release (§21.5, DRL-001, issue 8.3; `00-issue-workflow.md`).
 
 ## 8. Definition of Done (§4.2 — applies to every feature)
 

@@ -9,6 +9,7 @@
     2026-09-17 — Issue 7.5 merged to dev; Epic 7 complete.
     2026-09-18 — Issue 8.1 (E2EE backup) merged to dev; Epic 8 opened at 0.8.0.
     2026-09-18 — Issue 8.2 (restore on fresh device) merged to dev.
+    2026-09-19 — Issue 8.3 (restore drill) merged to dev; Epic 8 complete.
 -->
 
 # AI Personal CFO — Project Memory
@@ -20,13 +21,14 @@
 
 ## Current state
 
-- **Version:** `0.8.2` (see [`../VERSION`](../VERSION)) · **Phase:** 2–3. **Schema is v22**, unchanged by 8.1.
-- **Epics 1–7 are done; Epic 8 is open** — 8.1 (E2EE backup) and 8.2 (restore) shipped; **8.3
-  (the restore drill, DRL-001) is next** and can reuse `BackupCipher.open` without applying. Epic 9 (AI core engines, incl. the 9.2 forecast) is
+- **Version:** `0.8.3` (see [`../VERSION`](../VERSION)) · **Phase:** 2–3. **Schema is v22**, unchanged by 8.1.
+- **Epics 1–8 are done** — 8.3 (the restore drill) closed Epic 8. Epic 9 (AI core engines, incl. the
+  9.2 forecast) is the open one left in Phases 2–3. Epic 9 (AI core engines, incl. the 9.2 forecast) is
   still the one the goals work kept waiting on.
-- **Currently working file:** none. Issues **8.1 and 8.2 are merged to `dev`**
+- **Currently working file:** none. Issues **8.1, 8.2 and 8.3 are merged to `dev`**
   ([8.1 tracker](issues/8.1-e2ee-backup-argon2id-aes-256-gcm-tracker.md), ADR-0039;
-  [8.2 tracker](issues/8.2-restore-on-fresh-device-tracker.md), ADR-0040).
+  [8.2 tracker](issues/8.2-restore-on-fresh-device-tracker.md), ADR-0040;
+  [8.3 tracker](issues/8.3-backup-restore-drill-tracker.md), ADR-0041).
 - **`origin/dev` is still at `6afa5f0`** — local `dev` is well ahead (7.4, 7.5, the card APR field,
   the FOO/goals agreement, 8.1 and their records),
   and **the push is blocked, not skipped**: this machine has no GitHub credentials (no helper, no
@@ -41,6 +43,17 @@
   1.1's placeholder, so 7.3 substituted an *observed* P50 surplus for §15.1's *forecast* one
   (ADR-0035), and 7.5 reuses that same figure (ADR-0037). When 9.2 lands, the change is one place:
   `GoalWaterfallRepository`.
+
+### What 8.3 changed that a future issue must know
+
+- **A new table fails the restore drill until it is seeded** in
+  `data/repository/src/sharedTest/.../DrillFixture.kt`. That is the point — it is the fourth edit a
+  new table needs (entity, archive, demo wipe, residue count, **and now the drill fixture**).
+- **`./gradlew restoreDrill` is a release gate** before every `dev → stage` and `stage → main`
+  (needs a device). CI's `restore-drill` job runs it on an emulator but **only blocks once branch
+  protection lists "Backup restore drill (release gate)" as required** — never verified from here.
+- **DRL-001's twice-yearly in-app drill is deferred** (ADR-0041): build it when `backups_log`, the
+  insight feed and a re-openable backup exist.
 
 ### What 8.2 changed that a future issue must know
 

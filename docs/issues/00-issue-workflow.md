@@ -62,7 +62,8 @@ When working on any task, issue, or epic:
     (the integration branch) — **never push straight to `main`/`stage`** (both protected,
     PR-only, §21.6). In the PR, update the tracker + any `ENGINE.md`/ADR docs and bump
     `VERSION` + `CHANGELOG.md` (see Versioning below). After it merges to `dev`, **promote by PR**:
-    `dev → stage` for live testing, then `stage → main` for release. Do not leave finished work
+    `dev → stage` for live testing, then `stage → main` for release — each promotion passes the
+    **restore drill** first (see "Release gate" below). Do not leave finished work
     only on a feature branch.
 11. **Tracker + Verification Log (required when Done)** — create/update
     `docs/issues/<id>-<slug>-tracker.md` from [`_TRACKER_TEMPLATE.md`](_TRACKER_TEMPLATE.md).
@@ -160,6 +161,32 @@ Applies to every function, method, engine, or composable you add or change:
 3. **Log every run.** Record each suite run (command + `OK`/`FAIL` + pass count) in the issue
    **Verification Log**, the same way emulator/run steps are logged (step 11). `M skipped` must
    name *why* (e.g. `2 skipped — no attached device`), never skipped to go green.
+
+---
+
+## Release gate — the backup restore drill (issue 8.3; §21.5, §34.4 DRL-001)
+
+**A recurring step on every promotion, not a one-off test.** Before `dev → stage` and again before
+`stage → main`, a backup made by *this* build must be proven to restore:
+
+```text
+./gradlew restoreDrill          # needs a device or emulator (`emulator -avd CfoTest`)
+```
+
+It seeds one row in **every** table of an encrypted database, seals a backup at the shipping Argon2id
+cost, destroys the database **and its key**, opens a clean one, restores, and compares every table
+row by row, read straight from SQLite. **Red means the release does not ship.** Log the run in the
+promotion PR and in the issue's Verification Log.
+
+- **CI:** the `restore-drill` job in `.github/workflows/ci.yml` runs the same task on an emulator for
+  every PR into `stage` or `main`. For it to *block*, repository settings must list
+  **"Backup restore drill (release gate)"** as a required status check on both branches. That is a
+  GitHub setting, not code — check it whenever branch protection is touched.
+- **Every build:** the JVM drill (`BackupRestoreDrillTest`) runs in `unitTests`, so a backup
+  regression fails `dev` long before a promotion.
+- **A new table fails the drill until it is seeded** in `data/repository/src/sharedTest/.../DrillFixture.kt`.
+  That is deliberate: a table the drill never filled is a table nobody has proven comes back
+  (`goal` went missing from every export between 7.1 and 7.4 exactly this way).
 
 ---
 

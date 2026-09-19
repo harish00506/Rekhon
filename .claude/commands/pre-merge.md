@@ -36,6 +36,10 @@ file:line), then give a one-line **MERGE / DO NOT MERGE** verdict.
     pass**. A major change with no quiz is ❌ — go and run it now, before the merge, rather than
     noting it as missing. Report the quiz outcomes as recorded, fails included; a log with no
     fails in it is not evidence of a gate working.
+11. **Restore drill (promotions only)** — when this PR targets `stage` or `main`, `./gradlew
+    restoreDrill` has run green on a device or emulator for this commit (§21.5, DRL-001, issue 8.3).
+    It is the release gate: ❌ if it was not run, and ❌ if it was red. For a PR into `dev` mark it
+    `n/a` — the JVM drill in `unitTests` covers that.
 
 If the Gradle build does not exist yet (greenfield), say so and check the items you can
 (traceability, string externalisation, money/time audit, ai/ integrity) rather than

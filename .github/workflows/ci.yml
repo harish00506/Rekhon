@@ -13,6 +13,8 @@
 #                dev/stage triggers, Android SDK setup, and the ARC-002 convention tests.
 #                OSV scan (issue 11.6) lands with its issue.
 #   2026-07-25 — Issue 1.8: Paparazzi screenshot diff enabled (JVM, no emulator required).
+#   2026-09-19 — Issue 8.3: the `restore-drill` job — the backup restore drill on an emulator,
+#                required for every promotion into `stage` or `main` (§21.5, DRL-001).
 # =============================================================================
 name: CI
 
@@ -100,4 +102,60 @@ jobs:
           path: |
             **/build/reports/**
             **/build/test-results/**
+          if-no-files-found: ignore
+
+  # Issue 8.3 (§21.5, §34.4 DRL-001): the backup restore drill, on a real emulator.
+  #
+  # Why:  `verify` already runs the JVM drill on every PR (it is in `unitTests`). A release ships
+  #       SQLCipher and Android's crypto providers, though, and the drill that gates a release must
+  #       run on those — so every promotion into `stage` or `main` seals a backup from a database
+  #       with a row in every table, destroys the database and its key, and restores onto a clean
+  #       one. Any difference, table by table, fails this job and blocks the promotion.
+  # What: `./gradlew restoreDrill` (= `:data:repository:connectedDebugAndroidTest`) on an API 34
+  #       x86_64 emulator. Only on the release path: an emulator run costs minutes, and `dev` is
+  #       covered by the JVM drill.
+  # Enforcement: GitHub branch protection on `stage` and `main` must list this job as a required
+  #       check. That is repository configuration, not something this file can set — see
+  #       `docs/issues/00-issue-workflow.md`, "Release gate".
+  restore-drill:
+    name: Backup restore drill (release gate)
+    if: >-
+      (github.event_name == 'pull_request' && (github.base_ref == 'stage' || github.base_ref == 'main')) ||
+      (github.event_name == 'push' && (github.ref == 'refs/heads/stage' || github.ref == 'refs/heads/main'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Enable KVM
+        # Hardware acceleration for the emulator; without it the x86_64 image is too slow to boot.
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Restore drill on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: ./gradlew restoreDrill --stacktrace
+
+      - name: Upload drill results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: restore-drill
+          path: data/repository/build/outputs/androidTest-results/**
           if-no-files-found: ignore
