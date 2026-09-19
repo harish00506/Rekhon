@@ -1,4 +1,4 @@
-package com.aicfo.domain.engines.budget
+package com.aicfo.domain.engines.seasonality
 
 /**
  * One Indian calendar event and the months and categories it inflates, copied from
@@ -12,6 +12,7 @@ package com.aicfo.domain.engines.budget
  *       integer basis points.
  * Result: a suggestion can say *why* it is above a category's ordinary median, naming the festival.
  * Changelog: 2026-08-11 — Created for issue 4.4 from calendar-seasonality.json v1.0.
+ *            2026-09-19 — Moved to `:domain:engines:seasonality` for issue 9.3; unchanged.
  *
  * **The multiplier is bps, not the KB's decimal.** The file writes `1.38`; MNY-002 says a rate is
  * an integer basis point, so it is `13_800` here and `SeasonalityKbDriftTest` asserts the two agree.
@@ -72,7 +73,7 @@ data class SeasonalEvent(
  * The nine calendar events of `ai/knowledge/calendar-seasonality.json`, and the shrinkage rule that
  * blends them with what the app has actually observed.
  *
- * Why:  same recorded deferral as [BudgetRules] (ADR-0005, ADR-0017) — the app loads no `ai/` file
+ * Why:  same recorded deferral as the rulebook mirrors (ADR-0005, ADR-0017) — the app loads no `ai/` file
  *       at runtime, so this is a typed mirror guarded by `SeasonalityKbDriftTest` rather than a
  *       parser in a module that has no serialisation dependency by design (ARC-002).
  * What: the priors, and [seasonalIndexBps], which implements the KB's own
@@ -80,6 +81,9 @@ data class SeasonalEvent(
  * Result: a young install leans on the calendar; a mature one leans on its own history, with no
  *       switch-over to get wrong — `k` moves the weight continuously.
  * Changelog: 2026-08-11 — Created for issue 4.4.
+ *            2026-09-19 — Moved from `:domain:engines:budget` to AI-SEAS for issue 9.3 (ADR-0044), so
+ *            the budget and the forecast read one mirror; [KB_VERSION] 1.1 (the file gained its
+ *            `method` block — no event changed).
  */
 object SeasonalityPriors {
     /**
@@ -152,8 +156,11 @@ object SeasonalityPriors {
     }
 
     /** The knowledge-base file these events were copied from, as `_meta.version`. */
-    const val KB_VERSION = "1.0"
+    const val KB_VERSION = "1.1"
 }
 
 /** Months in a year — the modulus every wrapping window is checked against. */
 internal const val MONTHS_IN_YEAR = 12
+
+/** 10 000 basis points = ×1, "no seasonal change" (MNY-002). */
+internal const val BPS_FULL = 10_000

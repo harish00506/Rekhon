@@ -7,6 +7,8 @@ import com.aicfo.core.common.runCatchingToResult
 import com.aicfo.core.model.EngineProvenance
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.RuleCitation
+import com.aicfo.domain.engines.seasonality.SeasonalEvent
+import com.aicfo.domain.engines.seasonality.SeasonalityPriors
 
 /**
  * The production [BudgetEngine] — FR-BUD-002's suggestion and FR-BUD-003's status (issue 4.4).

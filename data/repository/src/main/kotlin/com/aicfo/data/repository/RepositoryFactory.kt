@@ -25,6 +25,7 @@ import com.aicfo.domain.engines.orderofoperations.OrderOfOperationsEngine
 import com.aicfo.domain.engines.receipt.ReceiptEngine
 import com.aicfo.domain.engines.recurring.RecurringEngine
 import com.aicfo.domain.engines.safetospend.SafeToSpendEngine
+import com.aicfo.domain.engines.seasonality.SeasonalityEngine
 import com.aicfo.domain.engines.sms.SmsEngine
 import com.aicfo.domain.engines.stream.StreamEngine
 import com.aicfo.ml.ocr.ReceiptTextRecognizer
@@ -611,16 +612,19 @@ object RepositoryFactory {
      * Why:    takes the account and stream repositories rather than re-deriving balances or streams,
      *         so the forecast and the screens beside it agree on both (ADR-0007, ADR-0043).
      * Result: a [ForecastRepository].
-     * Input:  [database]; [accounts]; [streams]; [engine]; [clock]; [dispatchers]; [activeProfileId].
+     * Input:  [database]; [accounts]; [streams]; [engine]; [seasonality] — AI-SEAS, whose factor
+     *         the forecast applies (issue 9.3); [clock]; [dispatchers]; [activeProfileId].
      * Output: [ForecastRepository].
      * Changelog: 2026-09-19 — Created for issue 9.2.
+     *            2026-09-19 — [seasonality] added for issue 9.3.
      */
-    @Suppress("LongParameterList") // seven sources, each one the forecast reads
+    @Suppress("LongParameterList") // eight sources, each one the forecast reads
     fun forecast(
         database: CfoDatabase,
         accounts: AccountRepository,
         streams: StreamRepository,
         engine: ForecastEngine,
+        seasonality: SeasonalityEngine,
         clock: Clock,
         dispatchers: DispatcherProvider,
         activeProfileId: Flow<String>,
@@ -630,6 +634,7 @@ object RepositoryFactory {
             accounts,
             streams,
             engine,
+            seasonality,
             clock,
             dispatchers,
             activeProfileId,

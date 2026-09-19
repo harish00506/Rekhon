@@ -18,6 +18,7 @@
         Issue 8.2 added its restore, wrapped around §2.05's import, and the import's profile check.
     2026-09-19 — Issue 9.1 added §2.07: AI-CLS Stage 2 on the dashboard.
     2026-09-19 — Issue 9.2 added §2.08: the 90-day forecast.
+    2026-09-19 — Issue 9.3: §2.08 runs AI-SEAS before AI-FCT, over closed-month category history.
     2026-09-03 — Issue 7.3 added §2.6, the goal waterfall. Still Shape A — a screen — but the first
         read assembled from four repositories, and the first write driven by a gesture, so it is
         traced beside §2.5 rather than folded into it.
@@ -377,13 +378,20 @@ DashboardViewModel.observeForecast()
          categoryDao().observeForProfile()            names for FIXED streams / one-offs
          transactionDao().observeFirstBookedIsoDate() where "unknown" ends
          transactionDao().observeNatureCandidates(today−90 … today+90)
-           ├─ ≤ today: liquid outflows − liquid↔liquid transfers − scheduled rows → dailySpend
+           ├─ ≤ today: liquid outflows − liquid↔liquid transfers − scheduled rows → everyday rows
            └─ > today: liquid rows → one-offs (future-dated)
-       ) → ForecastEngine.forecast(ForecastInput)     domain/engines/forecast — pure
-            ├─ project commitments by cadence from their anchors
-            ├─ SpendModel.fit: trimmed mean × weekend ratio × pay-cycle ratio; residuals
-            └─ Bands.simulate: 500 seeded paths → P10/P50/P90; crunch = P50 < buffer
-    ⇣  Result<CashFlowForecast> → uiState.forecast → ForecastSection   (masked when blurred)
+         transactionDao().observeMonthlyCategorySpend(36 closed months)       (issue 9.3)
+       ) → forecastOf()
+          ├─ SeasonalityEngine.index(SeasonalityInput)  domain/engines/seasonality — pure (AI-SEAS)
+          │    history → index per category/month (own first, else calendar; shrunk by k)
+          │    everyday rows by category → factor per month, lookback's season divided out
+          └─ ForecastEngine.forecast(ForecastInput + seasonality)   domain/engines/forecast — pure
+               ├─ project commitments by cadence from their anchors
+               ├─ SpendModel.fit: trimmed mean × weekend ratio × pay-cycle ratio; residuals
+               ├─ seasonal(d) = predicted(d) × (factor − 1)                   (AI-FCT 1.1)
+               └─ Bands.simulate: 500 seeded paths → P10/P50/P90; crunch = P50 < buffer
+    ⇣  Result<CashFlowForecast> → uiState.forecast → ForecastSection → ComponentsLine, SeasonalLines
+                                                                        (masked when blurred)
 ```
 
 ### 2.1 · The dashboard's headline figure (issue 5.2)

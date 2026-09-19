@@ -10,4 +10,7 @@ plugins {
 dependencies {
     api(project(":core:model"))
     api(project(":core:common"))
+    // §9.2's `seasonalAdjustment(d)` term: the forecast applies AI-SEAS's monthly factor to its
+    // everyday spend and carries its result in the input (issue 9.3, ADR-0044).
+    api(project(":domain:engines:seasonality"))
 }

@@ -1,7 +1,7 @@
 # ForecastEngine — AI-FCT (cash-flow forecast)
 
 **SRS:** §9.1, §9.2  ·  **Pipeline layer:** L4  ·  **Module:** `:domain:engines:forecast`
-**Version:** 1.0  ·  **Status:** active  ·  **Engine id on results:** `AI-FCT`
+**Version:** 1.1  ·  **Status:** active  ·  **Engine id on results:** `AI-FCT`
 
 ## Why this engine exists
 Every other figure in the app describes the past or the current month. The forecast says what the
@@ -42,8 +42,9 @@ interface ForecastEngine {
 ## Formula / algorithm
 §9.2, verbatim where it is specific:
 ```
-forecast(d)   = opening + Σ scheduled(≤ d) − Σ predictedVariableSpend(≤ d)     (+ seasonal: 9.3, 0 today)
+forecast(d)   = opening + Σ scheduled(≤ d) − Σ (predictedVariableSpend + seasonal)(≤ d)
 predicted(d)  = base × dowAdj(d) × domAdj(d)                      HALF_EVEN to the paisa
+seasonal(d)   = predicted(d) × (AI-SEAS factor(month(d)) − 1)      HALF_EVEN; ×1 with no factor (1.1)
 base          = trimmed mean of daily everyday spend over the lookback, trim ⌊n·10%⌋ each end
 dowAdj        = median(weekend days) / median(all days)   or   median(weekdays) / median(all)
 domAdj        = mean(bucket) / mean(all), buckets 1–5 (spike), 6–24, 25–31 (trough)
@@ -70,8 +71,10 @@ crunch day    = P50 < buffer (₹5,000)
   - Scheduled means confirmed recurring rules, FIXED streams from 9.1, and future-dated rows.
   - Everyday spend is liquid outflows with the scheduled ones removed. Transfers between liquid
     accounts are excluded, and card purchases don't count until the bill is paid.
+- **Seasonality (1.1, ADR-0044):** AI-SEAS's monthly factor, which divides out the lookback's own
+  season, is applied to each day's rounded prediction as a separate term. The bands move with it
+  exactly, and `predicted + seasonal` is never negative.
 - **Not modelled** (ADR-0043):
-  - seasonality (9.3);
   - irregular income (§9.2's Persona 3);
   - loan EMIs not confirmed as a rule;
   - per-account forecasts and the Pro 12-month horizon (AI-FCT-001);
@@ -85,13 +88,17 @@ crunch day    = P50 < buffer (₹5,000)
 | RULE-FCT-CRUNCH v1.0 | buffer 500 000 paise, measured on P50 |
 
 Mirrored as `ForecastRules` and guarded by `ForecastRulebookDriftTest`. The rulebook is a declared
-test input.
+test input. Since 1.1, AI-SEAS's evidence (SEAS-INDEX and any named calendar events) follows these
+whenever a seasonal adjustment applies. AI-SEAS's `ENGINE.md` owns the calendar file.
 
 ## Evidence shown to the user (P-02)
 The dashboard card "The next 90 days" shows:
 - the lowest point, with its date and the P10–P90 range;
 - the crunch line (the day count and the first date), or "stays above your buffer";
-- "Coming in · Going out · Everyday spending";
+- "Coming in · Going out · Everyday spending", plus "Seasonal extra" or "Seasonal saving" when there
+  is one (1.1);
+- one line per month the season moves, giving the percentage against the last 90 days, the amount,
+  and why (1.1);
 - the next three scheduled items, each with its source ("repeats", "fixed each month",
   "scheduled");
 - how many days of history the estimate rests on, and that income counts only confirmed repeats;
@@ -115,6 +122,10 @@ All amounts are masked by the privacy blur.
   the first run. At 1.0 the median 90-day spend error is **12.6%** (gate ≤ 15%) and mean P10–P90
   coverage is **70.3%** (gate ≥ 70%). **The coverage margin is thin.** The worst ledgers are the
   drift and regime-change ones the method does not model.
+- **Seasonal** (`ForecastSeasonalityTest`, 9, 1.1): the per-day amount, the path, savings and the
+  non-negative floor, the month totals inside the horizon, no factor versus ×1, the evidence order,
+  the version, and the bands moving exactly. The property cases also carry random factors in half
+  the runs, and the path and component identities include the seasonal term.
 - **Watched red:** removing the trim failed the golden, backtest and behaviour tests. Changing the KB
   buffer alone failed the drift test.
 
@@ -122,3 +133,4 @@ All amounts are masked by the privacy blur.
 | Version | Date | Change |
 |---------|------|--------|
 | 1.0 | 2026-09-19 | Initial implementation from SRS §9.2 (issue 9.2). Replaces issue 1.1's placeholder. |
+| 1.1 | 2026-09-19 | §9.2's `seasonalAdjustment(d)` from AI-SEAS (issue 9.3, ADR-0044): `ForecastDay.seasonal`, `seasonalAdjustment`, `seasonalMonths`, and AI-SEAS's evidence. With no seasonal input every figure is 1.0's; the golden file and the backtest are unchanged. |

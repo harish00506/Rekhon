@@ -27,6 +27,8 @@ import com.aicfo.domain.engines.forecast.ScheduledItem
  * Result: nothing before the first forecast — a row of zeroes would be a forecast the app made up
  *       (P-03).
  * Changelog: 2026-09-19 — Created for issue 9.2.
+ *            2026-09-19 — Issue 9.3: the seasonal term beside the components, and a line per
+ *            month it moves ([SeasonalLines]).
  *
  * Input:  [forecast] — or `null`. Output: the composition.
  */
@@ -47,16 +49,8 @@ internal fun ForecastSection(forecast: CashFlowForecast?) {
         style = MaterialTheme.typography.bodyMedium,
     )
     CrunchLine(forecast)
-    Text(
-        text =
-            stringResource(
-                R.string.dashboard_forecast_components,
-                maskedAmount(forecast.scheduledIncome),
-                maskedAmount(forecast.scheduledOutflow),
-                maskedAmount(forecast.predictedSpend),
-            ),
-        style = MaterialTheme.typography.bodySmall,
-    )
+    ComponentsLine(forecast)
+    SeasonalLines(forecast)
     forecast.scheduled.take(NEXT_ITEMS).forEach { item -> ScheduledLine(item) }
     ProvenanceNotes(forecast)
 }

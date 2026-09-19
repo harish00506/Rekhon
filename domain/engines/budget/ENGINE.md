@@ -199,13 +199,15 @@ calculation, called from a different caller.
 | `RULE-BUD-PACE` (`ai/rules/rules-kb.json` v1.10.0) | `projection_basis`, `min_elapsed_days_for_projection` |
 | `RULE-BUD-ALERT` (`ai/rules/rules-kb.json` v1.10.0) | `warn_pct`, `exceeded_pct`, `notify_once_per_band_per_month` |
 | `RULE-BUD-REVIEW` (`ai/rules/rules-kb.json` v1.11.0) | `min_variance_pct`, `proposal_basis`, `review_once_per_month` |
-| `ai/knowledge/calendar-seasonality.json` v1.0 | the nine calendar events, their windows, the categories they inflate, their priors, and the shrinkage rule |
+| `ai/knowledge/calendar-seasonality.json` v1.1 | the nine calendar events, their windows, the categories they inflate, their priors, and the shrinkage rule — read through `:domain:engines:seasonality` since issue 9.3 |
 
 Both are **typed mirrors** (`BudgetRules`, `SeasonalityPriors`), not loaded at runtime — the
 deferral ADR-0005 opened and [ADR-0017](../../../docs/adr/0017-budget-thresholds-stay-a-typed-mirror.md)
-restates for this engine. `RulebookDriftTest` and `SeasonalityKbDriftTest` are what make the
-deferral cost nothing; both files are declared as Gradle test inputs so the gates cannot report
-green against a file they never read.
+restates for this engine. `RulebookDriftTest` makes the deferral cost nothing for the rulebook, which
+is a declared Gradle test input. **Issue 9.3 moved `SeasonalityPriors` and its two tests to AI-SEAS**
+([ADR-0044](../../../docs/adr/0044-seasonality-own-history-first-lookback-divided-out.md)) so the
+budget and the forecast read one mirror; `RulebookDriftTest` now also asserts this engine's
+shrinkage denominator equals AI-SEAS's.
 
 ## Evidence shown to the user (P-02)
 
@@ -233,9 +235,8 @@ A suggestion is the only result in this app that states its `inputWindow` — `"
 |------|---------------|
 | `BudgetGoldenTest` | 20 frozen records over `golden/budget.txt`; asserts amounts, medians, all four status figures, the derived flags and the **ordered** citations. A meta-test asserts the fixture still covers the seasonal, unadjusted, no-suggestion, wrapping-window and withheld-projection paths, plus 8 `kind=review` records covering the mixed/threshold/unpriceable/zero-budget review paths |
 | `BudgetEngineTest` | both thresholds at / just below / just above their boundary, read from `BudgetRules` rather than literals; median and rounding edges; rollover; provenance; the review's own boundary cases (79/80/99.99/100/101%, zero budget, zero variance, unpriceable-but-reported row, empty-categories → `null`, target-month-not-reviewed-month seasonal correctness, dual citation) |
-| `SeasonalityPriorsTest` | both window shapes including the four that wrap the year end, max-not-product, and the three points of the shrinkage curve |
 | `RulebookDriftTest` | every `RULE-BUD-*` threshold and version against the real rulebook, plus the permanent assertions that the alert bands are **not** on `RULE-BUD-PACE` and the review's variance/proposal-basis params are **not** on `RULE-BUD-SUGGEST` |
-| `SeasonalityKbDriftTest` | every event's id, window (**re-parsed from the KB's own `"Oct-Nov"` strings**, not copied), inflated categories and multiplier |
+| `SeasonalityPriorsTest`, `SeasonalityKbDriftTest` | moved to `:domain:engines:seasonality` with the mirror in issue 9.3 — unchanged |
 
 Coverage: module ≥ 85% (`koverVerify` gate), money math 100%.
 
@@ -251,3 +252,4 @@ the Gradle `inputs.file` wiring — the specific vacuous-gate failure this repo 
 | 1.0 | 2026-08-11 | Created for issue 4.4 (FR-BUD-001/002/003) |
 | 1.0 | 2026-08-13 | Added `alert` for issue 4.5 (FR-BUD-004). **Version unchanged, deliberately**: no existing figure moved, so every result computed under 1.0 is still reproducible under 1.0 (AI-ARC-006). `BudgetPace` and `BudgetAlertBands` were split out of `DefaultBudgetEngine` in the same commit — a pure move, guarded by the golden file |
 | 1.0 | 2026-08-15 | Added `review` for issue 4.6 (§5.5). **Version unchanged, for the same reason**: `review` calls the unchanged `suggest` internally rather than duplicating its math, so nothing already shipped moved. `BudgetMonthReview` was added as a new pure calculator alongside `BudgetPace`/`BudgetAlertBands`, same shape |
+| 1.0 | 2026-09-19 | Issue 9.3 moved the calendar mirror (`SeasonalEvent`, `SeasonalityPriors`) to `:domain:engines:seasonality`. **Version unchanged**: a pure move, and every suggestion figure is the same — guarded by `BudgetGoldenTest` |

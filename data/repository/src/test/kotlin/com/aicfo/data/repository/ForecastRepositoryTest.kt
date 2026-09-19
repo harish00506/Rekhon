@@ -20,6 +20,8 @@ import com.aicfo.core.model.Money
 import com.aicfo.domain.engines.forecast.CashFlowForecast
 import com.aicfo.domain.engines.forecast.ForecastEngineFactory
 import com.aicfo.domain.engines.forecast.ItemSource
+import com.aicfo.domain.engines.seasonality.SeasonalityEngineFactory
+import com.aicfo.domain.engines.seasonality.SeasonalityRules
 import com.aicfo.domain.engines.stream.StreamEngineFactory
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +36,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.time.Instant
 import java.time.LocalDate
+import java.time.YearMonth
 
 /**
  * AI-FCT fed from the real ledger (issue 9.2; §9.1, §9.2).
@@ -49,6 +52,8 @@ import java.time.LocalDate
  *       transfers; the ledger's start; the profile scope.
  * Result: the forecast on the dashboard is built from the right rows.
  * Changelog: 2026-09-19 — Created for issue 9.2.
+ *            2026-09-19 — Issue 9.3: AI-SEAS joined — closed-month category history in, the
+ *            October lift out as its own term; a young ledger with no season adds nothing.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -83,6 +88,7 @@ class ForecastRepositoryTest {
                 accounts = accounts,
                 streams = streams,
                 engine = ForecastEngineFactory.create(),
+                seasonality = SeasonalityEngineFactory.create(),
                 clock = clock,
                 dispatchers = dispatchers,
                 activeProfileId = activeProfileId,
@@ -203,6 +209,45 @@ class ForecastRepositoryTest {
         }
 
     @Test
+    fun `a Shopping category's festival season reaches the forecast as its own term`() =
+        runTest(dispatcher) {
+            seed()
+            steadySpend(days = 90)
+            // Six months of Shopping, uneven in size and day so AI-CLS scores it VARIABLE and it
+            // stays everyday spend: the history AI-SEAS reads, and half the lookback's weight.
+            listOf(
+                "2026-03-04" to 2_500_00L,
+                "2026-04-18" to 3_600_00L,
+                "2026-05-09" to 2_200_00L,
+                "2026-06-27" to 4_100_00L,
+                "2026-07-13" to 2_700_00L,
+                "2026-08-22" to 3_900_00L,
+                "2026-09-06" to 2_400_00L,
+            ).forEach { (date, paise) -> expense("shop-$date", BANK, date, -paise, category = SHOPPING) }
+
+            val forecast = latest()
+            val october = forecast.seasonalMonths.single { it.factor.month == YearMonth.of(2026, 10) }
+
+            assertEquals(listOf("diwali"), october.factor.rising)
+            assertTrue("Diwali lifts October's everyday spend", october.adjustment > Money.ZERO)
+            assertTrue(SeasonalityRules.INDEX in forecast.provenance.evidence)
+            assertEquals(forecast.seasonalMonths.sumOf { it.adjustment.minor }, forecast.seasonalAdjustment.minor)
+        }
+
+    @Test
+    fun `a ledger with no category the calendar knows has no seasonal term`() =
+        runTest(dispatcher) {
+            seed()
+            steadySpend(days = 90)
+
+            val forecast = latest()
+
+            assertEquals(Money.ZERO, forecast.seasonalAdjustment)
+            assertTrue(forecast.seasonalMonths.isEmpty())
+            assertTrue(SeasonalityRules.INDEX !in forecast.provenance.evidence)
+        }
+
+    @Test
     fun `another profile's ledger is never read`() =
         runTest(dispatcher) {
             seed()
@@ -235,7 +280,10 @@ class ForecastRepositoryTest {
             account("demo:bank", "bank", 0L, profileId = "demo"),
         ).forEach { database.accountDao().upsert(it) }
         database.categoryDao().upsertAll(
-            listOf(CategoryEntity(SUBSCRIPTIONS, PROFILE, "Subscriptions", null, "want", isSystem = true, NOW, NOW)),
+            listOf(
+                CategoryEntity(SUBSCRIPTIONS, PROFILE, "Subscriptions", null, "want", isSystem = true, NOW, NOW),
+                CategoryEntity(SHOPPING, PROFILE, "Shopping", null, "want", isSystem = true, NOW, NOW),
+            ),
         )
     }
 
@@ -355,5 +403,6 @@ class ForecastRepositoryTest {
         const val CASH = "local:cash"
         const val CARD = "local:card"
         const val SUBSCRIPTIONS = "local:category:subscriptions"
+        const val SHOPPING = "local:category:shopping"
     }
 }

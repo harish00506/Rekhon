@@ -11,6 +11,7 @@ import java.math.MathContext
 import java.math.RoundingMode
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.YearMonth
 import kotlin.random.Random
 
 /**
@@ -21,12 +22,14 @@ import kotlin.random.Random
  *       `forecast(d) = opening + Σ scheduled(d) − predictedVariableSpend(d)`, with
  *       `predictedVariableSpend = base × dowAdj × domAdj` — a 10%-trimmed mean of the last ninety
  *       days, a weekend/weekday ratio of medians, and a three-bucket pay-cycle ratio of means — and
- *       bands from resampling the model's own past residuals, seeded. §9.2's seasonal term is issue
- *       9.3's and contributes nothing yet.
+ *       bands from resampling the model's own past residuals, seeded. §9.2's seasonal term is
+ *       AI-SEAS's monthly factor applied to each day's prediction (issue 9.3, ADR-0044).
  * What: validate → project commitments → fit the everyday-spend model on the lookback → predict each
  *       horizon day → resample residuals into P10/P50/P90 → crunch days and the lowest day.
  * Result: a [CashFlowForecast].
  * Changelog: 2026-09-19 — Created for issue 9.2.
+ *            2026-09-19 — 1.1 for issue 9.3: the seasonal term; the expected path and so the bands
+ *            pay it; its months and AI-SEAS's evidence are carried.
  *
  * Money is `Long` paise throughout (MNY-001); the model's ratios are exact `BigDecimal` and each
  * day's prediction is rounded HALF_EVEN to the paisa. Randomness is `kotlin.random.Random(seed)`,
@@ -42,7 +45,9 @@ internal class HeuristicForecastEngine : ForecastEngine {
         val scheduledByDay = scheduled.groupBy { it.date }.mapValues { (_, items) -> items.sumOf { it.amount.minor } }
         val model = SpendModel.fit(input)
         val predicted = horizon.map { model.predict(it) }
-        val expected = expectedPath(input.openingBalance.minor, horizon.map { scheduledByDay[it] ?: 0L }, predicted)
+        val seasonal = horizon.indices.map { k -> seasonalAmount(predicted[k], factorFor(input, horizon[k])) }
+        val outflow = predicted.indices.map { k -> predicted[k] + seasonal[k] }
+        val expected = expectedPath(input.openingBalance.minor, horizon.map { scheduledByDay[it] ?: 0L }, outflow)
         val bands = Bands.simulate(expected, model.residuals, rules, input.seed)
         val days =
             horizon.indices.map { k ->
@@ -54,6 +59,7 @@ internal class HeuristicForecastEngine : ForecastEngine {
                     scheduledNet = Money(scheduledByDay[horizon[k]] ?: 0L),
                     predictedSpend = Money(predicted[k]),
                     expected = Money(expected[k]),
+                    seasonal = Money(seasonal[k]),
                 )
             }
         return Ok(assemble(input, days, scheduled, model))
@@ -112,16 +118,54 @@ internal class HeuristicForecastEngine : ForecastEngine {
             .map { ScheduledItem(it, commitment.amount, commitment.label, commitment.source) }
             .toList()
 
-    /** Result: opening plus the running sum of each day's scheduled net less its predicted spend. */
+    /** Result: opening plus the running sum of each day's scheduled net less its everyday outflow. */
     private fun expectedPath(
         opening: Long,
         scheduledNet: List<Long>,
-        predicted: List<Long>,
+        outflow: List<Long>,
     ): List<Long> {
         var running = opening
         return scheduledNet.indices.map { k ->
-            running = Math.addExact(running, scheduledNet[k] - predicted[k])
+            running = Math.addExact(running, scheduledNet[k] - outflow[k])
             running
+        }
+    }
+
+    /** Result: AI-SEAS's factor for [day]'s month, in bps; ×1 when it gave none. */
+    private fun factorFor(
+        input: ForecastInput,
+        day: LocalDate,
+    ): Int = input.seasonality?.factors?.firstOrNull { it.month == YearMonth.from(day) }?.factorBps ?: FULL_BPS.toInt()
+
+    /**
+     * §9.2's `seasonalAdjustment(d)`: the day's prediction times `(factor − 1)`, HALF_EVEN.
+     * Why:    applied to the **rounded** daily prediction, so the screen's two numbers for a day
+     *         reconcile in whole paise; a factor is never negative, so `predicted + seasonal ≥ 0`.
+     * Result: signed paise. Input: [predicted] paise; [factorBps]. Output: [Long].
+     */
+    private fun seasonalAmount(
+        predicted: Long,
+        factorBps: Int,
+    ): Long =
+        BigDecimal.valueOf(predicted)
+            .multiply(BigDecimal.valueOf(factorBps - FULL_BPS))
+            .divide(BigDecimal.valueOf(FULL_BPS))
+            .setScale(0, RoundingMode.HALF_EVEN)
+            .longValueExact()
+
+    /**
+     * The months the seasonal term moved, with their horizon totals (issue 9.3; P-02).
+     * Result: in month order, zero-total months left out. Input: [input]; [days]. Output: a list.
+     */
+    private fun seasonalMonths(
+        input: ForecastInput,
+        days: List<ForecastDay>,
+    ): List<SeasonalMonth> {
+        val factors = input.seasonality?.factors.orEmpty()
+        return days.groupBy { YearMonth.from(it.date) }.mapNotNull { (month, monthDays) ->
+            val factor = factors.firstOrNull { it.month == month } ?: return@mapNotNull null
+            val total = monthDays.sumOf { it.seasonal.minor }
+            if (total == 0L) null else SeasonalMonth(factor, Money(total))
         }
     }
 
@@ -136,6 +180,16 @@ internal class HeuristicForecastEngine : ForecastEngine {
         model: SpendModel,
     ): CashFlowForecast {
         val rules = input.rules
+        val seasonalTotal = days.sumOf { it.seasonal.minor }
+        val seasonalEvidence =
+            if (days.any {
+                    it.seasonal.minor != 0L
+                }
+            ) {
+                input.seasonality?.provenance?.evidence.orEmpty()
+            } else {
+                emptyList()
+            }
         return CashFlowForecast(
             openingBalance = input.openingBalance,
             days = days,
@@ -153,18 +207,20 @@ internal class HeuristicForecastEngine : ForecastEngine {
                     engineId = ENGINE_ID,
                     engineVersion = ENGINE_VERSION,
                     computedAtUtcMillis = input.nowUtcMillis,
-                    evidence = listOf(ForecastRules.METHOD, ForecastRules.CRUNCH),
+                    evidence = listOf(ForecastRules.METHOD, ForecastRules.CRUNCH) + seasonalEvidence,
                     inputWindow =
                         "${input.today.minusDays(rules.lookbackDays.toLong())}..${input.today.minusDays(1)}" +
                             " → ${days.first().date}..${days.last().date}",
                     confidenceBps = (model.historyDays.toLong() * FULL_BPS / rules.lookbackDays).toInt(),
                 ),
+            seasonalAdjustment = Money(seasonalTotal),
+            seasonalMonths = seasonalMonths(input, days),
         )
     }
 
     private companion object {
         const val ENGINE_ID = "AI-FCT"
-        const val ENGINE_VERSION = "1.0"
+        const val ENGINE_VERSION = "1.1"
         const val FIELD_SPEND = "forecast.spend"
         const val FIELD_ITEM = "forecast.item"
         const val FULL_BPS = 10_000L

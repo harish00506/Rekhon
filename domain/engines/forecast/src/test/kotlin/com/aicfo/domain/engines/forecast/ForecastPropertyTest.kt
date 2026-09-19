@@ -4,12 +4,17 @@ import com.aicfo.core.common.AppError
 import com.aicfo.core.common.Err
 import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
+import com.aicfo.core.model.EngineProvenance
 import com.aicfo.core.model.Money
+import com.aicfo.domain.engines.seasonality.SeasonalityResult
+import com.aicfo.domain.engines.seasonality.SeasonalityRules
+import com.aicfo.domain.engines.seasonality.SpendFactor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
+import java.time.YearMonth
 import kotlin.random.Random
 
 /**
@@ -25,6 +30,8 @@ import kotlin.random.Random
  *       fixed seed (the draws), so a failure is reproducible to the case.
  * Result: the acceptance criterion "monotonic identities hold (property tests)".
  * Changelog: 2026-09-19 — Created for issue 9.2.
+ *            2026-09-19 — Issue 9.3: half the cases carry random seasonal factors, and the path,
+ *            component and non-negativity identities include the seasonal term.
  */
 class ForecastPropertyTest {
     private val engine = ForecastEngineFactory.create()
@@ -79,9 +86,12 @@ class ForecastPropertyTest {
             val forecast = engine.forecast(input).expectOk()
 
             assertEquals(
-                input.openingBalance + forecast.scheduledIncome - forecast.scheduledOutflow - forecast.predictedSpend,
+                input.openingBalance + forecast.scheduledIncome - forecast.scheduledOutflow - forecast.predictedSpend -
+                    forecast.seasonalAdjustment,
                 forecast.days.last().expected,
             )
+            assertEquals(forecast.seasonalAdjustment.minor, forecast.days.sumOf { it.seasonal.minor })
+            assertEquals(forecast.seasonalAdjustment.minor, forecast.seasonalMonths.sumOf { it.adjustment.minor })
             assertEquals(forecast.scheduled.sumOf { it.amount.minor }, forecast.days.sumOf { it.scheduledNet.minor })
             assertEquals(forecast.predictedSpend.minor, forecast.days.sumOf { it.predictedSpend.minor })
         }
@@ -92,16 +102,18 @@ class ForecastPropertyTest {
         cases { input ->
             var running = input.openingBalance
             engine.forecast(input).expectOk().days.forEach { day ->
-                running = running + day.scheduledNet - day.predictedSpend
+                running = running + day.scheduledNet - day.predictedSpend - day.seasonal
                 assertEquals(running, day.expected)
             }
         }
     }
 
     @Test
-    fun `predicted spend is never negative`() {
+    fun `predicted spend is never negative, nor is it once the seasonal term is added`() {
         cases { input ->
-            assertTrue(engine.forecast(input).expectOk().days.all { it.predictedSpend >= Money.ZERO })
+            val days = engine.forecast(input).expectOk().days
+            assertTrue(days.all { it.predictedSpend >= Money.ZERO })
+            assertTrue(days.all { it.predictedSpend + it.seasonal >= Money.ZERO })
         }
     }
 
@@ -188,6 +200,7 @@ class ForecastPropertyTest {
                 )
             }
         return ForecastInput(
+            seasonality = if (random.nextBoolean()) seasonality(random, today) else null,
             today = today,
             openingBalance = Money(random.nextLong(-10_000_00L, 200_000_00L)),
             commitments = commitments,
@@ -227,6 +240,26 @@ class ForecastPropertyTest {
                 ItemSource.RECURRING_RULE,
             ),
         ).take(random.nextInt(0, 4))
+
+    /** Random factors (0 to ×2) for the horizon's four months, as AI-SEAS would hand them over. */
+    private fun seasonality(
+        random: Random,
+        today: LocalDate,
+    ) = SeasonalityResult(
+        indices = emptyList(),
+        factors =
+            (0L..3L).map {
+                SpendFactor(
+                    YearMonth.from(today).plusMonths(it),
+                    random.nextInt(0, 20_001),
+                    emptyList(),
+                    emptyList(),
+                    false,
+                )
+            },
+        monthsObserved = 0,
+        provenance = EngineProvenance("AI-SEAS", "1.0", 0L, listOf(SeasonalityRules.INDEX)),
+    )
 
     private fun <T> Result<T, AppError>.expectOk(): T =
         when (this) {

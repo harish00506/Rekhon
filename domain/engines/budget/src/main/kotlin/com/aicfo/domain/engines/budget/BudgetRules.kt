@@ -125,5 +125,8 @@ data class BudgetRules(
 /** 10 000 bps = 100% (MNY-002). */
 internal const val BPS_FULL = 10_000
 
+/** Months in a year — the range every target month is checked against. */
+internal const val MONTHS_IN_YEAR = 12
+
 /** 100 bps = 1%, so a whole-percent rule threshold becomes a bps comparison (MNY-002). */
 internal const val BPS_PER_PERCENT = 100
