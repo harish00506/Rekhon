@@ -9,6 +9,7 @@ import com.aicfo.core.model.TransactionType
 import com.aicfo.data.repository.CashFlowSummary
 import com.aicfo.domain.engines.budget.BudgetAlertBand
 import com.aicfo.domain.engines.healthscore.HealthBand
+import com.aicfo.domain.engines.insight.InsightType
 import com.aicfo.domain.engines.nature.NatureBreakdown
 import com.aicfo.domain.engines.orderofoperations.FooStage
 import kotlinx.coroutines.Dispatchers
@@ -53,6 +54,7 @@ class DashboardViewModelTest {
     private val streams = FakeStreamRepository()
     private val forecasts = FakeForecastRepository()
     private val health = FakeHealthScoreRepository()
+    private val insights = FakeInsightRepository()
 
     private fun viewModel() =
         DashboardViewModel(
@@ -66,6 +68,7 @@ class DashboardViewModelTest {
             streams,
             forecasts,
             health,
+            insights,
         )
 
     /** `viewModelScope` runs on `Dispatchers.Main`, which has no factory on a plain JVM. */
@@ -499,6 +502,32 @@ class DashboardViewModelTest {
             health.fail()
 
             assertNull(vm.uiState.value.health)
+        }
+
+    // --- issue 9.5: the insight feed (§7.2) ----------------------------------------------------------
+
+    @Test
+    fun `opening the dashboard recomputes the feed and shows the dashboard's few`() =
+        runTest {
+            val vm = viewModel()
+
+            insights.emit()
+
+            assertEquals(1, insights.refreshes)
+            assertEquals(3, vm.uiState.value.insights.size)
+            assertEquals(InsightType.CRUNCH_DAY, vm.uiState.value.insights.first().insight.type)
+        }
+
+    @Test
+    fun `putting a card away records the verdict the user gave it`() =
+        runTest {
+            val vm = viewModel()
+            insights.emit()
+
+            vm.onEvent(DashboardEvent.InsightSnoozed("i-crunch"))
+            vm.onEvent(DashboardEvent.InsightDismissed("i-budget"))
+
+            assertEquals(listOf("i-crunch" to true, "i-budget" to false), insights.verdicts)
         }
 
     // --- this month's cash flow (issue 5.1) ---------------------------------------------------

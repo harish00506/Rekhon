@@ -59,6 +59,9 @@ internal fun populatedDashboardState(): DashboardUiState =
         forecast = fixtureForecast(opening = 4_000_00L),
         // Issue 9.4: a full score, so the screenshots show the card populated.
         health = fixtureHealth(),
+        // Issue 9.5: three cards with amounts on them, so the blur test proves the feed hides them
+        // too and the screenshots show it populated.
+        insights = fixtureFeed().take(3),
     )
 
 /**

@@ -10,6 +10,7 @@ import com.aicfo.app.widget.WidgetBlurWatcher
 import com.aicfo.app.work.BalanceIntegrityWorker
 import com.aicfo.app.work.BudgetAlertWorker
 import com.aicfo.app.work.CardAlertWorker
+import com.aicfo.app.work.InsightRefreshWorker
 import com.aicfo.app.work.MarketPriceWorker
 import com.aicfo.app.work.NetWorthSnapshotWorker
 import com.aicfo.app.work.ScheduledTransactionWorker
@@ -110,6 +111,9 @@ class CfoApplication : Application(), Configuration.Provider {
         SmsScanWorker.schedule(this)
         BudgetAlertWorker.schedule(this)
         CardAlertWorker.schedule(this)
+        // Issue 9.5: §7.2's day-rollover trigger. The feed has to be true when the user next looks,
+        // and a crunch day arriving is nobody's tap.
+        InsightRefreshWorker.schedule(this)
         WidgetRefreshWorker.schedule(this)
         // The only scheduled job that can reach a network, and the only one carrying a constraint
         // (issue 6.5). In a shipping build it finds the market-data client unconfigured and does

@@ -156,6 +156,28 @@
         <item quantity="other">Based on %1$d of %2$d pillars.</item>
     </plurals>
     <string name="dashboard_health_rules">Rules: %1$s</string>
+    <string name="dashboard_insights_label">What needs attention</string>
+    <plurals name="dashboard_insights_crunch">
+        <item quantity="one">Money runs short on %2$s: about %3$s left, under your %4$s buffer.</item>
+        <item quantity="other">%1$d days ahead fall under your %4$s buffer, the first on %2$s with about %3$s left.</item>
+    </plurals>
+    <string name="dashboard_insights_budget">%1$s is over its budget by %2$s this month.</string>
+    <string name="dashboard_insights_emergency">Your emergency fund is %1$s short of its target. %2$s a month closes it.</string>
+    <string name="dashboard_insights_goal">%1$s needs %2$s more a month to reach its target by %3$s.</string>
+    <string name="dashboard_insights_seasonal">%1$s looks dearer: about %2$s more everyday spending than the last 90 days.</string>
+    <plurals name="dashboard_insights_lever">
+        <item quantity="one">Your health score has %1$d point to gain from %2$s.</item>
+        <item quantity="other">Your health score has %1$d points to gain from %2$s.</item>
+    </plurals>
+    <string name="dashboard_insights_action_crunch">Move money in before that day, or move a payment after it.</string>
+    <string name="dashboard_insights_action_budget">Pause this category, or raise the budget deliberately.</string>
+    <string name="dashboard_insights_action_emergency">Set up the monthly top-up.</string>
+    <string name="dashboard_insights_action_goal">Raise the monthly amount, or move the date.</string>
+    <string name="dashboard_insights_action_seasonal">Set that much aside now, while it is cheap to.</string>
+    <string name="dashboard_insights_action_lever">Work on that one thing first.</string>
+    <string name="dashboard_insights_evidence">From %1$s v%2$s · %3$s</string>
+    <string name="dashboard_insights_later">Later</string>
+    <string name="dashboard_insights_dismiss">Dismiss</string>
 
     <!-- Issue 5.1 — this month's cash flow, beside the plan/actual pair above it. -->
     <string name="dashboard_cash_flow_label">This month\'s cash flow</string>

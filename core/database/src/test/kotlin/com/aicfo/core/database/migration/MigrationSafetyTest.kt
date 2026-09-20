@@ -227,9 +227,9 @@ class MigrationSafetyTest {
      *         it by adding a string — this test makes that a deliberate, reviewed edit.
      */
     @Test
-    fun `only the five argued-for tables are exempt from the per-row invariants`() {
+    fun `only the six argued-for tables are exempt from the per-row invariants`() {
         assertEquals(
-            setOf("audit_log", "sms_draft", "budget_alert", "budget_review", "card_alert"),
+            setOf("audit_log", "sms_draft", "budget_alert", "budget_review", "card_alert", "insight"),
             INVARIANT_EXEMPT_TABLES.keys,
         )
     }
@@ -317,6 +317,36 @@ class MigrationSafetyTest {
             )
             assertTrue("$table must be exempt from nothing", table !in INVARIANT_EXEMPT_TABLES)
         }
+    }
+
+    /**
+     * Input:  the `insight` table's columns.
+     * Output: asserts it keeps profile scoping and deliberately has no tombstone.
+     *
+     * The same shape of argument as `budget_alert`, and the same mechanism: the unique index that
+     * makes one card per `type+subject+period` (RULE-INS-DEDUP) counts soft-deleted rows, so a
+     * tombstoned insight could never be raised again. An overspend corrected in March has to be
+     * able to come back in April, and a dismissal is recorded as a status and a date rather than as
+     * a deletion — which is what "not now" actually means.
+     */
+    @Test
+    fun `insight keeps profile scoping and deliberately has no tombstone`() {
+        val columns =
+            SchemaFixtures.load(CfoDatabase.VERSION)
+                .database
+                .entitiesByTableName()
+                .getValue("insight")
+                .fieldsByColumnName()
+                .keys
+
+        assertTrue("insight must carry profile_id so no query can span profiles", "profile_id" in columns)
+        assertTrue(
+            "insight must NOT have deleted_at_utc_millis — a tombstone would hold the fingerprint's " +
+                "unique slot for ever, so the same card could never be raised again",
+            "deleted_at_utc_millis" !in columns,
+        )
+        assertTrue("a dismissal is a status, not a deletion", "status" in columns)
+        assertTrue("and it ends on a date (TIM-002)", "suppressed_until_iso_date" in columns)
     }
 
     /**
@@ -493,6 +523,16 @@ private val INVARIANT_EXEMPT_TABLES =
             "reason: the unique index that guarantees one review per profile per month counts " +
             "soft-deleted rows, so a 'deleted' claim would not bring the card back. Rows leave " +
             "with the profile.",
+        "insight" to
+            "a statement the app is making about the user's money right now (issue 9.5, §7.2): a " +
+            "row is not something the user created and can lose — it is recomputed from the " +
+            "engines every day, and it is deleted the moment its fact stops being true. A " +
+            "tombstone would be worse than absent for the mechanical reason budget_alert gives: " +
+            "the unique index that guarantees one card per type+subject+period (RULE-INS-DEDUP) " +
+            "counts soft-deleted rows, so a 'deleted' insight could never be raised again — and " +
+            "an overspend corrected in March must be able to come back in April. What the user " +
+            "*said* about a card is kept in `status` and `suppressed_until_iso_date` instead, " +
+            "which is what a dismissal actually means. Rows leave with the profile.",
         "sms_draft" to
             "unconfirmed proposals parsed from the inbox (issue 3.9, ADR-0013): a pending draft is " +
             "not user data, it is an inference drawn from messages the user can withdraw " +

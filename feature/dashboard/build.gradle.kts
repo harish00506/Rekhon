@@ -37,6 +37,8 @@ tasks.withType<Test>()
         exclude("**/ForecastSectionTest.class")
         // Issue 9.4: the health card's render test, for the same reason.
         exclude("**/HealthSectionTest.class")
+        // Issue 9.5: the insight feed's render test, for the same reason.
+        exclude("**/InsightFeedSectionTest.class")
     }
 
 dependencies {

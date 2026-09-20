@@ -11,6 +11,39 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The deterministic engine layer: fixed/variable + nature, cash-flow forecast, seasonality, health
 > score, the Insight Orchestrator, notifications, and the numeric guardrail.
 
+### [0.9.5] — Issue 9.5: Insight Orchestrator + feed (AI-ORCH)  (2026-09-20)
+
+- **Implemented:** `:domain:engines:insight` (`AI-ORCH` 1.0) and the persisted feed behind it
+  (**§7.2**, **AI-ARC-001/003/005/006**, **ADR-0046**).
+  - **It ranks; it never computes.** Every card repeats a figure another engine published and names
+    that engine, its version and the rules behind it. Six kinds in v1.0: a crunch day ahead; an
+    overspent budget; an emergency fund short of target; a goal behind its plan; a month the season
+    makes dearer; and the health score's biggest lever.
+  - **Order is a rule** (`RULE-INS-RANK`): severity, then the amount at stake, then the fingerprint —
+    so the same facts always give the same feed. The dashboard shows the top three (FR-HOME-001).
+  - **One card per thing** (`RULE-INS-DEDUP`): a card is identified by type, subject and period, so
+    recomputing updates it rather than adding another. A card whose fact is corrected goes away.
+  - **"Not now" means something:** dismissing or snoozing hides a card for seven days and survives
+    every recomputation in between; the card returns afterwards if the fact still holds.
+- **Schema 23:** a new `insight` table, one row per fingerprint per profile, written by the
+  orchestrator and read by the screen — so the dashboard never waits for a pipeline (AI-ARC-005).
+  It is backed up, restored, and cleared with the profile like every other table.
+- **Runs:** once a day in the background (§7.2's day-rollover trigger), and when the dashboard opens.
+- **On screen:** a dashboard section, "What needs attention" — each card with its finding, one
+  recommended action, "From `<engine>` v`<version>` · `<rules>`", and Later / Dismiss.
+- **Not yet** (ADR-0046):
+  - the debounced transaction trigger and the weekly deep job (both wait for 9.6's scheduler);
+  - notifications — §7.2's last stage is the notification engine's (9.6);
+  - a full feed screen and the Advisor hub;
+  - more insight kinds (card utilisation, anomalies, market and tax);
+  - the §7.2 compute-budget benchmarks.
+- **Tests:** 15 behaviour tests; 6 identities × 300 cases; a golden file on a fixed engine set from
+  an independent oracle that reads the rulebook; 7 drift, 14 repository, 3 worker, 2 ViewModel and
+  6 render tests; a migration round-trip that proves the fingerprint index refuses a duplicate.
+  Five deliberate breaks — the severity order, the cheaper-month filter, a KB threshold, a
+  recomputation that forgot a dismissal, and one that raised a second card — were each watched go
+  red.
+
 ### [0.9.4] — Issue 9.4: Financial Health Score (AI-FHS)  (2026-09-20)
 
 - **Implemented:** `:domain:engines:healthscore` (`AI-FHS` 1.0). One number from 0 to 1000 with a

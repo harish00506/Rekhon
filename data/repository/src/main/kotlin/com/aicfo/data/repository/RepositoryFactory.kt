@@ -19,6 +19,7 @@ import com.aicfo.domain.engines.goals.GoalEngine
 import com.aicfo.domain.engines.goals.GoalWaterfallEngine
 import com.aicfo.domain.engines.healthscore.HealthRules
 import com.aicfo.domain.engines.healthscore.HealthScoreEngine
+import com.aicfo.domain.engines.insight.InsightEngine
 import com.aicfo.domain.engines.investment.InvestmentEngine
 import com.aicfo.domain.engines.loan.LoanEngine
 import com.aicfo.domain.engines.nature.NatureEngine
@@ -608,6 +609,48 @@ object RepositoryFactory {
         dispatchers: DispatcherProvider,
         activeProfileId: Flow<String>,
     ): StreamRepository = RoomStreamRepository(database, engine, clock, dispatchers, activeProfileId)
+
+    /**
+     * Builds AI-ORCH over the engines beneath it and the feed it persists (issue 9.5; §7.2).
+     * Why:    §7.2's pipeline is "run the layers, then persist"; the layers are already these
+     *         repositories, so the orchestrator composes their published results rather than
+     *         recomputing anything (AI-ARC-001). Only its own table is written here.
+     * Result: an [InsightRepository].
+     * Input:  [database] — for the `insight` table; the five sources; [engine]; [clock];
+     *         [dispatchers]; [activeProfileId]; [idGenerator].
+     * Output: [InsightRepository].
+     * Changelog: 2026-09-20 — Created for issue 9.5.
+     */
+    @Suppress("LongParameterList") // the store, five sources, the engine and three seams
+    fun insights(
+        database: CfoDatabase,
+        forecasts: ForecastRepository,
+        health: HealthScoreRepository,
+        emergencyFund: EmergencyFundRepository,
+        budgets: BudgetRepository,
+        goals: GoalRepository,
+        engine: InsightEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        activeProfileId: Flow<String>,
+        idGenerator: IdGenerator,
+    ): InsightRepository =
+        RoomInsightRepository(
+            database = database,
+            sources =
+                InsightSources(
+                    forecast = forecasts.observeForecast(),
+                    health = health.observeHealthScore(),
+                    emergency = emergencyFund.observeEmergencyFund(),
+                    budgets = budgets.observeBudgets(),
+                    goals = goals.observeGoals(),
+                ),
+            engine = engine,
+            clock = clock,
+            dispatchers = dispatchers,
+            activeProfileId = activeProfileId,
+            idGenerator = idGenerator,
+        )
 
     /**
      * Builds AI-FHS over the repositories that own its signals (issue 9.4; §14).

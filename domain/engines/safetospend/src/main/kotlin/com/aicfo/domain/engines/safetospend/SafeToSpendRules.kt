@@ -63,7 +63,7 @@ data class SafeToSpendRules(
          * change** and its own version stayed at 1.0. `_meta.version` describes the file, not this
          * row, so every typed mirror restates it whenever any rule is added.
          */
-        const val RULEBOOK_VERSION = "1.17.0" // Issue 9.4 restated it for RULE-FHS-*; no row mirrored here changed.
+        const val RULEBOOK_VERSION = "1.18.0" // Issue 9.5 restated it for RULE-INS-*; no row mirrored here changed.
 
         /**
          * `RULE-STS.income_basis` — the envelope total, falling back to the ledger's actual income.

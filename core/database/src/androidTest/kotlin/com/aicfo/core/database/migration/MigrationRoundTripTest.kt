@@ -1524,4 +1524,87 @@ class MigrationRoundTripTest {
     private companion object {
         const val TEST_DB = "migration-test.db"
     }
+
+    /**
+     * 22 → 23 — `insight`, the persisted feed (issue 9.5; §7.2, §20.2, AI-ARC-005).
+     *
+     * Why:    the table exists so a dismissal survives a recomputation and a screen never waits for
+     *         a pipeline. The failure that would matter is the quiet one: a unique index that is not
+     *         unique, which would let the same fingerprint accumulate a row per recomputation until
+     *         the feed became a wall of identical cards — exactly what RULE-INS-DEDUP forbids.
+     * What:   inserts a profile row at 22, migrates, asserts the table starts empty, accepts a card,
+     *         **refuses a second row with the same fingerprint for the same profile**, allows the
+     *         same fingerprint under another profile, and carries Room's own index names.
+     * Result: an upgraded database is indistinguishable from a fresh one.
+     * Input:  none (the harness supplies the database). Output: none; it asserts.
+     */
+    @Test
+    fun migrate22To23_addsTheInsightFeedAndKeepsOneRowPerFingerprint() {
+        helper.createDatabase(TEST_DB, 22).use { db ->
+            db.execSQL(
+                "INSERT INTO transactions (id, profile_id, account_id, amount_minor, " +
+                    "currency_code, occurred_at_utc_millis, booked_on_iso_date, source, type, " +
+                    "created_at_utc_millis, updated_at_utc_millis) " +
+                    "VALUES ('t9','p1','a5',-250000,'INR',1767312000000,'2026-09-01','manual'," +
+                    "'expense',1767312000000,1767312000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 23, true, Migrations.MIGRATION_22_23)
+
+        migrated.query("SELECT COUNT(*) FROM insight").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("an upgraded profile starts with no insights, not with invented ones", 0, cursor.getInt(0))
+        }
+        migrated.query("SELECT amount_minor FROM transactions WHERE id = 't9'").use { cursor ->
+            assertTrue("the pre-migration ledger must still be there", cursor.moveToFirst())
+            assertEquals("MNY-001: nothing about this migration touches an amount", -250000L, cursor.getLong(0))
+        }
+
+        migrated.execSQL(insightInsert(id = "i1", profile = "p1"))
+        migrated.query("SELECT amount_minor, status, suppressed_until_iso_date FROM insight WHERE id = 'i1'").use {
+                cursor ->
+            assertTrue("the new table must accept a card", cursor.moveToFirst())
+            assertEquals(125000L, cursor.getLong(0))
+            assertEquals("active", cursor.getString(1))
+            assertTrue("a live card is not suppressed", cursor.isNull(2))
+        }
+
+        var refused = false
+        try {
+            migrated.execSQL(insightInsert(id = "i2", profile = "p1"))
+        } catch (expected: SQLiteConstraintException) {
+            refused = true
+        }
+        assertTrue("RULE-INS-DEDUP: one row per fingerprint per profile, or a dismissal means nothing", refused)
+
+        migrated.execSQL(insightInsert(id = "i3", profile = "p2"))
+        migrated.query("SELECT COUNT(*) FROM insight").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("the same fingerprint under another profile is another card", 2, cursor.getInt(0))
+        }
+
+        val indices = mutableSetOf<String>()
+        migrated.query("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'insight'").use { cursor ->
+            while (cursor.moveToNext()) cursor.getString(0)?.let(indices::add)
+        }
+        assertTrue(
+            "Room's own index names must survive the upgrade, or a fresh install and an upgraded " +
+                "one differ for ever: $indices",
+            indices.containsAll(listOf("index_insight_profile_id", "index_insight_profile_id_fingerprint")),
+        )
+    }
+
+    /** One insight row's SQL, so the duplicate-fingerprint case differs only by id and profile. */
+    private fun insightInsert(
+        id: String,
+        profile: String,
+    ): String =
+        "INSERT INTO insight (id, profile_id, fingerprint, type, severity, subject, subject_label, " +
+            "period, amount_minor, secondary_minor, date_iso, quantity, confidence_bps, citations, " +
+            "source_engine_id, source_engine_version, status, suppressed_until_iso_date, " +
+            "created_at_utc_millis, updated_at_utc_millis) " +
+            "VALUES ('$id','$profile','BUDGET_OVERSPENT|dining|2026-09','BUDGET_OVERSPENT','WARNING'," +
+            "'dining','Dining','2026-09',125000,NULL,NULL,NULL,10000,'RULE-BUD-ALERT v1.0'," +
+            "'budget-planner','1.0','active',NULL,1767312000000,1767312000000)"
 }

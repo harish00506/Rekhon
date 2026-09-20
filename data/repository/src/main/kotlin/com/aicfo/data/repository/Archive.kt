@@ -11,6 +11,7 @@ import com.aicfo.core.database.entity.CreditCardEntity
 import com.aicfo.core.database.entity.GoalContributionEntity
 import com.aicfo.core.database.entity.GoalEntity
 import com.aicfo.core.database.entity.GoalFundingAccountEntity
+import com.aicfo.core.database.entity.InsightEntity
 import com.aicfo.core.database.entity.InvestmentHoldingEntity
 import com.aicfo.core.database.entity.InvestmentLotEntity
 import com.aicfo.core.database.entity.LoanEntity
@@ -40,6 +41,7 @@ import kotlinx.serialization.Serializable
  * Result: what `ArchiveRepository.export` writes and `import` reads.
  * Changelog: 2026-08-16 — Created for issue 5.4.
  *   2026-09-06 — Issue 7.4 added [goals], [goalContributions] and [goalFundingAccounts].
+ *   2026-09-20 — Issue 9.5 added [insights].
  *
  * **`goal` was missing from here for two issues, and the warning below is what it disproved.**
  * The argument for holding entities directly is that "a new column is in the archive the moment it
@@ -98,6 +100,8 @@ data class CfoArchive(
     val goals: List<GoalEntity> = emptyList(),
     val goalContributions: List<GoalContributionEntity> = emptyList(),
     val goalFundingAccounts: List<GoalFundingAccountEntity> = emptyList(),
+    /** Issue 9.5: the insight feed, with each card's status — what the user said, not just what was said to them. */
+    val insights: List<InsightEntity> = emptyList(),
 ) {
     companion object {
         /**
