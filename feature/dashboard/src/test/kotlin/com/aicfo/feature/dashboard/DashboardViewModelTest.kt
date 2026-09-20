@@ -8,6 +8,7 @@ import com.aicfo.core.model.TransactionSource
 import com.aicfo.core.model.TransactionType
 import com.aicfo.data.repository.CashFlowSummary
 import com.aicfo.domain.engines.budget.BudgetAlertBand
+import com.aicfo.domain.engines.healthscore.HealthBand
 import com.aicfo.domain.engines.nature.NatureBreakdown
 import com.aicfo.domain.engines.orderofoperations.FooStage
 import kotlinx.coroutines.Dispatchers
@@ -51,6 +52,7 @@ class DashboardViewModelTest {
     private val orderOfOperations = FakeOrderOfOperationsRepository()
     private val streams = FakeStreamRepository()
     private val forecasts = FakeForecastRepository()
+    private val health = FakeHealthScoreRepository()
 
     private fun viewModel() =
         DashboardViewModel(
@@ -63,6 +65,7 @@ class DashboardViewModelTest {
             orderOfOperations,
             streams,
             forecasts,
+            health,
         )
 
     /** `viewModelScope` runs on `Dispatchers.Main`, which has no factory on a plain JVM. */
@@ -471,6 +474,31 @@ class DashboardViewModelTest {
             forecasts.fail()
 
             assertNull(vm.uiState.value.forecast)
+        }
+
+    // --- issue 9.4: the Financial Health Score (§14) -------------------------------------------------
+
+    @Test
+    fun `the health score reaches the screen as the engine computed it`() =
+        runTest {
+            val vm = viewModel()
+
+            health.emit()
+
+            val score = vm.uiState.value.health!!
+            assertEquals(765, score.score)
+            assertEquals(HealthBand.GOOD, score.band)
+        }
+
+    @Test
+    fun `a refused score clears the card rather than showing a stale one`() =
+        runTest {
+            val vm = viewModel()
+            health.emit()
+
+            health.fail()
+
+            assertNull(vm.uiState.value.health)
         }
 
     // --- this month's cash flow (issue 5.1) ---------------------------------------------------

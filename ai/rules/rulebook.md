@@ -10,6 +10,7 @@
     2026-07-17 — Created from SRS v1.7 §29 to accompany rules-kb.json.
     2026-09-02 — Added the §29.5 rows RULE-EMF-MULT and RULE-EMF-COACH for issue 7.2 (AI-EMF).
     2026-09-19 — Added RULE-FCT-METHOD and RULE-FCT-CRUNCH for issue 9.2 (AI-FCT, §9).
+    2026-09-19 — Added RULE-FHS-PILLARS, RULE-FHS-BANDS and RULE-FHS-SIGNALS for issue 9.4 (AI-FHS, §14).
 -->
 
 # Financial Rulebook & Heuristics Knowledge Base (RULE-KB)
@@ -85,6 +86,9 @@ evaluate: RuleEngine.evaluate(ruleId, FeatureSnapshot)
 | RULE-EMF-COACH | Runway under 1 month is urgent; over the target plus 2 months is surplus. The band between is RULE-EMERG-FIRST's 3 months | AI-EMF |
 | RULE-FCT-METHOD | Forecast 90 days of liquid balance: scheduled items + a 10%-trimmed mean of the last 90 days' variable spend, shaped by weekend and pay-cycle (days 1–5, 25–31) ratios; P10/P50/P90 from 500 seeded resamplings of past residuals | AI-FCT |
 | RULE-FCT-CRUNCH | A crunch day is a forecast day whose expected (P50) liquid balance is below ₹5,000 | AI-FCT |
+| RULE-FHS-PILLARS | Health score 0–1000 from five pillars weighted 25/20/20/20/15; a pillar with < 1 month of signal shows "—" and its weight is shared out | AI-FHS |
+| RULE-FHS-BANDS | 800+ Excellent · 650–799 Good · 500–649 Fair · 350–499 Needs Attention · < 350 At Risk | AI-FHS |
+| RULE-FHS-SIGNALS | Runway linear to M (≥ 25 once a month is covered); obligations 30%→100, 55%→0; card utilisation 30%→100, 100%→0; savings rate 0%→0, 30%→100 | AI-FHS |
 
 ## Governance (binding)
 

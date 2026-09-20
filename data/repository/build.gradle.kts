@@ -98,6 +98,8 @@ dependencies {
     api(project(":domain:engines:stream"))
     // Issue 9.2: AI-FCT. `api` — CashFlowForecast is what ForecastRepository emits.
     api(project(":domain:engines:forecast"))
+    // Issue 9.4: AI-FHS. `api` — HealthScore is what HealthScoreRepository emits.
+    api(project(":domain:engines:healthscore"))
 
     // withTransaction — the atomicity guarantee applySeeds is built on (issue 2.3).
     // api, not implementation: MarketDataApi is a parameter of RepositoryFactory.marketPrice, so

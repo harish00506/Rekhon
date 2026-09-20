@@ -11,6 +11,39 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The deterministic engine layer: fixed/variable + nature, cash-flow forecast, seasonality, health
 > score, the Insight Orchestrator, notifications, and the numeric guardrail.
 
+### [0.9.4] — Issue 9.4: Financial Health Score (AI-FHS)  (2026-09-20)
+
+- **Implemented:** `:domain:engines:healthscore` (`AI-FHS` 1.0). One number from 0 to 1000 with a
+  band, built from five weighted pillars, each from signals the app already measures
+  (**§14**, **FR-AI-001**, **AI-ARC-003**, **ADR-0045**).
+  - **Scored:** runway against the personal emergency target, fixed obligations and EMIs over
+    income, card statement balances over limits, the savings rate over three closed months, budgets
+    kept, and goals on track. Each is a straight line between two rulebook anchors.
+  - **Missing is never zero:** a pillar with no data is shown as "—" and its weight is shared among
+    the rest, so Protection (which needs insurance details the app does not hold) never counts
+    against anyone. The card says how many pillars the score rests on.
+  - **Every part adds up:** each pillar's contribution and share are apportioned so they sum to the
+    total and to 100% exactly.
+  - **One thing to do:** the biggest lever names the signal with the most points still to gain.
+- **Data, not code:** `RULE-FHS-PILLARS`, `RULE-FHS-BANDS` and `RULE-FHS-SIGNALS`, with rules-kb at
+  **1.17.0**; seven mirrors restated it. The two anchors §14 leaves unstated say so in their source
+  notes; the utilisation and savings tops are read from `RULE-CC-UTIL` and `RULE-SAVE-RATE` rather
+  than restated.
+- **On screen:** a dashboard card, "Financial health" — the total and its band, each pillar's
+  points, contribution and share, each signal against where it scores full marks, the biggest
+  lever, the pillars it rests on, and the rules.
+- **Not yet** (ADR-0045):
+  - the weekly cadence, the movement with its causes and the what-if slider (all need stored
+    snapshots);
+  - the whole Protection pillar;
+  - the revolving-interest flag and the no-debt bonus;
+  - overspend-alert frequency, spend volatility, retirement contributions and funding streaks;
+  - the Advisor hub.
+- **Tests:** 18 behaviour tests; 6 identities × 300 cases; a golden file of seven profiles — from
+  established to brand-new — from an independent exact-fraction oracle that reads the rulebook
+  itself; 7 drift, 10 repository, 2 ViewModel and 7 render tests. The runway floor, the
+  re-weighting, a KB anchor and two repository join rules were each watched go red.
+
 ### [0.9.3] — Issue 9.3: Seasonality (AI-SEAS)  (2026-09-19)
 
 - **Implemented:** `:domain:engines:seasonality` (`AI-SEAS` 1.0). §9.3's monthly index per category

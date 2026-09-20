@@ -17,6 +17,8 @@ import com.aicfo.domain.engines.emergencyfund.EmergencyFundEngine
 import com.aicfo.domain.engines.forecast.ForecastEngine
 import com.aicfo.domain.engines.goals.GoalEngine
 import com.aicfo.domain.engines.goals.GoalWaterfallEngine
+import com.aicfo.domain.engines.healthscore.HealthRules
+import com.aicfo.domain.engines.healthscore.HealthScoreEngine
 import com.aicfo.domain.engines.investment.InvestmentEngine
 import com.aicfo.domain.engines.loan.LoanEngine
 import com.aicfo.domain.engines.nature.NatureEngine
@@ -606,6 +608,46 @@ object RepositoryFactory {
         dispatchers: DispatcherProvider,
         activeProfileId: Flow<String>,
     ): StreamRepository = RoomStreamRepository(database, engine, clock, dispatchers, activeProfileId)
+
+    /**
+     * Builds AI-FHS over the repositories that own its signals (issue 9.4; §14).
+     * Why:    the score is other engines' answers put together, so it reads them from the same
+     *         repositories the screens beside it read — a runway or a budget can never differ between
+     *         the score and its own card (ADR-0007, ADR-0045). No DAO is touched here.
+     * Result: a [HealthScoreRepository].
+     * Input:  the eight owning repositories; [engine]; [clock]; [dispatchers].
+     * Output: [HealthScoreRepository].
+     * Changelog: 2026-09-19 — Created for issue 9.4.
+     */
+    @Suppress("LongParameterList") // eight sources, each one a signal the score reads
+    fun healthScore(
+        emergencyFund: EmergencyFundRepository,
+        transactions: TransactionRepository,
+        streams: StreamRepository,
+        loans: LoanRepository,
+        cards: CreditCardRepository,
+        budgets: BudgetRepository,
+        goals: GoalRepository,
+        engine: HealthScoreEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+    ): HealthScoreRepository =
+        ComposedHealthScoreRepository(
+            sources =
+                HealthSources(
+                    emergency = emergencyFund.observeEmergencyFund(),
+                    ledger = transactions.observeMonthlyLedger(HealthRules().lookbackMonths),
+                    streams = streams.observeStreams(),
+                    instalments = loans.observeNextInstalments(),
+                    cards = cards.observeCardStatuses(),
+                    budgets = budgets.observeBudgets(),
+                    goals = goals.observeGoals(),
+                    categories = transactions.observeCategories(),
+                ),
+            engine = engine,
+            clock = clock,
+            dispatchers = dispatchers,
+        )
 
     /**
      * Builds AI-FCT over the ledger (issue 9.2; §9).

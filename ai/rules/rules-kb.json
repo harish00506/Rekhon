@@ -5,7 +5,7 @@
     "what": "Seed rows for the rules_knowledge_base table (§29.1). RuleEngine.evaluate(ruleId, FeatureSnapshot) -> RuleResult{pass|warn|fail, measuredValue, threshold, evidence, ruleId, version}.",
     "result": "Changing a number here changes the app's advice everywhere that rule is cited, reproducibly and with an audit trail.",
     "source_section": "§29",
-    "version": "1.16.0",
+    "version": "1.17.0",
     "changelog": [
       "2026-07-17 — Created from SRS v1.7 §29.2–§29.5; defaults are the floor, refined by user overrides at runtime.",
       "2026-08-07 — Added RULE-SMS-PARSE for issue 3.9's opt-in, on-device bank-alert parser (§18, §23).",
@@ -16,7 +16,8 @@
       "2026-08-17 — Added RULE-CC-DUE for issue 6.1's credit-card payment reminder (FR-ACC-002, §17.1). RULE-CC-UTIL was deliberately NOT touched: it already named `card_alerts` in consumed_by, so the utilisation alert reads its shipped 30% threshold exactly as it stands, and only the date question needed a row. A new row again for ADR-0017's trigger 3, and on the merits too - scoring how much of a limit is used and deciding when to wake someone about a date are different jobs with different severities and, per §17.1, different notification channels.",
       "2026-08-29 — Added RULE-PRICE-STALE for issue 6.5's market-price refresh and staleness label (FR-ACC-004, §16.1, §22 EXT-002). A new row again for ADR-0017's trigger 3, and on the merits: RULE-GOLD-CAP and RULE-CRYPTO-CAP say how much of a portfolio a class may be, which is a question about allocation and not about time. Nothing in this file had ever expressed a cadence or a shelf life before, so there was no row to extend.",
       "2026-09-02 — Added RULE-EMF-MULT and RULE-EMF-COACH for issue 7.2's emergency-fund engine (§10.1, AI-EMF). Two new rows rather than one, and rather than extending RULE-RUNWAY-M. RULE-RUNWAY-M was deliberately NOT touched: its params are the clamp and the `multiplier_source` pointer, both already correct, and §10.1 puts the multiplier itself *in* AI-EMF — so this issue makes that row true for the first time without changing a number in it (ADR-0017's trigger 3 stays unfired). The split into two is the RULE-BUD-ALERT and RULE-CC-DUE argument again: how big the fund should be and what to say about where the user stands are different questions, with different severities. **Only the params the engine applies are minted.** §10.1 also bumps M for dependents, for no health cover and for a job-stability self-assessment; no field in the app holds any of the three, so inventing the params now would ship three numbers nothing reads. Their absence is asserted by the engine's RulebookDriftTest, so they have to arrive deliberately (ADR-0034).",
-      "2026-09-19 — Added RULE-FCT-METHOD and RULE-FCT-CRUNCH for issue 9.2's cash-flow forecast (§9, AI-FCT). §9.2 states the method's numbers in prose — a 90-day horizon, a 90-day lookback, a 10% trimmed mean, 500 seeded Monte-Carlo paths, P10/P50/P90 bands — and AI-FCT-002 names a ₹5,000 default buffer; each is now a params row so no engine carries them as constants (CLAUDE.md §6). New rows at v1.0, no shipped row changed. See ADR-0043."
+      "2026-09-19 — Added RULE-FCT-METHOD and RULE-FCT-CRUNCH for issue 9.2's cash-flow forecast (§9, AI-FCT). §9.2 states the method's numbers in prose — a 90-day horizon, a 90-day lookback, a 10% trimmed mean, 500 seeded Monte-Carlo paths, P10/P50/P90 bands — and AI-FCT-002 names a ₹5,000 default buffer; each is now a params row so no engine carries them as constants (CLAUDE.md §6). New rows at v1.0, no shipped row changed. See ADR-0043.",
+      "2026-09-19 — Added RULE-FHS-PILLARS, RULE-FHS-BANDS and RULE-FHS-SIGNALS for issue 9.4's Financial Health Score (§14, AI-FHS). §14.1's table gives the five pillar weights, the band edges and a few scoring anchors in prose (runway 100 at ≥ M, obligation ratio 30%→100 and 55%→0, savings rate 100 at ≥ 30%); each is now a params row. Two numbers §14 leaves unstated are minted here and say so in their source notes: the runway floor boost (25 points at ≥ 1 month) and where card utilisation reaches zero (100%). The utilisation 'good' edge and the savings-rate top are NOT restated — AI-FHS reads RULE-CC-UTIL.max_utilisation_pct and RULE-SAVE-RATE.excellent_pct, which already say 30. New rows at v1.0, no shipped row changed. See ADR-0045."
     ],
     "schema": {
       "rule_id": "stable public ID cited in evidence — never rename, deprecate instead",
@@ -547,6 +548,45 @@
       "rationale": "The point of a forecast is the day it goes wrong. Measured against the expected path, not the pessimistic one, so a crunch is a real expectation rather than a one-in-ten scare; the pessimistic band stays on screen beside it.",
       "source_note": "SRS AI-FCT-002: 'consolidated liquid balance < user buffer (default ₹5,000)'. Stored in paise (MNY-001). There is no per-user buffer setting yet, so the default applies to everyone; the alert itself is §18's notification engine (issue 9.6).",
       "consumed_by": ["AI-FCT"],
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "rule_id": "RULE-FHS-PILLARS",
+      "domain": "health",
+      "name": "The Financial Health Score is 0–1000: five pillars each scored 0–100 and weighted 25/20/20/20/15; a pillar with less than one month of signal is shown as '—' and its weight is shared out among the pillars that have data, never guessed.",
+      "formula_id": "fhs_weighted_pillars",
+      "params_json": { "liquidity_weight_bps": 2500, "debt_weight_bps": 2000, "discipline_weight_bps": 2000, "goals_weight_bps": 2000, "protection_weight_bps": 1500, "score_max": 1000, "lookback_months": 3, "min_months_of_signal": 1 },
+      "severity": "info",
+      "rationale": "One number is only honest if every part of it can be opened. Weights are data so a reviewer can see — and change — how much each pillar counts; re-weighting rather than scoring a missing pillar as zero keeps a new user from being told they are 'At Risk' for not having typed in their insurance.",
+      "source_note": "SRS §14.1 table (weights), 'Insufficient-data handling' bullet (re-weighting, < 1 month). lookback_months is the closed-month window the savings rate and income are read over, matching RULE-BUD-SUGGEST's three months. Signals inside a pillar are weighted equally among those with data — §14 names them but gives no sub-weights (ADR-0045).",
+      "consumed_by": ["AI-FHS"],
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "rule_id": "RULE-FHS-BANDS",
+      "domain": "health",
+      "name": "Score bands: 800+ Excellent, 650–799 Good, 500–649 Fair, 350–499 Needs Attention, below 350 At Risk.",
+      "formula_id": "fhs_band",
+      "params_json": { "excellent_min": 800, "good_min": 650, "fair_min": 500, "attention_min": 350 },
+      "severity": "info",
+      "rationale": "A word the user can hold is kinder and more useful than a bare number; the edges are data so they can be tuned without touching the engine.",
+      "source_note": "SRS §14.1 'Score bands'.",
+      "consumed_by": ["AI-FHS"],
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "rule_id": "RULE-FHS-SIGNALS",
+      "domain": "health",
+      "name": "How each signal is scored 0–100: runway linear to 100 at the personal target M, with at least 25 once there is a month of runway; obligations/income 100 at ≤ 30% falling linearly to 0 at 55%; card utilisation 100 at ≤ RULE-CC-UTIL's 30% falling linearly to 0 at 100%; savings rate 0 at ≤ 0% rising linearly to 100 at RULE-SAVE-RATE's 30%; budget adherence and goals on track as shares.",
+      "formula_id": "fhs_signal_curves",
+      "params_json": { "runway_floor_points": 25, "obligation_full_pct": 30, "obligation_zero_pct": 55, "utilisation_zero_pct": 100 },
+      "severity": "info",
+      "rationale": "Straight lines between two stated anchors are the simplest curves a user can check by hand, and the 'what would it take' answer falls straight out of them.",
+      "source_note": "SRS §14.1: runway '100 at ≥ M, linear below; floor boost for any runway ≥ 1 month' (the boost size is not stated — 25 is minted here); obligation '(EMI+rent)/income ≤ 30% → 100, ≥ 55% → 0'; utilisation '< 30% good' (the zero point is not stated — 100% is minted here); savings '100 at ≥ 30%'. The 30s for utilisation and savings are read from RULE-CC-UTIL and RULE-SAVE-RATE, not restated.",
+      "consumed_by": ["AI-FHS"],
       "enabled": true,
       "version": "1.0"
     }

@@ -9,6 +9,7 @@ import com.aicfo.core.common.toAppError
 import com.aicfo.data.repository.ArchiveRepository
 import com.aicfo.data.repository.BudgetRepository
 import com.aicfo.data.repository.ForecastRepository
+import com.aicfo.data.repository.HealthScoreRepository
 import com.aicfo.data.repository.NetWorthRepository
 import com.aicfo.data.repository.OrderOfOperationsRepository
 import com.aicfo.data.repository.QuickSetupRepository
@@ -69,7 +70,8 @@ import javax.inject.Inject
 // ViewModels for one screen and two StateFlows for one UiState, which ARC-004 exists to prevent.
 // LongParameterList for the same reason (issue 7.5): Hilt reads the constructor, and each argument is
 // one repository behind one figure on the screen — the next-best-rupee card brought the seventh, and
-// issue 9.1's fixed/flexible split the eighth, issue 9.2's forecast the ninth.
+// issue 9.1's fixed/flexible split the eighth, issue 9.2's forecast the ninth, issue 9.4's health
+// score the tenth.
 @Suppress("TooManyFunctions", "LongParameterList")
 class DashboardViewModel
     @Inject
@@ -83,6 +85,7 @@ class DashboardViewModel
         private val orderOfOperationsRepository: OrderOfOperationsRepository,
         private val streamRepository: StreamRepository,
         private val forecastRepository: ForecastRepository,
+        private val healthScoreRepository: HealthScoreRepository,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(DashboardUiState())
 
@@ -105,6 +108,7 @@ class DashboardViewModel
             observeOrderOfOperations()
             observeStreams()
             observeForecast()
+            observeHealthScore()
         }
 
         /**
@@ -222,6 +226,21 @@ class DashboardViewModel
             transactionRepository.observeNatureBreakdown()
                 .onEach { breakdown -> _uiState.update { it.copy(natureBreakdown = breakdown) } }
                 .catch { _uiState.update { it.copy(natureBreakdown = null) } }
+                .launchIn(viewModelScope)
+        }
+
+        /**
+         * Keeps the Financial Health Score in step with its sources (issue 9.4; §14).
+         * Why:    a failure clears the card rather than raising a banner, as [observeForecast] does —
+         *         a stale score shown as current would be a number the app no longer stands behind.
+         * Result: [uiState] carries the score, or `null`.
+         * Input:  none. Output: none (launches a collector).
+         * Changelog: 2026-09-19 — Created for issue 9.4.
+         */
+        private fun observeHealthScore() {
+            healthScoreRepository.observeHealthScore()
+                .onEach { result -> _uiState.update { it.copy(health = (result as? Ok)?.value) } }
+                .catch { _uiState.update { it.copy(health = null) } }
                 .launchIn(viewModelScope)
         }
 

@@ -21,6 +21,7 @@ import com.aicfo.data.repository.ForecastRepository
 import com.aicfo.data.repository.GoalContributionRepository
 import com.aicfo.data.repository.GoalRepository
 import com.aicfo.data.repository.GoalWaterfallRepository
+import com.aicfo.data.repository.HealthScoreRepository
 import com.aicfo.data.repository.InvestmentRepository
 import com.aicfo.data.repository.LoanRepository
 import com.aicfo.data.repository.NetWorthRepository
@@ -43,6 +44,8 @@ import com.aicfo.domain.engines.forecast.ForecastEngine
 import com.aicfo.domain.engines.forecast.ForecastEngineFactory
 import com.aicfo.domain.engines.goals.GoalEngine
 import com.aicfo.domain.engines.goals.GoalWaterfallEngine
+import com.aicfo.domain.engines.healthscore.HealthScoreEngine
+import com.aicfo.domain.engines.healthscore.HealthScoreEngineFactory
 import com.aicfo.domain.engines.investment.InvestmentEngine
 import com.aicfo.domain.engines.loan.LoanEngine
 import com.aicfo.domain.engines.nature.NatureEngine
@@ -542,6 +545,54 @@ object RepositoryModule {
     @Provides
     @Singleton
     fun provideSeasonalityEngine(): SeasonalityEngine = SeasonalityEngineFactory.create()
+
+    /**
+     * AI-FHS, §14's Financial Health Score (issue 9.4).
+     * Why:    pure and stateless, so one instance serves every read; built by its factory because the
+     *         implementation is `internal` to its module (ARC-003).
+     * Result: a [HealthScoreEngine]. Input: none. Output: the engine.
+     * Changelog: 2026-09-19 — Created for issue 9.4.
+     */
+    @Provides
+    @Singleton
+    fun provideHealthScoreEngine(): HealthScoreEngine = HealthScoreEngineFactory.create()
+
+    /**
+     * The Financial Health Score (issue 9.4; §14).
+     * Why:    built over the repositories that own its signals — each already follows the demo
+     *         (ADR-0006) — so the score cannot disagree with the emergency fund, card, budget or goal
+     *         screens it summarises (ADR-0045).
+     * Result: a [HealthScoreRepository].
+     * Input:  the seven owning repositories; [engine]; [clock]; [dispatchers]. Output: the repository.
+     * Changelog: 2026-09-19 — Created for issue 9.4.
+     */
+    @Provides
+    @Singleton
+    @Suppress("LongParameterList") // ten: seven sources, the engine, the clock, the dispatchers
+    fun provideHealthScoreRepository(
+        emergencyFund: EmergencyFundRepository,
+        transactions: TransactionRepository,
+        streams: StreamRepository,
+        loans: LoanRepository,
+        cards: CreditCardRepository,
+        budgets: BudgetRepository,
+        goals: GoalRepository,
+        engine: HealthScoreEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+    ): HealthScoreRepository =
+        RepositoryFactory.healthScore(
+            emergencyFund,
+            transactions,
+            streams,
+            loans,
+            cards,
+            budgets,
+            goals,
+            engine,
+            clock,
+            dispatchers,
+        )
 
     /**
      * The 90-day cash-flow forecast (issue 9.2; §9).

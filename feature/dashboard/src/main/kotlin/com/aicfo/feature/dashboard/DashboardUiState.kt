@@ -7,6 +7,7 @@ import com.aicfo.data.repository.CategoryBudget
 import com.aicfo.data.repository.CategoryBudgetAlert
 import com.aicfo.data.repository.FilteredTransaction
 import com.aicfo.domain.engines.forecast.CashFlowForecast
+import com.aicfo.domain.engines.healthscore.HealthScore
 import com.aicfo.domain.engines.nature.NatureBreakdown
 import com.aicfo.domain.engines.orderofoperations.OrderOfOperations
 import com.aicfo.domain.engines.safetospend.SafeToSpend
@@ -95,6 +96,13 @@ data class DashboardUiState(
      * would be worse than none.
      */
     val forecast: CashFlowForecast? = null,
+    /**
+     * The Financial Health Score (issue 9.4; §14 AI-FHS).
+     *
+     * `null` until the first emission and when scoring fails. A profile with no data at all has a
+     * score object whose total is `null` — the card then says so rather than showing "0".
+     */
+    val health: HealthScore? = null,
     /**
      * This month's income, expense and net (issue 5.1; FR-DASH-*).
      *
