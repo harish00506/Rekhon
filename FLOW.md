@@ -19,6 +19,7 @@
     2026-09-19 — Issue 9.1 added §2.07: AI-CLS Stage 2 on the dashboard.
     2026-09-19 — Issue 9.2 added §2.08: the 90-day forecast.
     2026-09-19 — Issue 9.3: §2.08 runs AI-SEAS before AI-FCT, over closed-month category history.
+    2026-09-20 — Issue 9.4 added §2.09: the health score, assembled from seven repositories.
     2026-09-03 — Issue 7.3 added §2.6, the goal waterfall. Still Shape A — a screen — but the first
         read assembled from four repositories, and the first write driven by a gesture, so it is
         traced beside §2.5 rather than folded into it.
@@ -392,6 +393,30 @@ DashboardViewModel.observeForecast()
                └─ Bands.simulate: 500 seeded paths → P10/P50/P90; crunch = P50 < buffer
     ⇣  Result<CashFlowForecast> → uiState.forecast → ForecastSection → ComponentsLine, SeasonalLines
                                                                         (masked when blurred)
+```
+
+### 2.09 · Financial health — AI-FHS (issue 9.4)
+
+Shape A, and the **widest read in the app**: seven repositories, no DAO. Each source is the one the
+screen beside it uses, so the score cannot disagree with the card it summarises (ADR-0007, ADR-0045).
+
+```
+DashboardViewModel.observeHealthScore()
+└─ HealthScoreRepository.observeHealthScore()        data/repository — ARC-005
+    └─ combine(
+         EmergencyFundRepository.observeEmergencyFund()   runway bps + personal M      (§10)
+         TransactionRepository.observeMonthlyLedger(3)    income, needs/wants/liabilities → saved
+         StreamRepository.observeStreams()                §2.07 — FIXED streams = fixed obligations
+         LoanRepository.observeNextInstalments()          each loan's EMI
+         TransactionRepository.observeCategories()        LIABILITY ids — drop an EMI counted twice
+         CreditCardRepository.observeCardStatuses()       statement balance / limit
+         BudgetRepository.observeBudgets()                set, and not overspent
+         GoalRepository.observeGoals()                    with a target, on track or funded
+       ) → HealthSignals.* → HealthScoreEngine.score()    domain/engines/healthscore — pure
+            ├─ each signal on its line between two rulebook anchors
+            ├─ pillar = mean of its signals; pillars with no signal are "—" and re-weighted
+            └─ total, band, apportioned contributions, the biggest lever
+    ⇣  Result<HealthScore> → uiState.health → HealthSection
 ```
 
 ### 2.1 · The dashboard's headline figure (issue 5.2)

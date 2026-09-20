@@ -125,7 +125,7 @@ data class GoalRules(
          * whenever any rule anywhere is added. `RULE-HORIZON`'s own version is on [HORIZON] and is
          * still 1.0 — issue 7.1 added no rulebook row, so neither number moved.
          */
-        const val RULEBOOK_VERSION = "1.16.0" // Issue 9.2 restated it for RULE-FCT-*; no row mirrored here changed.
+        const val RULEBOOK_VERSION = "1.17.0" // Issue 9.4 restated it for RULE-FHS-*; no row mirrored here changed.
 
         /** Twelve. The rulebook states horizons in years; this engine counts months. */
         internal const val MONTHS_IN_YEAR = 12

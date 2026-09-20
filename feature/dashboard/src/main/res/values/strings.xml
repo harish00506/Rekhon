@@ -117,6 +117,45 @@
     <string name="dashboard_season_summer">the summer</string>
     <string name="dashboard_season_onam_pongal">Onam and Pongal</string>
     <string name="dashboard_season_akshaya_tritiya">Akshaya Tritiya</string>
+    <string name="dashboard_health_label">Financial health</string>
+    <string name="dashboard_health_empty">Not scored yet: no part of the score has a month of data behind it. It builds from your emergency fund, fixed costs, cards, savings, budgets and goals.</string>
+    <string name="dashboard_health_score">%1$d of %2$d · %3$s</string>
+    <string name="dashboard_health_band_excellent">Excellent</string>
+    <string name="dashboard_health_band_good">Good</string>
+    <string name="dashboard_health_band_fair">Fair</string>
+    <string name="dashboard_health_band_attention">Needs attention</string>
+    <string name="dashboard_health_band_at_risk">At risk</string>
+    <plurals name="dashboard_health_pillar">
+        <item quantity="one">%1$s: %2$s/100 · %3$d point (weight %4$s%%)</item>
+        <item quantity="other">%1$s: %2$s/100 · %3$d points (weight %4$s%%)</item>
+    </plurals>
+    <string name="dashboard_health_pillar_missing">%1$s: — not enough data yet (its %2$s%% weight is shared among the others)</string>
+    <string name="dashboard_health_pillar_liquidity">Liquidity &amp; emergency</string>
+    <string name="dashboard_health_pillar_debt">Debt health</string>
+    <string name="dashboard_health_pillar_discipline">Spending discipline</string>
+    <string name="dashboard_health_pillar_goals">Goals &amp; future</string>
+    <string name="dashboard_health_pillar_protection">Protection &amp; growth</string>
+    <string name="dashboard_health_signal_runway">Runway %1$s of %2$s months — %3$s/100</string>
+    <string name="dashboard_health_signal_obligations">Fixed costs and EMIs %1$s%% of income (full marks at %2$s%%) — %3$s/100</string>
+    <string name="dashboard_health_signal_cards">Card statements %1$s%% of limits (full marks at %2$s%%) — %3$s/100</string>
+    <string name="dashboard_health_signal_savings">Kept %1$s%% of income (full marks at %2$s%%) — %3$s/100</string>
+    <string name="dashboard_health_signal_budgets">Budgets kept %1$s%% — %2$s/100</string>
+    <string name="dashboard_health_signal_goals">Goals on track %1$s%% — %2$s/100</string>
+    <plurals name="dashboard_health_lever">
+        <item quantity="one">Biggest lever: %1$s — up to +%2$d point</item>
+        <item quantity="other">Biggest lever: %1$s — up to +%2$d points</item>
+    </plurals>
+    <string name="dashboard_health_lever_runway">your emergency runway</string>
+    <string name="dashboard_health_lever_obligations">fixed costs against income</string>
+    <string name="dashboard_health_lever_cards">card balances</string>
+    <string name="dashboard_health_lever_savings">your savings rate</string>
+    <string name="dashboard_health_lever_budgets">staying within budgets</string>
+    <string name="dashboard_health_lever_goals">goals on track</string>
+    <plurals name="dashboard_health_coverage">
+        <item quantity="one">Based on %1$d of %2$d pillar.</item>
+        <item quantity="other">Based on %1$d of %2$d pillars.</item>
+    </plurals>
+    <string name="dashboard_health_rules">Rules: %1$s</string>
 
     <!-- Issue 5.1 — this month's cash flow, beside the plan/actual pair above it. -->
     <string name="dashboard_cash_flow_label">This month\'s cash flow</string>

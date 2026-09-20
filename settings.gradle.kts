@@ -73,6 +73,7 @@ include(":domain:engines:emergencyfund") // §10.1 AI-EMF — essentials × mult
 include(":domain:engines:orderofoperations") // §36 AI-FOO — the surplus down the eight-stage waterfall
 include(":domain:engines:stream")      // §8.2 AI-CLS Stage 2 — each expense stream FIXED / SEMI_FIXED / VARIABLE
 include(":domain:engines:seasonality") // §9.3 AI-SEAS — seasonal index per category/month + the forecast's monthly factor
+include(":domain:engines:healthscore") // §14 AI-FHS — five weighted pillars -> a 0–1000 score, band, contributions, lever
 include(":domain:usecase")
 
 // :data:*                  the ONLY DAO/network touchers (ARC-005)

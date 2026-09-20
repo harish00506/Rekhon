@@ -57,6 +57,8 @@ internal fun populatedDashboardState(): DashboardUiState =
         // Issue 9.2: a forecast with a crunch in it, so the blur test proves its amounts are masked
         // and the screenshots show the negative line.
         forecast = fixtureForecast(opening = 4_000_00L),
+        // Issue 9.4: a full score, so the screenshots show the card populated.
+        health = fixtureHealth(),
     )
 
 /**

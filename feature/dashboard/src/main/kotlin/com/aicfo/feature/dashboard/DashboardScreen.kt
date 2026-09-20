@@ -128,6 +128,8 @@ fun DashboardContent(
         StreamLoadSection(uiState.streamProfile)
         // Issue 9.2: what that means for the next ninety days.
         ForecastSection(uiState.forecast)
+        // Issue 9.4: all of the above, weighed — one number, opened all the way down.
+        HealthSection(uiState.health)
         // Issue 5.1: three more figures, each already real from its own repository — none computed
         // on this screen (P-03).
         CashFlowSection(uiState)
