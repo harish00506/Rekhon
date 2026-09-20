@@ -20,6 +20,7 @@
     2026-09-19 — Issue 9.2 added §2.08: the 90-day forecast.
     2026-09-19 — Issue 9.3: §2.08 runs AI-SEAS before AI-FCT, over closed-month category history.
     2026-09-20 — Issue 9.4 added §2.09: the health score, assembled from seven repositories.
+    2026-09-20 — Issue 9.5 added §2.10: the insight orchestrator — the first read that *writes*.
     2026-09-03 — Issue 7.3 added §2.6, the goal waterfall. Still Shape A — a screen — but the first
         read assembled from four repositories, and the first write driven by a gesture, so it is
         traced beside §2.5 rather than folded into it.
@@ -417,6 +418,32 @@ DashboardViewModel.observeHealthScore()
             ├─ pillar = mean of its signals; pillars with no signal are "—" and re-weighted
             └─ total, band, apportioned contributions, the biggest lever
     ⇣  Result<HealthScore> → uiState.health → HealthSection
+```
+
+### 2.10 · What needs attention — AI-ORCH (issue 9.5)
+
+**A new shape: a read that writes.** Every other pipeline here computes on demand; this one runs the
+engines, persists what it finds, and the screen reads rows (AI-ARC-005). That is what makes a
+dismissal outlive a recomputation.
+
+```
+InsightRefreshWorker (daily, §7.2 day_rollover)   ┐
+DashboardViewModel.init                           ┘→ InsightRepository.refresh()
+└─ read once, in §7.2's order (AI-ARC-001):       data/repository — ARC-005
+     ForecastRepository §2.08 · HealthScoreRepository §2.09 · EmergencyFundRepository ·
+     BudgetRepository · GoalRepository
+   → InsightSignals.*  → InsightEngine.insights()   domain/engines/insight — pure (AI-ORCH)
+        ├─ one card per signal worth one; severity is the type's
+        ├─ fingerprint = type|subject|period                    (RULE-INS-DEDUP)
+        └─ order: severity, amount desc, fingerprint            (RULE-INS-RANK)
+   → per card: insightDao().find(fingerprint) → upsert, keeping the id, the user's verdict
+     and its suppression; then deleteStale(keep = the fingerprints just raised)
+
+DashboardViewModel.observeInsights()
+└─ InsightRepository.observeDashboard()
+    └─ insightDao().observeFeed(profile, today)   the suppression is IN the query
+  ⇣ uiState.insights → InsightFeedSection → DashboardEvent.InsightDismissed / InsightSnoozed
+                                          → setStatus(status, suppressed_until = today + 7)
 ```
 
 ### 2.1 · The dashboard's headline figure (issue 5.2)

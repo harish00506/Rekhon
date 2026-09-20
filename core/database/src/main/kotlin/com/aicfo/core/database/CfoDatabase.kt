@@ -16,6 +16,7 @@ import com.aicfo.core.database.dao.DemoDao
 import com.aicfo.core.database.dao.GoalContributionDao
 import com.aicfo.core.database.dao.GoalDao
 import com.aicfo.core.database.dao.GoalFundingAccountDao
+import com.aicfo.core.database.dao.InsightDao
 import com.aicfo.core.database.dao.InvestmentHoldingDao
 import com.aicfo.core.database.dao.InvestmentLotDao
 import com.aicfo.core.database.dao.LoanDao
@@ -38,6 +39,7 @@ import com.aicfo.core.database.entity.CreditCardEntity
 import com.aicfo.core.database.entity.GoalContributionEntity
 import com.aicfo.core.database.entity.GoalEntity
 import com.aicfo.core.database.entity.GoalFundingAccountEntity
+import com.aicfo.core.database.entity.InsightEntity
 import com.aicfo.core.database.entity.InvestmentHoldingEntity
 import com.aicfo.core.database.entity.InvestmentLotEntity
 import com.aicfo.core.database.entity.LoanEntity
@@ -94,6 +96,7 @@ import com.aicfo.core.database.entity.TransactionTagEntity
         GoalEntity::class,
         GoalContributionEntity::class,
         GoalFundingAccountEntity::class,
+        InsightEntity::class,
     ],
     version = CfoDatabase.VERSION,
     exportSchema = true,
@@ -166,6 +169,9 @@ abstract class CfoDatabase : RoomDatabase() {
     /** Input: none. Output: the funding-account DAO (issue 7.4, FR-GOAL-002). */
     abstract fun goalFundingAccountDao(): GoalFundingAccountDao
 
+    /** Input: none. Output: the insight-feed DAO (issue 9.5, §7.2). */
+    abstract fun insightDao(): InsightDao
+
     /**
      * Input:  none. Output: the demo wipe DAO (issue 2.4, FR-ONB-004).
      *
@@ -218,7 +224,7 @@ abstract class CfoDatabase : RoomDatabase() {
          * contribution *is* the linked transaction's, summed at query time, so nothing can drift
          * away from the ledger it came from; §15, FR-GOAL-002, FR-GOAL-004).
          */
-        const val VERSION = 22
+        const val VERSION = 23
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"

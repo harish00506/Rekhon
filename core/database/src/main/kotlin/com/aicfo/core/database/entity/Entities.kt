@@ -1624,3 +1624,81 @@ data class GoalFundingAccountEntity(
     @ColumnInfo(name = "deleted_at_utc_millis")
     val deletedAtUtcMillis: Long? = null,
 )
+
+/**
+ * One insight the orchestrator raised, persisted so the UI never awaits computation
+ * (issue 9.5; §7.2, §20.2 `insights`, AI-ARC-005/006).
+ *
+ * Why:    §7.2's pipeline ends "persist Insights → notify", and AI-ARC-005 is the reason: screens
+ *         read published rows, not a pipeline they have to wait for. Persisting is also what makes
+ *         **dismissal possible at all** — a feed recomputed from scratch every read has nowhere to
+ *         remember that the user said "not now" (RULE-INS-DEDUP).
+ * What:   the card's own fields, the engine that published its figure, and the user's verdict on it.
+ * Result: a Room row in `insight`, one per fingerprint per profile.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-09-20 — Created at version 23 for issue 9.5 (§7.2, AI-ORCH).
+ *
+ * **Typed columns, not an `evidence_json` blob.** §20.2 sketches `evidence_json` and DB-005 then has
+ * to version those blobs so old insights still render. Every figure a card shows is one of a fixed
+ * few — an amount, a supporting amount, a date, a count — so they are columns, and the question
+ * DB-005 exists to answer does not arise (ADR-0046).
+ *
+ * **`amount_minor` is paise (MNY-001)**, and it is also the feed's tie-break, so it is stored rather
+ * than recomputed: the order the user saw is the order the row can reproduce.
+ */
+@Serializable
+@Entity(
+    tableName = "insight",
+    indices = [
+        // The feed reads one profile's rows, and the demo wipe scopes by profile.
+        Index("profile_id"),
+        // RULE-INS-DEDUP: one row per fingerprint per profile — a recomputation updates it.
+        Index(value = ["profile_id", "fingerprint"], unique = true),
+    ],
+)
+data class InsightEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    @ColumnInfo(name = "fingerprint")
+    val fingerprint: String,
+    @ColumnInfo(name = "type")
+    val type: String,
+    @ColumnInfo(name = "severity")
+    val severity: String,
+    @ColumnInfo(name = "subject")
+    val subject: String? = null,
+    @ColumnInfo(name = "subject_label")
+    val subjectLabel: String? = null,
+    @ColumnInfo(name = "period")
+    val period: String,
+    @ColumnInfo(name = "amount_minor")
+    val amountMinor: Long? = null,
+    @ColumnInfo(name = "secondary_minor")
+    val secondaryMinor: Long? = null,
+    @ColumnInfo(name = "date_iso")
+    val dateIso: String? = null,
+    @ColumnInfo(name = "quantity")
+    val quantity: Int? = null,
+    @ColumnInfo(name = "confidence_bps")
+    val confidenceBps: Int? = null,
+    /** The cited rules as `ID vVERSION`, comma-separated — the card's "why", rendered as it is stored. */
+    @ColumnInfo(name = "citations")
+    val citations: String,
+    @ColumnInfo(name = "source_engine_id")
+    val sourceEngineId: String,
+    @ColumnInfo(name = "source_engine_version")
+    val sourceEngineVersion: String,
+    /** `active`, `dismissed`, `snoozed` or `acted` (§20.2). */
+    @ColumnInfo(name = "status")
+    val status: String,
+    /** ISO date the suppression ends, for a dismissed or snoozed row (TIM-002). */
+    @ColumnInfo(name = "suppressed_until_iso_date")
+    val suppressedUntilIsoDate: String? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+)

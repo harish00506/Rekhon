@@ -5,7 +5,7 @@
     "what": "Seed rows for the rules_knowledge_base table (§29.1). RuleEngine.evaluate(ruleId, FeatureSnapshot) -> RuleResult{pass|warn|fail, measuredValue, threshold, evidence, ruleId, version}.",
     "result": "Changing a number here changes the app's advice everywhere that rule is cited, reproducibly and with an audit trail.",
     "source_section": "§29",
-    "version": "1.17.0",
+    "version": "1.18.0",
     "changelog": [
       "2026-07-17 — Created from SRS v1.7 §29.2–§29.5; defaults are the floor, refined by user overrides at runtime.",
       "2026-08-07 — Added RULE-SMS-PARSE for issue 3.9's opt-in, on-device bank-alert parser (§18, §23).",
@@ -17,7 +17,8 @@
       "2026-08-29 — Added RULE-PRICE-STALE for issue 6.5's market-price refresh and staleness label (FR-ACC-004, §16.1, §22 EXT-002). A new row again for ADR-0017's trigger 3, and on the merits: RULE-GOLD-CAP and RULE-CRYPTO-CAP say how much of a portfolio a class may be, which is a question about allocation and not about time. Nothing in this file had ever expressed a cadence or a shelf life before, so there was no row to extend.",
       "2026-09-02 — Added RULE-EMF-MULT and RULE-EMF-COACH for issue 7.2's emergency-fund engine (§10.1, AI-EMF). Two new rows rather than one, and rather than extending RULE-RUNWAY-M. RULE-RUNWAY-M was deliberately NOT touched: its params are the clamp and the `multiplier_source` pointer, both already correct, and §10.1 puts the multiplier itself *in* AI-EMF — so this issue makes that row true for the first time without changing a number in it (ADR-0017's trigger 3 stays unfired). The split into two is the RULE-BUD-ALERT and RULE-CC-DUE argument again: how big the fund should be and what to say about where the user stands are different questions, with different severities. **Only the params the engine applies are minted.** §10.1 also bumps M for dependents, for no health cover and for a job-stability self-assessment; no field in the app holds any of the three, so inventing the params now would ship three numbers nothing reads. Their absence is asserted by the engine's RulebookDriftTest, so they have to arrive deliberately (ADR-0034).",
       "2026-09-19 — Added RULE-FCT-METHOD and RULE-FCT-CRUNCH for issue 9.2's cash-flow forecast (§9, AI-FCT). §9.2 states the method's numbers in prose — a 90-day horizon, a 90-day lookback, a 10% trimmed mean, 500 seeded Monte-Carlo paths, P10/P50/P90 bands — and AI-FCT-002 names a ₹5,000 default buffer; each is now a params row so no engine carries them as constants (CLAUDE.md §6). New rows at v1.0, no shipped row changed. See ADR-0043.",
-      "2026-09-19 — Added RULE-FHS-PILLARS, RULE-FHS-BANDS and RULE-FHS-SIGNALS for issue 9.4's Financial Health Score (§14, AI-FHS). §14.1's table gives the five pillar weights, the band edges and a few scoring anchors in prose (runway 100 at ≥ M, obligation ratio 30%→100 and 55%→0, savings rate 100 at ≥ 30%); each is now a params row. Two numbers §14 leaves unstated are minted here and say so in their source notes: the runway floor boost (25 points at ≥ 1 month) and where card utilisation reaches zero (100%). The utilisation 'good' edge and the savings-rate top are NOT restated — AI-FHS reads RULE-CC-UTIL.max_utilisation_pct and RULE-SAVE-RATE.excellent_pct, which already say 30. New rows at v1.0, no shipped row changed. See ADR-0045."
+      "2026-09-19 — Added RULE-FHS-PILLARS, RULE-FHS-BANDS and RULE-FHS-SIGNALS for issue 9.4's Financial Health Score (§14, AI-FHS). §14.1's table gives the five pillar weights, the band edges and a few scoring anchors in prose (runway 100 at ≥ M, obligation ratio 30%→100 and 55%→0, savings rate 100 at ≥ 30%); each is now a params row. Two numbers §14 leaves unstated are minted here and say so in their source notes: the runway floor boost (25 points at ≥ 1 month) and where card utilisation reaches zero (100%). The utilisation 'good' edge and the savings-rate top are NOT restated — AI-FHS reads RULE-CC-UTIL.max_utilisation_pct and RULE-SAVE-RATE.excellent_pct, which already say 30. New rows at v1.0, no shipped row changed. See ADR-0045.",
+      "2026-09-20 — Added RULE-INS-RANK and RULE-INS-DEDUP for issue 9.5's Insight Orchestrator (§7.2, AI-ORCH). §7.2 states the deduplication fingerprint (type + subject + period) and that dismissed fingerprints are suppressed for their snooze window, but names no window length and no feed order; FR-HOME-001 asks for the 'top 3' on the dashboard. The severity order, the tie-breaks, the dashboard size and the seven-day snooze are now params rather than engine constants. New rows at v1.0, no shipped row changed. See ADR-0046."
     ],
     "schema": {
       "rule_id": "stable public ID cited in evidence — never rename, deprecate instead",
@@ -587,6 +588,32 @@
       "rationale": "Straight lines between two stated anchors are the simplest curves a user can check by hand, and the 'what would it take' answer falls straight out of them.",
       "source_note": "SRS §14.1: runway '100 at ≥ M, linear below; floor boost for any runway ≥ 1 month' (the boost size is not stated — 25 is minted here); obligation '(EMI+rent)/income ≤ 30% → 100, ≥ 55% → 0'; utilisation '< 30% good' (the zero point is not stated — 100% is minted here); savings '100 at ≥ 30%'. The 30s for utilisation and savings are read from RULE-CC-UTIL and RULE-SAVE-RATE, not restated.",
       "consumed_by": ["AI-FHS"],
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "rule_id": "RULE-INS-RANK",
+      "domain": "insight",
+      "name": "The insight feed is ordered by severity (critical, then warning, then info), then by the amount at stake descending, then by fingerprint — so the same facts always produce the same feed. The dashboard shows the top three.",
+      "formula_id": "insight_feed_rank",
+      "params_json": { "severity_order": ["critical", "warning", "info"], "tie_break": "amount_desc_then_fingerprint", "dashboard_max": 3 },
+      "severity": "info",
+      "rationale": "A feed that reorders itself between two identical reads cannot be trusted or tested. Severity first because a crunch day is not a matter of taste; the amount second because between two warnings the bigger one is the one to read first; the fingerprint last so the order is total.",
+      "source_note": "SRS §7.2 (the orchestrator's pipeline and ordering are otherwise unstated) and FR-HOME-001 ('top 3 AI insights'). The order and the tie-breaks are minted here (ADR-0046).",
+      "consumed_by": ["AI-ORCH"],
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "rule_id": "RULE-INS-DEDUP",
+      "domain": "insight",
+      "name": "One insight per fingerprint (type + subject + period): a recomputation updates the existing row rather than adding a second. A dismissed fingerprint stays suppressed for seven days; a snoozed one until its snooze ends.",
+      "formula_id": "insight_dedup",
+      "params_json": { "fingerprint": "type+subject+period", "on_match": "update_existing", "snooze_days": 7 },
+      "severity": "info",
+      "rationale": "The same overspent category recomputed hourly would otherwise become a wall of identical cards, and dismissing one would do nothing. Suppression has an end date because a dismissal is 'not now', not 'never' — the insight returns if the facts still hold a week later.",
+      "source_note": "SRS §7.2 deduplication bullet and insight-orchestrator.yaml's `deduplication` block; §20.2's `insights.fingerprint UNIQUE`. §7.2 names no snooze length — seven days is minted here (ADR-0046).",
+      "consumed_by": ["AI-ORCH"],
       "enabled": true,
       "version": "1.0"
     }

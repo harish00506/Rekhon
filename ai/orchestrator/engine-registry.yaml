@@ -14,6 +14,8 @@
 #   2026-09-19 — Issue 9.2: AI-FCT built; its contract and inputs restated (ADR-0043).
 #   2026-09-19 — Issue 9.3: AI-SEAS built; AI-FCT 1.1 applies its monthly factor (ADR-0044).
 #   2026-09-20 — Issue 9.4: AI-FHS built; its contract and the signals it reads restated (ADR-0045).
+#   2026-09-20 — Issue 9.5: AI-ORCH built — the L5 assembly step of insight-orchestrator.yaml's
+#                pipeline, plus the persisted feed it writes (ADR-0046).
 # =============================================================================
 
 version: "1.1"
@@ -67,6 +69,19 @@ engines:
     contract: "closed-month category history + the lookback's everyday spend per category + calendar -> seasonal index per category/month + one everyday-spend factor per month, with the events named"
     reads: [../knowledge/calendar-seasonality.json]       # events + SEAS-INDEX (method block)
     srs: "§9.3"
+
+  - id: AI-ORCH
+    name: Insight Orchestrator
+    layer: L5
+    module: ":domain:engines:insight"
+    version: "1.0"
+    # Issue 9.5 built the assembly step (ADR-0046): it ranks what the engines below it published and
+    # computes nothing itself. The pipeline's stages 1–4 are those engines' own repositories; stage 5
+    # (persist) is `insight` at schema 23; stage 6 (notify) is AI-NTF's, and waits for issue 9.6.
+    contract: "published engine results (forecast, emergency fund, health score, budgets, goals) -> ranked, fingerprinted insights {severity, figures, source engine, rules} + the dashboard's top 3"
+    reads: [../rules/rules-kb.json, insight-orchestrator.yaml]   # RULE-INS-RANK, RULE-INS-DEDUP
+    depends_on: [AI-FCT, AI-FHS, AI-EMF, AI-GOAL]
+    srs: "§7.2"
 
   - id: AI-EMF
     name: Emergency Fund

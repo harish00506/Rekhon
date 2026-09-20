@@ -137,7 +137,7 @@ data class InvestmentRules(
         val CITATIONS = listOf(GOLD_CAP, CRYPTO_CAP, CONCENTRATION)
 
         /** The rulebook file these thresholds were copied from, as `_meta.version`. */
-        const val RULEBOOK_VERSION = "1.17.0" // Issue 9.4 restated it for RULE-FHS-*; no row mirrored here changed.
+        const val RULEBOOK_VERSION = "1.18.0" // Issue 9.5 restated it for RULE-INS-*; no row mirrored here changed.
 
         /** `RULE-GOLD-CAP.cap_pct`. */
         private const val GOLD_CAP_PCT = 10

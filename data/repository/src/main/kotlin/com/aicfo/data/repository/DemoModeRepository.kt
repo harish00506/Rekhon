@@ -161,6 +161,8 @@ internal class RoomDemoModeRepository(
                     // noticed it while wiring the analogous budget_review table below: a table the
                     // wipe cannot reach is residue ADR-0006 forbids, and it had been reachable but
                     // unreached since 4.5 shipped.
+                    // Issue 9.5: the orchestrator raises these while the user browses the demo.
+                    demo.deleteInsights(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteBudgetAlerts(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteCardAlerts(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteCreditCards(DemoModeRepository.DEMO_PROFILE_ID)

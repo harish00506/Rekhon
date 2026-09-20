@@ -23,6 +23,7 @@ import com.aicfo.core.database.entity.CreditCardEntity
 import com.aicfo.core.database.entity.GoalContributionEntity
 import com.aicfo.core.database.entity.GoalEntity
 import com.aicfo.core.database.entity.GoalFundingAccountEntity
+import com.aicfo.core.database.entity.InsightEntity
 import com.aicfo.core.database.entity.InvestmentHoldingEntity
 import com.aicfo.core.database.entity.InvestmentLotEntity
 import com.aicfo.core.database.entity.LoanEntity
@@ -2247,9 +2248,20 @@ interface DemoDao {
      * Added by issue 4.5, which introduced the table. Called **before** [deleteBudgets]: an alert is
      * a child of a budget, and clearing the parents first would orphan it if the caller failed in
      * between — the ordering argument [deleteTransactionSplits] makes.
+     *
      */
     @Query("DELETE FROM budget_alert WHERE profile_id = :profileId")
     suspend fun deleteBudgetAlerts(profileId: String): Int
+
+    /**
+     * Result: rows removed from `insight`. Input: [profileId]. Output: the count.
+     *
+     * Issue 9.5: the orchestrator writes these while the user browses, so a demo exit that left
+     * them behind would be exactly the residue ADR-0006 forbids. No ordering requirement — an
+     * insight points at nothing by foreign key; it only names a subject.
+     */
+    @Query("DELETE FROM insight WHERE profile_id = :profileId")
+    suspend fun deleteInsights(profileId: String): Int
 
     /**
      * Result: rows removed from `card_alert`. Input: [profileId]. Output: the count.
@@ -2468,7 +2480,10 @@ interface DemoDao {
             "(SELECT COUNT(*) FROM investment_lot WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM goal WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM goal_contribution WHERE profile_id = :profileId) + " +
-            "(SELECT COUNT(*) FROM goal_funding_account WHERE profile_id = :profileId)",
+            "(SELECT COUNT(*) FROM goal_funding_account WHERE profile_id = :profileId) + " +
+            // Issue 9.5: the orchestrator's feed is profile-scoped residue like every other claim
+            // table, so it is counted here or the wipe could miss it and no test would say so.
+            "(SELECT COUNT(*) FROM insight WHERE profile_id = :profileId)",
     )
     suspend fun countRowsFor(profileId: String): Int
 }
@@ -2596,6 +2611,14 @@ interface ArchiveDao {
     @Query("SELECT * FROM goal_funding_account WHERE profile_id = :profileId ORDER BY id")
     suspend fun goalFundingAccounts(profileId: String): List<GoalFundingAccountEntity>
 
+    /**
+     * Result: every insight the orchestrator has raised, whatever the user said about it — the
+     *   status and its suppression are what a restore has to bring back, or a dismissal would be
+     *   undone by a backup (issue 9.5). Input: [profileId].
+     */
+    @Query("SELECT * FROM insight WHERE profile_id = :profileId ORDER BY id")
+    suspend fun insights(profileId: String): List<InsightEntity>
+
     /** Result: every recurring rule, confirmed and dismissed alike (FR-TXN-006). Input: [profileId]. */
     @Query("SELECT * FROM recurring_rule WHERE profile_id = :profileId ORDER BY id")
     suspend fun recurringRules(profileId: String): List<RecurringRuleEntity>
@@ -2691,6 +2714,15 @@ interface ArchiveDao {
     /** Result: the dedicated funding accounts are present (FR-GOAL-002). Input: [rows]. */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertGoalFundingAccounts(rows: List<GoalFundingAccountEntity>)
+
+    /**
+     * Result: the insight feed, with each card's verdict, is present. Input: [rows]. Output: none.
+     *
+     * Restored like any other row (issue 9.5): the cards themselves would be recomputed within a
+     * day, but what the user *said* about them would not be, and that is the part worth carrying.
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertInsights(rows: List<InsightEntity>)
 
     /**
      * Result: the card alerts already sent are present. Input: [rows]. Output: none (suspends).
@@ -3768,4 +3800,98 @@ interface GoalFundingAccountDao {
         accountId: String,
         deletedAtUtcMillis: Long,
     ): Int
+}
+
+/**
+ * The persisted insight feed (issue 9.5; §7.2, §20.2 `insights`, AI-ARC-005).
+ *
+ * Why:  the orchestrator writes rows and the screen reads them — never the other way round, so a
+ *       dashboard never waits for a pipeline. Everything here scopes by profile, and the feed query
+ *       does the suppression (RULE-INS-DEDUP) in SQL rather than in a `filter` a caller might
+ *       forget: a dismissed card stays gone until its date passes, wherever it is read from.
+ * What: upsert by fingerprint, the live feed, the verdict writes, and the demo wipe's delete.
+ * Result: one row per fingerprint per profile, and a feed that already knows what to hide.
+ * Changelog: 2026-09-20 — Created for issue 9.5.
+ */
+@Dao
+interface InsightDao {
+    /**
+     * Inserts, or replaces the row with the same id.
+     * Result: the row exists. Input: [insight]. Output: none.
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(insight: InsightEntity)
+
+    /**
+     * Input:  [profileId]; [fingerprint]. Output: the stored row, or `null`.
+     * Result: what the caller needs to decide between updating a card and raising a new one
+     *         (RULE-INS-DEDUP), including the verdict the user already gave it.
+     */
+    @Query("SELECT * FROM insight WHERE profile_id = :profileId AND fingerprint = :fingerprint")
+    suspend fun find(
+        profileId: String,
+        fingerprint: String,
+    ): InsightEntity?
+
+    /**
+     * The feed the screen shows.
+     * Why:    **the suppression is in the query.** A row is hidden while its `suppressed_until` is
+     *         still in the future; on the day it passes, the same row is live again — which is what
+     *         makes a dismissal "not now" rather than "never" (§7.2).
+     * Result: the profile's live rows, worst first, then by the amount at stake, then by fingerprint
+     *         — RULE-INS-RANK's order, so the stored feed reads back in the order it was ranked in.
+     * Input:  [profileId]; [todayIsoDate] — the profile's today (TIM-002).
+     * Output: `Flow<List<InsightEntity>>`.
+     */
+    @Query(
+        "SELECT * FROM insight WHERE profile_id = :profileId " +
+            "AND (suppressed_until_iso_date IS NULL OR suppressed_until_iso_date <= :todayIsoDate) " +
+            "ORDER BY CASE severity WHEN 'CRITICAL' THEN 0 WHEN 'WARNING' THEN 1 ELSE 2 END, " +
+            "CASE WHEN amount_minor IS NULL THEN 1 ELSE 0 END, amount_minor DESC, fingerprint",
+    )
+    fun observeFeed(
+        profileId: String,
+        todayIsoDate: String,
+    ): Flow<List<InsightEntity>>
+
+    /**
+     * Records the user's verdict on one card.
+     * Result: the row's status and suppression change; its figures do not. Input: [id]; [status];
+     *         [suppressedUntilIsoDate] — `null` to unsuppress; [updatedAtUtcMillis].
+     * Output: the number of rows changed — 0 when the id is not this profile's.
+     */
+    @Query(
+        "UPDATE insight SET status = :status, suppressed_until_iso_date = :suppressedUntilIsoDate, " +
+            "updated_at_utc_millis = :updatedAtUtcMillis WHERE id = :id AND profile_id = :profileId",
+    )
+    suspend fun setStatus(
+        profileId: String,
+        id: String,
+        status: String,
+        suppressedUntilIsoDate: String?,
+        updatedAtUtcMillis: Long,
+    ): Int
+
+    /**
+     * Removes the rows whose fingerprints the orchestrator no longer raises.
+     * Why:    an insight is a statement about now. When the overspend is corrected the card should
+     *         go, and leaving it would be the app repeating something that is no longer true.
+     *         **Rows the user has ruled on are kept** while their suppression lasts, so a dismissal
+     *         is not undone by a recomputation.
+     * Result: the stale rows are gone. Input: [profileId]; [keep] — the fingerprints just raised;
+     *         [todayIsoDate]. Output: how many rows went.
+     */
+    @Query(
+        "DELETE FROM insight WHERE profile_id = :profileId AND fingerprint NOT IN (:keep) " +
+            "AND (suppressed_until_iso_date IS NULL OR suppressed_until_iso_date <= :todayIsoDate)",
+    )
+    suspend fun deleteStale(
+        profileId: String,
+        keep: List<String>,
+        todayIsoDate: String,
+    ): Int
+
+    /** Input: [profileId]. Output: how many rows went. Result: the profile's feed is empty (the demo wipe). */
+    @Query("DELETE FROM insight WHERE profile_id = :profileId")
+    suspend fun deleteForProfile(profileId: String): Int
 }

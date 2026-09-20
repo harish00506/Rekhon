@@ -130,6 +130,8 @@ fun DashboardContent(
         ForecastSection(uiState.forecast)
         // Issue 9.4: all of the above, weighed — one number, opened all the way down.
         HealthSection(uiState.health)
+        // Issue 9.5: and out of all of it, the few things that need a decision.
+        InsightFeed(uiState = uiState, onEvent = onEvent)
         // Issue 5.1: three more figures, each already real from its own repository — none computed
         // on this screen (P-03).
         CashFlowSection(uiState)

@@ -40,6 +40,7 @@ class DashboardArchiveTest {
     private val streams = FakeStreamRepository()
     private val forecasts = FakeForecastRepository()
     private val health = FakeHealthScoreRepository()
+    private val insights = FakeInsightRepository()
 
     private fun viewModel() =
         DashboardViewModel(
@@ -53,6 +54,7 @@ class DashboardArchiveTest {
             streams,
             forecasts,
             health,
+            insights,
         )
 
     /** `viewModelScope` runs on `Dispatchers.Main`, which has no factory on a plain JVM. */

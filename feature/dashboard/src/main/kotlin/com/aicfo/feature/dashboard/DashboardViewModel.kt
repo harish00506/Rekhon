@@ -10,6 +10,7 @@ import com.aicfo.data.repository.ArchiveRepository
 import com.aicfo.data.repository.BudgetRepository
 import com.aicfo.data.repository.ForecastRepository
 import com.aicfo.data.repository.HealthScoreRepository
+import com.aicfo.data.repository.InsightRepository
 import com.aicfo.data.repository.NetWorthRepository
 import com.aicfo.data.repository.OrderOfOperationsRepository
 import com.aicfo.data.repository.QuickSetupRepository
@@ -71,7 +72,7 @@ import javax.inject.Inject
 // LongParameterList for the same reason (issue 7.5): Hilt reads the constructor, and each argument is
 // one repository behind one figure on the screen — the next-best-rupee card brought the seventh, and
 // issue 9.1's fixed/flexible split the eighth, issue 9.2's forecast the ninth, issue 9.4's health
-// score the tenth.
+// score the tenth, and issue 9.5's insight feed the eleventh.
 @Suppress("TooManyFunctions", "LongParameterList")
 class DashboardViewModel
     @Inject
@@ -86,6 +87,7 @@ class DashboardViewModel
         private val streamRepository: StreamRepository,
         private val forecastRepository: ForecastRepository,
         private val healthScoreRepository: HealthScoreRepository,
+        private val insightRepository: InsightRepository,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(DashboardUiState())
 
@@ -109,6 +111,8 @@ class DashboardViewModel
             observeStreams()
             observeForecast()
             observeHealthScore()
+            observeInsights()
+            refreshInsights()
         }
 
         /**
@@ -227,6 +231,48 @@ class DashboardViewModel
                 .onEach { breakdown -> _uiState.update { it.copy(natureBreakdown = breakdown) } }
                 .catch { _uiState.update { it.copy(natureBreakdown = null) } }
                 .launchIn(viewModelScope)
+        }
+
+        /**
+         * Keeps the feed on screen in step with the stored rows (issue 9.5; §7.2, AI-ARC-005).
+         * Why:    the UI reads persisted insights and never waits for the pipeline; a read failure
+         *         empties the feed rather than raising a banner, as the other collectors do.
+         * Result: [uiState] carries the dashboard's few.
+         * Input:  none. Output: none (launches a collector).
+         * Changelog: 2026-09-20 — Created for issue 9.5.
+         */
+        private fun observeInsights() {
+            insightRepository.observeDashboard()
+                .onEach { insights -> _uiState.update { it.copy(insights = insights) } }
+                .catch { _uiState.update { it.copy(insights = emptyList()) } }
+                .launchIn(viewModelScope)
+        }
+
+        /**
+         * Runs the orchestrator once when the screen opens (§7.2's manual trigger).
+         * Why:    the daily job keeps the feed true between visits; opening the dashboard is when a
+         *         stale card would be seen, so the pipeline runs then too. A refusal is left to the
+         *         stored rows — showing yesterday's feed beats showing an error the user cannot act on.
+         * Result: the stored feed is recomputed. Input: none. Output: none (launches a job).
+         * Changelog: 2026-09-20 — Created for issue 9.5.
+         */
+        private fun refreshInsights() {
+            viewModelScope.launch { insightRepository.refresh() }
+        }
+
+        /**
+         * Records the user's verdict on a card (FR-AI-001's dismiss / snooze).
+         * Result: the card leaves the feed for the rulebook's window. Input: [id]; [snooze] — "later"
+         *         rather than "dismissed". Output: none (launches a job).
+         * Changelog: 2026-09-20 — Created for issue 9.5.
+         */
+        private fun onInsightVerdict(
+            id: String,
+            snooze: Boolean,
+        ) {
+            viewModelScope.launch {
+                if (snooze) insightRepository.snooze(id) else insightRepository.dismiss(id)
+            }
         }
 
         /**
@@ -367,6 +413,8 @@ class DashboardViewModel
                         if (event.written) ArchiveUiState.Exported else ArchiveUiState.Failed(EXPORT_WRITE_FAILED),
                     )
                 DashboardEvent.ArchiveMessageDismissed -> setArchive(ArchiveUiState.Idle)
+                is DashboardEvent.InsightDismissed -> onInsightVerdict(event.id, snooze = false)
+                is DashboardEvent.InsightSnoozed -> onInsightVerdict(event.id, snooze = true)
             }
         }
 

@@ -14,6 +14,7 @@
     2026-09-19 — Issue 9.2 (AI-FCT forecast) merged to dev.
     2026-09-19 — Issue 9.3 (AI-SEAS seasonality) merged to dev.
     2026-09-20 — Issue 9.4 (AI-FHS health score) merged to dev.
+    2026-09-20 — Issue 9.5 (AI-ORCH insight orchestrator + feed) merged to dev; schema 23.
 -->
 
 # AI Personal CFO — Project Memory
@@ -25,19 +26,20 @@
 
 ## Current state
 
-- **Version:** `0.9.4` (see [`../VERSION`](../VERSION)) · **Phase:** 2–3. **Schema is v22**, unchanged by 8.1.
+- **Version:** `0.9.5` (see [`../VERSION`](../VERSION)) · **Phase:** 2–3. **Schema is v22**, unchanged by 8.1.
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
-  forecast), 9.3 (seasonality) and 9.4 (the health score) shipped; **9.5 (the insight orchestrator
-  feed) is next**. Epic 9 (AI core engines, incl. the 9.2 forecast) is
+  forecast), 9.3 (seasonality), 9.4 (the health score) and 9.5 (the insight orchestrator and its
+  feed) shipped; **9.6 (the notification engine) is next** — §7.2's last stage hands off to it. Epic 9 (AI core engines, incl. the 9.2 forecast) is
   still the one the goals work kept waiting on.
-- **Currently working file:** none. Issues **8.1–8.3 and 9.1–9.4 are merged to `dev`**
+- **Currently working file:** none. Issues **8.1–8.3 and 9.1–9.5 are merged to `dev`**
   ([8.1 tracker](issues/8.1-e2ee-backup-argon2id-aes-256-gcm-tracker.md), ADR-0039;
   [8.2 tracker](issues/8.2-restore-on-fresh-device-tracker.md), ADR-0040;
   [8.3 tracker](issues/8.3-backup-restore-drill-tracker.md), ADR-0041;
   [9.1 tracker](issues/9.1-fixed-variable-nature-engine-ai-cls-stage-2-tracker.md), ADR-0042;
   [9.2 tracker](issues/9.2-cash-flow-forecast-ai-fct-tracker.md), ADR-0043;
   [9.3 tracker](issues/9.3-seasonality-ai-seas-tracker.md), ADR-0044;
-  [9.4 tracker](issues/9.4-financial-health-score-ai-fhs-tracker.md), ADR-0045).
+  [9.4 tracker](issues/9.4-financial-health-score-ai-fhs-tracker.md), ADR-0045;
+  [9.5 tracker](issues/9.5-insight-orchestrator-feed-tracker.md), ADR-0046).
 - **`origin/dev` is still at `6afa5f0`** — local `dev` is well ahead (7.4, 7.5, the card APR field,
   the FOO/goals agreement, 8.1 and their records),
   and **the push is blocked, not skipped**: this machine has no GitHub credentials (no helper, no
@@ -50,6 +52,20 @@
   `dev` was two issues behind once and nobody noticed.
 - **The forecast exists now (9.2), but the goals still use the observed P50 surplus** (ADR-0035,
   ADR-0037). Switching `SurplusRepository` to `ForecastRepository` is ADR-0043's recorded follow-up.
+
+### What 9.5 changed that a future issue must know
+
+- **Schema is 23** — the `insight` table. It is exempt from the soft-delete invariant, argued in
+  `MigrationSafetyTest`: a tombstone would hold the fingerprint's unique slot for ever, so the card
+  could never be raised again. A dismissal is a `status` plus `suppressed_until_iso_date`.
+- **AI-ORCH ranks; it never computes.** To raise a new kind of insight, add a signal type and a
+  collector in `:domain:engines:insight` and map it in `InsightSignals` — do not import another
+  engine's module into it.
+- **The feed is written, not derived on read.** `InsightRepository.refresh()` runs the pipeline;
+  the screen reads rows. 9.6's notification engine should read the same rows rather than recompute.
+- **The debounced transaction trigger and the weekly deep job are 9.6's** to build with its
+  scheduler — do not add a second debounce.
+- **rules-kb is 1.18.0**; eight `*Rules.kt` mirrors restate it.
 
 ### What 9.4 changed that a future issue must know
 

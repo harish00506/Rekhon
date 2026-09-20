@@ -1216,6 +1216,59 @@ internal object Migrations {
         )
     }
 
+    /**
+     * 22 → 23 — `insight`, the persisted feed (issue 9.5; §7.2, §20.2, AI-ARC-005).
+     * Why:    AI-ARC-005 says the UI reads persisted results, and RULE-INS-DEDUP needs somewhere to
+     *         remember a dismissal; both need a table. Nothing existing is touched, so the migration
+     *         is one `CREATE TABLE` and its two indices — additive, as DB-003 requires.
+     * Result: an upgraded database has the table; every other row is untouched.
+     * Input:  [db]. Output: none.
+     */
+    val MIGRATION_22_23 =
+        object : Migration(VERSION_22, VERSION_23) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                createInsight(db)
+            }
+        }
+
+    /**
+     * `insight`'s DDL, extracted so [MIGRATION_22_23] stays short (issue 9.5).
+     * Input:  [db]. Output: none. Result: the table and its two indices, named exactly as Room
+     *   names them — `runMigrationsAndValidate` does not check index names, so the round-trip test
+     *   asserts them against `sqlite_master` itself.
+     */
+    private fun createInsight(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `insight` (" +
+                "`id` TEXT NOT NULL, " +
+                "`profile_id` TEXT NOT NULL, " +
+                "`fingerprint` TEXT NOT NULL, " +
+                "`type` TEXT NOT NULL, " +
+                "`severity` TEXT NOT NULL, " +
+                "`subject` TEXT, " +
+                "`subject_label` TEXT, " +
+                "`period` TEXT NOT NULL, " +
+                "`amount_minor` INTEGER, " +
+                "`secondary_minor` INTEGER, " +
+                "`date_iso` TEXT, " +
+                "`quantity` INTEGER, " +
+                "`confidence_bps` INTEGER, " +
+                "`citations` TEXT NOT NULL, " +
+                "`source_engine_id` TEXT NOT NULL, " +
+                "`source_engine_version` TEXT NOT NULL, " +
+                "`status` TEXT NOT NULL, " +
+                "`suppressed_until_iso_date` TEXT, " +
+                "`created_at_utc_millis` INTEGER NOT NULL, " +
+                "`updated_at_utc_millis` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`))",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_insight_profile_id` ON `insight` (`profile_id`)")
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_insight_profile_id_fingerprint` " +
+                "ON `insight` (`profile_id`, `fingerprint`)",
+        )
+    }
+
     /** Every migration, in order, for `CfoDatabaseFactory` to register. */
     val ALL: Array<Migration> =
         arrayOf(
@@ -1240,6 +1293,7 @@ internal object Migrations {
             MIGRATION_19_20,
             MIGRATION_20_21,
             MIGRATION_21_22,
+            MIGRATION_22_23,
         )
 
     /** Named so the version pair reads as a schema version rather than an unexplained literal. */
@@ -1307,4 +1361,7 @@ internal object Migrations {
      * ways a goal's progress can be evidenced rather than declared (FR-GOAL-002, FR-GOAL-004).
      */
     private const val VERSION_22 = 22
+
+    /** The version issue 9.5 introduces — `insight`, the persisted orchestrator feed (§7.2). */
+    private const val VERSION_23 = 23
 }

@@ -119,6 +119,7 @@ internal class RoomArchiveRepository(
                         goals = dao.goals(profileId),
                         goalContributions = dao.goalContributions(profileId),
                         goalFundingAccounts = dao.goalFundingAccounts(profileId),
+                        insights = dao.insights(profileId),
                     ),
                 )
             }
@@ -197,6 +198,7 @@ internal class RoomArchiveRepository(
     private suspend fun wipe(profileId: String) {
         val demo = database.demoDao()
         // Children before parents, exactly as DemoModeRepository.exit() orders them.
+        demo.deleteInsights(profileId)
         demo.deleteBudgetAlerts(profileId)
         demo.deleteCardAlerts(profileId)
         demo.deleteBudgets(profileId)
@@ -253,6 +255,7 @@ internal class RoomArchiveRepository(
         dao.insertGoals(archive.goals)
         dao.insertGoalContributions(archive.goalContributions)
         dao.insertGoalFundingAccounts(archive.goalFundingAccounts)
+        dao.insertInsights(archive.insights)
     }
 
     private companion object {
@@ -309,4 +312,5 @@ internal fun CfoArchive.rowCount(): Int =
         tags.size + transactionTags.size + budgets.size + budgetAlerts.size + budgetReviews.size +
         recurringRules.size + netWorthSnapshots.size + attachments.size + smsDrafts.size +
         creditCards.size + cardAlerts.size + loans.size + investmentHoldings.size +
-        investmentLots.size + goals.size + goalContributions.size + goalFundingAccounts.size
+        investmentLots.size + goals.size + goalContributions.size + goalFundingAccounts.size +
+        insights.size

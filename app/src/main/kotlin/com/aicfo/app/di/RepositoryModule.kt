@@ -22,6 +22,7 @@ import com.aicfo.data.repository.GoalContributionRepository
 import com.aicfo.data.repository.GoalRepository
 import com.aicfo.data.repository.GoalWaterfallRepository
 import com.aicfo.data.repository.HealthScoreRepository
+import com.aicfo.data.repository.InsightRepository
 import com.aicfo.data.repository.InvestmentRepository
 import com.aicfo.data.repository.LoanRepository
 import com.aicfo.data.repository.NetWorthRepository
@@ -46,6 +47,8 @@ import com.aicfo.domain.engines.goals.GoalEngine
 import com.aicfo.domain.engines.goals.GoalWaterfallEngine
 import com.aicfo.domain.engines.healthscore.HealthScoreEngine
 import com.aicfo.domain.engines.healthscore.HealthScoreEngineFactory
+import com.aicfo.domain.engines.insight.InsightEngine
+import com.aicfo.domain.engines.insight.InsightEngineFactory
 import com.aicfo.domain.engines.investment.InvestmentEngine
 import com.aicfo.domain.engines.loan.LoanEngine
 import com.aicfo.domain.engines.nature.NatureEngine
@@ -556,6 +559,56 @@ object RepositoryModule {
     @Provides
     @Singleton
     fun provideHealthScoreEngine(): HealthScoreEngine = HealthScoreEngineFactory.create()
+
+    /**
+     * AI-ORCH, §7.2's Insight Orchestrator (issue 9.5).
+     * Why:    pure and stateless, so one instance serves every refresh; built by its factory because
+     *         the implementation is `internal` to its module (ARC-003).
+     * Result: an [InsightEngine]. Input: none. Output: the engine.
+     * Changelog: 2026-09-20 — Created for issue 9.5.
+     */
+    @Provides
+    @Singleton
+    fun provideInsightEngine(): InsightEngine = InsightEngineFactory.create()
+
+    /**
+     * The persisted insight feed (issue 9.5; §7.2, AI-ARC-005).
+     * Why:    built over the repositories that publish the results it ranks, so the feed cannot
+     *         disagree with the cards beside it; the only table it writes is its own.
+     * Result: an [InsightRepository].
+     * Input:  [database]; the five sources; [engine]; [clock]; [dispatchers]; [demoMode];
+     *         [idGenerator]. Output: the repository.
+     * Changelog: 2026-09-20 — Created for issue 9.5.
+     */
+    @Provides
+    @Singleton
+    @Suppress("LongParameterList") // the store, five sources, the engine and three seams
+    fun provideInsightRepository(
+        database: CfoDatabase,
+        forecasts: ForecastRepository,
+        health: HealthScoreRepository,
+        emergencyFund: EmergencyFundRepository,
+        budgets: BudgetRepository,
+        goals: GoalRepository,
+        engine: InsightEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        demoMode: DemoModeRepository,
+        idGenerator: IdGenerator,
+    ): InsightRepository =
+        RepositoryFactory.insights(
+            database = database,
+            forecasts = forecasts,
+            health = health,
+            emergencyFund = emergencyFund,
+            budgets = budgets,
+            goals = goals,
+            engine = engine,
+            clock = clock,
+            dispatchers = dispatchers,
+            activeProfileId = demoMode.activeProfileId,
+            idGenerator = idGenerator,
+        )
 
     /**
      * The Financial Health Score (issue 9.4; §14).

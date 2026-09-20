@@ -12,6 +12,7 @@ import com.aicfo.core.database.entity.CreditCardEntity
 import com.aicfo.core.database.entity.GoalContributionEntity
 import com.aicfo.core.database.entity.GoalEntity
 import com.aicfo.core.database.entity.GoalFundingAccountEntity
+import com.aicfo.core.database.entity.InsightEntity
 import com.aicfo.core.database.entity.InvestmentHoldingEntity
 import com.aicfo.core.database.entity.InvestmentLotEntity
 import com.aicfo.core.database.entity.LoanEntity
@@ -360,6 +361,33 @@ object DrillFixture {
                     createdAtUtcMillis = NOW,
                     updatedAtUtcMillis = NOW,
                     deletedAtUtcMillis = DELETED_AT,
+                ),
+            ),
+        )
+        dao.insertInsights(
+            listOf(
+                InsightEntity(
+                    id = "insight:1",
+                    profileId = profileId,
+                    fingerprint = "BUDGET_OVERSPENT|$CATEGORY|2026-09",
+                    type = "BUDGET_OVERSPENT",
+                    severity = "WARNING",
+                    subject = CATEGORY,
+                    subjectLabel = "Dining",
+                    period = "2026-09",
+                    amountMinor = 125_000L,
+                    secondaryMinor = null,
+                    dateIso = null,
+                    quantity = null,
+                    confidenceBps = 10_000,
+                    citations = "RULE-BUD-ALERT v1.0",
+                    sourceEngineId = "budget-planner",
+                    sourceEngineVersion = "1.0",
+                    // Dismissed, not active: the verdict is the part of this row a restore must carry.
+                    status = "dismissed",
+                    suppressedUntilIsoDate = "2026-09-27",
+                    createdAtUtcMillis = NOW,
+                    updatedAtUtcMillis = NOW,
                 ),
             ),
         )

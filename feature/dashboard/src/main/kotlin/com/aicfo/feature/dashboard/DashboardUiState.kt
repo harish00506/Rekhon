@@ -5,6 +5,7 @@ import com.aicfo.core.model.Money
 import com.aicfo.data.repository.CashFlowSummary
 import com.aicfo.data.repository.CategoryBudget
 import com.aicfo.data.repository.CategoryBudgetAlert
+import com.aicfo.data.repository.FeedInsight
 import com.aicfo.data.repository.FilteredTransaction
 import com.aicfo.domain.engines.forecast.CashFlowForecast
 import com.aicfo.domain.engines.healthscore.HealthScore
@@ -103,6 +104,13 @@ data class DashboardUiState(
      * score object whose total is `null` — the card then says so rather than showing "0".
      */
     val health: HealthScore? = null,
+    /**
+     * What needs attention (issue 9.5; §7.2 AI-ORCH, FR-HOME-001's "top 3").
+     *
+     * Empty until the first read, and empty when nothing needs attention — the feed says nothing
+     * rather than saying "all good", which would be a claim the orchestrator did not make.
+     */
+    val insights: List<FeedInsight> = emptyList(),
     /**
      * This month's income, expense and net (issue 5.1; FR-DASH-*).
      *
@@ -279,6 +287,18 @@ sealed interface DashboardEvent {
 
     /** The user dismissed the error banner. */
     data object DismissError : DashboardEvent
+
+    /**
+     * The user put one insight away (issue 9.5; §7.2, FR-AI-001's "dismiss / snooze").
+     *
+     * [id] — the stored row. Both verdicts suppress the card for RULE-INS-DEDUP's window; they are
+     * two events rather than one with a flag because they are two different things to have said,
+     * and the stored status is what a later issue's notification policy will read.
+     */
+    data class InsightDismissed(val id: String) : DashboardEvent
+
+    /** The user asked to be reminded later (issue 9.5). [id] — the stored row. */
+    data class InsightSnoozed(val id: String) : DashboardEvent
 
     /**
      * The user picked where to write their archive (issue 5.4; §5.10).
