@@ -26,6 +26,7 @@ import com.aicfo.data.repository.InsightRepository
 import com.aicfo.data.repository.InvestmentRepository
 import com.aicfo.data.repository.LoanRepository
 import com.aicfo.data.repository.NetWorthRepository
+import com.aicfo.data.repository.NotificationRepository
 import com.aicfo.data.repository.OrderOfOperationsRepository
 import com.aicfo.data.repository.QuickSetupRepository
 import com.aicfo.data.repository.ReceiptRepository
@@ -53,6 +54,8 @@ import com.aicfo.domain.engines.investment.InvestmentEngine
 import com.aicfo.domain.engines.loan.LoanEngine
 import com.aicfo.domain.engines.nature.NatureEngine
 import com.aicfo.domain.engines.networth.NetWorthEngine
+import com.aicfo.domain.engines.notification.NotificationPolicyEngine
+import com.aicfo.domain.engines.notification.NotificationPolicyEngineFactory
 import com.aicfo.domain.engines.orderofoperations.OrderOfOperationsEngine
 import com.aicfo.domain.engines.receipt.ReceiptEngine
 import com.aicfo.domain.engines.recurring.RecurringEngine
@@ -609,6 +612,37 @@ object RepositoryModule {
             activeProfileId = demoMode.activeProfileId,
             idGenerator = idGenerator,
         )
+
+    /**
+     * AI-NTF, the notification policy (issue 9.6; §17.2).
+     * Result: a [NotificationPolicyEngine]. Input: none. Output: the engine.
+     * Changelog: 2026-09-20 — Created for issue 9.6.
+     */
+    @Provides
+    @Singleton
+    fun provideNotificationPolicyEngine(): NotificationPolicyEngine = NotificationPolicyEngineFactory.create()
+
+    /**
+     * The one gate every notifying worker asks (issue 9.6; §17.2 NTF-001/002, ADR-0047).
+     * Why:    a singleton over one log, so the budget worker and the card worker spend one ration
+     *         between them — two gates would be two rations, and four notifications a day.
+     * Result: a [NotificationRepository].
+     * Input:  [database]; [engine]; [clock]; [dispatchers]; [demoMode]; [idGenerator].
+     * Output: the repository.
+     * Changelog: 2026-09-20 — Created for issue 9.6.
+     */
+    @Provides
+    @Singleton
+    @Suppress("LongParameterList") // the store, the engine and four seams
+    fun provideNotificationRepository(
+        database: CfoDatabase,
+        engine: NotificationPolicyEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        demoMode: DemoModeRepository,
+        idGenerator: IdGenerator,
+    ): NotificationRepository =
+        RepositoryFactory.notifications(database, engine, clock, dispatchers, demoMode.activeProfileId, idGenerator)
 
     /**
      * The Financial Health Score (issue 9.4; §14).

@@ -8,15 +8,21 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.aicfo.app.notification.BudgetAlertNotifier
-import com.aicfo.core.common.Err
+import com.aicfo.core.common.Clock
 import com.aicfo.core.common.Ok
 import com.aicfo.core.common.getOrNull
 import com.aicfo.core.crypto.SessionLock
 import com.aicfo.core.datastore.SettingsStore
 import com.aicfo.data.repository.BudgetRepository
+import com.aicfo.data.repository.CategoryBudgetAlert
+import com.aicfo.data.repository.NotificationRepository
+import com.aicfo.domain.engines.budget.BudgetAlertBand
+import com.aicfo.domain.engines.notification.NotificationCandidate
+import com.aicfo.domain.engines.notification.NotificationKind
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.flow.first
+import java.time.YearMonth
 import java.util.concurrent.TimeUnit
 import javax.inject.Provider
 
@@ -38,6 +44,10 @@ import javax.inject.Provider
  * What: read the pending alerts, claim each, notify the ones this run claimed.
  * Result: at most one notification per budget, per band, per month (`RULE-BUD-ALERT`).
  * Changelog: 2026-08-13 — Created for issue 4.5.
+ *            2026-09-20 — Issue 9.6: every alert now asks AI-NTF's gate before it is claimed. Only a
+ *            delivered one is claimed and posted; one held for the morning or over the day's ration
+ *            stays pending, so tomorrow's run offers it again and the in-app banner shows it
+ *            meanwhile (NTF-001/002, ADR-0047).
  *
  * **No network, on any path** (P-04): every input is a local row and the notification is local, so
  * this behaves identically in airplane mode. No constraints for the same reason — requiring a
@@ -45,10 +55,12 @@ import javax.inject.Provider
  *
  * Input:  [context], [params] — supplied by WorkManager; [sessionLock] — the SEC-002 gate;
  *         [repository] — deliberately a `Provider`, see above; [notifier] — composes, guardrails and
- *         posts.
+ *         posts; [settingsStore] — the blur flag; [notifications] — the §17.2 gate, a `Provider` for
+ *         the same reason as [repository]; [clock] — the month the gate's key names.
  * Output: a worker WorkManager can run.
  */
 @HiltWorker
+@Suppress("LongParameterList") // WorkManager's two, the lock, and one per collaborator; each is a seam a test replaces
 class BudgetAlertWorker
     @AssistedInject
     constructor(
@@ -58,6 +70,8 @@ class BudgetAlertWorker
         private val repository: Provider<BudgetRepository>,
         private val notifier: BudgetAlertNotifier,
         private val settingsStore: SettingsStore,
+        private val notifications: Provider<NotificationRepository>,
+        private val clock: Clock,
     ) : CoroutineWorker(context, params) {
         /**
          * Claims each pending alert and notifies the ones this run won.
@@ -71,19 +85,20 @@ class BudgetAlertWorker
          *         still shows the band, and retrying would either post nothing again or, worse,
          *         eventually post the same message twice. The user was not told *this way*, which is
          *         a state this feature is designed for rather than a failure to recover from.
+         *
+         *         **The gate comes before the claim** (issue 9.6): a claim is permanent, so claiming an
+         *         alert the policy then held would lose it. Most severe first, so a day with one slot
+         *         left spends it on the overspend rather than the warning.
          * Result: `success()` when the pending list was processed, including when it was empty or
-         *         nothing could be posted; `retry()` while the app is locked or the read failed.
+         *         nothing could be posted; `retry()` while the app is locked or a read failed.
          * Input:  none. Output: [Result].
          */
         override suspend fun doWork(): Result {
             // Before anything injects the database. A locked session makes the gated provider throw.
             if (!sessionLock.isUnlocked.value) return Result.retry()
 
-            val pending =
-                when (val result = repository.get().pendingAlerts()) {
-                    is Ok -> result.value
-                    is Err -> return Result.retry()
-                }
+            val month = YearMonth.from(clock.today())
+            val allowed = allowedAlerts(month) ?: return Result.retry()
 
             // Issue 5.3: read once for the whole batch, not per alert — the setting cannot
             // meaningfully change between two notifications posted in the same millisecond, and a
@@ -95,12 +110,46 @@ class BudgetAlertWorker
 
             // Amounts and category names are deliberately not logged (§21.6, CfoPiiInLogs);
             // `budget_alert` is the record of what was sent.
-            pending.forEach { alert ->
+            allowed.forEach { alert ->
                 val claimed = repository.get().markNotified(alert)
                 if (claimed is Ok && claimed.value) notifier.notify(alert, blurAmounts)
             }
             return Result.success()
         }
+
+        /**
+         * The pending alerts the gate lets through, most severe first (issue 9.6).
+         * Why:    the overspend is offered before the warning, so a day with one slot left spends it
+         *         on the worse news; only what the gate delivers comes back, so nothing held is claimed.
+         * Result: the alerts to claim and post, or `null` when the alerts or the gate could not be
+         *         read. Input: [month] — the key's month. Output: `List<CategoryBudgetAlert>?`.
+         */
+        private suspend fun allowedAlerts(month: YearMonth): List<CategoryBudgetAlert>? {
+            val pending = repository.get().pendingAlerts().getOrNull() ?: return null
+            val ordered = pending.sortedByDescending { it.alert.band == BudgetAlertBand.EXCEEDED }
+            return notifications.get().decide(ordered.map { candidate(it, month) }).getOrNull()?.let { plan ->
+                val delivered = plan.deliverable.map { it.key }.toSet()
+                ordered.filter { key(it, month) in delivered }
+            }
+        }
+
+        /**
+         * The alert as the gate sees it (issue 9.6).
+         * Result: a §17.1 "Budget & discipline" candidate. Input: [alert]; [month]. Output: the candidate.
+         */
+        private fun candidate(
+            alert: CategoryBudgetAlert,
+            month: YearMonth,
+        ) = NotificationCandidate(key(alert, month), NotificationKind.BUDGET_DISCIPLINE)
+
+        /**
+         * What makes this message this message: `RULE-BUD-ALERT`'s once per budget, per band, per month.
+         * Result: the key. Input: [alert]; [month]. Output: [String].
+         */
+        private fun key(
+            alert: CategoryBudgetAlert,
+            month: YearMonth,
+        ) = "budget:${alert.budgetId}:${alert.alert.band.name}:$month"
 
         companion object {
             /** The unique name, so rescheduling on every launch replaces rather than accumulates. */

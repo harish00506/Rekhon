@@ -102,6 +102,8 @@ dependencies {
     api(project(":domain:engines:healthscore"))
     // Issue 9.5: AI-ORCH. `api` — Insight is what InsightRepository emits.
     api(project(":domain:engines:insight"))
+    // Issue 9.6: AI-NTF. `api` — NotificationPlan is what NotificationRepository returns.
+    api(project(":domain:engines:notification"))
 
     // withTransaction — the atomicity guarantee applySeeds is built on (issue 2.3).
     // api, not implementation: MarketDataApi is a parameter of RepositoryFactory.marketPrice, so

@@ -1607,4 +1607,52 @@ class MigrationRoundTripTest {
             "VALUES ('$id','$profile','BUDGET_OVERSPENT|dining|2026-09','BUDGET_OVERSPENT','WARNING'," +
             "'dining','Dining','2026-09',125000,NULL,NULL,NULL,10000,'RULE-BUD-ALERT v1.0'," +
             "'budget-planner','1.0','active',NULL,1767312000000,1767312000000)"
+
+    /**
+     * 23 → 24 — `notification_log` (issue 9.6; §17.2, §20.1).
+     *
+     * Why:    the table is the policy's memory: NTF-001's caps count its sends, and the rule that a
+     *         message is never sent twice reads its keys. The failure that matters is a unique index
+     *         that is not unique — the same alert logged twice would be counted twice against the day.
+     * What:   migrates from 23, asserts the table starts empty, accepts a send, refuses a second row
+     *         for the same key under the same profile, and carries Room's own index names.
+     * Result: an upgraded database is indistinguishable from a fresh one.
+     * Input:  none. Output: none; it asserts.
+     */
+    @Test
+    fun migrate23To24_addsTheNotificationLogAndKeepsOneRowPerKey() {
+        helper.createDatabase(TEST_DB, 23).close()
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 24, true, Migrations.MIGRATION_23_24)
+
+        migrated.query("SELECT COUNT(*) FROM notification_log").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("an upgraded profile has sent nothing yet, by this table's account", 0, cursor.getInt(0))
+        }
+        migrated.execSQL(notificationInsert(id = "n1"))
+        var refused = false
+        try {
+            migrated.execSQL(notificationInsert(id = "n2"))
+        } catch (expected: SQLiteConstraintException) {
+            refused = true
+        }
+        assertTrue("one row per key per profile, or a send is counted twice against NTF-001's cap", refused)
+
+        val indices = mutableSetOf<String>()
+        migrated.query("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'notification_log'").use {
+                cursor ->
+            while (cursor.moveToNext()) cursor.getString(0)?.let(indices::add)
+        }
+        assertTrue(
+            "Room's own index names must survive the upgrade: $indices",
+            indices.containsAll(listOf("index_notification_log_profile_id", "index_notification_log_profile_id_key")),
+        )
+    }
+
+    /** One notification-log row's SQL, so the duplicate case differs only by id. */
+    private fun notificationInsert(id: String): String =
+        "INSERT INTO notification_log (id, profile_id, `key`, kind, outcome, decided_at_utc_millis, " +
+            "sent_at_utc_millis, deliver_after_utc_millis, created_at_utc_millis, updated_at_utc_millis) " +
+            "VALUES ('$id','p1','budget:b1:warn','BUDGET_DISCIPLINE','deliver',1767312000000," +
+            "1767312000000,NULL,1767312000000,1767312000000)"
 }

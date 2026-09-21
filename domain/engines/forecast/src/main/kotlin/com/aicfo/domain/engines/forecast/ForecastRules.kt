@@ -46,7 +46,7 @@ data class ForecastRules(
         private const val DEFAULT_BUFFER_MINOR = 500_000L // ₹5,000, RULE-FCT-CRUNCH buffer_minor
 
         /** The rulebook file these values were copied from, as `_meta.version`. */
-        const val RULEBOOK_VERSION = "1.18.0" // Issue 9.5 restated it for RULE-INS-*; no row mirrored here changed.
+        const val RULEBOOK_VERSION = "1.19.0" // Issue 9.6 restated it for RULE-NTF-*; no row mirrored here changed.
 
         /** `RULE-FCT-METHOD` — the §9.2 method and its parameters. */
         val METHOD = RuleCitation("RULE-FCT-METHOD", "1.0")

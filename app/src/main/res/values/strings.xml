@@ -98,6 +98,39 @@
     <string name="card_utilisation_title_blurred">%1$s is using a lot of its limit</string>
     <string name="card_utilisation_body_blurred">Open the app to see where you stand.</string>
 
+    <!-- Issue 9.6: the rest of SRS 17.1's taxonomy, one channel per row (NTF-006), so the switch in
+         Android's settings and the row in the SRS are the same thing. Maintenance and habit have no
+         sender yet; their channels exist now so a user can turn them down before the first one
+         arrives, the argument CfoNotifications makes for creating every channel at start-up. -->
+    <string name="notification_channel_ai_insights">Insights</string>
+    <string name="notification_channel_ai_insights_description">Findings about your money that are
+        worth acting on. At most two ordinary notifications a day, never between 10 pm and 8 am.</string>
+    <string name="notification_channel_maintenance">Maintenance &amp; renewals</string>
+    <string name="notification_channel_maintenance_description">Services, insurance and
+        subscription renewals coming up.</string>
+    <string name="notification_channel_goal_events">Goals</string>
+    <string name="notification_channel_goal_events_description">When a goal falls behind its
+        plan.</string>
+    <string name="notification_channel_habit">Daily habits</string>
+    <string name="notification_channel_habit_description">Gentle reminders to capture what you
+        spent. Off unless you ask for them.</string>
+
+    <!-- Issue 9.6: insight notifications (AI-ORCH through AI-NTF). Every figure comes from the
+         insight's own fields and is checked by NumericGuardrail before posting (AI-ARC-004), so no
+         number may be written into the copy. The `_blurred` variants carry no digits at all, dates
+         included (NTF-004). Same wording as the dashboard's card, so the notification and the
+         screen it opens say one thing. -->
+    <string name="insight_crunch_title">Money may run short on %1$s</string>
+    <plurals name="insight_crunch_body">
+        <item quantity="one">About %2$s left that day, under your %3$s buffer.</item>
+        <item quantity="other">%1$d days fall under your %3$s buffer, with about %2$s left at the lowest.</item>
+    </plurals>
+    <string name="insight_crunch_title_blurred">Money may run short soon</string>
+    <string name="insight_crunch_body_blurred">Open the app to see the days and amounts.</string>
+    <string name="insight_goal_title">%1$s is falling behind</string>
+    <string name="insight_goal_body">It needs %1$s more a month to reach its target by %2$s.</string>
+    <string name="insight_goal_body_blurred">Open the app to see what it needs.</string>
+
     <!-- ICU plurals: "1 attempt" must not read as "1 attempts" (§21.6). -->
     <plurals name="lock_attempts_remaining">
         <item quantity="one">%1$d attempt left before a timeout</item>

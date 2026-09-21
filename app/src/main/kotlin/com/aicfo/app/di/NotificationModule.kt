@@ -2,8 +2,10 @@ package com.aicfo.app.di
 
 import com.aicfo.app.notification.AndroidBudgetAlertNotifier
 import com.aicfo.app.notification.AndroidCardAlertNotifier
+import com.aicfo.app.notification.AndroidInsightNotifier
 import com.aicfo.app.notification.BudgetAlertNotifier
 import com.aicfo.app.notification.CardAlertNotifier
+import com.aicfo.app.notification.InsightNotifier
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -20,6 +22,7 @@ import javax.inject.Singleton
  * What: one `@Binds`.
  * Result: the worker injects an interface and never names an implementation.
  * Changelog: 2026-08-13 — Created for issue 4.5.
+ *            2026-09-20 — Issue 9.6 added the insight notifier.
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -40,4 +43,9 @@ internal interface NotificationModule {
     @Binds
     @Singleton
     fun cardAlertNotifier(implementation: AndroidCardAlertNotifier): CardAlertNotifier
+
+    /** Result: the insight notifier (issue 9.6). Input: [implementation]. Output: [InsightNotifier]. */
+    @Binds
+    @Singleton
+    fun insightNotifier(implementation: AndroidInsightNotifier): InsightNotifier
 }

@@ -17,6 +17,7 @@ import com.aicfo.core.database.entity.InvestmentHoldingEntity
 import com.aicfo.core.database.entity.InvestmentLotEntity
 import com.aicfo.core.database.entity.LoanEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
+import com.aicfo.core.database.entity.NotificationLogEntity
 import com.aicfo.core.database.entity.ProfileEntity
 import com.aicfo.core.database.entity.RecurringRuleEntity
 import com.aicfo.core.database.entity.SmsDraftEntity
@@ -386,6 +387,22 @@ object DrillFixture {
                     // Dismissed, not active: the verdict is the part of this row a restore must carry.
                     status = "dismissed",
                     suppressedUntilIsoDate = "2026-09-27",
+                    createdAtUtcMillis = NOW,
+                    updatedAtUtcMillis = NOW,
+                ),
+            ),
+        )
+        dao.insertNotificationLog(
+            listOf(
+                NotificationLogEntity(
+                    id = "notification:1",
+                    profileId = profileId,
+                    key = "budget:alert:1",
+                    kind = "BUDGET_DISCIPLINE",
+                    outcome = "deliver",
+                    decidedAtUtcMillis = NOW,
+                    sentAtUtcMillis = NOW,
+                    deliverAfterUtcMillis = null,
                     createdAtUtcMillis = NOW,
                     updatedAtUtcMillis = NOW,
                 ),

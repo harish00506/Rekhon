@@ -5,7 +5,7 @@
     "what": "Seed rows for the rules_knowledge_base table (§29.1). RuleEngine.evaluate(ruleId, FeatureSnapshot) -> RuleResult{pass|warn|fail, measuredValue, threshold, evidence, ruleId, version}.",
     "result": "Changing a number here changes the app's advice everywhere that rule is cited, reproducibly and with an audit trail.",
     "source_section": "§29",
-    "version": "1.18.0",
+    "version": "1.19.0",
     "changelog": [
       "2026-07-17 — Created from SRS v1.7 §29.2–§29.5; defaults are the floor, refined by user overrides at runtime.",
       "2026-08-07 — Added RULE-SMS-PARSE for issue 3.9's opt-in, on-device bank-alert parser (§18, §23).",
@@ -18,7 +18,8 @@
       "2026-09-02 — Added RULE-EMF-MULT and RULE-EMF-COACH for issue 7.2's emergency-fund engine (§10.1, AI-EMF). Two new rows rather than one, and rather than extending RULE-RUNWAY-M. RULE-RUNWAY-M was deliberately NOT touched: its params are the clamp and the `multiplier_source` pointer, both already correct, and §10.1 puts the multiplier itself *in* AI-EMF — so this issue makes that row true for the first time without changing a number in it (ADR-0017's trigger 3 stays unfired). The split into two is the RULE-BUD-ALERT and RULE-CC-DUE argument again: how big the fund should be and what to say about where the user stands are different questions, with different severities. **Only the params the engine applies are minted.** §10.1 also bumps M for dependents, for no health cover and for a job-stability self-assessment; no field in the app holds any of the three, so inventing the params now would ship three numbers nothing reads. Their absence is asserted by the engine's RulebookDriftTest, so they have to arrive deliberately (ADR-0034).",
       "2026-09-19 — Added RULE-FCT-METHOD and RULE-FCT-CRUNCH for issue 9.2's cash-flow forecast (§9, AI-FCT). §9.2 states the method's numbers in prose — a 90-day horizon, a 90-day lookback, a 10% trimmed mean, 500 seeded Monte-Carlo paths, P10/P50/P90 bands — and AI-FCT-002 names a ₹5,000 default buffer; each is now a params row so no engine carries them as constants (CLAUDE.md §6). New rows at v1.0, no shipped row changed. See ADR-0043.",
       "2026-09-19 — Added RULE-FHS-PILLARS, RULE-FHS-BANDS and RULE-FHS-SIGNALS for issue 9.4's Financial Health Score (§14, AI-FHS). §14.1's table gives the five pillar weights, the band edges and a few scoring anchors in prose (runway 100 at ≥ M, obligation ratio 30%→100 and 55%→0, savings rate 100 at ≥ 30%); each is now a params row. Two numbers §14 leaves unstated are minted here and say so in their source notes: the runway floor boost (25 points at ≥ 1 month) and where card utilisation reaches zero (100%). The utilisation 'good' edge and the savings-rate top are NOT restated — AI-FHS reads RULE-CC-UTIL.max_utilisation_pct and RULE-SAVE-RATE.excellent_pct, which already say 30. New rows at v1.0, no shipped row changed. See ADR-0045.",
-      "2026-09-20 — Added RULE-INS-RANK and RULE-INS-DEDUP for issue 9.5's Insight Orchestrator (§7.2, AI-ORCH). §7.2 states the deduplication fingerprint (type + subject + period) and that dismissed fingerprints are suppressed for their snooze window, but names no window length and no feed order; FR-HOME-001 asks for the 'top 3' on the dashboard. The severity order, the tie-breaks, the dashboard size and the seven-day snooze are now params rather than engine constants. New rows at v1.0, no shipped row changed. See ADR-0046."
+      "2026-09-20 — Added RULE-INS-RANK and RULE-INS-DEDUP for issue 9.5's Insight Orchestrator (§7.2, AI-ORCH). §7.2 states the deduplication fingerprint (type + subject + period) and that dismissed fingerprints are suppressed for their snooze window, but names no window length and no feed order; FR-HOME-001 asks for the 'top 3' on the dashboard. The severity order, the tie-breaks, the dashboard size and the seven-day snooze are now params rather than engine constants. New rows at v1.0, no shipped row changed. See ADR-0046.",
+      "2026-09-20 — Added RULE-NTF-BUDGET and RULE-NTF-QUIET for issue 9.6's notification policy (§17.2, AI-NTF). NTF-001's caps (2 non-critical a day, 8 a week, critical exempt) and NTF-002's quiet hours (22:00–08:00, critical may bypass) are stated in the SRS as prose; they are now params an engine reads rather than constants it carries. The taxonomy's per-type defaults (§17.1) are NOT minted: they are user settings with no field yet, and inventing rows for them would ship numbers nothing reads (the ADR-0034 argument). New rows at v1.0, no shipped row changed. See ADR-0047."
     ],
     "schema": {
       "rule_id": "stable public ID cited in evidence — never rename, deprecate instead",
@@ -614,6 +615,32 @@
       "rationale": "The same overspent category recomputed hourly would otherwise become a wall of identical cards, and dismissing one would do nothing. Suppression has an end date because a dismissal is 'not now', not 'never' — the insight returns if the facts still hold a week later.",
       "source_note": "SRS §7.2 deduplication bullet and insight-orchestrator.yaml's `deduplication` block; §20.2's `insights.fingerprint UNIQUE`. §7.2 names no snooze length — seven days is minted here (ADR-0046).",
       "consumed_by": ["AI-ORCH"],
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "rule_id": "RULE-NTF-BUDGET",
+      "domain": "notification",
+      "name": "At most two non-critical notifications a day and eight a week; the excess folds into the weekly digest rather than being dropped. Critical money events are exempt from both caps.",
+      "formula_id": "notification_budget",
+      "params_json": { "daily_max": 2, "weekly_max": 8, "critical_exempt": true, "window_days": 7 },
+      "severity": "info",
+      "rationale": "An app that can interrupt has to ration the interruptions, or the user turns the channel off and loses the one message that mattered. Folding rather than dropping keeps the finding; it only moves where it is said.",
+      "source_note": "SRS NTF-001, stated as prose. The seven-day window is the rule's own 'per week', made explicit so the count has a definition.",
+      "consumed_by": ["AI-NTF"],
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "rule_id": "RULE-NTF-QUIET",
+      "domain": "notification",
+      "name": "Between 22:00 and 08:00 in the profile's own time zone, non-critical notifications wait until the window ends. Critical money events may bypass it.",
+      "formula_id": "notification_quiet_hours",
+      "params_json": { "start_hour": 22, "end_hour": 8, "critical_may_bypass": true },
+      "severity": "info",
+      "rationale": "A budget warning at 02:00 is worth nothing and costs the channel. A bill due tomorrow may be worth the interruption, which is why the exemption exists and why it is the user's to keep or withdraw.",
+      "source_note": "SRS NTF-002 (default 22:00–08:00) and §17.1's 'can bypass quiet hours (user choice)'. The choice has no setting yet, so the default applies to everyone (ADR-0047). NTF-002's preference for the user's observed app-open hour is not implemented — see the ADR.",
+      "consumed_by": ["AI-NTF"],
       "enabled": true,
       "version": "1.0"
     }

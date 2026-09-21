@@ -11,6 +11,36 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The deterministic engine layer: fixed/variable + nature, cash-flow forecast, seasonality, health
 > score, the Insight Orchestrator, notifications, and the numeric guardrail.
 
+### [0.9.6] — Issue 9.6: Notification engine + policy (AI-NTF)  (2026-09-21)
+
+- **Implemented:** `:domain:engines:notification` (`AI-NTF` 1.0), the one gate every notification
+  now passes (**§17.1**, **§17.2 NTF-001/002/003/004/005/006**, **AI-ARC-004**, **ADR-0047**).
+  - **A ration, shared:** at most two ordinary notifications a day and eight in any seven days, across
+    every feature together (`RULE-NTF-BUDGET`). Beyond that a message waits in the feed instead.
+  - **Quiet hours:** nothing ordinary between 22:00 and 08:00 in your own time zone
+    (`RULE-NTF-QUIET`); a held message goes in the morning and costs nothing from the day's ration.
+  - **Critical money events are exempt from both** — a card payment coming due, a crunch day ahead.
+  - **Never twice:** a message once sent is never sent again.
+- **Schema 24:** a new `notification_log` table, one row per message per profile — backed up,
+  restored and cleared with the profile like every other table.
+- **Budget and card alerts now ask the gate first.** A held alert is not lost: it stays pending and
+  is offered again the next day, and the in-app banner still shows it.
+- **New notifications from the insight feed:** a crunch day ahead (Critical) and a goal falling
+  behind (Goals) — once each, worded from the engine's own figures and checked by the numeric
+  guardrail before posting; with the privacy blur on they carry no digits at all, and on a locked
+  screen they show only that a message exists.
+- **All seven notification channels** from §17.1 now exist, so each can be turned down in Android's
+  settings before its first message.
+- **Not yet** (ADR-0047): the weekly digest notification; per-type switches inside the app; quiet
+  hours learned from when you open the app; actions on the notification; the transaction trigger.
+- **Tests:** 16 behaviour tests at every cap and quiet-hour boundary; 6 identities × 300 cases; a
+  golden file from an independent oracle that reads the rulebook; 6 drift, 7 repository (a real
+  database in a non-UTC zone), 8 notifier, 3 channel and 10 new worker tests; a migration round-trip
+  that proves one row per key. Deliberate breaks — a late quiet window, a plan that forgot its own
+  sends, a KB cap edited alone, quiet hours in UTC, sends never stamped, a worker that claimed before
+  the gate, a crunch keyed by the day, dismissed cards offered, the blur ignored — were each watched
+  go red.
+
 ### [0.9.5] — Issue 9.5: Insight Orchestrator + feed (AI-ORCH)  (2026-09-20)
 
 - **Implemented:** `:domain:engines:insight` (`AI-ORCH` 1.0) and the persisted feed behind it

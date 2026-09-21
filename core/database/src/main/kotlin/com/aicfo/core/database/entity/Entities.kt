@@ -1702,3 +1702,58 @@ data class InsightEntity(
     @ColumnInfo(name = "updated_at_utc_millis")
     val updatedAtUtcMillis: Long,
 )
+
+/**
+ * One decision the notification policy made, and — when it was to send — the send
+ * (issue 9.6; §17.2 NTF-001/002, §20.1 `notifications_log`).
+ *
+ * Why:    NTF-001's caps are a count of what has already been sent today and this week, and a count
+ *         needs a record. The same record is what stops a message being sent twice: a key that is
+ *         already here with outcome `deliver` is not delivered again (AI-NTF's `ALREADY_SENT`).
+ * What:   the message's key and taxonomy row, the outcome, when it was decided, and when a held
+ *         message may go.
+ * Result: a Room row in `notification_log`, one per key per profile — the latest decision about it.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-09-20 — Created at version 24 for issue 9.6 (§17.2, AI-NTF).
+ *
+ * **One row per key, updated.** A message folded into the digest on Monday and still true on
+ * Tuesday is the same message; a second row would be counted twice against Tuesday's cap if it
+ * were ever delivered. The unique index enforces it, which is also why this table has no tombstone
+ * (the argument is in `MigrationSafetyTest`).
+ */
+@Serializable
+@Entity(
+    tableName = "notification_log",
+    indices = [
+        Index("profile_id"),
+        Index(value = ["profile_id", "key"], unique = true),
+    ],
+)
+data class NotificationLogEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** What makes this message this message — an insight's fingerprint, an alert's id. */
+    @ColumnInfo(name = "key")
+    val key: String,
+    /** The §17.1 taxonomy row, as `NotificationKind.name`. */
+    @ColumnInfo(name = "kind")
+    val kind: String,
+    /** `deliver`, `wait_for_quiet_hours`, `fold_into_digest` or `already_sent`. */
+    @ColumnInfo(name = "outcome")
+    val outcome: String,
+    @ColumnInfo(name = "decided_at_utc_millis")
+    val decidedAtUtcMillis: Long,
+    /** When it was sent — set only for `deliver`, and what the caps count. */
+    @ColumnInfo(name = "sent_at_utc_millis")
+    val sentAtUtcMillis: Long? = null,
+    /** When a held message may go (NTF-002). */
+    @ColumnInfo(name = "deliver_after_utc_millis")
+    val deliverAfterUtcMillis: Long? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+)

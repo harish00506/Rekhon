@@ -10,6 +10,7 @@
 #         of persisted, de-duplicated Insight rows and, if policy allows, a notification.
 # Changelog:
 #   2026-07-17 — Created from SRS v1.7 §7.2, §17.2, §7.1.
+#   2026-09-20 — Issue 9.6: stage 6 wired — what the worker offers AI-NTF (ADR-0047).
 # =============================================================================
 
 version: "1.0"
@@ -82,6 +83,9 @@ pipeline:
     layer: L3
     handoff: AI-NTF                  # notification engine applies §17.2 policy
     rule: subject_to_notification_policy
+    # Issue 9.6 (ADR-0047): InsightRefreshWorker offers the ACTIVE feed, in rank order, filtered
+    # to §17.1's defaults — CRUNCH_DAY (critical) and GOAL_BEHIND (goal event); the rest wait for
+    # the weekly digest.
 
 # ------------------------------------------------------------------------------
 # COMPUTE BUDGETS — never block the UI (NFR-003).
