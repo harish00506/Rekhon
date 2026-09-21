@@ -12,6 +12,7 @@
     2026-09-19 — Added RULE-FCT-METHOD and RULE-FCT-CRUNCH for issue 9.2 (AI-FCT, §9).
     2026-09-19 — Added RULE-FHS-PILLARS, RULE-FHS-BANDS and RULE-FHS-SIGNALS for issue 9.4 (AI-FHS, §14).
     2026-09-20 — Added RULE-INS-RANK and RULE-INS-DEDUP for issue 9.5 (AI-ORCH, §7.2).
+    2026-09-20 — Added RULE-NTF-BUDGET and RULE-NTF-QUIET for issue 9.6 (AI-NTF, §17.2).
 -->
 
 # Financial Rulebook & Heuristics Knowledge Base (RULE-KB)
@@ -89,6 +90,8 @@ evaluate: RuleEngine.evaluate(ruleId, FeatureSnapshot)
 | RULE-FCT-CRUNCH | A crunch day is a forecast day whose expected (P50) liquid balance is below ₹5,000 | AI-FCT |
 | RULE-FHS-PILLARS | Health score 0–1000 from five pillars weighted 25/20/20/20/15; a pillar with < 1 month of signal shows "—" and its weight is shared out | AI-FHS |
 | RULE-FHS-BANDS | 800+ Excellent · 650–799 Good · 500–649 Fair · 350–499 Needs Attention · < 350 At Risk | AI-FHS |
+| RULE-NTF-BUDGET | At most 2 non-critical notifications a day and 8 a week; the excess folds into the weekly digest; critical events are exempt | AI-NTF |
+| RULE-NTF-QUIET | 22:00–08:00 in the profile's zone delays non-critical notifications; critical may bypass | AI-NTF |
 | RULE-INS-RANK | The feed orders by severity, then amount at stake, then fingerprint; the dashboard shows the top three | AI-ORCH |
 | RULE-INS-DEDUP | One insight per type + subject + period; a recomputation updates it; a dismissal suppresses it for 7 days | AI-ORCH |
 | RULE-FHS-SIGNALS | Runway linear to M (≥ 25 once a month is covered); obligations 30%→100, 55%→0; card utilisation 30%→100, 100%→0; savings rate 0%→0, 30%→100 | AI-FHS |

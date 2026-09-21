@@ -446,6 +446,30 @@ DashboardViewModel.observeInsights()
                                           → setStatus(status, suppressed_until = today + 7)
 ```
 
+### 2.11 · Whether to interrupt — AI-NTF (issue 9.6)
+
+**One gate, asked before anything is claimed.** Every worker that posts asks the same repository,
+over one log, so there is one ration between them (NTF-001). The claim comes *after* the gate: a
+claim is permanent and a hold is not.
+
+```
+BudgetAlertWorker · CardAlertWorker · InsightRefreshWorker (after refresh, §7.2 stage 6)
+└─ pending alerts / the ACTIVE feed filtered by InsightNotifications.kindFor
+   → NotificationCandidate(key, kind)          keys: budget:<id>:<band>:<yyyy-MM> ·
+                                                     card:<acct>:<kind>:<cycle> · insight:<…>
+   → NotificationRepository.decide(candidates)            data/repository — ARC-005
+       ├─ notificationLogDao().sentSince(profile, 0) → SentNotification (local, clock.zone())
+       ├─ NotificationPolicyEngine.decide()               domain/engines/notification — pure
+       │    already sent → ALREADY_SENT
+       │    22:00 ≤ now < 08:00, not critical → WAIT_FOR_QUIET_HOURS   (RULE-NTF-QUIET)
+       │    today ≥ 2 or 7 days ≥ 8, not critical → FOLD_INTO_DIGEST   (RULE-NTF-BUDGET)
+       │    else → DELIVER
+       └─ upsert one notification_log row per key (DELIVER stamps sent_at) — before posting
+   → for each DELIVER only: markNotified (budget/card) → *Notifier.notify(…, blurAmounts)
+        → NumericGuardrail.verify → NotificationCompat on kind.channelId
+  held / folded: nothing claimed — offered again on the next daily run; still in the feed/banner
+```
+
 ### 2.1 · The dashboard's headline figure (issue 5.2)
 
 Shape C again, but it is the **first read in the app assembled from other repositories** rather than

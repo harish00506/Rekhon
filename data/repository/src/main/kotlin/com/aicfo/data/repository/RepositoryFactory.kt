@@ -24,6 +24,7 @@ import com.aicfo.domain.engines.investment.InvestmentEngine
 import com.aicfo.domain.engines.loan.LoanEngine
 import com.aicfo.domain.engines.nature.NatureEngine
 import com.aicfo.domain.engines.networth.NetWorthEngine
+import com.aicfo.domain.engines.notification.NotificationPolicyEngine
 import com.aicfo.domain.engines.orderofoperations.OrderOfOperationsEngine
 import com.aicfo.domain.engines.receipt.ReceiptEngine
 import com.aicfo.domain.engines.recurring.RecurringEngine
@@ -609,6 +610,33 @@ object RepositoryFactory {
         dispatchers: DispatcherProvider,
         activeProfileId: Flow<String>,
     ): StreamRepository = RoomStreamRepository(database, engine, clock, dispatchers, activeProfileId)
+
+    /**
+     * Builds the notification gate (issue 9.6; §17.2).
+     * Why:    one gate for every worker that wants to post, so the caps are the app's caps and not
+     *         each worker's (NTF-001). Only its own log is touched.
+     * Result: a [NotificationRepository].
+     * Input:  [database]; [engine]; [clock]; [dispatchers]; [activeProfileId]; [idGenerator].
+     * Output: [NotificationRepository].
+     * Changelog: 2026-09-20 — Created for issue 9.6.
+     */
+    @Suppress("LongParameterList") // the store, the engine and four seams
+    fun notifications(
+        database: CfoDatabase,
+        engine: NotificationPolicyEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        activeProfileId: Flow<String>,
+        idGenerator: IdGenerator,
+    ): NotificationRepository =
+        RoomNotificationRepository(
+            database,
+            engine,
+            clock,
+            dispatchers,
+            activeProfileId,
+            idGenerator,
+        )
 
     /**
      * Builds AI-ORCH over the engines beneath it and the feed it persists (issue 9.5; §7.2).

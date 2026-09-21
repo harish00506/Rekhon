@@ -28,6 +28,7 @@ import com.aicfo.core.database.entity.InvestmentHoldingEntity
 import com.aicfo.core.database.entity.InvestmentLotEntity
 import com.aicfo.core.database.entity.LoanEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
+import com.aicfo.core.database.entity.NotificationLogEntity
 import com.aicfo.core.database.entity.ProfileEntity
 import com.aicfo.core.database.entity.RecurringRuleEntity
 import com.aicfo.core.database.entity.SmsDraftEntity
@@ -2264,6 +2265,15 @@ interface DemoDao {
     suspend fun deleteInsights(profileId: String): Int
 
     /**
+     * Result: rows removed from `notification_log`. Input: [profileId]. Output: the count.
+     *
+     * Issue 9.6: the policy records what it sent while the user browses the demo; leaving that
+     * behind would carry the demo's caps into the real profile's first day.
+     */
+    @Query("DELETE FROM notification_log WHERE profile_id = :profileId")
+    suspend fun deleteNotificationLog(profileId: String): Int
+
+    /**
      * Result: rows removed from `card_alert`. Input: [profileId]. Output: the count.
      *
      * Cleared with the profile like every other claim table, and before `credit_card` for the
@@ -2483,7 +2493,8 @@ interface DemoDao {
             "(SELECT COUNT(*) FROM goal_funding_account WHERE profile_id = :profileId) + " +
             // Issue 9.5: the orchestrator's feed is profile-scoped residue like every other claim
             // table, so it is counted here or the wipe could miss it and no test would say so.
-            "(SELECT COUNT(*) FROM insight WHERE profile_id = :profileId)",
+            "(SELECT COUNT(*) FROM insight WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM notification_log WHERE profile_id = :profileId)",
     )
     suspend fun countRowsFor(profileId: String): Int
 }
@@ -2619,6 +2630,14 @@ interface ArchiveDao {
     @Query("SELECT * FROM insight WHERE profile_id = :profileId ORDER BY id")
     suspend fun insights(profileId: String): List<InsightEntity>
 
+    /**
+     * Result: every notification decision, so a restore keeps the caps and the never-twice rule —
+     *   otherwise a restored phone would re-send every alert it had already sent (issue 9.6).
+     *   Input: [profileId].
+     */
+    @Query("SELECT * FROM notification_log WHERE profile_id = :profileId ORDER BY id")
+    suspend fun notificationLog(profileId: String): List<NotificationLogEntity>
+
     /** Result: every recurring rule, confirmed and dismissed alike (FR-TXN-006). Input: [profileId]. */
     @Query("SELECT * FROM recurring_rule WHERE profile_id = :profileId ORDER BY id")
     suspend fun recurringRules(profileId: String): List<RecurringRuleEntity>
@@ -2723,6 +2742,10 @@ interface ArchiveDao {
      */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertInsights(rows: List<InsightEntity>)
+
+    /** Result: the notification record is present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertNotificationLog(rows: List<NotificationLogEntity>)
 
     /**
      * Result: the card alerts already sent are present. Input: [rows]. Output: none (suspends).
@@ -3894,4 +3917,43 @@ interface InsightDao {
     /** Input: [profileId]. Output: how many rows went. Result: the profile's feed is empty (the demo wipe). */
     @Query("DELETE FROM insight WHERE profile_id = :profileId")
     suspend fun deleteForProfile(profileId: String): Int
+}
+
+/**
+ * The notification policy's memory (issue 9.6; §17.2, §20.1 `notifications_log`).
+ *
+ * Why:  AI-NTF is pure and has no memory of its own; the caps (NTF-001) are counts over this table,
+ *       and so is the rule that a message is never sent twice.
+ * What: the rows the policy reads (what was sent in the window, and every key already sent), the
+ *       one write it makes per decision, and the demo wipe's delete.
+ * Result: one row per key per profile.
+ * Changelog: 2026-09-20 — Created for issue 9.6.
+ */
+@Dao
+interface NotificationLogDao {
+    /** Result: the row exists, replacing any with the same id. Input: [row]. Output: none. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(row: NotificationLogEntity)
+
+    /** Result: the stored decision for [key], or `null`. Input: [profileId]; [key]. */
+    @Query("SELECT * FROM notification_log WHERE profile_id = :profileId AND `key` = :key")
+    suspend fun find(
+        profileId: String,
+        key: String,
+    ): NotificationLogEntity?
+
+    /**
+     * Everything actually sent since a moment.
+     * Why:    the caps count sends, not decisions — a message folded into the digest cost nothing —
+     *         so the query reads `sent_at`, and only rows that have one.
+     * Result: the sends, oldest first. Input: [profileId]; [sinceUtcMillis]. Output: the rows.
+     */
+    @Query(
+        "SELECT * FROM notification_log WHERE profile_id = :profileId AND sent_at_utc_millis IS NOT NULL " +
+            "AND sent_at_utc_millis >= :sinceUtcMillis ORDER BY sent_at_utc_millis",
+    )
+    suspend fun sentSince(
+        profileId: String,
+        sinceUtcMillis: Long,
+    ): List<NotificationLogEntity>
 }

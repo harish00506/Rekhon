@@ -56,6 +56,7 @@ import javax.inject.Provider
  * What: the locked path, the ordering, the unclaimed path, the refusal, and the blur flag.
  * Result: a reminder that is sent once, or not at all, and never twice.
  * Changelog: 2026-08-17 — Created for issue 6.1.
+ *            2026-09-20 — Issue 9.6: the gate — its key and kind, a hold, and a failed answer.
  */
 @RunWith(RobolectricTestRunner::class)
 class CardAlertWorkerTest {
@@ -72,6 +73,7 @@ class CardAlertWorkerTest {
     private val repository = RecordingCardRepository(trace)
     private val notifier = RecordingCardNotifier(trace)
     private val settings = FakeAppSettingsStore()
+    private val gate = com.aicfo.app.FakeNotificationRepository()
 
     @Test
     fun `a locked app defers without touching the repository`() =
@@ -145,6 +147,42 @@ class CardAlertWorkerTest {
         }
 
     @Test
+    fun `a payment coming due is offered as a critical money event under its claim key`() =
+        runTest {
+            // §17.1: card due is the Critical row — exempt from the caps and the quiet hours, which
+            // is the gate's to apply and this worker's to name correctly.
+            sessionLock.unlock()
+
+            worker().doWork()
+
+            val offered = gate.offered.single().single()
+            assertEquals("card:account:1:DUE_SOON:2026-08-06", offered.key)
+            assertEquals(com.aicfo.domain.engines.notification.NotificationKind.CRITICAL_MONEY, offered.kind)
+        }
+
+    @Test
+    fun `an alert the gate holds is neither claimed nor posted`() =
+        runTest {
+            sessionLock.unlock()
+            gate.held = setOf("card:account:1:DUE_SOON:2026-08-06")
+
+            val result = worker().doWork()
+
+            assertEquals("a claim is permanent; a hold is not", emptyList<String>(), trace)
+            assertTrue(result is ListenableWorker.Result.Success)
+        }
+
+    @Test
+    fun `a gate that cannot answer retries, and nothing is claimed`() =
+        runTest {
+            sessionLock.unlock()
+            gate.failure = AppError.Storage("disk")
+
+            assertTrue(worker().doWork() is ListenableWorker.Result.Retry)
+            assertEquals(emptyList<String>(), trace)
+        }
+
+    @Test
     fun `the work is scheduled under a stable unique name`() {
         // KEEP on a unique name is what stops rescheduling on every launch resetting the period —
         // a user who opens the app each morning would otherwise never reach the first run.
@@ -167,6 +205,7 @@ class CardAlertWorkerTest {
                         Provider { repository.also { it.resolutions++ } },
                         settings,
                         notifier,
+                        Provider { gate },
                     )
                 },
             )

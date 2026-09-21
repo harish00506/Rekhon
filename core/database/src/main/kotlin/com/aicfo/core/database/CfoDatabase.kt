@@ -21,6 +21,7 @@ import com.aicfo.core.database.dao.InvestmentHoldingDao
 import com.aicfo.core.database.dao.InvestmentLotDao
 import com.aicfo.core.database.dao.LoanDao
 import com.aicfo.core.database.dao.NetWorthSnapshotDao
+import com.aicfo.core.database.dao.NotificationLogDao
 import com.aicfo.core.database.dao.ProfileDao
 import com.aicfo.core.database.dao.RecurringRuleDao
 import com.aicfo.core.database.dao.SmsDraftDao
@@ -44,6 +45,7 @@ import com.aicfo.core.database.entity.InvestmentHoldingEntity
 import com.aicfo.core.database.entity.InvestmentLotEntity
 import com.aicfo.core.database.entity.LoanEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
+import com.aicfo.core.database.entity.NotificationLogEntity
 import com.aicfo.core.database.entity.ProfileEntity
 import com.aicfo.core.database.entity.RecurringRuleEntity
 import com.aicfo.core.database.entity.SmsDraftEntity
@@ -97,6 +99,7 @@ import com.aicfo.core.database.entity.TransactionTagEntity
         GoalContributionEntity::class,
         GoalFundingAccountEntity::class,
         InsightEntity::class,
+        NotificationLogEntity::class,
     ],
     version = CfoDatabase.VERSION,
     exportSchema = true,
@@ -172,6 +175,9 @@ abstract class CfoDatabase : RoomDatabase() {
     /** Input: none. Output: the insight-feed DAO (issue 9.5, §7.2). */
     abstract fun insightDao(): InsightDao
 
+    /** Input: none. Output: the notification policy's log (issue 9.6, §17.2). */
+    abstract fun notificationLogDao(): NotificationLogDao
+
     /**
      * Input:  none. Output: the demo wipe DAO (issue 2.4, FR-ONB-004).
      *
@@ -224,7 +230,7 @@ abstract class CfoDatabase : RoomDatabase() {
          * contribution *is* the linked transaction's, summed at query time, so nothing can drift
          * away from the ledger it came from; §15, FR-GOAL-002, FR-GOAL-004).
          */
-        const val VERSION = 23
+        const val VERSION = 24
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"

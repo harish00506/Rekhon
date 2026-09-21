@@ -15,6 +15,7 @@
     2026-09-19 — Issue 9.3 (AI-SEAS seasonality) merged to dev.
     2026-09-20 — Issue 9.4 (AI-FHS health score) merged to dev.
     2026-09-20 — Issue 9.5 (AI-ORCH insight orchestrator + feed) merged to dev; schema 23.
+    2026-09-21 — Issue 9.6 (AI-NTF notification policy) merged to dev; schema 24.
 -->
 
 # AI Personal CFO — Project Memory
@@ -26,12 +27,12 @@
 
 ## Current state
 
-- **Version:** `0.9.5` (see [`../VERSION`](../VERSION)) · **Phase:** 2–3. **Schema is v22**, unchanged by 8.1.
+- **Version:** `0.9.6` (see [`../VERSION`](../VERSION)) · **Phase:** 2–3. **Schema is v24** (9.6's `notification_log`).
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
-  forecast), 9.3 (seasonality), 9.4 (the health score) and 9.5 (the insight orchestrator and its
-  feed) shipped; **9.6 (the notification engine) is next** — §7.2's last stage hands off to it. Epic 9 (AI core engines, incl. the 9.2 forecast) is
-  still the one the goals work kept waiting on.
-- **Currently working file:** none. Issues **8.1–8.3 and 9.1–9.5 are merged to `dev`**
+  forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
+  feed) and 9.6 (the notification policy) shipped; **9.7 is next**. Epic 9 (AI core engines, incl.
+  the 9.2 forecast) is still the one the goals work kept waiting on.
+- **Currently working file:** none. Issues **8.1–8.3 and 9.1–9.6 are merged to `dev`**
   ([8.1 tracker](issues/8.1-e2ee-backup-argon2id-aes-256-gcm-tracker.md), ADR-0039;
   [8.2 tracker](issues/8.2-restore-on-fresh-device-tracker.md), ADR-0040;
   [8.3 tracker](issues/8.3-backup-restore-drill-tracker.md), ADR-0041;
@@ -39,7 +40,8 @@
   [9.2 tracker](issues/9.2-cash-flow-forecast-ai-fct-tracker.md), ADR-0043;
   [9.3 tracker](issues/9.3-seasonality-ai-seas-tracker.md), ADR-0044;
   [9.4 tracker](issues/9.4-financial-health-score-ai-fhs-tracker.md), ADR-0045;
-  [9.5 tracker](issues/9.5-insight-orchestrator-feed-tracker.md), ADR-0046).
+  [9.5 tracker](issues/9.5-insight-orchestrator-feed-tracker.md), ADR-0046;
+  [9.6 tracker](issues/9.6-notification-engine-policy-tracker.md), ADR-0047).
 - **`origin/dev` is still at `6afa5f0`** — local `dev` is well ahead (7.4, 7.5, the card APR field,
   the FOO/goals agreement, 8.1 and their records),
   and **the push is blocked, not skipped**: this machine has no GitHub credentials (no helper, no
@@ -52,6 +54,20 @@
   `dev` was two issues behind once and nobody noticed.
 - **The forecast exists now (9.2), but the goals still use the observed P50 surplus** (ADR-0035,
   ADR-0037). Switching `SurplusRepository` to `ForecastRepository` is ADR-0043's recorded follow-up.
+
+### What 9.6 changed that a future issue must know
+
+- **Every notification goes through `NotificationRepository.decide` — ask before you claim.** A new
+  sender builds a `NotificationCandidate(key, kind)`, posts only `plan.deliverable`, and claims its
+  own row only for those. Claiming first would lose every alert the policy holds.
+- **Schema is 24** — `notification_log`, one row per key per profile, no tombstone (argued in
+  `MigrationSafetyTest` like `insight`). A delivery is recorded *before* posting.
+- **All seven §17.1 channels exist** (`CfoNotifications.channels()`); a new `NotificationKind` needs
+  a channel or `CfoNotificationsTest` fails.
+- **The weekly digest is not built** — folded messages stay in the feed and are re-offered. Per-type
+  in-app switches, the learned quiet window, notification actions and the transaction trigger are
+  ADR-0047's deferrals.
+- **rules-kb is 1.19.0**; nine `*Rules.kt` mirrors restate it.
 
 ### What 9.5 changed that a future issue must know
 

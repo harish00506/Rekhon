@@ -16,6 +16,7 @@
 #   2026-09-20 — Issue 9.4: AI-FHS built; its contract and the signals it reads restated (ADR-0045).
 #   2026-09-20 — Issue 9.5: AI-ORCH built — the L5 assembly step of insight-orchestrator.yaml's
 #                pipeline, plus the persisted feed it writes (ADR-0046).
+#   2026-09-20 — Issue 9.6: AI-NTF built — §17.2's gate for every notification (ADR-0047).
 # =============================================================================
 
 version: "1.1"
@@ -77,11 +78,22 @@ engines:
     version: "1.0"
     # Issue 9.5 built the assembly step (ADR-0046): it ranks what the engines below it published and
     # computes nothing itself. The pipeline's stages 1–4 are those engines' own repositories; stage 5
-    # (persist) is `insight` at schema 23; stage 6 (notify) is AI-NTF's, and waits for issue 9.6.
+    # (persist) is `insight` at schema 23; stage 6 (notify) is AI-NTF's (issue 9.6, ADR-0047).
     contract: "published engine results (forecast, emergency fund, health score, budgets, goals) -> ranked, fingerprinted insights {severity, figures, source engine, rules} + the dashboard's top 3"
     reads: [../rules/rules-kb.json, insight-orchestrator.yaml]   # RULE-INS-RANK, RULE-INS-DEDUP
     depends_on: [AI-FCT, AI-FHS, AI-EMF, AI-GOAL]
     srs: "§7.2"
+
+  - id: AI-NTF
+    name: Notification Policy
+    layer: L5
+    module: ":domain:engines:notification"
+    version: "1.0"
+    # Issue 9.6 built it (ADR-0047): pure — the repository supplies local time from the injected
+    # clock's zone and the log of what was sent. Every notifying worker asks it before it claims.
+    contract: "candidates {key, §17.1 kind} + sent history + local now -> per candidate DELIVER | WAIT_FOR_QUIET_HOURS(until) | FOLD_INTO_DIGEST | ALREADY_SENT, citing the rule that decided"
+    reads: [../rules/rules-kb.json]      # RULE-NTF-BUDGET, RULE-NTF-QUIET
+    srs: "§17.2"
 
   - id: AI-EMF
     name: Emergency Fund

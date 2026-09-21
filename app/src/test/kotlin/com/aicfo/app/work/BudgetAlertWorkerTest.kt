@@ -24,6 +24,7 @@ import com.aicfo.data.repository.CategoryBudgetSuggestion
 import com.aicfo.domain.engines.budget.BudgetAlert
 import com.aicfo.domain.engines.budget.BudgetAlertBand
 import com.aicfo.domain.engines.budget.BudgetReview
+import com.aicfo.domain.engines.notification.NotificationKind
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
@@ -50,6 +51,8 @@ import javax.inject.Provider
  *       refuses.
  * Result: a job that cannot crash a locked app and cannot say the same thing twice.
  * Changelog: 2026-08-13 — Created for issue 4.5.
+ *            2026-09-20 — Issue 9.6: the gate. An alert the policy holds is neither claimed nor
+ *            posted; the offer is most severe first; a gate that cannot answer retries.
  */
 @RunWith(RobolectricTestRunner::class)
 class BudgetAlertWorkerTest {
@@ -57,6 +60,14 @@ class BudgetAlertWorkerTest {
     private val repository = RecordingBudgetRepository()
     private val notifier = CountingNotifier()
     private val settings = com.aicfo.app.FakeAppSettingsStore()
+    private val gate = com.aicfo.app.FakeNotificationRepository()
+
+    // 20 September 2026 in Kolkata, so the gate's key names that month.
+    private val clock =
+        com.aicfo.core.common.FakeClock(
+            java.time.Instant.parse("2026-09-20T04:30:00Z").toEpochMilli(),
+            java.time.ZoneId.of("Asia/Kolkata"),
+        )
 
     @Test
     fun `a locked app defers without touching the repository`() =
@@ -148,7 +159,7 @@ class BudgetAlertWorkerTest {
 
             worker().doWork()
 
-            assertEquals(listOf("Groceries", "Dining"), notifier.posted)
+            assertEquals("most severe first (issue 9.6)", listOf("Dining", "Groceries"), notifier.posted)
         }
 
     /**
@@ -192,6 +203,51 @@ class BudgetAlertWorkerTest {
         }
 
     @Test
+    fun `an alert the gate holds is neither claimed nor posted, so it is offered again tomorrow`() =
+        runTest {
+            // The whole reason the gate comes before the claim: a claim is permanent, so claiming a
+            // held alert would lose it for the month.
+            sessionLock.unlock()
+            repository.pending = listOf(alert())
+            gate.held = setOf("budget:budget:Groceries:WARN:2026-09")
+
+            val result = worker().doWork()
+
+            assertEquals(listOf("pending"), repository.calls)
+            assertEquals(0, notifier.posted.size)
+            assertTrue(result is ListenableWorker.Result.Success)
+        }
+
+    @Test
+    fun `the gate is offered the overspend before the warning`() =
+        runTest {
+            // A day with one slot left should spend it on the worse news.
+            sessionLock.unlock()
+            repository.pending = listOf(alert(), alert(name = "Dining", band = BudgetAlertBand.EXCEEDED))
+
+            worker().doWork()
+
+            assertEquals(
+                listOf("budget:budget:Dining:EXCEEDED:2026-09", "budget:budget:Groceries:WARN:2026-09"),
+                gate.offered.single().map { it.key },
+            )
+            assertTrue(gate.offered.single().all { it.kind == NotificationKind.BUDGET_DISCIPLINE })
+        }
+
+    @Test
+    fun `a gate that cannot answer retries, and nothing is claimed`() =
+        runTest {
+            sessionLock.unlock()
+            repository.pending = listOf(alert())
+            gate.failure = AppError.Storage("disk")
+
+            val result = worker().doWork()
+
+            assertTrue(result is ListenableWorker.Result.Retry)
+            assertEquals(listOf("pending"), repository.calls)
+        }
+
+    @Test
     fun `the work is scheduled under a stable unique name`() {
         // `KEEP` on a unique name is what stops rescheduling on every launch from resetting the
         // period — a user who opens the app each morning would otherwise never reach the first run.
@@ -214,6 +270,8 @@ class BudgetAlertWorkerTest {
                         Provider { repository },
                         notifier,
                         settings,
+                        Provider { gate },
+                        clock,
                     )
                 },
             )

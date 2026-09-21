@@ -1269,6 +1269,41 @@ internal object Migrations {
         )
     }
 
+    /**
+     * 23 → 24 — `notification_log`, the policy's memory (issue 9.6; §17.2, §20.1).
+     * Why:    NTF-001's caps count what was sent, and a count needs a record; the same record is what
+     *         keeps a message from being sent twice. Additive, as DB-003 requires.
+     * Result: an upgraded database has the table; every other row is untouched.
+     * Input:  [db]. Output: none.
+     */
+    val MIGRATION_23_24 =
+        object : Migration(VERSION_23, VERSION_24) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `notification_log` (" +
+                        "`id` TEXT NOT NULL, " +
+                        "`profile_id` TEXT NOT NULL, " +
+                        "`key` TEXT NOT NULL, " +
+                        "`kind` TEXT NOT NULL, " +
+                        "`outcome` TEXT NOT NULL, " +
+                        "`decided_at_utc_millis` INTEGER NOT NULL, " +
+                        "`sent_at_utc_millis` INTEGER, " +
+                        "`deliver_after_utc_millis` INTEGER, " +
+                        "`created_at_utc_millis` INTEGER NOT NULL, " +
+                        "`updated_at_utc_millis` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`id`))",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_notification_log_profile_id` " +
+                        "ON `notification_log` (`profile_id`)",
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_notification_log_profile_id_key` " +
+                        "ON `notification_log` (`profile_id`, `key`)",
+                )
+            }
+        }
+
     /** Every migration, in order, for `CfoDatabaseFactory` to register. */
     val ALL: Array<Migration> =
         arrayOf(
@@ -1294,6 +1329,7 @@ internal object Migrations {
             MIGRATION_20_21,
             MIGRATION_21_22,
             MIGRATION_22_23,
+            MIGRATION_23_24,
         )
 
     /** Named so the version pair reads as a schema version rather than an unexplained literal. */
@@ -1364,4 +1400,7 @@ internal object Migrations {
 
     /** The version issue 9.5 introduces — `insight`, the persisted orchestrator feed (§7.2). */
     private const val VERSION_23 = 23
+
+    /** The version issue 9.6 introduces — `notification_log`, the policy's memory (§17.2). */
+    private const val VERSION_24 = 24
 }

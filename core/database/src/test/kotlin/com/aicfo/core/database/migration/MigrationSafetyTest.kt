@@ -227,9 +227,17 @@ class MigrationSafetyTest {
      *         it by adding a string — this test makes that a deliberate, reviewed edit.
      */
     @Test
-    fun `only the six argued-for tables are exempt from the per-row invariants`() {
+    fun `only the seven argued-for tables are exempt from the per-row invariants`() {
         assertEquals(
-            setOf("audit_log", "sms_draft", "budget_alert", "budget_review", "card_alert", "insight"),
+            setOf(
+                "audit_log",
+                "sms_draft",
+                "budget_alert",
+                "budget_review",
+                "card_alert",
+                "insight",
+                "notification_log",
+            ),
             INVARIANT_EXEMPT_TABLES.keys,
         )
     }
@@ -317,6 +325,30 @@ class MigrationSafetyTest {
             )
             assertTrue("$table must be exempt from nothing", table !in INVARIANT_EXEMPT_TABLES)
         }
+    }
+
+    /**
+     * Input:  the `notification_log` table's columns.
+     * Output: asserts it keeps profile scoping and deliberately has no tombstone — the caps count
+     *         its sends, and a soft-deleted send would either still count or let a message go twice.
+     */
+    @Test
+    fun `notification_log keeps profile scoping and deliberately has no tombstone`() {
+        val columns =
+            SchemaFixtures.load(CfoDatabase.VERSION)
+                .database
+                .entitiesByTableName()
+                .getValue("notification_log")
+                .fieldsByColumnName()
+                .keys
+
+        assertTrue("notification_log must carry profile_id so no query can span profiles", "profile_id" in columns)
+        assertTrue(
+            "notification_log must NOT have deleted_at_utc_millis — the caps count sends, and a " +
+                "tombstoned send would still count, or let the same message go twice",
+            "deleted_at_utc_millis" !in columns,
+        )
+        assertTrue("NTF-001 counts sends, so a send has to be recorded", "sent_at_utc_millis" in columns)
     }
 
     /**
@@ -533,6 +565,14 @@ private val INVARIANT_EXEMPT_TABLES =
             "an overspend corrected in March must be able to come back in April. What the user " +
             "*said* about a card is kept in `status` and `suppressed_until_iso_date` instead, " +
             "which is what a dismissal actually means. Rows leave with the profile.",
+        "notification_log" to
+            "the record that the app interrupted the user (issue 9.6, §17.2 NTF-001): the same " +
+            "argument as budget_alert, for every notification the policy decides. A row is the " +
+            "fact that a message was sent (or held, or folded), which is not something the user " +
+            "created and can lose. A tombstone would be worse than absent: the unique index that " +
+            "keeps one row per key counts soft-deleted rows, and the caps count sends — a " +
+            "'deleted' send would either still count or let the same message go out twice. Rows " +
+            "leave with the profile.",
         "sms_draft" to
             "unconfirmed proposals parsed from the inbox (issue 3.9, ADR-0013): a pending draft is " +
             "not user data, it is an inference drawn from messages the user can withdraw " +

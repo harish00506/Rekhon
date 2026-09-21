@@ -120,6 +120,7 @@ internal class RoomArchiveRepository(
                         goalContributions = dao.goalContributions(profileId),
                         goalFundingAccounts = dao.goalFundingAccounts(profileId),
                         insights = dao.insights(profileId),
+                        notificationLog = dao.notificationLog(profileId),
                     ),
                 )
             }
@@ -199,6 +200,7 @@ internal class RoomArchiveRepository(
         val demo = database.demoDao()
         // Children before parents, exactly as DemoModeRepository.exit() orders them.
         demo.deleteInsights(profileId)
+        demo.deleteNotificationLog(profileId)
         demo.deleteBudgetAlerts(profileId)
         demo.deleteCardAlerts(profileId)
         demo.deleteBudgets(profileId)
@@ -256,6 +258,7 @@ internal class RoomArchiveRepository(
         dao.insertGoalContributions(archive.goalContributions)
         dao.insertGoalFundingAccounts(archive.goalFundingAccounts)
         dao.insertInsights(archive.insights)
+        dao.insertNotificationLog(archive.notificationLog)
     }
 
     private companion object {
@@ -313,4 +316,4 @@ internal fun CfoArchive.rowCount(): Int =
         recurringRules.size + netWorthSnapshots.size + attachments.size + smsDrafts.size +
         creditCards.size + cardAlerts.size + loans.size + investmentHoldings.size +
         investmentLots.size + goals.size + goalContributions.size + goalFundingAccounts.size +
-        insights.size
+        insights.size + notificationLog.size

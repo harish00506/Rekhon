@@ -163,6 +163,8 @@ internal class RoomDemoModeRepository(
                     // unreached since 4.5 shipped.
                     // Issue 9.5: the orchestrator raises these while the user browses the demo.
                     demo.deleteInsights(DemoModeRepository.DEMO_PROFILE_ID)
+                    // Issue 9.6: the demo's sends must not count against the real profile's caps.
+                    demo.deleteNotificationLog(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteBudgetAlerts(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteCardAlerts(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteCreditCards(DemoModeRepository.DEMO_PROFILE_ID)
