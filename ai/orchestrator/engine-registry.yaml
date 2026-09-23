@@ -17,6 +17,7 @@
 #   2026-09-20 — Issue 9.5: AI-ORCH built — the L5 assembly step of insight-orchestrator.yaml's
 #                pipeline, plus the persisted feed it writes (ADR-0046).
 #   2026-09-20 — Issue 9.6: AI-NTF built — §17.2's gate for every notification (ADR-0047).
+#   2026-09-23 — Issue 9.7: AI-GRD built — AI-ARC-004's numeric guardrail (ADR-0048).
 # =============================================================================
 
 version: "1.1"
@@ -83,6 +84,17 @@ engines:
     reads: [../rules/rules-kb.json, insight-orchestrator.yaml]   # RULE-INS-RANK, RULE-INS-DEDUP
     depends_on: [AI-FCT, AI-FHS, AI-EMF, AI-GOAL]
     srs: "§7.2"
+
+  - id: AI-GRD
+    name: Numeric Guardrail
+    layer: L3
+    module: ":domain:engines:guardrail"
+    version: "1.0"
+    # Issue 9.7 built it (ADR-0048) from ../chat/guardrail.md, superseding core:model's minimal
+    # NumericGuardrail. Deterministic: it never asks a model about a model's output (GRD-001).
+    contract: "candidate user-facing text + the figures the engines produced (amounts, percents/bps, counts, quantities, dates, names) + attempts so far -> PASS | REGENERATE(offending spans, attempts left) | REFUSE(offending spans, verified spans)"
+    reads: [../rules/rules-kb.json, ../chat/guardrail.md]   # RULE-GRD-LADDER, RULE-GRD-TRANSFORMS
+    srs: "AI-ARC-004, §19.3"
 
   - id: AI-NTF
     name: Notification Policy

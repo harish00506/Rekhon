@@ -10,12 +10,15 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.aicfo.app.MainActivity
 import com.aicfo.app.R
-import com.aicfo.core.model.GuardrailResult
+import com.aicfo.core.common.getOrNull
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.MoneyFormatter
-import com.aicfo.core.model.NumericGuardrail
 import com.aicfo.data.repository.CategoryBudgetAlert
 import com.aicfo.domain.engines.budget.BudgetAlertBand
+import com.aicfo.domain.engines.guardrail.GuardrailEngine
+import com.aicfo.domain.engines.guardrail.GuardrailEvidence
+import com.aicfo.domain.engines.guardrail.GuardrailInput
+import com.aicfo.domain.engines.guardrail.GuardrailVerdict
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -84,6 +87,7 @@ internal class AndroidBudgetAlertNotifier
     @Inject
     constructor(
         @ApplicationContext private val context: Context,
+        private val guardrail: GuardrailEngine,
     ) : BudgetAlertNotifier {
         /**
          * Composes the message, verifies it, and posts.
@@ -125,14 +129,17 @@ internal class AndroidBudgetAlertNotifier
             // the name would read as an unverifiable count and this notification would be suppressed
             // — correct message, silently dropped, indistinguishable at this call site from a denied
             // permission (issue 4.6).
-            val verified =
-                NumericGuardrail.verify(
-                    candidateText = "$title $body",
-                    allowedAmounts = listOfNotNull(alert.alert.budgeted, alert.alert.spent, alert.alert.overspentBy),
-                    allowedPercents = listOf(alert.alert.usedPercent),
-                    allowedText = listOf(alert.category.name),
+            if (!verified(
+                    "$title $body",
+                    GuardrailEvidence(
+                        amounts = listOfNotNull(alert.alert.budgeted, alert.alert.spent, alert.alert.overspentBy),
+                        percents = listOf(alert.alert.usedPercent),
+                        names = listOf(alert.category.name),
+                    ),
                 )
-            if (verified !is GuardrailResult.Pass) return false
+            ) {
+                return false
+            }
 
             NotificationManagerCompat.from(context).notify(
                 alert.budgetId.hashCode(),
@@ -148,6 +155,19 @@ internal class AndroidBudgetAlertNotifier
             )
             return true
         }
+
+        /**
+         * Whether the composed text may be shown (AI-ARC-004).
+         * Why:    the check runs on the **composed** text, not on the arguments: a resource string
+         *         edited to add "that's about ₹500 a week" would sail past any check on the values
+         *         alone, and that is exactly the plausible invention the guardrail exists to stop.
+         * Result: `true` when every figure resolves to one the engine produced.
+         * Input:  [text] — title and body; [evidence] — what the engine produced. Output: [Boolean].
+         */
+        private fun verified(
+            text: String,
+            evidence: GuardrailEvidence,
+        ): Boolean = guardrail.verify(GuardrailInput(text, evidence)).getOrNull() is GuardrailVerdict.Pass
 
         /**
          * Builds the message for one band.

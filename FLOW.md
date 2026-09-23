@@ -470,6 +470,24 @@ BudgetAlertWorker · CardAlertWorker · InsightRefreshWorker (after refresh, §7
   held / folded: nothing claimed — offered again on the next daily run; still in the feed/banner
 ```
 
+### 2.12 · Whether a figure may be said at all — AI-GRD (issue 9.7)
+
+**The last gate before any text with a number in it reaches a person.** It decides; it never
+rewrites. Today three notifiers ask it; from epic 10 the chat layer asks it too, and the ladder is
+what turns "that number is not backed by anything" into another attempt instead of a fabrication.
+
+```
+BudgetAlertNotifier · CardAlertNotifier · InsightNotifier   (:app, after NotificationRepository §2.11)
+└─ compose title + body from engine fields only (P-03; MoneyFormatter / DateFormatter)
+   → GuardrailEngine.verify(GuardrailInput(text, GuardrailEvidence(amounts, percents,
+         percentsBps, counts, quantities, dates, names), attemptsMade))
+       ├─ strike out names (spaces, so offsets survive)      domain/engines/guardrail — pure
+       ├─ extract  rupees → paise → percentages → dates → any remaining number
+       ├─ resolve each against the allowed renderings        (RULE-GRD-TRANSFORMS)
+       └─ Pass | Regenerate(spans, attemptsLeft) | Refuse     (RULE-GRD-LADDER)
+   → Pass: NotificationManagerCompat.notify(...)   · anything else: nothing is posted, nothing logged
+```
+
 ### 2.1 · The dashboard's headline figure (issue 5.2)
 
 Shape C again, but it is the **first read in the app assembled from other repositories** rather than

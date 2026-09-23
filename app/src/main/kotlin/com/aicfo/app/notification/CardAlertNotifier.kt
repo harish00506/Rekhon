@@ -10,11 +10,14 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.aicfo.app.MainActivity
 import com.aicfo.app.R
-import com.aicfo.core.model.GuardrailResult
+import com.aicfo.core.common.getOrNull
 import com.aicfo.core.model.MoneyFormatter
-import com.aicfo.core.model.NumericGuardrail
 import com.aicfo.data.repository.CardAlertForAccount
 import com.aicfo.domain.engines.card.CardAlertKind
+import com.aicfo.domain.engines.guardrail.GuardrailEngine
+import com.aicfo.domain.engines.guardrail.GuardrailEvidence
+import com.aicfo.domain.engines.guardrail.GuardrailInput
+import com.aicfo.domain.engines.guardrail.GuardrailVerdict
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -75,6 +78,7 @@ internal class AndroidCardAlertNotifier
     @Inject
     constructor(
         @ApplicationContext private val context: Context,
+        private val guardrail: GuardrailEngine,
     ) : CardAlertNotifier {
         /**
          * Composes the message, verifies it, and posts it on the right channel.
@@ -109,15 +113,18 @@ internal class AndroidCardAlertNotifier
             // "HDFC Regalia 4521" is an ordinary thing to call a card. Without this the digits in
             // the name would read as an unverifiable count and a correct reminder would be silently
             // dropped — the failure issue 4.6 hit with category names.
-            val verified =
-                NumericGuardrail.verify(
-                    candidateText = "$title $body",
-                    allowedAmounts = listOfNotNull(alert.alert.amount, alert.alert.minimumDue, alert.alert.creditLimit),
-                    allowedPercents = listOfNotNull(alert.alert.ratioBps?.let { alert.alert.usedPercent }),
-                    allowedText = listOf(alert.accountName),
-                    allowedCounts = listOf(alert.alert.daysUntilDue),
+            if (!verified(
+                    "$title $body",
+                    GuardrailEvidence(
+                        amounts = listOfNotNull(alert.alert.amount, alert.alert.minimumDue, alert.alert.creditLimit),
+                        percents = listOfNotNull(alert.alert.ratioBps?.let { alert.alert.usedPercent }),
+                        counts = listOf(alert.alert.daysUntilDue),
+                        names = listOf(alert.accountName),
+                    ),
                 )
-            if (verified !is GuardrailResult.Pass) return false
+            ) {
+                return false
+            }
 
             NotificationManagerCompat.from(context).notify(
                 // The kind is part of the id, not just the account: a card that is both due and over
@@ -136,6 +143,18 @@ internal class AndroidCardAlertNotifier
             )
             return true
         }
+
+        /**
+         * Whether the composed text may be shown (AI-ARC-004).
+         * Why:    the check runs on the **composed** text, not on the arguments: a resource string
+         *         edited to add a figure would sail past any check on the values alone.
+         * Result: `true` when every figure resolves to one the engine produced.
+         * Input:  [text] — title and body; [evidence] — what the engine produced. Output: [Boolean].
+         */
+        private fun verified(
+            text: String,
+            evidence: GuardrailEvidence,
+        ): Boolean = guardrail.verify(GuardrailInput(text, evidence)).getOrNull() is GuardrailVerdict.Pass
 
         /**
          * Builds the message for one alert.

@@ -8,6 +8,13 @@
         regenerated / refused. No fabricated number ever reaches the user.
   Changelog:
     2026-07-17 — Created from SRS v1.7 §7.1 (AI-ARC-004), §19.1, §19.3 (CHT-001).
+    2026-09-23 — Issue 9.7 implemented this file as AI-GRD (:domain:engines:guardrail, ADR-0048).
+                 N and the transform allowlist are now the rulebook rows RULE-GRD-LADDER and
+                 RULE-GRD-TRANSFORMS. Not implemented: the convert_currency FX transform (no such
+                 tool), the refusal's wording and its audit_log event (both belong with the chat
+                 layer), and regeneration itself — the engine says "ask again", and nothing asks
+                 until epic 10 brings a model. Rounding is bounded there in a way this file does
+                 not state: it stops at the rupee, so lakh/crore wording verifies only when exact.
 -->
 
 # Numeric Guardrail (AI-ARC-004)

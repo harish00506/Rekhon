@@ -46,6 +46,8 @@ import com.aicfo.domain.engines.forecast.ForecastEngine
 import com.aicfo.domain.engines.forecast.ForecastEngineFactory
 import com.aicfo.domain.engines.goals.GoalEngine
 import com.aicfo.domain.engines.goals.GoalWaterfallEngine
+import com.aicfo.domain.engines.guardrail.GuardrailEngine
+import com.aicfo.domain.engines.guardrail.GuardrailEngineFactory
 import com.aicfo.domain.engines.healthscore.HealthScoreEngine
 import com.aicfo.domain.engines.healthscore.HealthScoreEngineFactory
 import com.aicfo.domain.engines.insight.InsightEngine
@@ -612,6 +614,17 @@ object RepositoryModule {
             activeProfileId = demoMode.activeProfileId,
             idGenerator = idGenerator,
         )
+
+    /**
+     * AI-GRD, the numeric guardrail every user-facing figure passes (issue 9.7; AI-ARC-004).
+     * Why:    one gate, injected rather than reached for statically, so a caller cannot quietly skip
+     *         it and a test can see that it was asked (ARC-003).
+     * Result: a [GuardrailEngine]. Input: none. Output: the engine.
+     * Changelog: 2026-09-23 — Created for issue 9.7.
+     */
+    @Provides
+    @Singleton
+    fun provideGuardrailEngine(): GuardrailEngine = GuardrailEngineFactory.create()
 
     /**
      * AI-NTF, the notification policy (issue 9.6; §17.2).

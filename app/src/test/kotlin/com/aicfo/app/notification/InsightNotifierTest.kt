@@ -9,6 +9,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.aicfo.core.model.DateFormatter
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.MoneyFormatter
+import com.aicfo.domain.engines.guardrail.GuardrailEngineFactory
 import com.aicfo.domain.engines.insight.Insight
 import com.aicfo.domain.engines.insight.InsightType
 import com.aicfo.domain.engines.notification.NotificationKind
@@ -40,7 +41,7 @@ import java.time.LocalDate
 @RunWith(RobolectricTestRunner::class)
 class InsightNotifierTest {
     private val application = ApplicationProvider.getApplicationContext<Application>()
-    private val notifier = AndroidInsightNotifier(application)
+    private val notifier = AndroidInsightNotifier(application, GuardrailEngineFactory.create())
     private val manager = application.getSystemService(NotificationManager::class.java)
 
     /** Input: none. Output: the permission granted and the channels registered, as at start-up. */
@@ -131,6 +132,17 @@ class InsightNotifierTest {
         val seasonal = crunch().copy(type = InsightType.SEASONAL_MONTH)
 
         assertFalse(notifier.notify(seasonal, NotificationKind.AI_INSIGHT, blurAmounts = false))
+        assertTrue(shadowOf(manager).allNotifications.isEmpty())
+    }
+
+    @Test
+    fun `a figure the engine did not produce is not posted at all`() {
+        // The wiring, not the gate: AI-GRD is proven in its own module. What this asserts is that a
+        // refusal reaches the phone as silence rather than as a notification with a warning
+        // (AI-ARC-004, P-03). The amount here is real; the *evidence* no longer contains it.
+        val lying = crunch().copy(amount = null, secondary = null)
+
+        assertFalse(notifier.notify(lying, NotificationKind.CRITICAL_MONEY, blurAmounts = false))
         assertTrue(shadowOf(manager).allNotifications.isEmpty())
     }
 

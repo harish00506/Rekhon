@@ -10,15 +10,19 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.aicfo.app.MainActivity
 import com.aicfo.app.R
+import com.aicfo.core.common.getOrNull
 import com.aicfo.core.model.DateFormatter
-import com.aicfo.core.model.GuardrailResult
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.MoneyFormatter
-import com.aicfo.core.model.NumericGuardrail
+import com.aicfo.domain.engines.guardrail.GuardrailEngine
+import com.aicfo.domain.engines.guardrail.GuardrailEvidence
+import com.aicfo.domain.engines.guardrail.GuardrailInput
+import com.aicfo.domain.engines.guardrail.GuardrailVerdict
 import com.aicfo.domain.engines.insight.Insight
 import com.aicfo.domain.engines.insight.InsightType
 import com.aicfo.domain.engines.notification.NotificationKind
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.time.LocalDate
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -114,6 +118,7 @@ internal class AndroidInsightNotifier
     @Inject
     constructor(
         @ApplicationContext private val context: Context,
+        private val guardrail: GuardrailEngine,
     ) : InsightNotifier {
         /**
          * Composes the message, verifies it, and posts.
@@ -135,14 +140,18 @@ internal class AndroidInsightNotifier
             if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
 
             val (title, body) = compose(insight, blurAmounts) ?: return false
-            val verified =
-                NumericGuardrail.verify(
-                    candidateText = "$title $body",
-                    allowedAmounts = listOfNotNull(insight.amount, insight.secondary),
-                    allowedCounts = listOfNotNull(insight.quantity),
-                    allowedText = listOfNotNull(insight.subjectLabel) + dates(insight),
+            if (!verified(
+                    "$title $body",
+                    GuardrailEvidence(
+                        amounts = listOfNotNull(insight.amount, insight.secondary),
+                        counts = listOfNotNull(insight.quantity),
+                        dates = dates(insight),
+                        names = listOfNotNull(insight.subjectLabel),
+                    ),
                 )
-            if (verified !is GuardrailResult.Pass) return false
+            ) {
+                return false
+            }
 
             NotificationManagerCompat.from(context).notify(
                 InsightNotifications.keyFor(insight).hashCode(),
@@ -161,6 +170,18 @@ internal class AndroidInsightNotifier
             )
             return true
         }
+
+        /**
+         * Whether the composed text may be shown (AI-ARC-004).
+         * Why:    the check runs on the **composed** text, not on the arguments: a resource string
+         *         edited to add a figure would sail past any check on the values alone.
+         * Result: `true` when every figure resolves to one the engine produced.
+         * Input:  [text] — title and body; [evidence] — what the engine produced. Output: [Boolean].
+         */
+        private fun verified(
+            text: String,
+            evidence: GuardrailEvidence,
+        ): Boolean = guardrail.verify(GuardrailInput(text, evidence)).getOrNull() is GuardrailVerdict.Pass
 
         /**
          * The words for one insight.
@@ -218,9 +239,16 @@ internal class AndroidInsightNotifier
                 )
         }
 
-        /** Result: the dates the text may contain, as the text renders them. Input: [insight]. */
-        private fun dates(insight: Insight): List<String> =
-            listOfNotNull(insight.date?.toString(), insight.period).map(::day)
+        /**
+         * The dates this insight's words may name (GRD-004).
+         * Why:    handed over as dates rather than as rendered strings: which renderings count as
+         *         the same day is AI-GRD's to decide, and a notifier that pre-rendered them would be
+         *         quietly widening the allowlist to whatever it happened to format.
+         * Result: the crunch day and the period, when the period is a day. Input: [insight].
+         * Output: `List<LocalDate>`.
+         */
+        private fun dates(insight: Insight): List<LocalDate> =
+            listOfNotNull(insight.date, insight.period.takeIf(DateFormatter::isCalendarDate)?.let(LocalDate::parse))
 
         /** Result: [isoDate] rendered for a person. */
         private fun day(isoDate: String): String = DateFormatter.day(isoDate)
