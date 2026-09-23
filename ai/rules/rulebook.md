@@ -13,6 +13,7 @@
     2026-09-19 — Added RULE-FHS-PILLARS, RULE-FHS-BANDS and RULE-FHS-SIGNALS for issue 9.4 (AI-FHS, §14).
     2026-09-20 — Added RULE-INS-RANK and RULE-INS-DEDUP for issue 9.5 (AI-ORCH, §7.2).
     2026-09-20 — Added RULE-NTF-BUDGET and RULE-NTF-QUIET for issue 9.6 (AI-NTF, §17.2).
+    2026-09-23 — Added RULE-GRD-LADDER and RULE-GRD-TRANSFORMS for issue 9.7 (AI-GRD, AI-ARC-004).
 -->
 
 # Financial Rulebook & Heuristics Knowledge Base (RULE-KB)
@@ -94,6 +95,8 @@ evaluate: RuleEngine.evaluate(ruleId, FeatureSnapshot)
 | RULE-NTF-QUIET | 22:00–08:00 in the profile's zone delays non-critical notifications; critical may bypass | AI-NTF |
 | RULE-INS-RANK | The feed orders by severity, then amount at stake, then fingerprint; the dashboard shows the top three | AI-ORCH |
 | RULE-INS-DEDUP | One insight per type + subject + period; a recomputation updates it; a dismissal suppresses it for 7 days | AI-ORCH |
+| RULE-GRD-LADDER | Unverifiable figures send the reply back to be written again, at most twice; after that it is refused and only verified figures survive | AI-GRD |
+| RULE-GRD-TRANSFORMS | A figure verifies only as an engine value through an approved rendering: money formatting, display rounding, lakh/crore, paise, bps as percent, and engine dates | AI-GRD |
 | RULE-FHS-SIGNALS | Runway linear to M (≥ 25 once a month is covered); obligations 30%→100, 55%→0; card utilisation 30%→100, 100%→0; savings rate 0%→0, 30%→100 | AI-FHS |
 
 ## Governance (binding)

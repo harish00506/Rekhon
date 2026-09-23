@@ -11,6 +11,35 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The deterministic engine layer: fixed/variable + nature, cash-flow forecast, seasonality, health
 > score, the Insight Orchestrator, notifications, and the numeric guardrail.
 
+### [0.9.7] — Issue 9.7: Numeric guardrail (AI-GRD)  (2026-09-23)
+
+- **Implemented:** `:domain:engines:guardrail` (`AI-GRD` 1.0) — the gate every figure the app states
+  in words must pass (**AI-ARC-004**, **P-03**, `ai/chat/guardrail.md`, **ADR-0048**).
+  - **A number is shown only if an engine produced it.** The check reads the finished sentence, not
+    the template, and compares every figure in it against the values behind it.
+  - **The same figure, written for a reader, still counts:** ₹1,23,456.78 as "₹1,23,457",
+    "₹1.5 lakh", "15000000 paise", a rate as "35.5%", a date as "31 Mar 2027" or "March 2027".
+  - **Rounding stops at the rupee.** "₹2 lakh" for ₹1.5 lakh is a third of the figure, so lakh and
+    crore wording is accepted only where it is exact.
+  - **Arithmetic the app did not do cannot pass.** "₹500 × 12 = ₹6,000" needs an engine that
+    published ₹6,000.
+  - **Three outcomes, no fourth:** show it, ask for it to be written again (twice at most), or
+    refuse. A refusal is silence — never a figure with a warning next to it.
+- **The limits are settings, not code:** the attempt limit and the list of accepted renderings are
+  rulebook rows, so the gate can be tightened without touching an engine.
+- **One gate, not two:** this replaces the smaller check shipped with the budget alerts in 0.4.5,
+  and the budget, card and insight notifications now go through it. Two things they could not say
+  before, they can now — a rounded amount and lakh/crore wording — and a four-digit figure, which
+  the old check could not read, is now verified like any other.
+- **Not yet** (ADR-0048): currency conversion; the wording of a refusal and its audit entry; and
+  asking again, which needs the chat model that arrives with the next epic.
+- **Tests:** 30 behaviour tests; 6 identities × 300 cases; a golden file from an independent oracle
+  that reads the rulebook and formats the figures itself — it caught the extractor swallowing a
+  sentence comma, which would have blocked the app's own correct text; 6 drift tests. Six deliberate
+  breaks — truncation accepted as rounding, dates no longer read first, a ladder that never refuses,
+  lakh/crore rounded to whole lakhs, names not struck out, and a mirror drifting from the rulebook —
+  were each watched go red.
+
 ### [0.9.6] — Issue 9.6: Notification engine + policy (AI-NTF)  (2026-09-21)
 
 - **Implemented:** `:domain:engines:notification` (`AI-NTF` 1.0), the one gate every notification

@@ -5,7 +5,7 @@
     "what": "Seed rows for the rules_knowledge_base table (§29.1). RuleEngine.evaluate(ruleId, FeatureSnapshot) -> RuleResult{pass|warn|fail, measuredValue, threshold, evidence, ruleId, version}.",
     "result": "Changing a number here changes the app's advice everywhere that rule is cited, reproducibly and with an audit trail.",
     "source_section": "§29",
-    "version": "1.19.0",
+    "version": "1.20.0",
     "changelog": [
       "2026-07-17 — Created from SRS v1.7 §29.2–§29.5; defaults are the floor, refined by user overrides at runtime.",
       "2026-08-07 — Added RULE-SMS-PARSE for issue 3.9's opt-in, on-device bank-alert parser (§18, §23).",
@@ -19,6 +19,7 @@
       "2026-09-19 — Added RULE-FCT-METHOD and RULE-FCT-CRUNCH for issue 9.2's cash-flow forecast (§9, AI-FCT). §9.2 states the method's numbers in prose — a 90-day horizon, a 90-day lookback, a 10% trimmed mean, 500 seeded Monte-Carlo paths, P10/P50/P90 bands — and AI-FCT-002 names a ₹5,000 default buffer; each is now a params row so no engine carries them as constants (CLAUDE.md §6). New rows at v1.0, no shipped row changed. See ADR-0043.",
       "2026-09-19 — Added RULE-FHS-PILLARS, RULE-FHS-BANDS and RULE-FHS-SIGNALS for issue 9.4's Financial Health Score (§14, AI-FHS). §14.1's table gives the five pillar weights, the band edges and a few scoring anchors in prose (runway 100 at ≥ M, obligation ratio 30%→100 and 55%→0, savings rate 100 at ≥ 30%); each is now a params row. Two numbers §14 leaves unstated are minted here and say so in their source notes: the runway floor boost (25 points at ≥ 1 month) and where card utilisation reaches zero (100%). The utilisation 'good' edge and the savings-rate top are NOT restated — AI-FHS reads RULE-CC-UTIL.max_utilisation_pct and RULE-SAVE-RATE.excellent_pct, which already say 30. New rows at v1.0, no shipped row changed. See ADR-0045.",
       "2026-09-20 — Added RULE-INS-RANK and RULE-INS-DEDUP for issue 9.5's Insight Orchestrator (§7.2, AI-ORCH). §7.2 states the deduplication fingerprint (type + subject + period) and that dismissed fingerprints are suppressed for their snooze window, but names no window length and no feed order; FR-HOME-001 asks for the 'top 3' on the dashboard. The severity order, the tie-breaks, the dashboard size and the seven-day snooze are now params rather than engine constants. New rows at v1.0, no shipped row changed. See ADR-0046.",
+      "2026-09-23 — Added RULE-GRD-LADDER and RULE-GRD-TRANSFORMS for issue 9.7's numeric guardrail (AI-GRD, AI-ARC-004, ai/chat/guardrail.md). That file states N = 2 regeneration attempts and the allowlist of display transforms as prose; both are params now rather than constants in the engine, so tightening the gate — disallowing lakh/crore wording, say — is a data edit. New rows at v1.0, no shipped row changed. See ADR-0048.",
       "2026-09-20 — Added RULE-NTF-BUDGET and RULE-NTF-QUIET for issue 9.6's notification policy (§17.2, AI-NTF). NTF-001's caps (2 non-critical a day, 8 a week, critical exempt) and NTF-002's quiet hours (22:00–08:00, critical may bypass) are stated in the SRS as prose; they are now params an engine reads rather than constants it carries. The taxonomy's per-type defaults (§17.1) are NOT minted: they are user settings with no field yet, and inventing rows for them would ship numbers nothing reads (the ADR-0034 argument). New rows at v1.0, no shipped row changed. See ADR-0047."
     ],
     "schema": {
@@ -641,6 +642,32 @@
       "rationale": "A budget warning at 02:00 is worth nothing and costs the channel. A bill due tomorrow may be worth the interruption, which is why the exemption exists and why it is the user's to keep or withdraw.",
       "source_note": "SRS NTF-002 (default 22:00–08:00) and §17.1's 'can bypass quiet hours (user choice)'. The choice has no setting yet, so the default applies to everyone (ADR-0047). NTF-002's preference for the user's observed app-open hour is not implemented — see the ADR.",
       "consumed_by": ["AI-NTF"],
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "rule_id": "RULE-GRD-LADDER",
+      "domain": "guardrail",
+      "name": "Every figure in LLM-written text must resolve to an engine or tool result. While any does not, the reply is sent back to be written again, at most twice; after that it is refused and only the verified figures survive.",
+      "formula_id": "guardrail_ladder",
+      "params_json": { "max_attempts": 2, "refuse_on_exhaustion": true },
+      "severity": "critical",
+      "rationale": "Most failures are the model stating a real number it forgot to fetch, and asking again fixes those cheaply. Refusal is the backstop for the claim no tool can support \u2014 exactly the case where a confident fabrication does the most harm.",
+      "source_note": "ai/chat/guardrail.md: 'N = max regeneration attempts (default 2)' and the PASS/REGENERATE/REFUSE decision table, with GRD-005 on what a refusal may contain.",
+      "consumed_by": ["AI-GRD"],
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "rule_id": "RULE-GRD-TRANSFORMS",
+      "domain": "guardrail",
+      "name": "A figure verifies only as an engine value rendered through an approved display transform: the app's own money formatting, display rounding to at most two decimals, Indian lakh and crore wording, paise minor units, basis points shown as a percentage, and an engine date shown as ISO, a localised day, a month with its year, or that year alone. Any other number, including one the model worked out for itself, is fabrication.",
+      "formula_id": "guardrail_transforms",
+      "params_json": { "allow_rounded_display": true, "max_display_decimals": 2, "allow_lakh_crore_words": true, "allow_minor_units": true, "allow_bps_as_percent": true, "allow_year_alone": true },
+      "severity": "critical",
+      "rationale": "GRD-002 and GRD-003: the allowlist is what separates the same number written for a reader from a new number. Arithmetic the model performs is not on the list, so \u20b9500 \u00d7 12 = \u20b96,000 cannot pass unless an engine published \u20b96,000.",
+      "source_note": "ai/chat/guardrail.md GRD-002, GRD-003 and GRD-004. Two decimals is the app's own money rendering. FX via convert_currency is deliberately NOT on the list \u2014 no such tool exists yet (ADR-0048).",
+      "consumed_by": ["AI-GRD"],
       "enabled": true,
       "version": "1.0"
     }

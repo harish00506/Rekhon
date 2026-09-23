@@ -76,6 +76,7 @@ include(":domain:engines:seasonality") // §9.3 AI-SEAS — seasonal index per c
 include(":domain:engines:healthscore") // §14 AI-FHS — five weighted pillars -> a 0–1000 score, band, contributions, lever
 include(":domain:engines:insight")     // §7.2 AI-ORCH — engine results -> a deduplicated, ranked insight feed
 include(":domain:engines:notification") // §17.2 AI-NTF — what may interrupt the user, and when
+include(":domain:engines:guardrail") // AI-ARC-004 AI-GRD — no unverified figure reaches the user
 include(":domain:usecase")
 
 // :data:*                  the ONLY DAO/network touchers (ARC-005)

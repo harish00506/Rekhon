@@ -16,6 +16,7 @@
     2026-09-20 — Issue 9.4 (AI-FHS health score) merged to dev.
     2026-09-20 — Issue 9.5 (AI-ORCH insight orchestrator + feed) merged to dev; schema 23.
     2026-09-21 — Issue 9.6 (AI-NTF notification policy) merged to dev; schema 24.
+    2026-09-23 — Issue 9.7 (AI-GRD numeric guardrail) merged to dev; Epic 9 complete.
 -->
 
 # AI Personal CFO — Project Memory
@@ -27,12 +28,13 @@
 
 ## Current state
 
-- **Version:** `0.9.6` (see [`../VERSION`](../VERSION)) · **Phase:** 2–3. **Schema is v24** (9.6's `notification_log`).
+- **Version:** `0.9.7` (see [`../VERSION`](../VERSION)) · **Phase:** 2–3. **Schema is v24**, unchanged by 9.7.
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
   forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
-  feed) and 9.6 (the notification policy) shipped; **9.7 is next**. Epic 9 (AI core engines, incl.
-  the 9.2 forecast) is still the one the goals work kept waiting on.
-- **Currently working file:** none. Issues **8.1–8.3 and 9.1–9.6 are merged to `dev`**
+  feed), 9.6 (the notification policy) and 9.7 (the numeric guardrail) shipped — **Epic 9 is
+  complete**. Epic 10 (the chat copilot) is next, and it inherits AI-GRD's ladder rather than
+  inventing one.
+- **Currently working file:** none. Issues **8.1–8.3 and 9.1–9.7 are merged to `dev`**
   ([8.1 tracker](issues/8.1-e2ee-backup-argon2id-aes-256-gcm-tracker.md), ADR-0039;
   [8.2 tracker](issues/8.2-restore-on-fresh-device-tracker.md), ADR-0040;
   [8.3 tracker](issues/8.3-backup-restore-drill-tracker.md), ADR-0041;
@@ -41,7 +43,8 @@
   [9.3 tracker](issues/9.3-seasonality-ai-seas-tracker.md), ADR-0044;
   [9.4 tracker](issues/9.4-financial-health-score-ai-fhs-tracker.md), ADR-0045;
   [9.5 tracker](issues/9.5-insight-orchestrator-feed-tracker.md), ADR-0046;
-  [9.6 tracker](issues/9.6-notification-engine-policy-tracker.md), ADR-0047).
+  [9.6 tracker](issues/9.6-notification-engine-policy-tracker.md), ADR-0047;
+  [9.7 tracker](issues/9.7-guardrail-ai-arc-004-tracker.md), ADR-0048).
 - **`origin/dev` is still at `6afa5f0`** — local `dev` is well ahead (7.4, 7.5, the card APR field,
   the FOO/goals agreement, 8.1 and their records),
   and **the push is blocked, not skipped**: this machine has no GitHub credentials (no helper, no
@@ -54,6 +57,20 @@
   `dev` was two issues behind once and nobody noticed.
 - **The forecast exists now (9.2), but the goals still use the observed P50 surplus** (ADR-0035,
   ADR-0037). Switching `SurplusRepository` to `ForecastRepository` is ADR-0043's recorded follow-up.
+
+### What 9.7 changed that a future issue must know
+
+- **`core:model.NumericGuardrail` is gone.** Every figure in user-facing text goes through the
+  injected `GuardrailEngine` (`:domain:engines:guardrail`, AI-GRD). A new sender builds a
+  `GuardrailEvidence` from the engine values behind its words and shows nothing unless the verdict
+  is `Pass`.
+- **Verification is an allowlist of renderings**, so adding a way to write a figure (FX, a new date
+  format) is a change to `AllowedRenderings` **and** `RULE-GRD-TRANSFORMS`, never a loosened
+  comparison.
+- **Epic 10's chat inherits the ladder**: the engine answers `Regenerate` with the offending spans
+  and `Refuse` with the verified ones. The words for both — the prompt and the user-facing fallback
+  (GRD-005) — are the chat layer's, in `strings.xml`.
+- **rules-kb is 1.20.0**; ten `*Rules.kt` mirrors restate it.
 
 ### What 9.6 changed that a future issue must know
 

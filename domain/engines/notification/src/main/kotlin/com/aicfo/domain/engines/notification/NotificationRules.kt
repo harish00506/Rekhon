@@ -46,7 +46,7 @@ data class NotificationRules(
         private const val LAST_HOUR = 23
 
         /** The rulebook file these values were copied from, as `_meta.version`. */
-        const val RULEBOOK_VERSION = "1.19.0"
+        const val RULEBOOK_VERSION = "1.20.0"
 
         /** `RULE-NTF-BUDGET` — NTF-001's caps. */
         val BUDGET = RuleCitation("RULE-NTF-BUDGET", "1.0")
