@@ -47,10 +47,10 @@
   [9.6 tracker](issues/9.6-notification-engine-policy-tracker.md), ADR-0047;
   [9.7 tracker](issues/9.7-guardrail-ai-arc-004-tracker.md), ADR-0048;
   [10.1 tracker](issues/10.1-purchase-advisor-ai-pa-trace-card-tracker.md), ADR-0049).
-- **`origin/dev` is still at `6afa5f0`** — local `dev` is well ahead (7.4, 7.5, the card APR field,
-  the FOO/goals agreement, 8.1 and their records),
-  and **the push is blocked, not skipped**: this machine has no GitHub credentials (no helper, no
-  `gh`, no token, and the one SSH key is for another host). Pushing needs an authenticated shell.
+- **`origin/dev` is current again** — `23acb26` (issue 10.1), pushed 2026-09-25. Everything from
+  7.4 through 10.1 that had been stranded locally is on the remote. Earlier sessions recorded the
+  push as blocked for want of credentials; it works now, so check `git log origin/dev..dev` rather
+  than assuming either state.
 - **This machine builds with Temurin JDK 21** (`~/.jdks/temurin-21`) and the SDK at `~/Android/Sdk`;
   `local.properties` points there. Gradle stays at **8.13**: JDK 25 would need Gradle ≥ 9.1, AGP 8.x
   stops working at Gradle 9.6, and Hilt 2.56.2's transforms are ambiguous under Gradle 9. Emulator:
