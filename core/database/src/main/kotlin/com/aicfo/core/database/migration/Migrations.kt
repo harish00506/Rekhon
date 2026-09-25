@@ -1379,6 +1379,63 @@ internal object Migrations {
         )
     }
 
+    /**
+     * 25 → 26: the buy list and its stored answers (issue 10.2; §13.3).
+     *
+     * Why:  §13.3 sketches `answers_json`; these are typed rows instead, so an answer can be counted
+     *       and queried when §32's value model eventually reads them, and DB-005's blob-versioning
+     *       question never arises. One answer per question per wish, enforced by a unique index —
+     *       changing your mind replaces an answer rather than adding a second one.
+     * Result: `wishlist_item` and `interview_answer`, with their indices.
+     * Input: [db]. Output: none.
+     */
+    val MIGRATION_25_26 =
+        object : Migration(VERSION_25, VERSION_26) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(WISHLIST_ITEM_TABLE)
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_wishlist_item_profile_id` ON `wishlist_item` (`profile_id`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_wishlist_item_profile_id_status` " +
+                        "ON `wishlist_item` (`profile_id`, `status`)",
+                )
+                createInterviewAnswer(db)
+            }
+        }
+
+    /**
+     * The answers table and its indices (issue 10.2).
+     * Result: `interview_answer` exists. Input: [db]. Output: none.
+     */
+    private fun createInterviewAnswer(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `interview_answer` (" +
+                "`id` TEXT NOT NULL, " +
+                "`profile_id` TEXT NOT NULL, " +
+                "`item_id` TEXT NOT NULL, " +
+                "`question` TEXT NOT NULL, " +
+                "`answer_key` TEXT NOT NULL, " +
+                "`points` INTEGER NOT NULL, " +
+                "`amount_minor` INTEGER, " +
+                "`answered_at_utc_millis` INTEGER NOT NULL, " +
+                "`deleted_at_utc_millis` INTEGER, " +
+                "`created_at_utc_millis` INTEGER NOT NULL, " +
+                "`updated_at_utc_millis` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_interview_answer_profile_id` ON `interview_answer` (`profile_id`)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_interview_answer_item_id` ON `interview_answer` (`item_id`)",
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_interview_answer_profile_id_item_id_question` " +
+                "ON `interview_answer` (`profile_id`, `item_id`, `question`)",
+        )
+    }
+
     /** Every migration, in order, for `CfoDatabaseFactory` to register. */
     val ALL: Array<Migration> =
         arrayOf(
@@ -1406,6 +1463,7 @@ internal object Migrations {
             MIGRATION_22_23,
             MIGRATION_23_24,
             MIGRATION_24_25,
+            MIGRATION_25_26,
         )
 
     /**
@@ -1518,4 +1576,32 @@ internal object Migrations {
 
     /** The version issue 10.1 introduced: the Purchase Advisor's kept verdicts. */
     private const val VERSION_25 = 25
+
+    /** The version issue 10.2 introduced: the buy list and its answers. */
+    private const val VERSION_26 = 26
+
+    /**
+     * `wishlist_item`'s columns (issue 10.2).
+     * Held as a constant for the reason [PURCHASE_TRACE_TABLE] is: the DDL inside the method would
+     * put it past detekt's 40-line limit.
+     */
+    private const val WISHLIST_ITEM_TABLE =
+        "CREATE TABLE IF NOT EXISTS `wishlist_item` (" +
+            "`id` TEXT NOT NULL, " +
+            "`profile_id` TEXT NOT NULL, " +
+            "`name` TEXT NOT NULL, " +
+            "`est_price_minor` INTEGER NOT NULL, " +
+            "`category_id` TEXT, " +
+            "`method` TEXT NOT NULL, " +
+            "`monthly_emi_minor` INTEGER, " +
+            "`urgency` TEXT NOT NULL, " +
+            "`want_score` INTEGER NOT NULL, " +
+            "`status` TEXT NOT NULL, " +
+            "`target_price_minor` INTEGER, " +
+            "`last_interviewed_at_utc_millis` INTEGER, " +
+            "`last_trace_id` TEXT, " +
+            "`deleted_at_utc_millis` INTEGER, " +
+            "`created_at_utc_millis` INTEGER NOT NULL, " +
+            "`updated_at_utc_millis` INTEGER NOT NULL, " +
+            "PRIMARY KEY(`id`))"
 }

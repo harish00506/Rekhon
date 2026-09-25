@@ -1684,7 +1684,8 @@ class MigrationRoundTripTest {
 
         val indices = mutableSetOf<String>()
         migrated.query(
-            "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name IN ('purchase_trace', 'purchase_trace_gate')",
+            "SELECT name FROM sqlite_master WHERE type = 'index' " +
+                "AND tbl_name IN ('purchase_trace', 'purchase_trace_gate')",
         ).use { cursor ->
             while (cursor.moveToNext()) cursor.getString(0)?.let(indices::add)
         }
@@ -1699,6 +1700,61 @@ class MigrationRoundTripTest {
             ),
         )
     }
+
+    /**
+     * 25 → 26: the buy list and its answers (issue 10.2; §13.3).
+     *
+     * Why:  the promise §13.3 makes is that answers are kept — and that changing your mind replaces
+     *       an answer rather than adding a second. Both are storage promises, so both are checked
+     *       here: the row survives the upgrade, and a duplicate `(profile, item, question)` is
+     *       refused by the index rather than by the code that happens to write it.
+     * Result: both tables exist, hold their rows, and refuse a second answer to one question.
+     */
+    @Test
+    fun migrate25To26_keepsAWishAndRefusesTwoAnswersToOneQuestion() {
+        helper.createDatabase(TEST_DB, 25).close()
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 26, true, Migrations.MIGRATION_25_26)
+
+        migrated.execSQL(wishlistInsert())
+        migrated.execSQL(answerInsert(id = "answer:1"))
+        var refused = false
+        try {
+            migrated.execSQL(answerInsert(id = "answer:2"))
+        } catch (expected: SQLiteConstraintException) {
+            refused = true
+        }
+        assertTrue("one answer per question, or changing your mind counts twice", refused)
+
+        migrated.query("SELECT name, want_score, status FROM wishlist_item WHERE id = 'wish:1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("Standing desk", cursor.getString(0))
+            assertEquals(65, cursor.getInt(1))
+            assertEquals("parked", cursor.getString(2))
+        }
+        migrated.query("SELECT answer_key, points FROM interview_answer WHERE item_id = 'wish:1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("need", cursor.getString(0))
+            assertEquals("the points the answer was worth at the time survive (AI-ARC-006)", 15, cursor.getInt(1))
+        }
+    }
+
+    /** One wish's SQL. */
+    private fun wishlistInsert(): String =
+        "INSERT INTO wishlist_item (id, profile_id, name, est_price_minor, category_id, method, " +
+            "monthly_emi_minor, urgency, want_score, status, target_price_minor, " +
+            "last_interviewed_at_utc_millis, last_trace_id, deleted_at_utc_millis, " +
+            "created_at_utc_millis, updated_at_utc_millis) " +
+            "VALUES ('wish:1', 'local', 'Standing desk', 800000, NULL, 'CASH', NULL, 'ROUTINE', 65, " +
+            "'parked', NULL, 1790000000000, NULL, NULL, 1790000000000, 1790000000000)"
+
+    /** One answer's SQL, so the duplicate case differs only by id. */
+    private fun answerInsert(id: String): String =
+        "INSERT INTO interview_answer (id, profile_id, item_id, question, answer_key, points, " +
+            "amount_minor, answered_at_utc_millis, deleted_at_utc_millis, created_at_utc_millis, " +
+            "updated_at_utc_millis) " +
+            "VALUES ('$id', 'local', 'wish:1', 'NEED_OR_WANT', 'need', 15, NULL, 1790000000000, NULL, " +
+            "1790000000000, 1790000000000)"
 
     /** One kept verdict's SQL — a ₹30,000 purchase that came back a stretch. */
     private fun purchaseTraceInsert(): String =

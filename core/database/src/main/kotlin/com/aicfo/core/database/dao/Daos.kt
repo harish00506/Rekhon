@@ -24,6 +24,7 @@ import com.aicfo.core.database.entity.GoalContributionEntity
 import com.aicfo.core.database.entity.GoalEntity
 import com.aicfo.core.database.entity.GoalFundingAccountEntity
 import com.aicfo.core.database.entity.InsightEntity
+import com.aicfo.core.database.entity.InterviewAnswerEntity
 import com.aicfo.core.database.entity.InvestmentHoldingEntity
 import com.aicfo.core.database.entity.InvestmentLotEntity
 import com.aicfo.core.database.entity.LoanEntity
@@ -38,6 +39,7 @@ import com.aicfo.core.database.entity.TagEntity
 import com.aicfo.core.database.entity.TransactionEntity
 import com.aicfo.core.database.entity.TransactionSplitEntity
 import com.aicfo.core.database.entity.TransactionTagEntity
+import com.aicfo.core.database.entity.WishlistItemEntity
 import kotlinx.coroutines.flow.Flow
 
 /*
@@ -2289,6 +2291,19 @@ interface DemoDao {
     suspend fun deletePurchaseTraceGates(profileId: String): Int
 
     /**
+     * Result: rows removed from `wishlist_item`. Input: [profileId]. Output: the count.
+     *
+     * Issue 10.2: a sample household's wishes are not the user's, and a list that kept them would
+     * suggest buying things nobody ever wanted.
+     */
+    @Query("DELETE FROM wishlist_item WHERE profile_id = :profileId")
+    suspend fun deleteWishlistItems(profileId: String): Int
+
+    /** Result: rows removed from `interview_answer`. Input: [profileId]. Output: the count. */
+    @Query("DELETE FROM interview_answer WHERE profile_id = :profileId")
+    suspend fun deleteInterviewAnswers(profileId: String): Int
+
+    /**
      * Result: rows removed from `card_alert`. Input: [profileId]. Output: the count.
      *
      * Cleared with the profile like every other claim table, and before `credit_card` for the
@@ -2664,6 +2679,14 @@ interface ArchiveDao {
     @Query("SELECT * FROM purchase_trace_gate WHERE profile_id = :profileId ORDER BY id")
     suspend fun purchaseTraceGates(profileId: String): List<PurchaseTraceGateEntity>
 
+    /** Result: the buy list, so a restored phone still has the wishes (issue 10.2). Input: [profileId]. */
+    @Query("SELECT * FROM wishlist_item WHERE profile_id = :profileId ORDER BY id")
+    suspend fun wishlistItems(profileId: String): List<WishlistItemEntity>
+
+    /** Result: the answers behind those wishes — §13.3's "answers are stored, not wasted". */
+    @Query("SELECT * FROM interview_answer WHERE profile_id = :profileId ORDER BY id")
+    suspend fun interviewAnswers(profileId: String): List<InterviewAnswerEntity>
+
     /** Result: every recurring rule, confirmed and dismissed alike (FR-TXN-006). Input: [profileId]. */
     @Query("SELECT * FROM recurring_rule WHERE profile_id = :profileId ORDER BY id")
     suspend fun recurringRules(profileId: String): List<RecurringRuleEntity>
@@ -2780,6 +2803,14 @@ interface ArchiveDao {
     /** Result: their gate tables are present (issue 10.1). Input: [rows]. Output: none (suspends). */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPurchaseTraceGates(rows: List<PurchaseTraceGateEntity>)
+
+    /** Result: the buy list is present (issue 10.2). Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertWishlistItems(rows: List<WishlistItemEntity>)
+
+    /** Result: the stored answers are present (issue 10.2). Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertInterviewAnswers(rows: List<InterviewAnswerEntity>)
 
     /**
      * Result: the card alerts already sent are present. Input: [rows]. Output: none (suspends).
@@ -4052,4 +4083,65 @@ interface PurchaseTraceDao {
     /** Result: every stored gate row for the profile — the archive's read. Input: [profileId]. */
     @Query("SELECT * FROM purchase_trace_gate WHERE profile_id = :profileId")
     suspend fun allGates(profileId: String): List<PurchaseTraceGateEntity>
+}
+
+/**
+ * The buy list and its stored answers (issue 10.2; §13.3).
+ *
+ * Why:  the list is read whole on every screen refresh and written one answer at a time, so the
+ *       reads are flows and the writes are small. Answers are upserted by `(item, question)`: a
+ *       user who changes their mind replaces an answer rather than adding a second one, which is
+ *       also what keeps a score from depending on the order rows were written in.
+ * What: the list's reads and writes, the answers, and the demo wipe's deletes.
+ * Result: one row per wish, and one per answered question.
+ * Changelog: 2026-09-26 — Created for issue 10.2.
+ */
+@Dao
+interface BuyListDao {
+    /** Result: the wish exists, replacing any with the same id. Input: [row]. Output: none. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertItem(row: WishlistItemEntity)
+
+    /** Result: the answer exists, replacing the previous answer to that question. Input: [row]. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAnswer(row: InterviewAnswerEntity)
+
+    /**
+     * The live list, newest wish first, with removed ones left out.
+     * Result: re-emits on every write. Input: [profileId]. Output: `Flow<List<WishlistItemEntity>>`.
+     */
+    @Query(
+        "SELECT * FROM wishlist_item WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
+            "AND status != 'removed' ORDER BY created_at_utc_millis DESC",
+    )
+    fun observeItems(profileId: String): Flow<List<WishlistItemEntity>>
+
+    /** Result: every answer for the profile's wishes, for the screen's one read. Input: [profileId]. */
+    @Query("SELECT * FROM interview_answer WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL")
+    fun observeAnswers(profileId: String): Flow<List<InterviewAnswerEntity>>
+
+    /** Result: one wish, or `null`. Input: [profileId]; [id]. */
+    @Query("SELECT * FROM wishlist_item WHERE profile_id = :profileId AND id = :id")
+    suspend fun findItem(
+        profileId: String,
+        id: String,
+    ): WishlistItemEntity?
+
+    /** Result: one wish's answers, oldest first. Input: [profileId]; [itemId]. */
+    @Query(
+        "SELECT * FROM interview_answer WHERE profile_id = :profileId AND item_id = :itemId " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY answered_at_utc_millis",
+    )
+    suspend fun answersFor(
+        profileId: String,
+        itemId: String,
+    ): List<InterviewAnswerEntity>
+
+    /** Result: every wish for the profile — the archive's read. Input: [profileId]. */
+    @Query("SELECT * FROM wishlist_item WHERE profile_id = :profileId")
+    suspend fun allItems(profileId: String): List<WishlistItemEntity>
+
+    /** Result: every stored answer — the archive's read. Input: [profileId]. */
+    @Query("SELECT * FROM interview_answer WHERE profile_id = :profileId")
+    suspend fun allAnswers(profileId: String): List<InterviewAnswerEntity>
 }

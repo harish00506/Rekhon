@@ -12,6 +12,7 @@ import com.aicfo.core.database.entity.GoalContributionEntity
 import com.aicfo.core.database.entity.GoalEntity
 import com.aicfo.core.database.entity.GoalFundingAccountEntity
 import com.aicfo.core.database.entity.InsightEntity
+import com.aicfo.core.database.entity.InterviewAnswerEntity
 import com.aicfo.core.database.entity.InvestmentHoldingEntity
 import com.aicfo.core.database.entity.InvestmentLotEntity
 import com.aicfo.core.database.entity.LoanEntity
@@ -26,6 +27,7 @@ import com.aicfo.core.database.entity.TagEntity
 import com.aicfo.core.database.entity.TransactionEntity
 import com.aicfo.core.database.entity.TransactionSplitEntity
 import com.aicfo.core.database.entity.TransactionTagEntity
+import com.aicfo.core.database.entity.WishlistItemEntity
 import kotlinx.serialization.Serializable
 
 /**
@@ -46,6 +48,7 @@ import kotlinx.serialization.Serializable
  *   2026-09-06 — Issue 7.4 added [goals], [goalContributions] and [goalFundingAccounts].
  *   2026-09-20 — Issue 9.5 added [insights]. Issue 9.6 added [notificationLog].
  *   2026-09-25 — Issue 10.1 added [purchaseTraces] and [purchaseTraceGates].
+ *   2026-09-26 — Issue 10.2 added [wishlistItems] and [interviewAnswers].
  *
  * **`goal` was missing from here for two issues, and the warning below is what it disproved.**
  * The argument for holding entities directly is that "a new column is in the archive the moment it
@@ -110,6 +113,8 @@ data class CfoArchive(
     val notificationLog: List<NotificationLogEntity> = emptyList(),
     val purchaseTraces: List<PurchaseTraceEntity> = emptyList(),
     val purchaseTraceGates: List<PurchaseTraceGateEntity> = emptyList(),
+    val wishlistItems: List<WishlistItemEntity> = emptyList(),
+    val interviewAnswers: List<InterviewAnswerEntity> = emptyList(),
 ) {
     companion object {
         /**

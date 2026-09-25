@@ -13,6 +13,7 @@ import com.aicfo.core.database.entity.GoalContributionEntity
 import com.aicfo.core.database.entity.GoalEntity
 import com.aicfo.core.database.entity.GoalFundingAccountEntity
 import com.aicfo.core.database.entity.InsightEntity
+import com.aicfo.core.database.entity.InterviewAnswerEntity
 import com.aicfo.core.database.entity.InvestmentHoldingEntity
 import com.aicfo.core.database.entity.InvestmentLotEntity
 import com.aicfo.core.database.entity.LoanEntity
@@ -27,6 +28,7 @@ import com.aicfo.core.database.entity.TagEntity
 import com.aicfo.core.database.entity.TransactionEntity
 import com.aicfo.core.database.entity.TransactionSplitEntity
 import com.aicfo.core.database.entity.TransactionTagEntity
+import com.aicfo.core.database.entity.WishlistItemEntity
 
 /**
  * One row in every profile-scoped table, with every nullable column set (issue 8.3; §21.5, DRL-001).
@@ -456,6 +458,43 @@ object DrillFixture {
                     countValue = null,
                     bpsValue = null,
                     textValue = null,
+                    createdAtUtcMillis = NOW,
+                    updatedAtUtcMillis = NOW,
+                ),
+            ),
+        )
+        dao.insertWishlistItems(
+            listOf(
+                WishlistItemEntity(
+                    id = "wish:1",
+                    profileId = profileId,
+                    name = "Standing desk",
+                    estPriceMinor = 8_000_00L,
+                    categoryId = "category:1",
+                    method = "CASH",
+                    monthlyEmiMinor = null,
+                    urgency = "ROUTINE",
+                    wantScore = 65,
+                    status = "watching",
+                    targetPriceMinor = 6_500_00L,
+                    lastInterviewedAtUtcMillis = NOW,
+                    lastTraceId = "purchase:1",
+                    createdAtUtcMillis = NOW,
+                    updatedAtUtcMillis = NOW,
+                ),
+            ),
+        )
+        dao.insertInterviewAnswers(
+            listOf(
+                InterviewAnswerEntity(
+                    id = "answer:1",
+                    profileId = profileId,
+                    itemId = "wish:1",
+                    question = "NEED_OR_WANT",
+                    answerKey = "need",
+                    points = 15,
+                    amountMinor = null,
+                    answeredAtUtcMillis = NOW,
                     createdAtUtcMillis = NOW,
                     updatedAtUtcMillis = NOW,
                 ),

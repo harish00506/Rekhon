@@ -10,6 +10,11 @@ import androidx.compose.ui.test.performScrollTo
 import com.aicfo.core.designsystem.theme.CfoTheme
 import com.aicfo.core.model.Money
 import com.aicfo.data.repository.KeptVerdict
+import com.aicfo.domain.engines.purchase.InterviewAnswer
+import com.aicfo.domain.engines.purchase.InterviewOutcome
+import com.aicfo.domain.engines.purchase.InterviewQuestion
+import com.aicfo.domain.engines.purchase.PurchaseWeight
+import com.aicfo.domain.engines.purchase.ScoreDelta
 import com.aicfo.domain.engines.purchase.Verdict
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -108,6 +113,98 @@ class AdvisorScreenTest {
         composeRule.onNodeWithText("Fridge · Not now").performScrollTo().performClick()
 
         assertEquals("purchase:1", opened)
+    }
+
+    @Test
+    fun `a wish shows its score, its band, and the next question only`() {
+        // One question at a time: the ladder rations how much is asked in total, and a wall of
+        // seven would be the friction it exists to prevent (§13.3.1).
+        show(AdvisorUiState(buyList = listOf(FakeBuyListRepository.entry())))
+
+        composeRule.onNodeWithText("Standing desk · ₹8,000.00").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Want score 50 · Parked for now").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Worth a few questions").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Is this a need or a want?").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("How often would you use it?").assertDoesNotExist()
+    }
+
+    @Test
+    fun `answering a question sends the answer, not a score`() {
+        var answered: AdvisorEvent.AnswerWish? = null
+        composeRule.setContent {
+            CfoTheme {
+                AdvisorContent(
+                    uiState = AdvisorUiState(buyList = listOf(FakeBuyListRepository.entry())),
+                    onEvent = { event -> if (event is AdvisorEvent.AnswerWish) answered = event },
+                    onDone = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("A need").performScrollTo().performClick()
+
+        assertEquals("wish:1", answered?.itemId)
+        assertEquals(InterviewAnswer.NeedOrWant(isNeed = true), answered?.answer)
+    }
+
+    @Test
+    fun `a wish the app would drop shows the user's own answers as the reason`() {
+        // §13.3.2: the suggestion is argued, not announced — and there is a tap to keep it.
+        show(
+            AdvisorUiState(
+                buyList =
+                    listOf(
+                        FakeBuyListRepository.entry(
+                            assessment =
+                                FakeBuyListRepository.assessment(
+                                    score = 25,
+                                    outcome = InterviewOutcome.SUGGEST_REMOVE,
+                                    nextQuestion = null,
+                                ).copy(
+                                    deltas =
+                                        listOf(
+                                            ScoreDelta(InterviewQuestion.NEED_OR_WANT, -5, "want"),
+                                            ScoreDelta(InterviewQuestion.ALREADY_OWN_SIMILAR, -20, "owns_similar"),
+                                        ),
+                                ),
+                        ),
+                    ),
+            ),
+        )
+
+        composeRule.onNodeWithText("Want score 25 · Maybe drop this one").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Because you said:").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText(
+            "you already own something that does this (-20)",
+        ).performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Remove it").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun `a very big wish says it has to be slept on`() {
+        show(
+            AdvisorUiState(
+                buyList =
+                    listOf(
+                        FakeBuyListRepository.entry(
+                            assessment =
+                                FakeBuyListRepository.assessment()
+                                    .copy(weight = PurchaseWeight.HEAVY, coolingOffRequired = true),
+                        ),
+                    ),
+            ),
+        )
+
+        composeRule.onNodeWithText("Big enough to sleep on: this one waits 24 hours before it can be bought.")
+            .performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun `an empty list says so, and a wish cannot be added without a price`() {
+        show(AdvisorUiState(wishName = "Standing desk"))
+
+        composeRule.onNodeWithText("Nothing on the list yet.").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Add to the list").performScrollTo().assertIsNotEnabled()
     }
 
     @Test

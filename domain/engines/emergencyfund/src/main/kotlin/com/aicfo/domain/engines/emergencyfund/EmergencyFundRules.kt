@@ -147,7 +147,7 @@ data class EmergencyFundRules(
          * whenever any rule anywhere is added. Issue 7.2 added two rows, which is why 1.14.0 became
          * 1.15.0 in six places at once.
          */
-        const val RULEBOOK_VERSION = "1.21.0" // Issue 10.1 restated it for RULE-PA-*; no row mirrored here changed.
+        const val RULEBOOK_VERSION = "1.22.0" // Issue 10.2 restated it for RULE-PAI-*; no row mirrored here changed.
 
         /** 10 000 bps = 100% (MNY-002). Also the scale [EmergencyFundPlan.runwayMonthsBps] uses. */
         internal const val BPS_FULL = 10_000

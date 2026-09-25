@@ -97,3 +97,86 @@ note, and "From AI-PA v1.0 · <rules>". The card is kept, so the same screen can
 | Version | Date | Change |
 |---------|------|--------|
 | 1.0 | 2026-09-25 | Initial implementation from SRS §13 (issue 10.1, ADR-0049). |
+
+---
+
+# PurchaseInterviewEngine — AI-PA-INT (the adaptive purchase interview)
+
+**SRS:** §13.3 · **Pipeline layer:** L5 · **Module:** `:domain:engines:purchase`
+**Version:** 1.0 · **Status:** active · **Engine id on results:** `AI-PA-INT`
+
+## Why this engine exists
+A buy list only works if adding to it is cheaper than buying. So the interview's depth scales with
+what a purchase weighs against the money coming in: a ₹200 wish that asked seven questions would
+teach the user to bypass the list, and a ₹3,00,000 one that asked none would never have earned its
+place. The questions must also be **new** — re-asking what was already answered is the nagging
+§13.3's honesty rule forbids.
+
+## Contract
+```
+interface PurchaseInterviewEngine {
+    fun assess(input: InterviewInput): Result<InterviewAssessment, AppError>
+}
+```
+- **Input** — price, method and instalment, monthly income and surplus, and the answers so far.
+- **Output** — `InterviewAssessment`: the band, **only the questions still missing**, the score, the
+  outcome, whether the interview is complete, the per-answer deltas (the evidence), and the
+  cooling-off for a heavy purchase. Provenance cites both rules, with **no confidence** — a score is
+  the sum of what the user said.
+- `Err(Validation("interview.price" | "interview.monthlyIncome" | "interview.answers"))`; the last
+  fires when one question has two answers, which would make the score depend on list order.
+
+## Formula / algorithm
+```
+weight   price ÷ monthly income, in bps: <50 casual · <200 small · <1000 significant ·
+         <2500 major · else heavy. An instalment is always heavy; so is a wish with no income
+         recorded to judge against.                                   (RULE-PAI-LADDER)
+ask      the first N questions of the bank for that band, minus those already answered
+score    50, plus the delta of each answer the band asked for, plus the re-interview's own
+         "still wanted?" wherever it is answered                      (RULE-PAI-SCORE)
+outcome  ≥ 70 KEEP · 40–69 PARK · < 40 SUGGEST_REMOVE
+```
+
+## Assumptions & guardrails
+- **No single answer can carry a wish out of the middle.** Enforced by a test on the engine and one
+  on the rulebook's own numbers; the first draft of the deltas failed both (ADR-0050).
+- **Nothing is removed by the app.** SUGGEST_REMOVE changes what is said, never the list (P-07).
+- **The band is never stored** — income changes, and a stored band would go stale silently.
+- **Owning cost, timing and the cooling-off acknowledgement are recorded but not scored**, because
+  §13.3.2 does not list them among the factors that move the score.
+- **Not implemented** (ADR-0050): the alternative finder, §32's Worth-It history, the buy-timing
+  watch and the thirty-day auto re-interview, and the owning-cost amount input.
+
+## Rules / knowledge consumed
+| ID / file | What it provides |
+|-----------|------------------|
+| RULE-PAI-LADDER v1.0 (`rules-kb.json` 1.22.0) | the five bands in bps, the question counts, the 24-hour cooling-off, "an EMI is always heavy" |
+| RULE-PAI-SCORE v1.0 | the opening 50, the outcome lines, the thirty-day window, and every per-answer delta |
+
+Mirrored as `InterviewRules` and guarded by `InterviewRulebookDriftTest`, which compares **every
+delta by name** and re-checks the "no single answer decides it" property against the rulebook.
+
+## Evidence shown to the user (P-02)
+Each wish shows its score, its band in plain words, the next question, and — when the app suggests
+dropping it — the user's own answers with their points ("you already own something that does this
+(−10)"). Removing and keeping are both one tap.
+
+## Tests
+- **Behaviour** (`PurchaseInterviewEngineTest`, 18): every band and its question count; an instalment;
+  the cooling-off; asking only what is missing; completeness; an answer outside the band; the score
+  and the three outcomes; the evidence; the re-interview; the refusals; provenance; the rules seam.
+- **Golden** (`golden/interview.txt`, 5 wishes) against `interview_oracle.py`.
+- **Property** (`InterviewPropertyTest`, 6 × 300): never asks twice; exactly the band's unanswered
+  questions; the score is only the counted answers; the outcome follows the score; borrowing and
+  unknown income are always heavy; determinism.
+- **Drift** (`InterviewRulebookDriftTest`, 7).
+- **Watched red:** an instalment treated as ordinary; questions re-asked; an unknown income treated
+  as casual; answers counted outside the band.
+- **Downstream:** `BuyListRepositoryTest` proves an answer survives, that changing your mind replaces
+  rather than doubles, that the band follows income, and that a suggested-for-removal wish stays on
+  the list; `AdvisorScreenTest` proves one question at a time and the quoted evidence.
+
+## Version log
+| Version | Date | Change |
+|---------|------|--------|
+| 1.0 | 2026-09-26 | Initial implementation from SRS §13.3 (issue 10.2, ADR-0050). |

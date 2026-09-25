@@ -5,7 +5,7 @@
     "what": "Seed rows for the rules_knowledge_base table (§29.1). RuleEngine.evaluate(ruleId, FeatureSnapshot) -> RuleResult{pass|warn|fail, measuredValue, threshold, evidence, ruleId, version}.",
     "result": "Changing a number here changes the app's advice everywhere that rule is cited, reproducibly and with an audit trail.",
     "source_section": "§29",
-    "version": "1.21.0",
+    "version": "1.22.0",
     "changelog": [
       "2026-07-17 — Created from SRS v1.7 §29.2–§29.5; defaults are the floor, refined by user overrides at runtime.",
       "2026-08-07 — Added RULE-SMS-PARSE for issue 3.9's opt-in, on-device bank-alert parser (§18, §23).",
@@ -19,6 +19,7 @@
       "2026-09-19 — Added RULE-FCT-METHOD and RULE-FCT-CRUNCH for issue 9.2's cash-flow forecast (§9, AI-FCT). §9.2 states the method's numbers in prose — a 90-day horizon, a 90-day lookback, a 10% trimmed mean, 500 seeded Monte-Carlo paths, P10/P50/P90 bands — and AI-FCT-002 names a ₹5,000 default buffer; each is now a params row so no engine carries them as constants (CLAUDE.md §6). New rows at v1.0, no shipped row changed. See ADR-0043.",
       "2026-09-19 — Added RULE-FHS-PILLARS, RULE-FHS-BANDS and RULE-FHS-SIGNALS for issue 9.4's Financial Health Score (§14, AI-FHS). §14.1's table gives the five pillar weights, the band edges and a few scoring anchors in prose (runway 100 at ≥ M, obligation ratio 30%→100 and 55%→0, savings rate 100 at ≥ 30%); each is now a params row. Two numbers §14 leaves unstated are minted here and say so in their source notes: the runway floor boost (25 points at ≥ 1 month) and where card utilisation reaches zero (100%). The utilisation 'good' edge and the savings-rate top are NOT restated — AI-FHS reads RULE-CC-UTIL.max_utilisation_pct and RULE-SAVE-RATE.excellent_pct, which already say 30. New rows at v1.0, no shipped row changed. See ADR-0045.",
       "2026-09-20 — Added RULE-INS-RANK and RULE-INS-DEDUP for issue 9.5's Insight Orchestrator (§7.2, AI-ORCH). §7.2 states the deduplication fingerprint (type + subject + period) and that dismissed fingerprints are suppressed for their snooze window, but names no window length and no feed order; FR-HOME-001 asks for the 'top 3' on the dashboard. The severity order, the tie-breaks, the dashboard size and the seven-day snooze are now params rather than engine constants. New rows at v1.0, no shipped row changed. See ADR-0046.",
+      "2026-09-26 — Added RULE-PAI-LADDER and RULE-PAI-SCORE for issue 10.2's buy list and adaptive interview (AI-PA-INT, §13.3). §13.3.1's escalation table and §13.3.2's outcome bands are params now; the per-answer score deltas are minted, since §13.3.2 names the factors without numbering them. New rows at v1.0, no shipped row changed. See ADR-0050.",
       "2026-09-25 — Added RULE-PA-GATES and RULE-PA-OPPCOST for issue 10.1's Purchase Advisor (AI-PA, §13). §13.1 states the seven gates and 'worst severity across gates, softened by urgency' as prose; the softening limits, the thirty-day month behind a goal delay and the opportunity-cost assumption are params now rather than constants in the engine. New rows at v1.0, no shipped row changed; the advisor also reads RULE-EMI-40, RULE-COOL-OFF, RULE-STS and RULE-FCT-CRUNCH unchanged. See ADR-0049.",
       "2026-09-23 — Added RULE-GRD-LADDER and RULE-GRD-TRANSFORMS for issue 9.7's numeric guardrail (AI-GRD, AI-ARC-004, ai/chat/guardrail.md). That file states N = 2 regeneration attempts and the allowlist of display transforms as prose; both are params now rather than constants in the engine, so tightening the gate — disallowing lakh/crore wording, say — is a data edit. New rows at v1.0, no shipped row changed. See ADR-0048.",
       "2026-09-20 — Added RULE-NTF-BUDGET and RULE-NTF-QUIET for issue 9.6's notification policy (§17.2, AI-NTF). NTF-001's caps (2 non-critical a day, 8 a week, critical exempt) and NTF-002's quiet hours (22:00–08:00, critical may bypass) are stated in the SRS as prose; they are now params an engine reads rather than constants it carries. The taxonomy's per-type defaults (§17.1) are NOT minted: they are user settings with no field yet, and inventing rows for them would ship numbers nothing reads (the ADR-0034 argument). New rows at v1.0, no shipped row changed. See ADR-0047."
@@ -695,6 +696,32 @@
       "rationale": "A price is easier to judge beside what it could have become. It is shown, never used to fail a gate: an app that refused purchases because the money could have been invested would refuse every purchase.",
       "source_note": "SRS \u00a713.1 step 6: 'FV = price \u00d7 (1+r)^t for t \u2208 {5y, 10y}, r = user assumption (default 11% eq.)'.",
       "consumed_by": ["AI-PA"],
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "rule_id": "RULE-PAI-LADDER",
+      "domain": "purchase",
+      "name": "How many questions a wish is worth, by what it weighs against the money coming in: under 0.5% of monthly income asks at most one, 0.5-2% asks up to three, 2-10% up to five, 10-25% up to seven, and anything above 25% or paid by instalment gets the full interview and a 24-hour cooling-off before it can be bought.",
+      "formula_id": "interview_ladder",
+      "params_json": { "casual_max_bps": 50, "small_max_bps": 200, "significant_max_bps": 1000, "major_max_bps": 2500, "questions": { "casual": 1, "small": 3, "significant": 5, "major": 7, "heavy": 8 }, "heavy_cooloff_hours": 24, "emi_is_always_heavy": true },
+      "severity": "info",
+      "rationale": "Friction has to be proportionate or it is just nagging: a \u20b9200 wish that asked seven questions would teach the user to route around the list entirely, and a \u20b93,00,000 one that asked none would be a list that never helped. The bands are the price as a share of income, because that is what makes a purchase heavy for this household rather than in the abstract.",
+      "source_note": "SRS \u00a713.3.1's escalation table, in basis points of monthly income (MNY-002). The question counts are the table's own; the EMI rule is its 'or any EMI (heavy)' column.",
+      "consumed_by": ["AI-PA-INT"],
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "rule_id": "RULE-PAI-SCORE",
+      "domain": "purchase",
+      "name": "A wish starts at 50 and moves with the answers: a need earns more than a want, frequent use earns more than rare, already owning something similar costs it, being unable to name what breaks if it waits a month costs it, and still wanting it thirty days later earns it back. At 70 or more it is kept and watched, between 40 and 69 it is parked for thirty days, and below 40 the app suggests removing it and shows the user's own answers as the reason.",
+      "formula_id": "interview_score",
+      "params_json": { "start": 50, "keep_min": 70, "park_min": 40, "reinterview_days": 30, "deltas": { "need": 15, "want": -5, "uses_high": 15, "uses_medium": 5, "uses_low": -10, "owns_similar": -10, "owns_nothing_similar": 5, "waiting_breaks_something": 10, "waiting_breaks_nothing": -10, "goal_delay_accepted": 5, "goal_delay_refused": -10, "still_wanted_after_30_days": 10 } },
+      "severity": "info",
+      "rationale": "The score exists so a removal suggestion can be argued with: every point has a named answer behind it, and the card shows them. Starting at the middle means an unanswered wish is neither kept nor condemned \u2014 it is parked, which is what a list is for.",
+      "source_note": "SRS \u00a713.3.2 gives the starting score, the three outcome bands, the thirty-day re-interview and the list of factors, but no per-answer numbers. The deltas are minted here, sized so no single answer can carry a wish from 50 to either outcome on its own \u2014 a test asserts it, and the first draft failed it (ADR-0050).",
+      "consumed_by": ["AI-PA-INT"],
       "enabled": true,
       "version": "1.0"
     }

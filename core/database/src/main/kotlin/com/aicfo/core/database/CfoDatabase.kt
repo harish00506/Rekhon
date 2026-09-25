@@ -9,6 +9,7 @@ import com.aicfo.core.database.dao.AuditLogDao
 import com.aicfo.core.database.dao.BudgetAlertDao
 import com.aicfo.core.database.dao.BudgetDao
 import com.aicfo.core.database.dao.BudgetReviewDao
+import com.aicfo.core.database.dao.BuyListDao
 import com.aicfo.core.database.dao.CardAlertDao
 import com.aicfo.core.database.dao.CategoryDao
 import com.aicfo.core.database.dao.CreditCardDao
@@ -42,6 +43,7 @@ import com.aicfo.core.database.entity.GoalContributionEntity
 import com.aicfo.core.database.entity.GoalEntity
 import com.aicfo.core.database.entity.GoalFundingAccountEntity
 import com.aicfo.core.database.entity.InsightEntity
+import com.aicfo.core.database.entity.InterviewAnswerEntity
 import com.aicfo.core.database.entity.InvestmentHoldingEntity
 import com.aicfo.core.database.entity.InvestmentLotEntity
 import com.aicfo.core.database.entity.LoanEntity
@@ -56,6 +58,7 @@ import com.aicfo.core.database.entity.TagEntity
 import com.aicfo.core.database.entity.TransactionEntity
 import com.aicfo.core.database.entity.TransactionSplitEntity
 import com.aicfo.core.database.entity.TransactionTagEntity
+import com.aicfo.core.database.entity.WishlistItemEntity
 
 /**
  * The encrypted on-device database — every rupee the user owns lives here (SRS §20, DB-003).
@@ -105,6 +108,8 @@ import com.aicfo.core.database.entity.TransactionTagEntity
         NotificationLogEntity::class,
         PurchaseTraceEntity::class,
         PurchaseTraceGateEntity::class,
+        WishlistItemEntity::class,
+        InterviewAnswerEntity::class,
     ],
     version = CfoDatabase.VERSION,
     exportSchema = true,
@@ -186,6 +191,9 @@ abstract class CfoDatabase : RoomDatabase() {
     /** Result: the Purchase Advisor's kept verdicts (issue 10.1; §13.2). */
     abstract fun purchaseTraceDao(): PurchaseTraceDao
 
+    /** Result: the buy list and its stored answers (issue 10.2; §13.3). */
+    abstract fun buyListDao(): BuyListDao
+
     /**
      * Input:  none. Output: the demo wipe DAO (issue 2.4, FR-ONB-004).
      *
@@ -238,7 +246,7 @@ abstract class CfoDatabase : RoomDatabase() {
          * contribution *is* the linked transaction's, summed at query time, so nothing can drift
          * away from the ledger it came from; §15, FR-GOAL-002, FR-GOAL-004).
          */
-        const val VERSION = 25
+        const val VERSION = 26
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"

@@ -9,6 +9,7 @@ import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
 import com.aicfo.core.common.runCatchingToResult
 import com.aicfo.core.database.CfoDatabase
+import com.aicfo.core.database.dao.ArchiveDao
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -121,12 +122,28 @@ internal class RoomArchiveRepository(
                         goalFundingAccounts = dao.goalFundingAccounts(profileId),
                         insights = dao.insights(profileId),
                         notificationLog = dao.notificationLog(profileId),
-                        purchaseTraces = dao.purchaseTraces(profileId),
-                        purchaseTraceGates = dao.purchaseTraceGates(profileId),
-                    ),
+                    ).withAdvisor(dao, profileId),
                 )
             }
         }
+
+    /**
+     * Adds the advisor's and the buy list's tables to an archive (issues 10.1, 10.2).
+     * Why:    four more reads inside `export` would take it past detekt's 40-line limit, and these
+     *         four belong together anyway — a kept verdict without its gates, or a wish without its
+     *         answers, is half a record.
+     * Result: the archive with them. Input: [dao]; [profileId]. Output: [CfoArchive].
+     */
+    private suspend fun CfoArchive.withAdvisor(
+        dao: ArchiveDao,
+        profileId: String,
+    ): CfoArchive =
+        copy(
+            purchaseTraces = dao.purchaseTraces(profileId),
+            purchaseTraceGates = dao.purchaseTraceGates(profileId),
+            wishlistItems = dao.wishlistItems(profileId),
+            interviewAnswers = dao.interviewAnswers(profileId),
+        )
 
     override suspend fun import(json: String): Result<ImportSummary, AppError> =
         withContext(dispatchers.io) {
@@ -263,6 +280,8 @@ internal class RoomArchiveRepository(
         dao.insertNotificationLog(archive.notificationLog)
         dao.insertPurchaseTraces(archive.purchaseTraces)
         dao.insertPurchaseTraceGates(archive.purchaseTraceGates)
+        dao.insertWishlistItems(archive.wishlistItems)
+        dao.insertInterviewAnswers(archive.interviewAnswers)
     }
 
     private companion object {
@@ -320,4 +339,5 @@ internal fun CfoArchive.rowCount(): Int =
         recurringRules.size + netWorthSnapshots.size + attachments.size + smsDrafts.size +
         creditCards.size + cardAlerts.size + loans.size + investmentHoldings.size +
         investmentLots.size + goals.size + goalContributions.size + goalFundingAccounts.size +
-        insights.size + notificationLog.size + purchaseTraces.size + purchaseTraceGates.size
+        insights.size + notificationLog.size + purchaseTraces.size + purchaseTraceGates.size +
+        wishlistItems.size + interviewAnswers.size
