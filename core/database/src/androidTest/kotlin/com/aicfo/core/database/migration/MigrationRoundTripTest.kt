@@ -1649,6 +1649,76 @@ class MigrationRoundTripTest {
         )
     }
 
+    /**
+     * 24 → 25: the Purchase Advisor's kept verdicts (issue 10.1; §13.2, AI-ARC-006).
+     *
+     * Why:  a card is only worth keeping if it comes back whole, so this upgrades, writes a verdict
+     *       with one gate row, and reads both back — including the engine version, which is what
+     *       lets a card decided under AI-PA 1.0 still say so after the gates change.
+     * Result: both tables exist, hold their rows, and keep Room's index names.
+     */
+    @Test
+    fun migrate24To25_keepsAVerdictAndItsGateTable() {
+        helper.createDatabase(TEST_DB, 24).close()
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 25, true, Migrations.MIGRATION_24_25)
+
+        migrated.execSQL(purchaseTraceInsert())
+        migrated.execSQL(purchaseGateInsert())
+        migrated.query(
+            "SELECT verdict, engine_version, citations FROM purchase_trace WHERE id = 'purchase:1'",
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("STRETCH", cursor.getString(0))
+            assertEquals("the version the card was decided under survives (AI-ARC-006)", "1.0", cursor.getString(1))
+            assertEquals("RULE-PA-GATES v1.0", cursor.getString(2))
+        }
+        migrated.query(
+            "SELECT gate, outcome, amount_minor FROM purchase_trace_gate WHERE trace_id = 'purchase:1'",
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("AFFORDABILITY", cursor.getString(0))
+            assertEquals("PASS", cursor.getString(1))
+            assertEquals(7_000_000L, cursor.getLong(2))
+        }
+
+        val indices = mutableSetOf<String>()
+        migrated.query(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name IN ('purchase_trace', 'purchase_trace_gate')",
+        ).use { cursor ->
+            while (cursor.moveToNext()) cursor.getString(0)?.let(indices::add)
+        }
+        assertTrue(
+            "Room's own index names must survive the upgrade: $indices",
+            indices.containsAll(
+                listOf(
+                    "index_purchase_trace_profile_id",
+                    "index_purchase_trace_profile_id_decided_at_utc_millis",
+                    "index_purchase_trace_gate_trace_id",
+                ),
+            ),
+        )
+    }
+
+    /** One kept verdict's SQL — a ₹30,000 purchase that came back a stretch. */
+    private fun purchaseTraceInsert(): String =
+        "INSERT INTO purchase_trace (id, profile_id, item, price_minor, method, urgency, monthly_emi_minor, " +
+            "category_id, verdict, hard_fail, liquid_before_minor, liquid_after_minor, runway_before_tenths, " +
+            "runway_after_tenths, goal_delay_days, comfortable_price_minor, comfortable_from_iso_date, " +
+            "cool_off_suggested, engine_id, engine_version, citations, decided_on_iso_date, " +
+            "decided_at_utc_millis, deleted_at_utc_millis, created_at_utc_millis, updated_at_utc_millis) " +
+            "VALUES ('purchase:1', 'local', 'Headphones', 3000000, 'CASH', 'ROUTINE', NULL, NULL, 'STRETCH', 0, " +
+            "10000000, 7000000, 24, 17, 60, 500000, '2026-11-25', 1, 'AI-PA', '1.0', 'RULE-PA-GATES v1.0', " +
+            "'2026-09-25', 1790000000000, NULL, 1790000000000, 1790000000000)"
+
+    /** One gate row's SQL: the affordability gate and the money left afterwards. */
+    private fun purchaseGateInsert(): String =
+        "INSERT INTO purchase_trace_gate (id, profile_id, trace_id, gate, outcome, ordinal, citations, " +
+            "figure_key, amount_minor, count_value, bps_value, text_value, deleted_at_utc_millis, " +
+            "created_at_utc_millis, updated_at_utc_millis) " +
+            "VALUES ('purchase:1:AFFORDABILITY:0', 'local', 'purchase:1', 'AFFORDABILITY', 'PASS', 0, " +
+            "'RULE-PA-GATES v1.0', 'liquidAfter', 7000000, NULL, NULL, NULL, NULL, 1790000000000, 1790000000000)"
+
     /** One notification-log row's SQL, so the duplicate case differs only by id. */
     private fun notificationInsert(id: String): String =
         "INSERT INTO notification_log (id, profile_id, `key`, kind, outcome, decided_at_utc_millis, " +

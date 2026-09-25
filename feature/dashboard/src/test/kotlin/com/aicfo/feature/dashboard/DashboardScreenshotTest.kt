@@ -110,6 +110,7 @@ class DashboardScreenshotTest {
                                 onNavigateToEmergencyFund = {},
                                 onNavigateToSettings = {},
                                 onNavigateToOrderOfOperations = {},
+                                onNavigateToPurchaseAdvisor = {},
                             ),
                     )
                 }

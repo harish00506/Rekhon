@@ -1757,3 +1757,159 @@ data class NotificationLogEntity(
     @ColumnInfo(name = "updated_at_utc_millis")
     val updatedAtUtcMillis: Long,
 )
+
+/**
+ * One Purchase Advisor verdict, kept so the reasoning can be read again (issue 10.1; §13.2,
+ * AI-ARC-006).
+ *
+ * Why:    §13.2 ends "the full trace object is persisted so the user can revisit why a past
+ *         decision was made". That is not a nicety: a verdict the user disagreed with, or followed
+ *         and regretted, is only arguable if the figures behind it survive. The engine version is
+ *         stored with it, so a card written under AI-PA 1.0 still reads as AI-PA 1.0 decided it
+ *         even after the gates change (AI-ARC-006).
+ * What:   the request, the verdict, the impact strip and the alternatives — every part of the card
+ *         except the gate table, which is [PurchaseTraceGateEntity].
+ * Result: a Room row in `purchase_trace`.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-09-25 — Created at version 25 for issue 10.1 (§13, AI-PA).
+ */
+@Serializable
+@Entity(
+    tableName = "purchase_trace",
+    indices = [
+        Index("profile_id"),
+        Index(value = ["profile_id", "decided_at_utc_millis"]),
+    ],
+)
+data class PurchaseTraceEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** The user's own words for the thing. Their data, never the app's copy. */
+    @ColumnInfo(name = "item")
+    val item: String,
+    @ColumnInfo(name = "price_minor")
+    val priceMinor: Long,
+    /** `CASH`, `CARD` or `EMI`. */
+    @ColumnInfo(name = "method")
+    val method: String,
+    /** `ROUTINE`, `SOON` or `URGENT` — what the user said when asked. */
+    @ColumnInfo(name = "urgency")
+    val urgency: String,
+    @ColumnInfo(name = "monthly_emi_minor")
+    val monthlyEmiMinor: Long? = null,
+    @ColumnInfo(name = "category_id")
+    val categoryId: String? = null,
+    /** `COMFORTABLE`, `STRETCH` or `NOT_NOW`. */
+    @ColumnInfo(name = "verdict")
+    val verdict: String,
+    /** Whether a gate failed outright — what urgency was not allowed to soften. */
+    @ColumnInfo(name = "hard_fail")
+    val hardFail: Boolean,
+    @ColumnInfo(name = "liquid_before_minor")
+    val liquidBeforeMinor: Long,
+    @ColumnInfo(name = "liquid_after_minor")
+    val liquidAfterMinor: Long,
+    /** Months of essentials covered, in tenths (MNY-001 keeps floats away from money). */
+    @ColumnInfo(name = "runway_before_tenths")
+    val runwayBeforeTenths: Int,
+    @ColumnInfo(name = "runway_after_tenths")
+    val runwayAfterTenths: Int,
+    @ColumnInfo(name = "goal_delay_days")
+    val goalDelayDays: Int,
+    @ColumnInfo(name = "comfortable_price_minor")
+    val comfortablePriceMinor: Long? = null,
+    /** ISO date the price would stop crossing the emergency floor (TIM-002). */
+    @ColumnInfo(name = "comfortable_from_iso_date")
+    val comfortableFromIsoDate: String? = null,
+    @ColumnInfo(name = "cool_off_suggested")
+    val coolOffSuggested: Boolean,
+    @ColumnInfo(name = "engine_id")
+    val engineId: String,
+    @ColumnInfo(name = "engine_version")
+    val engineVersion: String,
+    /**
+     * The card's own cited rules as `ID vVERSION`, comma-separated.
+     *
+     * Not derivable from the gate rows: RULE-COOL-OFF decides the cooling-off suggestion and is
+     * cited by the card without belonging to any gate. A read-back test caught the omission.
+     */
+    @ColumnInfo(name = "citations")
+    val citations: String,
+    /** The day the advice was given, in the profile's zone (TIM-002). */
+    @ColumnInfo(name = "decided_on_iso_date")
+    val decidedOnIsoDate: String,
+    @ColumnInfo(name = "decided_at_utc_millis")
+    val decidedAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+)
+
+/**
+ * One line of a kept verdict's gate table (issue 10.1; §13.2).
+ *
+ * Why:    P-02 is the whole point of the card: each gate, its numbers, and pass/warn/fail. Stored
+ *         as **typed columns rather than a JSON blob**, so DB-005's "how do you version a blob"
+ *         question never arises and a figure is still a figure a query can read.
+ * What:   one row per figure, carrying the gate it belongs to and that gate's outcome. A gate with
+ *         nothing to show — budget fit where no budget is set — keeps one row with no figure.
+ * Result: a Room row in `purchase_trace_gate`.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-09-25 — Created at version 25 for issue 10.1 (§13, AI-PA).
+ *
+ * **The outcome repeats across a gate's figures**, which is denormalised on purpose: the honest
+ * alternative was a third table for figures, and two tables keep the archive, the demo wipe and the
+ * restore drill to two places rather than three (ADR-0049).
+ */
+@Serializable
+@Entity(
+    tableName = "purchase_trace_gate",
+    indices = [
+        Index("profile_id"),
+        Index("trace_id"),
+    ],
+)
+data class PurchaseTraceGateEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    @ColumnInfo(name = "trace_id")
+    val traceId: String,
+    /** The `GateId` name — `AFFORDABILITY`, `CASH_FLOW`, and so on. */
+    @ColumnInfo(name = "gate")
+    val gate: String,
+    /** `PASS`, `WARN` or `FAIL`. */
+    @ColumnInfo(name = "outcome")
+    val outcome: String,
+    /** §13.1's order, kept so the card reads the way it was decided. */
+    @ColumnInfo(name = "ordinal")
+    val ordinal: Int,
+    /** The gate's cited rules as `ID vVERSION`, comma-separated (P-02, AI-ARC-006). */
+    @ColumnInfo(name = "citations")
+    val citations: String,
+    /** The figure's stable key, or `null` for a gate that judged nothing. */
+    @ColumnInfo(name = "figure_key")
+    val figureKey: String? = null,
+    @ColumnInfo(name = "amount_minor")
+    val amountMinor: Long? = null,
+    @ColumnInfo(name = "count_value")
+    val countValue: Int? = null,
+    @ColumnInfo(name = "bps_value")
+    val bpsValue: Int? = null,
+    @ColumnInfo(name = "text_value")
+    val textValue: String? = null,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+)

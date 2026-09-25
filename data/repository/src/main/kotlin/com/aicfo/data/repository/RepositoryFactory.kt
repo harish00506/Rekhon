@@ -26,6 +26,7 @@ import com.aicfo.domain.engines.nature.NatureEngine
 import com.aicfo.domain.engines.networth.NetWorthEngine
 import com.aicfo.domain.engines.notification.NotificationPolicyEngine
 import com.aicfo.domain.engines.orderofoperations.OrderOfOperationsEngine
+import com.aicfo.domain.engines.purchase.PurchaseAdvisorEngine
 import com.aicfo.domain.engines.receipt.ReceiptEngine
 import com.aicfo.domain.engines.recurring.RecurringEngine
 import com.aicfo.domain.engines.safetospend.SafeToSpendEngine
@@ -610,6 +611,53 @@ object RepositoryFactory {
         dispatchers: DispatcherProvider,
         activeProfileId: Flow<String>,
     ): StreamRepository = RoomStreamRepository(database, engine, clock, dispatchers, activeProfileId)
+
+    /**
+     * Builds the Purchase Advisor (issue 10.1; §13).
+     * Why:    built over the repositories that publish the figures its gates judge, so a verdict
+     *         cannot disagree with the screens the user can check it against (AI-ARC-001).
+     * Result: a [PurchaseAdvisorRepository].
+     * Input:  [database]; the seven owning repositories; [engine]; [clock]; [dispatchers];
+     *         [activeProfileId]; [idGenerator]. Output: the repository.
+     * Changelog: 2026-09-25 — Created for issue 10.1.
+     */
+    @Suppress("LongParameterList") // the store, seven sources, the engine and four seams
+    fun purchaseAdvisor(
+        database: CfoDatabase,
+        emergencyFund: EmergencyFundRepository,
+        safeToSpend: SafeToSpendRepository,
+        forecasts: ForecastRepository,
+        transactions: TransactionRepository,
+        streams: StreamRepository,
+        loans: LoanRepository,
+        goals: GoalRepository,
+        budgets: BudgetRepository,
+        engine: PurchaseAdvisorEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        activeProfileId: Flow<String>,
+        idGenerator: IdGenerator,
+    ): PurchaseAdvisorRepository =
+        StoredPurchaseAdvisorRepository(
+            database = database,
+            sources =
+                PurchaseSources(
+                    emergency = emergencyFund.observeEmergencyFund(),
+                    safeToSpend = safeToSpend.observeSafeToSpend(),
+                    forecast = forecasts.observeForecast(),
+                    ledger = transactions.observeMonthlyLedger(HealthRules().lookbackMonths),
+                    streams = streams.observeStreams(),
+                    instalments = loans.observeNextInstalments(),
+                    categories = transactions.observeCategories(),
+                    goals = goals.observeGoals(),
+                    budgets = budgets.observeBudgets(),
+                ),
+            engine = engine,
+            clock = clock,
+            dispatchers = dispatchers,
+            activeProfileId = activeProfileId,
+            idGenerator = idGenerator,
+        )
 
     /**
      * Builds the notification gate (issue 9.6; §17.2).

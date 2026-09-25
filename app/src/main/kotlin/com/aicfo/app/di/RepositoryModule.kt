@@ -28,6 +28,7 @@ import com.aicfo.data.repository.LoanRepository
 import com.aicfo.data.repository.NetWorthRepository
 import com.aicfo.data.repository.NotificationRepository
 import com.aicfo.data.repository.OrderOfOperationsRepository
+import com.aicfo.data.repository.PurchaseAdvisorRepository
 import com.aicfo.data.repository.QuickSetupRepository
 import com.aicfo.data.repository.ReceiptRepository
 import com.aicfo.data.repository.RecurringRepository
@@ -59,6 +60,8 @@ import com.aicfo.domain.engines.networth.NetWorthEngine
 import com.aicfo.domain.engines.notification.NotificationPolicyEngine
 import com.aicfo.domain.engines.notification.NotificationPolicyEngineFactory
 import com.aicfo.domain.engines.orderofoperations.OrderOfOperationsEngine
+import com.aicfo.domain.engines.purchase.PurchaseAdvisorEngine
+import com.aicfo.domain.engines.purchase.PurchaseAdvisorEngineFactory
 import com.aicfo.domain.engines.receipt.ReceiptEngine
 import com.aicfo.domain.engines.recurring.RecurringEngine
 import com.aicfo.domain.engines.safetospend.SafeToSpendEngine
@@ -608,6 +611,60 @@ object RepositoryModule {
             emergencyFund = emergencyFund,
             budgets = budgets,
             goals = goals,
+            engine = engine,
+            clock = clock,
+            dispatchers = dispatchers,
+            activeProfileId = demoMode.activeProfileId,
+            idGenerator = idGenerator,
+        )
+
+    /**
+     * AI-PA, the Purchase Advisor's decision engine (issue 10.1; §13).
+     * Result: a [PurchaseAdvisorEngine]. Input: none. Output: the engine.
+     * Changelog: 2026-09-25 — Created for issue 10.1.
+     */
+    @Provides
+    @Singleton
+    fun providePurchaseAdvisorEngine(): PurchaseAdvisorEngine = PurchaseAdvisorEngineFactory.create()
+
+    /**
+     * The Purchase Advisor, over the repositories whose figures its gates judge (issue 10.1; §13).
+     * Why:    built on the same repositories the screens show, so a verdict can never disagree with
+     *         the emergency fund, forecast, goals or budget the user can go and check (AI-ARC-001).
+     * Result: a [PurchaseAdvisorRepository].
+     * Input:  [database]; the seven sources; [engine]; [clock]; [dispatchers]; [demoMode];
+     *         [idGenerator]. Output: the repository.
+     * Changelog: 2026-09-25 — Created for issue 10.1.
+     */
+    @Provides
+    @Singleton
+    @Suppress("LongParameterList") // the store, seven sources, the engine and four seams
+    fun providePurchaseAdvisorRepository(
+        database: CfoDatabase,
+        emergencyFund: EmergencyFundRepository,
+        safeToSpend: SafeToSpendRepository,
+        forecasts: ForecastRepository,
+        transactions: TransactionRepository,
+        streams: StreamRepository,
+        loans: LoanRepository,
+        goals: GoalRepository,
+        budgets: BudgetRepository,
+        engine: PurchaseAdvisorEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        demoMode: DemoModeRepository,
+        idGenerator: IdGenerator,
+    ): PurchaseAdvisorRepository =
+        RepositoryFactory.purchaseAdvisor(
+            database = database,
+            emergencyFund = emergencyFund,
+            safeToSpend = safeToSpend,
+            forecasts = forecasts,
+            transactions = transactions,
+            streams = streams,
+            loans = loans,
+            goals = goals,
+            budgets = budgets,
             engine = engine,
             clock = clock,
             dispatchers = dispatchers,

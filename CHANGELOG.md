@@ -6,6 +6,40 @@ Single source of truth for the version number is the repo-root [`VERSION`](VERSI
 `app/build.gradle.kts` `versionName` equal to it. Epics map to the SRS roadmap (§26); every
 entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`](docs/issues/00-issue-workflow.md).
 
+## [0.10.0] — Epic 10: Advisor & Chat
+
+> The Purchase Advisor, buy list, what-if simulators, vehicle prediction, on-device chat + guardrail
+> eval, market signals, and localisation.
+
+### [0.10.0] — Issue 10.1: Purchase Advisor + trace card (AI-PA)  (2026-09-25)
+
+- **Implemented:** `:domain:engines:purchase` (`AI-PA` 1.0) and the advisor screen over it — the
+  app's answer to "can I afford this?" (**§13**, **FR-AI-003**, **P-02**, **P-07**, **ADR-0049**).
+  - **Seven checks, and you see all of them:** the money available, the next 90 days, EMIs and rent,
+    your goals, this month's budget, what the money would become if invested, and whether it is
+    cheaper later. The verdict is the worst of them — Comfortable, A stretch, or Not now.
+  - **A warning is not a refusal.** Spending into your emergency fund is flagged, not blocked: the
+    money is yours and the decision is yours. Only a price your money cannot cover fails outright.
+  - **It never blames you for a crunch that was already coming** — days already under your buffer
+    are counted separately from the ones this purchase would add.
+  - **"Urgent" helps, but only so far.** It lifts a stretch to comfortable; it will not tell you an
+    unaffordable purchase is fine.
+  - **What would change the answer:** the price at which nothing objects, the date your savings
+    would cover it without touching the emergency fund, and a nudge to sleep on anything big
+    compared with your income. When no price would help, it says so rather than inventing one.
+- **Every verdict is kept** (schema 25), with its gates, figures and the rules behind them, so you
+  can reopen a past decision and see exactly why it was given — even after the engine changes.
+- **On screen:** a new "Can I afford this?" screen from the dashboard — the question, the verdict,
+  the gate-by-gate table with its numbers, what it moves, the alternatives, and "From AI-PA v1.0".
+- **The limits are settings, not code:** the lender's 40%/50% lines, the assumed 11% return, the
+  cooling-off trigger and the softening policy are all rulebook rows.
+- **Not yet** (ADR-0049): the seasonal "cheaper in November" signal; one-tap actions (create a goal,
+  remind me); EMI vs cash with total interest (issue 10.3); and the buy list (issue 10.2).
+- **Tests:** 37 behaviour tests; 6 identities × 300 cases; a golden file across five households from
+  an independent oracle that reads the rulebook; 7 drift, 6 repository and 17 screen tests. The
+  property tests found two real bugs before release — a "comfortable price" that still came back a
+  stretch, and a negative cap shown as ₹0 — and five deliberate breaks were each watched go red.
+
 ## [0.9.0] — Epic 9: AI Core Engines
 
 > The deterministic engine layer: fixed/variable + nature, cash-flow forecast, seasonality, health

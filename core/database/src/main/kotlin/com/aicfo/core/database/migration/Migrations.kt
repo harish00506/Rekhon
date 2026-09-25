@@ -1304,6 +1304,81 @@ internal object Migrations {
             }
         }
 
+    /**
+     * 24 → 25: the Purchase Advisor's kept verdicts (issue 10.1; §13.2, AI-ARC-006).
+     *
+     * Why:  two tables rather than one JSON column, so a figure stays a figure a query can read and
+     *       DB-005's blob-versioning question never arises. Both carry a tombstone, so neither needs
+     *       an exemption from the soft-delete invariant: deleting a card the user no longer wants
+     *       kept is an ordinary soft delete.
+     * Result: `purchase_trace` and `purchase_trace_gate`, with their indices.
+     * Input: [db]. Output: none.
+     */
+    val MIGRATION_24_25 =
+        object : Migration(VERSION_24, VERSION_25) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                createPurchaseTrace(db)
+                createPurchaseTraceGate(db)
+            }
+        }
+
+    /**
+     * The verdict header and its indices (issue 10.1).
+     * Result: `purchase_trace` exists. Input: [db]. Output: none.
+     *
+     * Split from [MIGRATION_24_25] only because two `CREATE TABLE`s in one method pass detekt's
+     * 40-line limit; the pair still runs as one migration, so a half-created schema is impossible.
+     */
+    private fun createPurchaseTrace(db: SupportSQLiteDatabase) {
+        db.execSQL(PURCHASE_TRACE_TABLE)
+        purchaseTraceIndices(db)
+    }
+
+    /** Result: the header table's two indices exist. Input: [db]. Output: none. */
+    private fun purchaseTraceIndices(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_purchase_trace_profile_id` ON `purchase_trace` (`profile_id`)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_purchase_trace_profile_id_decided_at_utc_millis` " +
+                "ON `purchase_trace` (`profile_id`, `decided_at_utc_millis`)",
+        )
+    }
+
+    /**
+     * The gate table's rows and its indices (issue 10.1).
+     * Result: `purchase_trace_gate` exists. Input: [db]. Output: none.
+     */
+    private fun createPurchaseTraceGate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `purchase_trace_gate` (" +
+                "`id` TEXT NOT NULL, " +
+                "`profile_id` TEXT NOT NULL, " +
+                "`trace_id` TEXT NOT NULL, " +
+                "`gate` TEXT NOT NULL, " +
+                "`outcome` TEXT NOT NULL, " +
+                "`ordinal` INTEGER NOT NULL, " +
+                "`citations` TEXT NOT NULL, " +
+                "`figure_key` TEXT, " +
+                "`amount_minor` INTEGER, " +
+                "`count_value` INTEGER, " +
+                "`bps_value` INTEGER, " +
+                "`text_value` TEXT, " +
+                "`deleted_at_utc_millis` INTEGER, " +
+                "`created_at_utc_millis` INTEGER NOT NULL, " +
+                "`updated_at_utc_millis` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_purchase_trace_gate_profile_id` " +
+                "ON `purchase_trace_gate` (`profile_id`)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_purchase_trace_gate_trace_id` " +
+                "ON `purchase_trace_gate` (`trace_id`)",
+        )
+    }
+
     /** Every migration, in order, for `CfoDatabaseFactory` to register. */
     val ALL: Array<Migration> =
         arrayOf(
@@ -1330,7 +1405,44 @@ internal object Migrations {
             MIGRATION_21_22,
             MIGRATION_22_23,
             MIGRATION_23_24,
+            MIGRATION_24_25,
         )
+
+    /**
+     * `purchase_trace`'s columns (issue 10.1).
+     * Held as a constant because twenty-five columns of DDL inside the function put it past
+     * detekt's 40-line limit — the SQL is the same either way, and it reads better beside its
+     * sibling than buried in a method.
+     */
+    private const val PURCHASE_TRACE_TABLE =
+        "CREATE TABLE IF NOT EXISTS `purchase_trace` (" +
+            "`id` TEXT NOT NULL, " +
+            "`profile_id` TEXT NOT NULL, " +
+            "`item` TEXT NOT NULL, " +
+            "`price_minor` INTEGER NOT NULL, " +
+            "`method` TEXT NOT NULL, " +
+            "`urgency` TEXT NOT NULL, " +
+            "`monthly_emi_minor` INTEGER, " +
+            "`category_id` TEXT, " +
+            "`verdict` TEXT NOT NULL, " +
+            "`hard_fail` INTEGER NOT NULL, " +
+            "`liquid_before_minor` INTEGER NOT NULL, " +
+            "`liquid_after_minor` INTEGER NOT NULL, " +
+            "`runway_before_tenths` INTEGER NOT NULL, " +
+            "`runway_after_tenths` INTEGER NOT NULL, " +
+            "`goal_delay_days` INTEGER NOT NULL, " +
+            "`comfortable_price_minor` INTEGER, " +
+            "`comfortable_from_iso_date` TEXT, " +
+            "`cool_off_suggested` INTEGER NOT NULL, " +
+            "`engine_id` TEXT NOT NULL, " +
+            "`engine_version` TEXT NOT NULL, " +
+            "`citations` TEXT NOT NULL, " +
+            "`decided_on_iso_date` TEXT NOT NULL, " +
+            "`decided_at_utc_millis` INTEGER NOT NULL, " +
+            "`deleted_at_utc_millis` INTEGER, " +
+            "`created_at_utc_millis` INTEGER NOT NULL, " +
+            "`updated_at_utc_millis` INTEGER NOT NULL, " +
+            "PRIMARY KEY(`id`))"
 
     /** Named so the version pair reads as a schema version rather than an unexplained literal. */
     private const val VERSION_2 = 2
@@ -1403,4 +1515,7 @@ internal object Migrations {
 
     /** The version issue 9.6 introduces — `notification_log`, the policy's memory (§17.2). */
     private const val VERSION_24 = 24
+
+    /** The version issue 10.1 introduced: the Purchase Advisor's kept verdicts. */
+    private const val VERSION_25 = 25
 }
