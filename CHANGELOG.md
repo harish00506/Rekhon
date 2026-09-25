@@ -11,6 +11,33 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The Purchase Advisor, buy list, what-if simulators, vehicle prediction, on-device chat + guardrail
 > eval, market signals, and localisation.
 
+### [0.10.1] — Issue 10.2: Buy list + adaptive interview (AI-PA-INT)  (2026-09-26)
+
+- **Implemented:** the buy list and the interview behind it (**§13.3**, **AI-PA-INT** 1.0,
+  **ADR-0050**).
+  - **Put a wish on a list instead of buying it now.** Two fields and a button.
+  - **The app asks in proportion to the price.** A ₹400 wish gets one question; a ₹45,000 one on
+    instalments gets the full set and has to be slept on for a day. Nothing is asked twice, and the
+    next question only appears when the last one is answered.
+  - **Your answers are kept and shown back to you.** Each wish carries a want score that starts in
+    the middle and moves with what you said.
+  - **Nothing is ever removed by the app.** A wish that scores badly is *questioned*, with your own
+    answers as the reason — "you already own something that does this (−10)" — and removing or
+    keeping it is your tap.
+  - **Ask the advisor about any wish** and get 10.1's full verdict for it as things stand today.
+- **Schema 26:** the list and its answers, one row per question so changing your mind replaces an
+  answer rather than adding a second. Both tables are backed up, restored and cleared with the
+  profile.
+- **The numbers are settings, not code:** the bands, the question counts, the cooling-off and every
+  per-answer score are rulebook rows.
+- **Not yet** (ADR-0050): finding something you already own as an alternative; the Worth-It history;
+  sale-season and target-price watching; the automatic thirty-day re-ask; and typing in what a thing
+  costs to own each month.
+- **Tests:** 18 behaviour tests; 6 identities × 300 cases; a golden file across five wishes from an
+  independent oracle; 7 drift, 10 repository and 10 screen tests. The score's own rule — that no
+  single answer can decide a wish — is asserted twice, and the first draft of those numbers failed
+  it; four deliberate breaks were each watched go red.
+
 ### [0.10.0] — Issue 10.1: Purchase Advisor + trace card (AI-PA)  (2026-09-25)
 
 - **Implemented:** `:domain:engines:purchase` (`AI-PA` 1.0) and the advisor screen over it — the

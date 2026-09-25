@@ -33,7 +33,7 @@ data class InsightRules(
         private const val DEFAULT_SNOOZE_DAYS = 7
 
         /** The rulebook file these values were copied from, as `_meta.version`. */
-        const val RULEBOOK_VERSION = "1.21.0" // Issue 10.1 restated it for RULE-PA-*; no row mirrored here changed.
+        const val RULEBOOK_VERSION = "1.22.0" // Issue 10.2 restated it for RULE-PAI-*; no row mirrored here changed.
 
         /** `RULE-INS-RANK` — the feed's order and its size on the dashboard. */
         val RANK = RuleCitation("RULE-INS-RANK", "1.0")

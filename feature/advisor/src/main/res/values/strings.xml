@@ -98,6 +98,71 @@
     <string name="advisor_history_empty">Nothing yet. Ask about something and it will be kept here.</string>
     <string name="advisor_history_row">%1$s · %2$s</string>
 
+    <!--
+      Issue 10.2 — §13.3's buy list and its interview. The questions state a fact and ask one thing;
+      they do not scold (SRS §24.1), and a low-scoring wish is only ever *suggested* for removal,
+      with the user's own answers quoted back.
+    -->
+    <string name="buylist_label">Your buy list</string>
+    <string name="buylist_intro">Put a wish here instead of buying it now. The app asks a little about it — more for the big ones — and keeps what you said.</string>
+    <string name="buylist_name_label">What do you want?</string>
+    <string name="buylist_price_label">About how much? (₹)</string>
+    <string name="buylist_add">Add to the list</string>
+    <string name="buylist_empty">Nothing on the list yet.</string>
+    <string name="buylist_row">%1$s · %2$s</string>
+    <string name="buylist_score">Want score %1$d · %2$s</string>
+    <string name="buylist_outcome_keep">Worth keeping</string>
+    <string name="buylist_outcome_park">Parked for now</string>
+    <string name="buylist_outcome_suggest_remove">Maybe drop this one</string>
+    <string name="buylist_weight_casual">A small one</string>
+    <string name="buylist_weight_small">Worth a thought</string>
+    <string name="buylist_weight_significant">Worth a few questions</string>
+    <string name="buylist_weight_major">A big one</string>
+    <string name="buylist_weight_heavy">A very big one</string>
+    <plurals name="buylist_cooloff">
+        <item quantity="one">Big enough to sleep on: this one waits %1$d hour before it can be bought.</item>
+        <item quantity="other">Big enough to sleep on: this one waits %1$d hours before it can be bought.</item>
+    </plurals>
+    <string name="buylist_check">What does the advisor say?</string>
+    <string name="buylist_remove">Remove it</string>
+    <string name="buylist_bought">I bought it</string>
+    <string name="buylist_because">Because you said:</string>
+
+    <!-- The questions, in the order the ladder asks them (§13.3.1). -->
+    <string name="buylist_q_need">Is this a need or a want?</string>
+    <string name="buylist_a_need">A need</string>
+    <string name="buylist_a_want">A want</string>
+    <string name="buylist_q_uses">How often would you use it?</string>
+    <string name="buylist_a_uses_high">Most days</string>
+    <string name="buylist_a_uses_medium">A few times a month</string>
+    <string name="buylist_a_uses_low">Rarely</string>
+    <string name="buylist_q_owns">Do you already own something that does this?</string>
+    <string name="buylist_q_wait">What breaks if you wait a month?</string>
+    <string name="buylist_a_wait_breaks">Something does</string>
+    <string name="buylist_a_wait_fine">Nothing really</string>
+    <string name="buylist_q_goal_delay">Your goals would arrive later. Is that alright?</string>
+    <string name="buylist_q_timing">Could it wait for a sale?</string>
+    <string name="buylist_q_owning_cost">Does owning it cost anything each month?</string>
+    <string name="buylist_q_cooloff">You have seen what the advisor says about this one.</string>
+    <string name="buylist_q_still_wanted">A month on — do you still want it?</string>
+    <string name="buylist_a_yes">Yes</string>
+    <string name="buylist_a_no">No</string>
+
+    <!-- The answers, quoted back as the reason for a suggestion (§13.3.2). -->
+    <string name="buylist_reason_need">you called it a need</string>
+    <string name="buylist_reason_want">you called it a want</string>
+    <string name="buylist_reason_uses_high">you would use it most days</string>
+    <string name="buylist_reason_uses_medium">you would use it a few times a month</string>
+    <string name="buylist_reason_uses_low">you would rarely use it</string>
+    <string name="buylist_reason_owns_similar">you already own something that does this</string>
+    <string name="buylist_reason_owns_nothing_similar">you own nothing that does this</string>
+    <string name="buylist_reason_waiting_breaks_something">something breaks if it waits</string>
+    <string name="buylist_reason_waiting_breaks_nothing">nothing breaks if it waits</string>
+    <string name="buylist_reason_goal_delay_accepted">you are fine with the goals arriving later</string>
+    <string name="buylist_reason_goal_delay_refused">you would rather the goals arrived on time</string>
+    <string name="buylist_reason_still_wanted">you still wanted it a month later</string>
+    <string name="buylist_reason_points">%1$s (%2$d)</string>
+
     <string name="advisor_error">Something went wrong reading your data. Nothing was changed.</string>
     <string name="advisor_error_dismiss">Dismiss</string>
     <string name="advisor_back">Back</string>

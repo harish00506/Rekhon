@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.aicfo.core.common.Err
 import com.aicfo.core.common.Ok
 import com.aicfo.core.model.Money
+import com.aicfo.data.repository.BuyListRepository
 import com.aicfo.data.repository.PurchaseAdvisorRepository
 import com.aicfo.domain.engines.purchase.PurchaseRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -34,12 +35,13 @@ class AdvisorViewModel
     @Inject
     constructor(
         private val repository: PurchaseAdvisorRepository,
+        private val buyList: BuyListRepository,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(AdvisorUiState())
         val uiState: StateFlow<AdvisorUiState> = _uiState.asStateFlow()
 
         init {
-            observeHistory()
+            observe()
         }
 
         /**
@@ -68,6 +70,7 @@ class AdvisorViewModel
                 AdvisorEvent.Ask -> ask()
                 is AdvisorEvent.OpenKept -> open(event.id)
                 AdvisorEvent.DismissError -> _uiState.update { it.copy(errorCode = null) }
+                is AdvisorEvent.BuyList -> onBuyList(event)
             }
         }
 
@@ -103,14 +106,84 @@ class AdvisorViewModel
         }
 
         /**
-         * Subscribes to the history.
-         * Why:    a `catch` rather than a `try`: a storage failure three emissions in must land as a
-         *         banner over the last good list rather than tearing down the subscription.
-         * Result: the list follows the store. Input: none. Output: none.
+         * Everything §13.3's list can do.
+         * Why:    its own dispatch, so this class does not grow one `when` that handles both the
+         *         advisor's question and the list's.
+         * Result: the list moves. Input: [event]. Output: none.
          */
-        private fun observeHistory() {
+        private fun onBuyList(event: AdvisorEvent.BuyList) {
+            when (event) {
+                is AdvisorEvent.WishNameChanged -> _uiState.update { it.copy(wishName = event.name) }
+                is AdvisorEvent.WishPriceChanged ->
+                    _uiState.update { it.copy(wishPriceRupees = event.rupees.filter(Char::isDigit)) }
+                AdvisorEvent.AddWish -> addWish()
+                is AdvisorEvent.AnswerWish -> answerWish(event)
+                is AdvisorEvent.AdviseWish -> adviseWish(event.itemId)
+                is AdvisorEvent.MoveWish -> moveWish(event)
+            }
+        }
+
+        /**
+         * Puts a wish on the list instead of buying it (§13.3).
+         * Result: the list gains it, parked. Input: none. Output: none.
+         */
+        private fun addWish() {
+            val state = _uiState.value
+            if (!state.canAddWish) return
+            viewModelScope.launch {
+                when (val result = buyList.add(state.wishName.trim(), rupees(state.wishPriceRupees))) {
+                    is Ok -> _uiState.update { it.copy(wishName = "", wishPriceRupees = "") }
+                    is Err -> _uiState.update { it.copy(errorCode = result.error.code) }
+                }
+            }
+        }
+
+        /**
+         * Records one interview answer.
+         * Why:    one at a time, as the screen asks it — the repository re-scores and the list
+         *         re-emits, so nothing here recomputes a score (P-03).
+         * Result: the list moves. Input: [event]. Output: none.
+         */
+        private fun answerWish(event: AdvisorEvent.AnswerWish) {
+            viewModelScope.launch {
+                val result = buyList.answer(event.itemId, event.answer)
+                if (result is Err) _uiState.update { it.copy(errorCode = result.error.code) }
+            }
+        }
+
+        /** Asks the advisor about a wish, and shows the card it gives back (issue 10.1). */
+        private fun adviseWish(itemId: String) {
+            _uiState.update { it.copy(isAsking = true, errorCode = null) }
+            viewModelScope.launch {
+                when (val result = buyList.advise(itemId)) {
+                    is Ok -> _uiState.update { it.copy(card = result.value, isAsking = false) }
+                    is Err -> _uiState.update { it.copy(isAsking = false, errorCode = result.error.code) }
+                }
+            }
+        }
+
+        /** Moves a wish to another status — removing is the user's tap, never the app's (§13.3). */
+        private fun moveWish(event: AdvisorEvent.MoveWish) {
+            viewModelScope.launch {
+                val result = buyList.setStatus(event.itemId, event.status)
+                if (result is Err) _uiState.update { it.copy(errorCode = result.error.code) }
+            }
+        }
+
+        /**
+         * Subscribes to the history and to the buy list.
+         * Why:    one method for both, because they fail the same way: a `catch` rather than a
+         *         `try`, so a storage failure three emissions in lands as a banner over the last
+         *         good data instead of tearing the subscription down.
+         * Result: the screen follows the store. Input: none. Output: none.
+         */
+        private fun observe() {
             repository.observeRecent()
                 .onEach { kept -> _uiState.update { it.copy(history = kept) } }
+                .catch { failure -> _uiState.update { it.copy(errorCode = failure::class.simpleName) } }
+                .launchIn(viewModelScope)
+            buyList.observeList()
+                .onEach { wishes -> _uiState.update { it.copy(buyList = wishes) } }
                 .catch { failure -> _uiState.update { it.copy(errorCode = failure::class.simpleName) } }
                 .launchIn(viewModelScope)
         }
@@ -124,11 +197,14 @@ class AdvisorViewModel
                 urgency = state.urgency,
                 monthlyEmi = state.monthlyEmiRupees.takeIf { it.isNotBlank() }?.let(::rupees),
             )
-
-        /** Result: whole rupees as paise. Input: [typed] — digits only, already filtered. */
-        private fun rupees(typed: String): Money = Money((typed.toLongOrNull() ?: 0L) * PAISE_PER_RUPEE)
-
-        private companion object {
-            const val PAISE_PER_RUPEE = 100L
-        }
     }
+
+/**
+ * Result: whole rupees as paise (MNY-001) — the one conversion this screen performs.
+ * A top-level function rather than a method: it holds no state, and the ViewModel is at detekt's
+ * limit for a class that now drives two features at once.
+ * Input:  [typed] — digits only, already filtered. Output: [Money].
+ */
+private fun rupees(typed: String): Money = Money((typed.toLongOrNull() ?: 0L) * PAISE_PER_RUPEE)
+
+private const val PAISE_PER_RUPEE = 100L

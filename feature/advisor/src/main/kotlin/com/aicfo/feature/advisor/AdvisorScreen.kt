@@ -72,6 +72,7 @@ internal fun AdvisorContent(
         QuestionCard(uiState, onEvent)
         uiState.errorCode?.let { ErrorCard(onEvent) }
         uiState.card?.let { VerdictCard(it) }
+        BuyListSection(uiState, onEvent)
         HistoryCard(uiState, onEvent)
 
         CfoSecondaryButton(text = stringResource(R.string.advisor_back), onClick = onDone)

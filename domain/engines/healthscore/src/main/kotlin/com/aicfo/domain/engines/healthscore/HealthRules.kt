@@ -68,7 +68,7 @@ data class HealthRules(
         private const val PERCENT = 100
 
         /** The rulebook file these values were copied from, as `_meta.version`. */
-        const val RULEBOOK_VERSION = "1.21.0" // Issue 10.1 restated it for RULE-PA-*; no row mirrored here changed.
+        const val RULEBOOK_VERSION = "1.22.0" // Issue 10.2 restated it for RULE-PAI-*; no row mirrored here changed.
 
         /** `RULE-FHS-PILLARS` — the weights, the scale and the insufficient-data rule. */
         val PILLARS = RuleCitation("RULE-FHS-PILLARS", "1.0")

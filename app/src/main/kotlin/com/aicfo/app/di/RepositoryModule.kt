@@ -13,6 +13,7 @@ import com.aicfo.data.repository.ArchiveRepository
 import com.aicfo.data.repository.AuditLogRepository
 import com.aicfo.data.repository.BackupRepository
 import com.aicfo.data.repository.BudgetRepository
+import com.aicfo.data.repository.BuyListRepository
 import com.aicfo.data.repository.CategoryRepository
 import com.aicfo.data.repository.CreditCardRepository
 import com.aicfo.data.repository.DemoModeRepository
@@ -62,6 +63,8 @@ import com.aicfo.domain.engines.notification.NotificationPolicyEngineFactory
 import com.aicfo.domain.engines.orderofoperations.OrderOfOperationsEngine
 import com.aicfo.domain.engines.purchase.PurchaseAdvisorEngine
 import com.aicfo.domain.engines.purchase.PurchaseAdvisorEngineFactory
+import com.aicfo.domain.engines.purchase.PurchaseInterviewEngine
+import com.aicfo.domain.engines.purchase.PurchaseInterviewEngineFactory
 import com.aicfo.domain.engines.receipt.ReceiptEngine
 import com.aicfo.domain.engines.recurring.RecurringEngine
 import com.aicfo.domain.engines.safetospend.SafeToSpendEngine
@@ -666,6 +669,52 @@ object RepositoryModule {
             goals = goals,
             budgets = budgets,
             engine = engine,
+            clock = clock,
+            dispatchers = dispatchers,
+            activeProfileId = demoMode.activeProfileId,
+            idGenerator = idGenerator,
+        )
+
+    /**
+     * AI-PA-INT, the adaptive interview (issue 10.2; §13.3).
+     * Result: a [PurchaseInterviewEngine]. Input: none. Output: the engine.
+     * Changelog: 2026-09-26 — Created for issue 10.2.
+     */
+    @Provides
+    @Singleton
+    fun providePurchaseInterviewEngine(): PurchaseInterviewEngine = PurchaseInterviewEngineFactory.create()
+
+    /**
+     * The buy list and its interview (issue 10.2; §13.3).
+     * Why:    over the advisor from 10.1, so "what does it say today?" is the same answer the
+     *         advisor screen would give, and over the same income the health score reads.
+     * Result: a [BuyListRepository].
+     * Input:  [database]; [engine]; [advisor]; [transactions]; [streams]; [loans]; [clock];
+     *         [dispatchers]; [demoMode]; [idGenerator]. Output: the repository.
+     * Changelog: 2026-09-26 — Created for issue 10.2.
+     */
+    @Provides
+    @Singleton
+    @Suppress("LongParameterList") // the store, the engine, the advisor, three sources and four seams
+    fun provideBuyListRepository(
+        database: CfoDatabase,
+        engine: PurchaseInterviewEngine,
+        advisor: PurchaseAdvisorRepository,
+        transactions: TransactionRepository,
+        streams: StreamRepository,
+        loans: LoanRepository,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        demoMode: DemoModeRepository,
+        idGenerator: IdGenerator,
+    ): BuyListRepository =
+        RepositoryFactory.buyList(
+            database = database,
+            engine = engine,
+            advisor = advisor,
+            transactions = transactions,
+            streams = streams,
+            loans = loans,
             clock = clock,
             dispatchers = dispatchers,
             activeProfileId = demoMode.activeProfileId,

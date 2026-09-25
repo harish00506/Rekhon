@@ -3,7 +3,9 @@ package com.aicfo.feature.advisor
 import app.cash.turbine.test
 import com.aicfo.core.common.AppError
 import com.aicfo.core.model.Money
+import com.aicfo.data.repository.BuyListStatus
 import com.aicfo.data.repository.KeptVerdict
+import com.aicfo.domain.engines.purchase.InterviewAnswer
 import com.aicfo.domain.engines.purchase.PaymentMethod
 import com.aicfo.domain.engines.purchase.Urgency
 import com.aicfo.domain.engines.purchase.Verdict
@@ -36,6 +38,7 @@ import org.junit.Test
 class AdvisorViewModelTest {
     private val dispatcher = UnconfinedTestDispatcher()
     private val repository = FakePurchaseAdvisorRepository()
+    private val buyList = FakeBuyListRepository()
 
     @Before
     fun setUp() {
@@ -167,5 +170,60 @@ class AdvisorViewModelTest {
             assertEquals(Verdict.STRETCH, viewModel.uiState.value.card?.verdict)
         }
 
-    private fun viewModel() = AdvisorViewModel(repository)
+    @Test
+    fun `a wish goes on the list in rupees, and the fields clear`() =
+        runTest(dispatcher) {
+            val viewModel = viewModel()
+            viewModel.onEvent(AdvisorEvent.WishNameChanged("Standing desk"))
+            viewModel.onEvent(AdvisorEvent.WishPriceChanged("8000"))
+
+            viewModel.onEvent(AdvisorEvent.AddWish)
+
+            assertEquals("Standing desk" to Money(8_000_00L), buyList.added.single())
+            assertEquals("", viewModel.uiState.value.wishName)
+        }
+
+    @Test
+    fun `an incomplete wish is not added`() =
+        runTest(dispatcher) {
+            val viewModel = viewModel()
+            viewModel.onEvent(AdvisorEvent.WishNameChanged("Standing desk"))
+
+            viewModel.onEvent(AdvisorEvent.AddWish)
+
+            assertTrue(buyList.added.isEmpty())
+        }
+
+    @Test
+    fun `an answer reaches the list, and the score is never computed here`() =
+        runTest(dispatcher) {
+            val viewModel = viewModel()
+
+            viewModel.onEvent(AdvisorEvent.AnswerWish("wish:1", InterviewAnswer.NeedOrWant(isNeed = true)))
+
+            assertEquals("wish:1", buyList.answered.single().first)
+        }
+
+    @Test
+    fun `asking the advisor about a wish shows its card`() =
+        runTest(dispatcher) {
+            val viewModel = viewModel()
+
+            viewModel.onEvent(AdvisorEvent.AdviseWish("wish:1"))
+
+            assertEquals(listOf("wish:1"), buyList.advised)
+            assertEquals("Standing desk", viewModel.uiState.value.card?.request?.item)
+        }
+
+    @Test
+    fun `removing a wish is a status change, and only the user's`() =
+        runTest(dispatcher) {
+            val viewModel = viewModel()
+
+            viewModel.onEvent(AdvisorEvent.MoveWish("wish:1", BuyListStatus.REMOVED))
+
+            assertEquals("wish:1" to BuyListStatus.REMOVED, buyList.moved.single())
+        }
+
+    private fun viewModel() = AdvisorViewModel(repository, buyList)
 }

@@ -15,6 +15,7 @@
     2026-09-20 — Added RULE-NTF-BUDGET and RULE-NTF-QUIET for issue 9.6 (AI-NTF, §17.2).
     2026-09-23 — Added RULE-GRD-LADDER and RULE-GRD-TRANSFORMS for issue 9.7 (AI-GRD, AI-ARC-004).
     2026-09-25 — Added RULE-PA-GATES and RULE-PA-OPPCOST for issue 10.1 (AI-PA, §13).
+    2026-09-26 — Added RULE-PAI-LADDER and RULE-PAI-SCORE for issue 10.2 (AI-PA-INT, §13.3).
 -->
 
 # Financial Rulebook & Heuristics Knowledge Base (RULE-KB)
@@ -98,6 +99,8 @@ evaluate: RuleEngine.evaluate(ruleId, FeatureSnapshot)
 | RULE-INS-DEDUP | One insight per type + subject + period; a recomputation updates it; a dismissal suppresses it for 7 days | AI-ORCH |
 | RULE-PA-GATES | Seven gates in order; the verdict is the worst outcome across them; urgency softens one step, never onto a hard fail and never to COMFORTABLE | AI-PA |
 | RULE-PA-OPPCOST | What the price would become if invested instead: 11% a year over five and ten years, shown and never used to fail a gate | AI-PA |
+| RULE-PAI-LADDER | How many questions a wish earns, by its price against monthly income; an instalment always gets the full interview and a 24-hour pause | AI-PA-INT |
+| RULE-PAI-SCORE | A wish starts at 50 and moves with its answers; 70+ keeps it, 40–69 parks it for thirty days, under 40 suggests removing it with the answers as evidence | AI-PA-INT |
 | RULE-GRD-LADDER | Unverifiable figures send the reply back to be written again, at most twice; after that it is refused and only verified figures survive | AI-GRD |
 | RULE-GRD-TRANSFORMS | A figure verifies only as an engine value through an approved rendering: money formatting, display rounding, lakh/crore, paise, bps as percent, and engine dates | AI-GRD |
 | RULE-FHS-SIGNALS | Runway linear to M (≥ 25 once a month is covered); obligations 30%→100, 55%→0; card utilisation 30%→100, 100%→0; savings rate 0%→0, 30%→100 | AI-FHS |

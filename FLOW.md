@@ -511,6 +511,27 @@ DashboardScreen "Can I afford this?" → CfoRoute.PurchaseAdvisor → AdvisorScr
 AdvisorEvent.OpenKept(id) → find(id) → rebuilt from its rows, gates and citations included
 ```
 
+### 2.14 · A wish, not a purchase — AI-PA-INT (issue 10.2)
+
+**The list that asks before it agrees.** Adding is two fields; the questions arrive one at a time,
+only while the band has one left; and a wish is never removed except by the user's tap.
+
+```
+AdvisorScreen → BuyListSection
+├─ AddWish → BuyListRepository.add(name, price)            wishlist_item, parked at 50
+├─ AnswerWish(item, answer)
+│   → BuyListRepository.answer()                            data/repository — ARC-005
+│       ├─ replace that question's row            interview_answer, unique (profile,item,question)
+│       ├─ PurchaseInterviewEngine.assess()       domain/engines/purchase — pure (AI-PA-INT)
+│       │     band = price ÷ income in bps              (RULE-PAI-LADDER)
+│       │     ask = first N of the bank, minus answered
+│       │     score = 50 + the counted deltas           (RULE-PAI-SCORE)
+│       └─ want_score + last_interviewed_at written back
+├─ AdviseWish(item) → BuyListRepository.advise() → PurchaseAdvisorRepository §2.13 (card kept)
+└─ MoveWish(item, REMOVED | BOUGHT) → a status change, never a delete
+  ⇣ each wish: score · band · the next question · the answers behind a removal suggestion
+```
+
 ### 2.1 · The dashboard's headline figure (issue 5.2)
 
 Shape C again, but it is the **first read in the app assembled from other repositories** rather than

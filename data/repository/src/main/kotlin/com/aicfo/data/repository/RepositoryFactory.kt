@@ -3,11 +3,14 @@ package com.aicfo.data.repository
 import com.aicfo.core.common.Clock
 import com.aicfo.core.common.DispatcherProvider
 import com.aicfo.core.common.IdGenerator
+import com.aicfo.core.common.getOrNull
 import com.aicfo.core.crypto.BackupCipher
 import com.aicfo.core.crypto.ReceiptImageStore
 import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.datastore.ConsentStore
 import com.aicfo.core.datastore.SettingsStore
+import com.aicfo.core.model.CategoryNature
+import com.aicfo.core.model.Money
 import com.aicfo.core.network.MarketDataApi
 import com.aicfo.data.sms.SmsInboxReader
 import com.aicfo.domain.engines.budget.BudgetEngine
@@ -27,6 +30,7 @@ import com.aicfo.domain.engines.networth.NetWorthEngine
 import com.aicfo.domain.engines.notification.NotificationPolicyEngine
 import com.aicfo.domain.engines.orderofoperations.OrderOfOperationsEngine
 import com.aicfo.domain.engines.purchase.PurchaseAdvisorEngine
+import com.aicfo.domain.engines.purchase.PurchaseInterviewEngine
 import com.aicfo.domain.engines.receipt.ReceiptEngine
 import com.aicfo.domain.engines.recurring.RecurringEngine
 import com.aicfo.domain.engines.safetospend.SafeToSpendEngine
@@ -35,6 +39,7 @@ import com.aicfo.domain.engines.sms.SmsEngine
 import com.aicfo.domain.engines.stream.StreamEngine
 import com.aicfo.ml.ocr.ReceiptTextRecognizer
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 
 /**
  * Assembles the repositories for the DI graph (issue 2.2; ARC-003, ARC-005).
@@ -611,6 +616,64 @@ object RepositoryFactory {
         dispatchers: DispatcherProvider,
         activeProfileId: Flow<String>,
     ): StreamRepository = RoomStreamRepository(database, engine, clock, dispatchers, activeProfileId)
+
+    /**
+     * Builds the buy list (issue 10.2; §13.3).
+     * Why:    the ladder weighs a price against income, and income is the same median the health
+     *         score reads (`HealthSignals.obligations`) — one definition, so a wish never lands in a
+     *         different band than the score would put it in.
+     * Result: a [BuyListRepository].
+     * Input:  [database]; [engine]; [advisor]; [transactions], [streams] and [loans] — the income
+     *         signal; [clock]; [dispatchers]; [activeProfileId]; [idGenerator]. Output: the repository.
+     * Changelog: 2026-09-26 — Created for issue 10.2.
+     */
+    @Suppress("LongParameterList") // the store, the engine, the advisor, three sources and four seams
+    fun buyList(
+        database: CfoDatabase,
+        engine: PurchaseInterviewEngine,
+        advisor: PurchaseAdvisorRepository,
+        transactions: TransactionRepository,
+        streams: StreamRepository,
+        loans: LoanRepository,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        activeProfileId: Flow<String>,
+        idGenerator: IdGenerator,
+    ): BuyListRepository =
+        StoredBuyListRepository(
+            database = database,
+            engine = engine,
+            advisor = advisor,
+            monthlyIncome = monthlyIncome(transactions, streams, loans),
+            clock = clock,
+            dispatchers = dispatchers,
+            activeProfileId = activeProfileId,
+            idGenerator = idGenerator,
+        )
+
+    /**
+     * The month's income as the rest of the app reckons it.
+     * Why:    `HealthSignals.obligations` already decides what a typical month earns — the median of
+     *         the months that had income. Reusing it keeps the buy list's ladder and the health
+     *         score speaking about the same household.
+     * Result: a flow of the figure, `Money.ZERO` when there is not enough history. Input: the three
+     *         sources. Output: `Flow<Money>`.
+     */
+    private fun monthlyIncome(
+        transactions: TransactionRepository,
+        streams: StreamRepository,
+        loans: LoanRepository,
+    ): Flow<Money> =
+        combine(
+            transactions.observeMonthlyLedger(HealthRules().lookbackMonths),
+            streams.observeStreams(),
+            loans.observeNextInstalments(),
+            transactions.observeCategories(),
+        ) { months, streamProfile, instalments, categories ->
+            val liabilities = categories.filter { it.nature == CategoryNature.LIABILITY }.map { it.id }.toSet()
+            HealthSignals.obligations(months, streamProfile.getOrNull(), instalments.values.toList(), liabilities)
+                ?.income ?: Money.ZERO
+        }
 
     /**
      * Builds the Purchase Advisor (issue 10.1; §13).

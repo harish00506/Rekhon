@@ -1913,3 +1913,120 @@ data class PurchaseTraceGateEntity(
     @ColumnInfo(name = "updated_at_utc_millis")
     val updatedAtUtcMillis: Long,
 )
+
+/**
+ * One wish on the buy list (issue 10.2; §13.3).
+ *
+ * Why:    §13.3's whole idea is that a wish goes on a list instead of into a basket, and that the
+ *         list remembers what the user said about it. The score lives here rather than being
+ *         recomputed silently, so a suggestion to remove something can be shown with the date it
+ *         was last asked about — and so the thirty-day re-interview has something to count from.
+ * What:   the wish, what it is expected to cost, the interview's score and outcome, and where it
+ *         has got to.
+ * Result: a Room row in `wishlist_item`.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-09-26 — Created at version 26 for issue 10.2 (§13.3, AI-PA-INT).
+ */
+@Serializable
+@Entity(
+    tableName = "wishlist_item",
+    indices = [
+        Index("profile_id"),
+        Index(value = ["profile_id", "status"]),
+    ],
+)
+data class WishlistItemEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** The user's own words for the thing. */
+    @ColumnInfo(name = "name")
+    val name: String,
+    @ColumnInfo(name = "est_price_minor")
+    val estPriceMinor: Long,
+    @ColumnInfo(name = "category_id")
+    val categoryId: String? = null,
+    /** `CASH`, `CARD` or `EMI` — an instalment makes any wish heavy (§13.3.1). */
+    @ColumnInfo(name = "method")
+    val method: String,
+    @ColumnInfo(name = "monthly_emi_minor")
+    val monthlyEmiMinor: Long? = null,
+    /** `ROUTINE`, `SOON` or `URGENT`. */
+    @ColumnInfo(name = "urgency")
+    val urgency: String,
+    /** §13.3.2's WantScore, as it stood after the last answer. */
+    @ColumnInfo(name = "want_score")
+    val wantScore: Int,
+    /** `watching`, `parked`, `removed` or `bought` (§13.3). */
+    @ColumnInfo(name = "status")
+    val status: String,
+    /** An optional price to watch for. */
+    @ColumnInfo(name = "target_price_minor")
+    val targetPriceMinor: Long? = null,
+    /** When the interview last ran, so the thirty-day window has something to count from. */
+    @ColumnInfo(name = "last_interviewed_at_utc_millis")
+    val lastInterviewedAtUtcMillis: Long? = null,
+    /** The last Purchase Advisor card for this wish, when one has been asked for (issue 10.1). */
+    @ColumnInfo(name = "last_trace_id")
+    val lastTraceId: String? = null,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+)
+
+/**
+ * One answer the user gave about a wish (issue 10.2; §13.3.2).
+ *
+ * Why:    "answers are stored, not wasted" — §13.3 keeps them so the questions get fewer over time
+ *         and so a removal suggestion can quote the user back to themselves. Stored as **one typed
+ *         row per answer** rather than the `answers_json` §13.3 sketches: a JSON blob would need
+ *         DB-005's versioning, and could not be counted or queried when the value model (§32)
+ *         eventually reads it.
+ * What:   which question, which answer, and what it was worth at the time.
+ * Result: a Room row in `interview_answer`.
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-09-26 — Created at version 26 for issue 10.2 (§13.3, AI-PA-INT).
+ */
+@Serializable
+@Entity(
+    tableName = "interview_answer",
+    indices = [
+        Index("profile_id"),
+        Index("item_id"),
+        Index(value = ["profile_id", "item_id", "question"], unique = true),
+    ],
+)
+data class InterviewAnswerEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    @ColumnInfo(name = "item_id")
+    val itemId: String,
+    /** The `InterviewQuestion` name. */
+    @ColumnInfo(name = "question")
+    val question: String,
+    /** The answer's stable key — `need`, `uses_high`, `owns_similar` — which is also the delta's name. */
+    @ColumnInfo(name = "answer_key")
+    val answerKey: String,
+    /** What the answer was worth when it was given, kept so an old score stays explicable (AI-ARC-006). */
+    @ColumnInfo(name = "points")
+    val points: Int,
+    /** An amount the answer carried, where it had one (total cost of ownership). */
+    @ColumnInfo(name = "amount_minor")
+    val amountMinor: Long? = null,
+    @ColumnInfo(name = "answered_at_utc_millis")
+    val answeredAtUtcMillis: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+)
