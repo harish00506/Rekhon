@@ -14,7 +14,7 @@ android {
 
     defaultConfig {
         applicationId = "com.aicfo.personalcfo"
-        versionCode = 43
+        versionCode = 44
         versionName = rootProject.file("VERSION").readText().trim()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -42,6 +42,7 @@ tasks.withType<Test>()
 
 dependencies {
     implementation(project(":core:designsystem"))
+    implementation(project(":feature:advisor"))
     implementation(project(":feature:accounts"))
     implementation(project(":feature:budgets"))
     implementation(project(":feature:categories"))
@@ -90,6 +91,7 @@ dependencies {
     // the day that module reorganises its dependencies.
     implementation(project(":ml:ocr"))
     implementation(project(":domain:engines:guardrail"))
+    implementation(project(":domain:engines:purchase"))
     implementation(project(":domain:engines:receipt"))
 
     // Issue 5.5: the home-screen widget. This edge is what makes the widget ship at all — its

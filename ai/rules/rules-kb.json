@@ -5,7 +5,7 @@
     "what": "Seed rows for the rules_knowledge_base table (§29.1). RuleEngine.evaluate(ruleId, FeatureSnapshot) -> RuleResult{pass|warn|fail, measuredValue, threshold, evidence, ruleId, version}.",
     "result": "Changing a number here changes the app's advice everywhere that rule is cited, reproducibly and with an audit trail.",
     "source_section": "§29",
-    "version": "1.20.0",
+    "version": "1.21.0",
     "changelog": [
       "2026-07-17 — Created from SRS v1.7 §29.2–§29.5; defaults are the floor, refined by user overrides at runtime.",
       "2026-08-07 — Added RULE-SMS-PARSE for issue 3.9's opt-in, on-device bank-alert parser (§18, §23).",
@@ -19,6 +19,7 @@
       "2026-09-19 — Added RULE-FCT-METHOD and RULE-FCT-CRUNCH for issue 9.2's cash-flow forecast (§9, AI-FCT). §9.2 states the method's numbers in prose — a 90-day horizon, a 90-day lookback, a 10% trimmed mean, 500 seeded Monte-Carlo paths, P10/P50/P90 bands — and AI-FCT-002 names a ₹5,000 default buffer; each is now a params row so no engine carries them as constants (CLAUDE.md §6). New rows at v1.0, no shipped row changed. See ADR-0043.",
       "2026-09-19 — Added RULE-FHS-PILLARS, RULE-FHS-BANDS and RULE-FHS-SIGNALS for issue 9.4's Financial Health Score (§14, AI-FHS). §14.1's table gives the five pillar weights, the band edges and a few scoring anchors in prose (runway 100 at ≥ M, obligation ratio 30%→100 and 55%→0, savings rate 100 at ≥ 30%); each is now a params row. Two numbers §14 leaves unstated are minted here and say so in their source notes: the runway floor boost (25 points at ≥ 1 month) and where card utilisation reaches zero (100%). The utilisation 'good' edge and the savings-rate top are NOT restated — AI-FHS reads RULE-CC-UTIL.max_utilisation_pct and RULE-SAVE-RATE.excellent_pct, which already say 30. New rows at v1.0, no shipped row changed. See ADR-0045.",
       "2026-09-20 — Added RULE-INS-RANK and RULE-INS-DEDUP for issue 9.5's Insight Orchestrator (§7.2, AI-ORCH). §7.2 states the deduplication fingerprint (type + subject + period) and that dismissed fingerprints are suppressed for their snooze window, but names no window length and no feed order; FR-HOME-001 asks for the 'top 3' on the dashboard. The severity order, the tie-breaks, the dashboard size and the seven-day snooze are now params rather than engine constants. New rows at v1.0, no shipped row changed. See ADR-0046.",
+      "2026-09-25 — Added RULE-PA-GATES and RULE-PA-OPPCOST for issue 10.1's Purchase Advisor (AI-PA, §13). §13.1 states the seven gates and 'worst severity across gates, softened by urgency' as prose; the softening limits, the thirty-day month behind a goal delay and the opportunity-cost assumption are params now rather than constants in the engine. New rows at v1.0, no shipped row changed; the advisor also reads RULE-EMI-40, RULE-COOL-OFF, RULE-STS and RULE-FCT-CRUNCH unchanged. See ADR-0049.",
       "2026-09-23 — Added RULE-GRD-LADDER and RULE-GRD-TRANSFORMS for issue 9.7's numeric guardrail (AI-GRD, AI-ARC-004, ai/chat/guardrail.md). That file states N = 2 regeneration attempts and the allowlist of display transforms as prose; both are params now rather than constants in the engine, so tightening the gate — disallowing lakh/crore wording, say — is a data edit. New rows at v1.0, no shipped row changed. See ADR-0048.",
       "2026-09-20 — Added RULE-NTF-BUDGET and RULE-NTF-QUIET for issue 9.6's notification policy (§17.2, AI-NTF). NTF-001's caps (2 non-critical a day, 8 a week, critical exempt) and NTF-002's quiet hours (22:00–08:00, critical may bypass) are stated in the SRS as prose; they are now params an engine reads rather than constants it carries. The taxonomy's per-type defaults (§17.1) are NOT minted: they are user settings with no field yet, and inventing rows for them would ship numbers nothing reads (the ADR-0034 argument). New rows at v1.0, no shipped row changed. See ADR-0047."
     ],
@@ -668,6 +669,32 @@
       "rationale": "GRD-002 and GRD-003: the allowlist is what separates the same number written for a reader from a new number. Arithmetic the model performs is not on the list, so \u20b9500 \u00d7 12 = \u20b96,000 cannot pass unless an engine published \u20b96,000.",
       "source_note": "ai/chat/guardrail.md GRD-002, GRD-003 and GRD-004. Two decimals is the app's own money rendering. FX via convert_currency is deliberately NOT on the list \u2014 no such tool exists yet (ADR-0048).",
       "consumed_by": ["AI-GRD"],
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "rule_id": "RULE-PA-GATES",
+      "domain": "purchase",
+      "name": "A purchase is judged by seven gates in order — affordability, cash-flow impact, obligation ratio, goal impact, budget fit, opportunity cost and timing. The verdict is the worst outcome across them: any fail is NOT_NOW, any warning is STRETCH, otherwise COMFORTABLE. Spending money the goals were being fed with delays every goal by the price divided by the total monthly contribution. An urgent purchase is softened by one step, but never onto a hard fail and never all the way to COMFORTABLE.",
+      "formula_id": "purchase_gates",
+      "params_json": { "days_per_month": 30, "urgency_softens_one_step": true, "soften_blocked_on_hard_fail": true, "crunch_downgrades": true },
+      "severity": "warn",
+      "rationale": "\u00a713 states the pipeline and 'verdict = worst severity across gates, softened by urgency', but not what softening may not do. Letting urgency reach COMFORTABLE would turn the advisor into a rubber stamp for exactly the purchases it exists to slow down, and letting it override a hard fail would tell someone an unaffordable thing is merely a stretch.",
+      "source_note": "SRS \u00a713.1's seven-step pipeline and its verdict line. The thirty-day month, the softening limits and the goal-delay apportionment are minted here \u2014 \u00a713 leaves all four unstated (ADR-0049).",
+      "consumed_by": ["AI-PA"],
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "rule_id": "RULE-PA-OPPCOST",
+      "domain": "purchase",
+      "name": "What the money would have become if invested instead: future value at the user's expected return, over five and ten years. The default assumption is 11% a year, the long-run Indian equity figure, and it is the user's to change.",
+      "formula_id": "purchase_opportunity_cost",
+      "params_json": { "expected_return_bps": 1100, "horizon_years": [5, 10] },
+      "severity": "info",
+      "rationale": "A price is easier to judge beside what it could have become. It is shown, never used to fail a gate: an app that refused purchases because the money could have been invested would refuse every purchase.",
+      "source_note": "SRS \u00a713.1 step 6: 'FV = price \u00d7 (1+r)^t for t \u2208 {5y, 10y}, r = user assumption (default 11% eq.)'.",
+      "consumed_by": ["AI-PA"],
       "enabled": true,
       "version": "1.0"
     }

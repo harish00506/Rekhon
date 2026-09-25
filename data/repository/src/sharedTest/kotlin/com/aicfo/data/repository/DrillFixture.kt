@@ -19,6 +19,8 @@ import com.aicfo.core.database.entity.LoanEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
 import com.aicfo.core.database.entity.NotificationLogEntity
 import com.aicfo.core.database.entity.ProfileEntity
+import com.aicfo.core.database.entity.PurchaseTraceEntity
+import com.aicfo.core.database.entity.PurchaseTraceGateEntity
 import com.aicfo.core.database.entity.RecurringRuleEntity
 import com.aicfo.core.database.entity.SmsDraftEntity
 import com.aicfo.core.database.entity.TagEntity
@@ -403,6 +405,57 @@ object DrillFixture {
                     decidedAtUtcMillis = NOW,
                     sentAtUtcMillis = NOW,
                     deliverAfterUtcMillis = null,
+                    createdAtUtcMillis = NOW,
+                    updatedAtUtcMillis = NOW,
+                ),
+            ),
+        )
+        dao.insertPurchaseTraces(
+            listOf(
+                PurchaseTraceEntity(
+                    id = "purchase:1",
+                    profileId = profileId,
+                    item = "Headphones",
+                    priceMinor = 8_000_00L,
+                    method = "CASH",
+                    urgency = "ROUTINE",
+                    monthlyEmiMinor = null,
+                    categoryId = "category:1",
+                    verdict = "STRETCH",
+                    hardFail = false,
+                    liquidBeforeMinor = 1_00_000_00L,
+                    liquidAfterMinor = 92_000_00L,
+                    runwayBeforeTenths = 24,
+                    runwayAfterTenths = 22,
+                    goalDelayDays = 16,
+                    comfortablePriceMinor = 5_000_00L,
+                    comfortableFromIsoDate = "2026-11-25",
+                    coolOffSuggested = false,
+                    engineId = "AI-PA",
+                    engineVersion = "1.0",
+                    citations = "RULE-PA-GATES v1.0, RULE-COOL-OFF v1.0",
+                    decidedOnIsoDate = "2026-09-25",
+                    decidedAtUtcMillis = NOW,
+                    createdAtUtcMillis = NOW,
+                    updatedAtUtcMillis = NOW,
+                ),
+            ),
+        )
+        dao.insertPurchaseTraceGates(
+            listOf(
+                PurchaseTraceGateEntity(
+                    id = "purchase-gate:1",
+                    profileId = profileId,
+                    traceId = "purchase:1",
+                    gate = "AFFORDABILITY",
+                    outcome = "PASS",
+                    ordinal = 0,
+                    citations = "RULE-PA-GATES v1.0",
+                    figureKey = "liquidAfter",
+                    amountMinor = 92_000_00L,
+                    countValue = null,
+                    bpsValue = null,
+                    textValue = null,
                     createdAtUtcMillis = NOW,
                     updatedAtUtcMillis = NOW,
                 ),

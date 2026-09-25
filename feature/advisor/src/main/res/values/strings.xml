@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Issue 10.1 — the Purchase Advisor (§13).
+
+  Every figure on this screen comes from AI-PA and is formatted by MoneyFormatter; no number is
+  written into the copy here or in a translation (P-03). The tone follows SRS §24.1: these state a
+  fact and its consequence, they do not scold — "this would take you below your emergency fund", not
+  "you cannot afford this".
+-->
+<resources>
+    <string name="advisor_title">Can I afford this?</string>
+    <string name="advisor_intro">Tell the advisor what you are thinking of buying. It checks seven things and shows its working.</string>
+    <string name="advisor_item_label">What is it?</string>
+    <string name="advisor_price_label">Price (₹)</string>
+    <string name="advisor_emi_label">Monthly instalment (₹)</string>
+    <string name="advisor_method_label">How would you pay?</string>
+    <string name="advisor_method_cash">Cash</string>
+    <string name="advisor_method_card">Card</string>
+    <string name="advisor_method_emi">EMI</string>
+    <string name="advisor_urgency_label">How soon do you need it?</string>
+    <string name="advisor_urgency_routine">It can wait</string>
+    <string name="advisor_urgency_soon">Soon</string>
+    <string name="advisor_urgency_urgent">Urgent</string>
+    <string name="advisor_ask">Ask the advisor</string>
+    <string name="advisor_asking">Working it out…</string>
+
+    <!-- The verdict banner and its one-line summary (§13.2). -->
+    <string name="advisor_verdict_comfortable">Comfortable</string>
+    <string name="advisor_verdict_stretch">A stretch</string>
+    <string name="advisor_verdict_not_now">Not now</string>
+    <string name="advisor_verdict_comfortable_summary">Nothing objects to this one.</string>
+    <string name="advisor_verdict_stretch_summary">You can do this, with something to accept below.</string>
+    <string name="advisor_verdict_not_now_summary">This breaks something below. It is still your call.</string>
+    <string name="advisor_verdict_for">%1$s · %2$s</string>
+
+    <!-- The gate table. One row per check, in the order §13.1 runs them. -->
+    <string name="advisor_gates_label">What was checked</string>
+    <string name="advisor_gate_affordability">Money available</string>
+    <string name="advisor_gate_cash_flow">The next 90 days</string>
+    <string name="advisor_gate_obligations">EMIs and rent</string>
+    <string name="advisor_gate_goal_impact">Your goals</string>
+    <string name="advisor_gate_budget_fit">This month\'s budget</string>
+    <string name="advisor_gate_opportunity_cost">If invested instead</string>
+    <string name="advisor_gate_timing">Timing</string>
+    <string name="advisor_outcome_pass">Fine</string>
+    <string name="advisor_outcome_warn">Worth knowing</string>
+    <string name="advisor_outcome_fail">Breaks</string>
+
+    <!-- Figure labels, keyed to what the engine named them. -->
+    <string name="advisor_figure_liquid_before">Money available now</string>
+    <string name="advisor_figure_liquid_after">Left afterwards</string>
+    <string name="advisor_figure_emergency_floor">Emergency fund</string>
+    <string name="advisor_figure_monthly_emi">Monthly instalment</string>
+    <string name="advisor_figure_surplus_before">Spare each month</string>
+    <string name="advisor_figure_surplus_after">Spare each month afterwards</string>
+    <string name="advisor_figure_safe_to_spend">Safe to spend this month</string>
+    <string name="advisor_figure_forecast_lowest">Lowest day ahead</string>
+    <string name="advisor_figure_forecast_lowest_after">Lowest day afterwards</string>
+    <string name="advisor_figure_forecast_buffer">Your buffer</string>
+    <plurals name="advisor_figure_crunch_days_before">
+        <item quantity="one">%1$d day already under it</item>
+        <item quantity="other">%1$d days already under it</item>
+    </plurals>
+    <string name="advisor_figure_obligations_before">EMIs and rent now</string>
+    <string name="advisor_figure_obligations_after">EMIs and rent afterwards</string>
+    <string name="advisor_figure_monthly_obligations">Committed each month</string>
+    <string name="advisor_figure_added_emi">This would add</string>
+    <plurals name="advisor_figure_goal_delay">
+        <item quantity="one">Goals arrive %1$d day later</item>
+        <item quantity="other">Goals arrive %1$d days later</item>
+    </plurals>
+    <string name="advisor_figure_goal_monthly">Going to goals each month</string>
+    <string name="advisor_figure_category_remaining">Left in this category</string>
+    <string name="advisor_figure_future_value_5y">In 5 years, if invested</string>
+    <string name="advisor_figure_future_value_10y">In 10 years, if invested</string>
+    <string name="advisor_figure_expected_return">Assumed return</string>
+    <string name="advisor_figure_cheaper_month">Cheaper in</string>
+    <string name="advisor_figure_cheaper_saving">You would save about</string>
+    <string name="advisor_figure_percent">%1$d%%</string>
+
+    <!-- The impact strip (§13.2). -->
+    <string name="advisor_impact_label">What this moves</string>
+    <string name="advisor_impact_money">Money: %1$s → %2$s</string>
+    <string name="advisor_impact_runway">Runway: %1$s → %2$s months</string>
+
+    <!-- The alternatives (§13.2). -->
+    <string name="advisor_alternatives_label">What would change the answer</string>
+    <string name="advisor_alternative_price">At %1$s, nothing would object.</string>
+    <string name="advisor_alternative_date">From %1$s you could pay for this without touching your emergency fund.</string>
+    <string name="advisor_alternative_cooloff">This is a big one for your income. Sleep on it — the advisor will say the same tomorrow.</string>
+    <string name="advisor_alternative_none">Waiting alone will not change this answer.</string>
+
+    <!-- Provenance (P-02, AI-ARC-006). -->
+    <string name="advisor_evidence">From %1$s v%2$s · %3$s</string>
+
+    <!-- The history (§13.2 — revisit why a past decision was made). -->
+    <string name="advisor_history_label">What you asked before</string>
+    <string name="advisor_history_empty">Nothing yet. Ask about something and it will be kept here.</string>
+    <string name="advisor_history_row">%1$s · %2$s</string>
+
+    <string name="advisor_error">Something went wrong reading your data. Nothing was changed.</string>
+    <string name="advisor_error_dismiss">Dismiss</string>
+    <string name="advisor_back">Back</string>
+</resources>

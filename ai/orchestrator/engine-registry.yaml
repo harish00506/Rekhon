@@ -18,6 +18,7 @@
 #                pipeline, plus the persisted feed it writes (ADR-0046).
 #   2026-09-20 — Issue 9.6: AI-NTF built — §17.2's gate for every notification (ADR-0047).
 #   2026-09-23 — Issue 9.7: AI-GRD built — AI-ARC-004's numeric guardrail (ADR-0048).
+#   2026-09-25 — Issue 10.1: AI-PA built — §13's Purchase Advisor and its kept trace (ADR-0049).
 # =============================================================================
 
 version: "1.1"
@@ -139,8 +140,12 @@ engines:
     layer: L5
     module: ":domain:engines:purchase"
     version: "1.0"
-    contract: "item+price+method -> Verdict{COMFORTABLE|STRETCH|NOT_NOW} + gate trace"
-    reads: [../rules/rules-kb.json]      # RULE-EMI-40, RULE-COOL-OFF, RULE-20-4-10 ...
+    # Issue 10.1 built it (ADR-0049): seven gates over figures the engines below published, the
+    # worst outcome wins, and the whole card is kept at schema 25 so a past verdict can be reread.
+    # RULE-20-4-10's vehicle gate is not applied yet — 10.4 owns the vehicle path.
+    contract: "item+price+method+urgency + published signals (liquid, emergency floor, forecast, obligations, goals, budget) -> Verdict{COMFORTABLE|STRETCH|NOT_NOW} + seven-gate trace + impact strip + alternatives"
+    reads: [../rules/rules-kb.json]      # RULE-PA-GATES, RULE-PA-OPPCOST, RULE-EMI-40, RULE-COOL-OFF
+    depends_on: [AI-EMF, AI-FCT, AI-STS, AI-GOAL, AI-BUD]
     srs: "§13"
 
   - id: AI-STS

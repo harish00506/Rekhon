@@ -118,7 +118,7 @@ data class BudgetRules(
          * mirror in the repo restates it whenever any rule is added; this constant says "copied from
          * that revision", not "these thresholds changed then".
          */
-        const val RULEBOOK_VERSION = "1.20.0" // Issue 9.7 restated it for RULE-GRD-*; no row mirrored here changed.
+        const val RULEBOOK_VERSION = "1.21.0" // Issue 10.1 restated it for RULE-PA-*; no row mirrored here changed.
     }
 }
 

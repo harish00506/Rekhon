@@ -5,13 +5,14 @@ import androidx.compose.ui.res.stringResource
 import com.aicfo.core.designsystem.component.CfoSecondaryButton
 
 /**
- * The three places the dashboard can send the user.
+ * The places the dashboard can send the user.
  * Why:    extracted because adding FR-SET-001's settings button took [DashboardContent] past
  *         detekt's 40-line limit (§21.6) — the same pressure that produced [DashboardActions]
  *         itself. Grouping them also puts the navigation in one place rather than interleaved with
  *         the cards.
  * Result: the composition. Input: [actions]. Output: none.
  * Changelog: 2026-08-29 — Created for FR-SET-001.
+ *            2026-09-25 — Issue 10.1 added the Purchase Advisor.
  */
 @Composable
 internal fun DestinationButtons(actions: DashboardActions) {
@@ -34,6 +35,12 @@ internal fun DestinationButtons(actions: DashboardActions) {
     CfoSecondaryButton(
         text = stringResource(R.string.dashboard_emergency_fund_action),
         onClick = actions.onNavigateToEmergencyFund,
+    )
+    // Issue 10.1: §13's advisor answers "can I afford this?", which is the question the rest of
+    // this screen only implies. It sits below the plan buttons because it reads all of them.
+    CfoSecondaryButton(
+        text = stringResource(R.string.dashboard_advisor_action),
+        onClick = actions.onNavigateToPurchaseAdvisor,
     )
     // Reached from here because this is the screen whose two empty states depend on the monthly
     // income it sets — and because until it existed those states told the user to visit a Settings

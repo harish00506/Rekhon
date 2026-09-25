@@ -17,6 +17,7 @@
     2026-09-20 — Issue 9.5 (AI-ORCH insight orchestrator + feed) merged to dev; schema 23.
     2026-09-21 — Issue 9.6 (AI-NTF notification policy) merged to dev; schema 24.
     2026-09-23 — Issue 9.7 (AI-GRD numeric guardrail) merged to dev; Epic 9 complete.
+    2026-09-25 — Issue 10.1 (AI-PA Purchase Advisor + trace card) merged to dev; schema 25; Epic 10 opened at 0.10.0.
 -->
 
 # AI Personal CFO — Project Memory
@@ -28,13 +29,13 @@
 
 ## Current state
 
-- **Version:** `0.9.7` (see [`../VERSION`](../VERSION)) · **Phase:** 2–3. **Schema is v24**, unchanged by 9.7.
+- **Version:** `0.10.0` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v25** (10.1's `purchase_trace`).
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
   forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
   feed), 9.6 (the notification policy) and 9.7 (the numeric guardrail) shipped — **Epic 9 is
-  complete**. Epic 10 (the chat copilot) is next, and it inherits AI-GRD's ladder rather than
-  inventing one.
-- **Currently working file:** none. Issues **8.1–8.3 and 9.1–9.7 are merged to `dev`**
+  complete**. **Epic 10 is open**: 10.1 (the Purchase Advisor) shipped; 10.2 (the buy list) is next,
+  and the chat issues (10.5/10.6) inherit AI-GRD's ladder rather than inventing one.
+- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7 and 10.1 are merged to `dev`**
   ([8.1 tracker](issues/8.1-e2ee-backup-argon2id-aes-256-gcm-tracker.md), ADR-0039;
   [8.2 tracker](issues/8.2-restore-on-fresh-device-tracker.md), ADR-0040;
   [8.3 tracker](issues/8.3-backup-restore-drill-tracker.md), ADR-0041;
@@ -44,7 +45,8 @@
   [9.4 tracker](issues/9.4-financial-health-score-ai-fhs-tracker.md), ADR-0045;
   [9.5 tracker](issues/9.5-insight-orchestrator-feed-tracker.md), ADR-0046;
   [9.6 tracker](issues/9.6-notification-engine-policy-tracker.md), ADR-0047;
-  [9.7 tracker](issues/9.7-guardrail-ai-arc-004-tracker.md), ADR-0048).
+  [9.7 tracker](issues/9.7-guardrail-ai-arc-004-tracker.md), ADR-0048;
+  [10.1 tracker](issues/10.1-purchase-advisor-ai-pa-trace-card-tracker.md), ADR-0049).
 - **`origin/dev` is still at `6afa5f0`** — local `dev` is well ahead (7.4, 7.5, the card APR field,
   the FOO/goals agreement, 8.1 and their records),
   and **the push is blocked, not skipped**: this machine has no GitHub credentials (no helper, no
@@ -57,6 +59,20 @@
   `dev` was two issues behind once and nobody noticed.
 - **The forecast exists now (9.2), but the goals still use the observed P50 surplus** (ADR-0035,
   ADR-0037). Switching `SurplusRepository` to `ForecastRepository` is ADR-0043's recorded follow-up.
+
+### What 10.1 changed that a future issue must know
+
+- **AI-PA reads signals, never other engines.** To add a gate, add a field to `PurchaseSignals` and
+  map it in `StoredPurchaseAdvisorRepository.signals()`; do not import another engine module into
+  `:domain:engines:purchase` (ADR-0046's rule, kept here).
+- **Schema is 25** — `purchase_trace` and `purchase_trace_gate`, both with tombstones, both in the
+  archive, the demo wipe and the restore drill. The card's own citations are a column, because
+  RULE-COOL-OFF belongs to no gate.
+- **The timing gate has no signal yet.** `cheaperMonth` is always `null` until AI-SEAS's factors are
+  wired; the gate itself is built and tested.
+- **10.2's buy list should reuse `PurchaseRequest` and the category path** — the budget gate already
+  reads `request.categoryId`, and the screen has no category picker yet.
+- **rules-kb is 1.21.0**; eleven `*Rules.kt` mirrors restate it.
 
 ### What 9.7 changed that a future issue must know
 

@@ -121,6 +121,8 @@ internal class RoomArchiveRepository(
                         goalFundingAccounts = dao.goalFundingAccounts(profileId),
                         insights = dao.insights(profileId),
                         notificationLog = dao.notificationLog(profileId),
+                        purchaseTraces = dao.purchaseTraces(profileId),
+                        purchaseTraceGates = dao.purchaseTraceGates(profileId),
                     ),
                 )
             }
@@ -259,6 +261,8 @@ internal class RoomArchiveRepository(
         dao.insertGoalFundingAccounts(archive.goalFundingAccounts)
         dao.insertInsights(archive.insights)
         dao.insertNotificationLog(archive.notificationLog)
+        dao.insertPurchaseTraces(archive.purchaseTraces)
+        dao.insertPurchaseTraceGates(archive.purchaseTraceGates)
     }
 
     private companion object {
@@ -316,4 +320,4 @@ internal fun CfoArchive.rowCount(): Int =
         recurringRules.size + netWorthSnapshots.size + attachments.size + smsDrafts.size +
         creditCards.size + cardAlerts.size + loans.size + investmentHoldings.size +
         investmentLots.size + goals.size + goalContributions.size + goalFundingAccounts.size +
-        insights.size + notificationLog.size
+        insights.size + notificationLog.size + purchaseTraces.size + purchaseTraceGates.size

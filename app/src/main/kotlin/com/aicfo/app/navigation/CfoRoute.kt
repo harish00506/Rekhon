@@ -195,4 +195,14 @@ sealed interface CfoRoute {
      */
     @Serializable
     data object OrderOfOperations : CfoRoute
+
+    /**
+     * §13's Purchase Advisor (issue 10.1; FR-AI-003).
+     *
+     * **No arguments**: the question is typed on the screen rather than carried in the route, and a
+     * past verdict is reopened by its id *within* the screen — a back stack full of half-asked
+     * questions would be a worse history than the one §13.2 already keeps.
+     */
+    @Serializable
+    data object PurchaseAdvisor : CfoRoute
 }

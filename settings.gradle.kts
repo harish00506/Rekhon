@@ -77,6 +77,7 @@ include(":domain:engines:healthscore") // §14 AI-FHS — five weighted pillars 
 include(":domain:engines:insight")     // §7.2 AI-ORCH — engine results -> a deduplicated, ranked insight feed
 include(":domain:engines:notification") // §17.2 AI-NTF — what may interrupt the user, and when
 include(":domain:engines:guardrail") // AI-ARC-004 AI-GRD — no unverified figure reaches the user
+include(":domain:engines:purchase") // §13 AI-PA — can I afford this? the verdict and its trace
 include(":domain:usecase")
 
 // :data:*                  the ONLY DAO/network touchers (ARC-005)
@@ -88,6 +89,7 @@ include(":ml:ocr")              // ML Kit Text Recognition v2
 include(":ml:llm")              // on-device LLM behind LlmEngine
 
 // :feature:*               Compose screens + ViewModels (never depend on each other)
+include(":feature:advisor")     // §13 AI-PA — can I afford this, and the trace that says why
 include(":feature:accounts")    // FR-ACC-001/007 — CRUD for all eleven account types
 include(":feature:budgets")     // FR-BUD-001/002/003 — per-category budgets and suggestions (4.4)
 include(":feature:categories")  // FR-SET-001 — the category taxonomy editor (issue 4.1)

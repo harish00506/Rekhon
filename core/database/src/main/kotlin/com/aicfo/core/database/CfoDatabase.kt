@@ -23,6 +23,7 @@ import com.aicfo.core.database.dao.LoanDao
 import com.aicfo.core.database.dao.NetWorthSnapshotDao
 import com.aicfo.core.database.dao.NotificationLogDao
 import com.aicfo.core.database.dao.ProfileDao
+import com.aicfo.core.database.dao.PurchaseTraceDao
 import com.aicfo.core.database.dao.RecurringRuleDao
 import com.aicfo.core.database.dao.SmsDraftDao
 import com.aicfo.core.database.dao.TagDao
@@ -47,6 +48,8 @@ import com.aicfo.core.database.entity.LoanEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
 import com.aicfo.core.database.entity.NotificationLogEntity
 import com.aicfo.core.database.entity.ProfileEntity
+import com.aicfo.core.database.entity.PurchaseTraceEntity
+import com.aicfo.core.database.entity.PurchaseTraceGateEntity
 import com.aicfo.core.database.entity.RecurringRuleEntity
 import com.aicfo.core.database.entity.SmsDraftEntity
 import com.aicfo.core.database.entity.TagEntity
@@ -100,6 +103,8 @@ import com.aicfo.core.database.entity.TransactionTagEntity
         GoalFundingAccountEntity::class,
         InsightEntity::class,
         NotificationLogEntity::class,
+        PurchaseTraceEntity::class,
+        PurchaseTraceGateEntity::class,
     ],
     version = CfoDatabase.VERSION,
     exportSchema = true,
@@ -178,6 +183,9 @@ abstract class CfoDatabase : RoomDatabase() {
     /** Input: none. Output: the notification policy's log (issue 9.6, §17.2). */
     abstract fun notificationLogDao(): NotificationLogDao
 
+    /** Result: the Purchase Advisor's kept verdicts (issue 10.1; §13.2). */
+    abstract fun purchaseTraceDao(): PurchaseTraceDao
+
     /**
      * Input:  none. Output: the demo wipe DAO (issue 2.4, FR-ONB-004).
      *
@@ -230,7 +238,7 @@ abstract class CfoDatabase : RoomDatabase() {
          * contribution *is* the linked transaction's, summed at query time, so nothing can drift
          * away from the ledger it came from; §15, FR-GOAL-002, FR-GOAL-004).
          */
-        const val VERSION = 24
+        const val VERSION = 25
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"

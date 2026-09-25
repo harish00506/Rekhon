@@ -18,6 +18,8 @@ import com.aicfo.core.database.entity.LoanEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
 import com.aicfo.core.database.entity.NotificationLogEntity
 import com.aicfo.core.database.entity.ProfileEntity
+import com.aicfo.core.database.entity.PurchaseTraceEntity
+import com.aicfo.core.database.entity.PurchaseTraceGateEntity
 import com.aicfo.core.database.entity.RecurringRuleEntity
 import com.aicfo.core.database.entity.SmsDraftEntity
 import com.aicfo.core.database.entity.TagEntity
@@ -43,6 +45,7 @@ import kotlinx.serialization.Serializable
  * Changelog: 2026-08-16 — Created for issue 5.4.
  *   2026-09-06 — Issue 7.4 added [goals], [goalContributions] and [goalFundingAccounts].
  *   2026-09-20 — Issue 9.5 added [insights]. Issue 9.6 added [notificationLog].
+ *   2026-09-25 — Issue 10.1 added [purchaseTraces] and [purchaseTraceGates].
  *
  * **`goal` was missing from here for two issues, and the warning below is what it disproved.**
  * The argument for holding entities directly is that "a new column is in the archive the moment it
@@ -105,6 +108,8 @@ data class CfoArchive(
     val insights: List<InsightEntity> = emptyList(),
     /** Issue 9.6: what was sent — so a restored phone keeps its caps and never re-sends an alert. */
     val notificationLog: List<NotificationLogEntity> = emptyList(),
+    val purchaseTraces: List<PurchaseTraceEntity> = emptyList(),
+    val purchaseTraceGates: List<PurchaseTraceGateEntity> = emptyList(),
 ) {
     companion object {
         /**

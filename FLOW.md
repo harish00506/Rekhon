@@ -488,6 +488,29 @@ BudgetAlertNotifier · CardAlertNotifier · InsightNotifier   (:app, after Notif
    → Pass: NotificationManagerCompat.notify(...)   · anything else: nothing is posted, nothing logged
 ```
 
+### 2.13 · Can I afford this? — AI-PA (issue 10.1)
+
+**The one screen that asks every engine at once.** Seven gates, one consistent read, and the card is
+written to the database before it is shown — so what the user sees and what the history keeps are
+the same card (§13.2).
+
+```
+DashboardScreen "Can I afford this?" → CfoRoute.PurchaseAdvisor → AdvisorScreen
+└─ AdvisorViewModel: rupees typed → paise (MNY-001), nothing else computed
+   → PurchaseAdvisorRepository.advise(PurchaseRequest)            data/repository — ARC-005
+       ├─ one read of every source (AI-ARC-001):
+       │    EmergencyFundRepository (liquid · target · essentials) · SafeToSpendRepository ·
+       │    ForecastRepository §2.08 · ledger + streams + instalments → HealthSignals.obligations ·
+       │    GoalRepository (monthly contributions) · BudgetRepository (category remaining)
+       ├─ PurchaseAdvisorEngine.advise()                    domain/engines/purchase — pure (AI-PA)
+       │    affordability → cash flow → obligations → goals → budget → opportunity → timing
+       │    verdict = worst of them, softened one step for urgency      (RULE-PA-GATES)
+       └─ purchase_trace + purchase_trace_gate, in one transaction      (§13.2, AI-ARC-006)
+   ⇣ uiState.card → verdict banner · gate table with figures · impact strip · alternatives ·
+                    "From AI-PA v1.0 · <rules>"
+AdvisorEvent.OpenKept(id) → find(id) → rebuilt from its rows, gates and citations included
+```
+
 ### 2.1 · The dashboard's headline figure (issue 5.2)
 
 Shape C again, but it is the **first read in the app assembled from other repositories** rather than

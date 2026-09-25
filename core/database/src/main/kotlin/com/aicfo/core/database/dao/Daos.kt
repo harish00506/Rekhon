@@ -30,6 +30,8 @@ import com.aicfo.core.database.entity.LoanEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
 import com.aicfo.core.database.entity.NotificationLogEntity
 import com.aicfo.core.database.entity.ProfileEntity
+import com.aicfo.core.database.entity.PurchaseTraceEntity
+import com.aicfo.core.database.entity.PurchaseTraceGateEntity
 import com.aicfo.core.database.entity.RecurringRuleEntity
 import com.aicfo.core.database.entity.SmsDraftEntity
 import com.aicfo.core.database.entity.TagEntity
@@ -2274,6 +2276,19 @@ interface DemoDao {
     suspend fun deleteNotificationLog(profileId: String): Int
 
     /**
+     * Result: rows removed from `purchase_trace`. Input: [profileId]. Output: the count.
+     *
+     * Issue 10.1: a verdict about a sample household's money is not advice about anyone's, and
+     * leaving it behind would put a stranger's purchase in the user's own history.
+     */
+    @Query("DELETE FROM purchase_trace WHERE profile_id = :profileId")
+    suspend fun deletePurchaseTraces(profileId: String): Int
+
+    /** Result: rows removed from `purchase_trace_gate`. Input: [profileId]. Output: the count. */
+    @Query("DELETE FROM purchase_trace_gate WHERE profile_id = :profileId")
+    suspend fun deletePurchaseTraceGates(profileId: String): Int
+
+    /**
      * Result: rows removed from `card_alert`. Input: [profileId]. Output: the count.
      *
      * Cleared with the profile like every other claim table, and before `credit_card` for the
@@ -2638,6 +2653,17 @@ interface ArchiveDao {
     @Query("SELECT * FROM notification_log WHERE profile_id = :profileId ORDER BY id")
     suspend fun notificationLog(profileId: String): List<NotificationLogEntity>
 
+    /**
+     * Result: every kept Purchase Advisor verdict, so a restored phone can still show why a past
+     *   decision was made (issue 10.1; §13.2, AI-ARC-006). Input: [profileId].
+     */
+    @Query("SELECT * FROM purchase_trace WHERE profile_id = :profileId ORDER BY id")
+    suspend fun purchaseTraces(profileId: String): List<PurchaseTraceEntity>
+
+    /** Result: the gate tables behind those verdicts (issue 10.1). Input: [profileId]. */
+    @Query("SELECT * FROM purchase_trace_gate WHERE profile_id = :profileId ORDER BY id")
+    suspend fun purchaseTraceGates(profileId: String): List<PurchaseTraceGateEntity>
+
     /** Result: every recurring rule, confirmed and dismissed alike (FR-TXN-006). Input: [profileId]. */
     @Query("SELECT * FROM recurring_rule WHERE profile_id = :profileId ORDER BY id")
     suspend fun recurringRules(profileId: String): List<RecurringRuleEntity>
@@ -2746,6 +2772,14 @@ interface ArchiveDao {
     /** Result: the notification record is present. Input: [rows]. Output: none (suspends). */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNotificationLog(rows: List<NotificationLogEntity>)
+
+    /** Result: the kept verdicts are present (issue 10.1). Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPurchaseTraces(rows: List<PurchaseTraceEntity>)
+
+    /** Result: their gate tables are present (issue 10.1). Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPurchaseTraceGates(rows: List<PurchaseTraceGateEntity>)
 
     /**
      * Result: the card alerts already sent are present. Input: [rows]. Output: none (suspends).
@@ -3956,4 +3990,66 @@ interface NotificationLogDao {
         profileId: String,
         sinceUtcMillis: Long,
     ): List<NotificationLogEntity>
+}
+
+/**
+ * The Purchase Advisor's kept verdicts (issue 10.1; §13.2, AI-ARC-006).
+ *
+ * Why:  a verdict is only arguable later if its figures survive, so the card is written once and
+ *       read back whole. Nothing here updates a stored card: a new question about the same item is
+ *       a new decision on new figures, and overwriting the old one would erase the history §13.2
+ *       exists to keep.
+ * What: the two inserts that store a card, the reads the advisor screen needs, and the demo wipe's
+ *       deletes.
+ * Result: one header row per verdict, and its gate table beside it.
+ * Changelog: 2026-09-25 — Created for issue 10.1.
+ */
+@Dao
+interface PurchaseTraceDao {
+    /** Result: the card's header is stored. Input: [row]. Output: none. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTrace(row: PurchaseTraceEntity)
+
+    /** Result: the card's gate table is stored. Input: [rows]. Output: none. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertGates(rows: List<PurchaseTraceGateEntity>)
+
+    /**
+     * The kept verdicts, newest first.
+     * Result: a flow that re-emits on every write; soft-deleted cards are absent.
+     * Input:  [profileId]; [limit]. Output: `Flow<List<PurchaseTraceEntity>>`.
+     */
+    @Query(
+        "SELECT * FROM purchase_trace WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
+            "ORDER BY decided_at_utc_millis DESC LIMIT :limit",
+    )
+    fun observeRecent(
+        profileId: String,
+        limit: Int,
+    ): Flow<List<PurchaseTraceEntity>>
+
+    /** Result: one kept verdict, or `null`. Input: [profileId]; [id]. */
+    @Query("SELECT * FROM purchase_trace WHERE profile_id = :profileId AND id = :id AND deleted_at_utc_millis IS NULL")
+    suspend fun findTrace(
+        profileId: String,
+        id: String,
+    ): PurchaseTraceEntity?
+
+    /** Result: that verdict's gate table, in §13.1's order. Input: [profileId]; [traceId]. */
+    @Query(
+        "SELECT * FROM purchase_trace_gate WHERE profile_id = :profileId AND trace_id = :traceId " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY ordinal",
+    )
+    suspend fun gatesFor(
+        profileId: String,
+        traceId: String,
+    ): List<PurchaseTraceGateEntity>
+
+    /** Result: every stored header for the profile — the archive's read. Input: [profileId]. */
+    @Query("SELECT * FROM purchase_trace WHERE profile_id = :profileId")
+    suspend fun allTraces(profileId: String): List<PurchaseTraceEntity>
+
+    /** Result: every stored gate row for the profile — the archive's read. Input: [profileId]. */
+    @Query("SELECT * FROM purchase_trace_gate WHERE profile_id = :profileId")
+    suspend fun allGates(profileId: String): List<PurchaseTraceGateEntity>
 }
