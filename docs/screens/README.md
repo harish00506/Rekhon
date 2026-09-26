@@ -1,4 +1,13 @@
-# The screen-by-screen guide
+# The two documents about this project
+
+| File | What it is |
+|------|------------|
+| [`../AI_Personal_CFO_screens.pdf`](../AI_Personal_CFO_screens.pdf) | 51 pages — every screen, with the engine and rules behind each figure |
+| [`../AI_Personal_CFO_story.pdf`](../AI_Personal_CFO_story.pdf) | 38 pages — the pitch, the method, the build story, one page per stakeholder, and the decisions still open |
+
+`build_pdf.py` composes the first; `build_story_pdf.py` composes the second. Both read `shots/`.
+
+## The screen-by-screen guide
 
 [`../AI_Personal_CFO_screens.pdf`](../AI_Personal_CFO_screens.pdf) is a 51-page walk through every
 screen in the app: the screenshot, what the screen is for, and the engine and rule IDs that produced
@@ -40,3 +49,15 @@ exception — they need a loan on file — and their captions say so.
 Every page's title, kicker, body and footnote is one entry in the `SECTIONS` list in
 `build_pdf.py`. Adding a screen means adding a screenshot and one entry; the page numbering and the
 contents page are the only things that then need checking by eye.
+
+## The project document
+
+`build_story_pdf.py` builds the second PDF the same way, from the `PAGES_SPEC` list: each entry is
+either a full-width prose page or a screenshot-plus-text page, built from blocks tagged `h`
+(sub-heading), `p` (paragraph), `q` (pulled-out statement) or `c` (monospaced).
+
+**Its numbers go stale.** The "Where it stands today" page states the issue count, the module and
+line counts, the test count, and the rulebook version as they were on the day it was written. Before
+reshipping it, re-read them from the repository — the commands are one-liners over `docs/issues/`,
+`find … -name "*.kt"`, the last full gate's test total, and `ai/rules/rules-kb.json`. A stale figure
+in a document that argues for honesty about figures is the one mistake it cannot afford.
