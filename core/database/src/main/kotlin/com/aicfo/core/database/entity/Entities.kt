@@ -2203,3 +2203,59 @@ data class VehicleRenewalEntity(
     @ColumnInfo(name = "updated_at_utc_millis")
     val updatedAtUtcMillis: Long,
 )
+
+/**
+ * One exchange with the assistant (issue 10.5; §19, CHT-004).
+ *
+ * Why:  §19 says conversations live on the device, are deletable, and are **excluded from backup by
+ *       default** — so this table is the one profile-scoped table the archive deliberately does not
+ *       carry, alongside `audit_log`'s own exclusion. What is kept is the words and why they were
+ *       said; **the figures are not stored**, because a figure checked against today's data cannot
+ *       honestly be re-shown next month without being checked again.
+ * What: the question, the answer as it was shown, the refusal if there was one, and which model
+ *       wrote it.
+ * Result: a conversation the user can read back and delete.
+ * Changelog: 2026-09-26 — Created for issue 10.5 (schema 28).
+ *
+ * Input:  [id]; [profileId]; [question] — as typed; [answer] — the guardrailed text, empty when
+ *         refused; [intent] — what it was taken to mean, for the screen; [refusal] — a
+ *         `RefusalReason` name, or `null`; [modelId] — `template`, `on-device` or `cloud` (P-02);
+ *         [citations] — comma-separated rule ids; [askedAtUtcMillis]; the timestamps.
+ * Output: a Room row.
+ *
+ * **There is no tombstone column on purpose.** A conversation the user asked to forget is hard
+ * deleted (CHT-004); a soft delete would leave the words in the table with nothing to show for it.
+ */
+@Serializable
+@Entity(
+    tableName = "chat_message",
+    indices = [
+        Index("profile_id"),
+        Index(value = ["profile_id", "asked_at_utc_millis"]),
+    ],
+)
+data class ChatMessageEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    @ColumnInfo(name = "question")
+    val question: String,
+    @ColumnInfo(name = "answer")
+    val answer: String,
+    @ColumnInfo(name = "intent")
+    val intent: String? = null,
+    @ColumnInfo(name = "refusal")
+    val refusal: String? = null,
+    @ColumnInfo(name = "model_id")
+    val modelId: String,
+    @ColumnInfo(name = "citations")
+    val citations: String = "",
+    @ColumnInfo(name = "asked_at_utc_millis")
+    val askedAtUtcMillis: Long,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+)

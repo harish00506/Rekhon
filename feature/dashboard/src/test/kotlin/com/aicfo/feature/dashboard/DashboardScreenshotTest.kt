@@ -113,6 +113,7 @@ class DashboardScreenshotTest {
                                 onNavigateToPurchaseAdvisor = {},
                                 onNavigateToSimulators = {},
                                 onNavigateToVehicles = {},
+                                onNavigateToChat = {},
                             ),
                     )
                 }

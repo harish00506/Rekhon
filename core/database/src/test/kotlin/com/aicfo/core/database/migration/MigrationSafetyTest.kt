@@ -227,10 +227,11 @@ class MigrationSafetyTest {
      *         it by adding a string — this test makes that a deliberate, reviewed edit.
      */
     @Test
-    fun `only the seven argued-for tables are exempt from the per-row invariants`() {
+    fun `only the eight argued-for tables are exempt from the per-row invariants`() {
         assertEquals(
             setOf(
                 "audit_log",
+                "chat_message",
                 "sms_draft",
                 "budget_alert",
                 "budget_review",
@@ -525,6 +526,13 @@ class MigrationSafetyTest {
  */
 private val INVARIANT_EXEMPT_TABLES =
     mapOf(
+        "chat_message" to
+            "the assistant's conversation (issue 10.5, §19 CHT-004): §19 promises a conversation " +
+            "can be forgotten, and a tombstone is not forgetting — a soft-deleted turn would keep " +
+            "the user's own words, and the app's answer, in the table after they asked for both " +
+            "to go. The same clause keeps the table out of backups, so there is nothing for " +
+            "DB-003's recoverability argument to protect: a restore was never going to bring it " +
+            "back. Rows leave with the profile, and with the clear.",
         "audit_log" to
             "append-only security log (issue 2.2, §21.6): no profile exists at unlock time, and " +
             "a security log that can be soft-deleted proves nothing. Rows leave only with " +

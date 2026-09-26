@@ -19,6 +19,7 @@ import com.aicfo.core.database.entity.BudgetEntity
 import com.aicfo.core.database.entity.BudgetReviewEntity
 import com.aicfo.core.database.entity.CardAlertEntity
 import com.aicfo.core.database.entity.CategoryEntity
+import com.aicfo.core.database.entity.ChatMessageEntity
 import com.aicfo.core.database.entity.CreditCardEntity
 import com.aicfo.core.database.entity.GoalContributionEntity
 import com.aicfo.core.database.entity.GoalEntity
@@ -4302,4 +4303,31 @@ interface VehicleDao {
     /** Result: every renewal row — the archive's read. Input: [profileId]. */
     @Query("SELECT * FROM vehicle_renewal WHERE profile_id = :profileId")
     suspend fun allRenewals(profileId: String): List<VehicleRenewalEntity>
+}
+
+/**
+ * The conversation (issue 10.5; §19, CHT-004, ARC-005).
+ *
+ * Why:  chat's own table, and the only one whose delete is **hard**: §19 promises a conversation
+ *       can be forgotten, and a tombstone is not forgetting.
+ * What: one upsert, the live read, and the clear.
+ * Result: one place that touches `chat_message`.
+ * Changelog: 2026-09-26 — Created for issue 10.5.
+ */
+@Dao
+interface ChatDao {
+    /** Result: the turn exists, replacing any with the same id. Input: [row]. Output: none. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(row: ChatMessageEntity)
+
+    /** Result: the conversation, oldest first. Input: [profileId]. */
+    @Query("SELECT * FROM chat_message WHERE profile_id = :profileId ORDER BY asked_at_utc_millis")
+    fun observeMessages(profileId: String): Flow<List<ChatMessageEntity>>
+
+    /**
+     * Result: the conversation is gone — a hard delete (CHT-004). Input: [profileId].
+     * Output: the number of rows removed.
+     */
+    @Query("DELETE FROM chat_message WHERE profile_id = :profileId")
+    suspend fun deleteAll(profileId: String): Int
 }

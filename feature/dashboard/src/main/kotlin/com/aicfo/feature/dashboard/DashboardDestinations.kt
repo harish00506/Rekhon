@@ -15,6 +15,7 @@ import com.aicfo.core.designsystem.component.CfoSecondaryButton
  *            2026-09-25 — Issue 10.1 added the Purchase Advisor.
  *            2026-09-26 — Issue 10.3 added the simulators.
  *            2026-09-26 — Issue 10.4 added the vehicles.
+ *            2026-09-26 — Issue 10.5 added the assistant.
  */
 @Composable
 internal fun DestinationButtons(actions: DashboardActions) {
@@ -55,6 +56,12 @@ internal fun DestinationButtons(actions: DashboardActions) {
     CfoSecondaryButton(
         text = stringResource(R.string.dashboard_vehicles_action),
         onClick = actions.onNavigateToVehicles,
+    )
+    // Issue 10.5: §19's assistant. First in this group rather than last, because it is the way in
+    // for someone who does not yet know which of these screens holds their answer.
+    CfoSecondaryButton(
+        text = stringResource(R.string.dashboard_chat_action),
+        onClick = actions.onNavigateToChat,
     )
     // Reached from here because this is the screen whose two empty states depend on the monthly
     // income it sets — and because until it existed those states told the user to visit a Settings

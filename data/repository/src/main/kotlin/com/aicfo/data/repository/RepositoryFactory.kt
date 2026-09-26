@@ -15,6 +15,8 @@ import com.aicfo.core.network.MarketDataApi
 import com.aicfo.data.sms.SmsInboxReader
 import com.aicfo.domain.engines.budget.BudgetEngine
 import com.aicfo.domain.engines.card.CardEngine
+import com.aicfo.domain.engines.chat.ChatEngine
+import com.aicfo.domain.engines.chat.LlmEngine
 import com.aicfo.domain.engines.classification.ClassificationEngine
 import com.aicfo.domain.engines.emergencyfund.EmergencyFundEngine
 import com.aicfo.domain.engines.forecast.ForecastEngine
@@ -675,6 +677,61 @@ object RepositoryFactory {
             dispatchers = dispatchers,
             activeProfileId = activeProfileId,
             idGenerator = idGenerator,
+        )
+
+    /**
+     * The chat pipeline (issue 10.5; §19).
+     * Why:    the executor is passed in rather than built here, because **it is the list of what
+     *         chat can see** — and that list should be assembled where a reviewer looks for it,
+     *         not hidden inside a factory call.
+     * Result: a [ChatRepository]. Input: [database]; [engine] — AI-CHAT; [llm]; [tools]; [clock];
+     *         [dispatchers]; [activeProfileId]; [idGenerator]. Output: the repository.
+     * Changelog: 2026-09-26 — Created for issue 10.5.
+     */
+    @Suppress("LongParameterList") // the database, two engines, the executor and four seams
+    fun chat(
+        database: CfoDatabase,
+        engine: ChatEngine,
+        llm: LlmEngine,
+        tools: ChatToolExecutor,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        activeProfileId: Flow<String>,
+        idGenerator: IdGenerator,
+    ): ChatRepository =
+        PipelineChatRepository(
+            database = database,
+            engine = engine,
+            llm = llm,
+            tools = tools,
+            clock = clock,
+            dispatchers = dispatchers,
+            activeProfileId = activeProfileId,
+            idGenerator = idGenerator,
+        )
+
+    /**
+     * The tools chat may run (issue 10.5; §19.2).
+     * Result: a [ChatToolExecutor] over the repositories the app already has.
+     * Input:  the six repositories it reads. Output: the executor.
+     * Changelog: 2026-09-26 — Created for issue 10.5.
+     */
+    @Suppress("LongParameterList") // one per tool served; the length is the registry's
+    fun chatTools(
+        safeToSpend: SafeToSpendRepository,
+        forecast: ForecastRepository,
+        goals: GoalRepository,
+        health: HealthScoreRepository,
+        buyList: BuyListRepository,
+        vehicles: VehicleRepository,
+    ): ChatToolExecutor =
+        RepositoryChatToolExecutor(
+            safeToSpend = safeToSpend,
+            forecast = forecast,
+            goals = goals,
+            health = health,
+            buyList = buyList,
+            vehicles = vehicles,
         )
 
     /**

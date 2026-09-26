@@ -37,7 +37,18 @@ data class ProfileSnapshot(
          * on both sides (`BACKUP_CREATED`, `BACKUP_RESTORED`), so it could never be equal anyway.
          * The rest are SQLite's and Room's own bookkeeping.
          */
-        val EXCLUDED = setOf("audit_log", "room_master_table", "android_metadata", "sqlite_sequence")
+        val EXCLUDED =
+            setOf(
+                "audit_log",
+                // Issue 10.5: §19's CHT-004 keeps the assistant's conversation on the device and
+                // **out of backups by default**. It is profile-scoped, so it would otherwise land
+                // here — and a drill that demanded it be restored would be demanding the opposite
+                // of what the promise says.
+                "chat_message",
+                "room_master_table",
+                "android_metadata",
+                "sqlite_sequence",
+            )
 
         /**
          * Reads [profileId]'s rows from every table in [database].

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Why:  these are the words the app says when no neural model is installed — the template
+        verbaliser's whole vocabulary. They live in a resource file rather than in Kotlin for the
+        same reason every other user-visible string does (§21.6): so they can be translated, and so
+        issue 10.8's Hindi pass reaches the assistant as well as the screens.
+  What: one sentence per intent, with slots for the figures a tool returned. **Every slot is filled
+        from a tool result** — this file cannot state a number of its own (P-03, CHT-001).
+  Changelog: 2026-09-26 — Created for issue 10.5.
+-->
+<resources>
+    <string name="llm_spend">You spent %1$s in that period, across %2$d transactions.</string>
+    <string name="llm_balance">You have %1$s available right now.</string>
+    <string name="llm_forecast">Your lowest point in the next 90 days is %1$s, on %2$s.</string>
+    <string name="llm_budget">You have spent %1$s of your budgets so far this month.</string>
+    <string name="llm_goals">Your goals need %1$s a month between them.</string>
+    <string name="llm_afford">That would leave you with %1$s.</string>
+    <string name="llm_health">Your financial health score is %1$d out of 1000.</string>
+    <string name="llm_debt">Clearing the dearest debt first saves %1$s in interest.</string>
+    <string name="llm_buylist">You have %1$d things on your buy list.</string>
+    <string name="llm_vehicle">Your vehicle costs %1$s before the next service, due %2$s.</string>
+    <string name="llm_nothing">I could not find anything to answer that with yet.</string>
+</resources>
