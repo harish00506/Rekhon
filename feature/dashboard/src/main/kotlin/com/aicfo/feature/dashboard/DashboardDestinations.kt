@@ -13,6 +13,7 @@ import com.aicfo.core.designsystem.component.CfoSecondaryButton
  * Result: the composition. Input: [actions]. Output: none.
  * Changelog: 2026-08-29 — Created for FR-SET-001.
  *            2026-09-25 — Issue 10.1 added the Purchase Advisor.
+ *            2026-09-26 — Issue 10.3 added the simulators.
  */
 @Composable
 internal fun DestinationButtons(actions: DashboardActions) {
@@ -41,6 +42,12 @@ internal fun DestinationButtons(actions: DashboardActions) {
     CfoSecondaryButton(
         text = stringResource(R.string.dashboard_advisor_action),
         onClick = actions.onNavigateToPurchaseAdvisor,
+    )
+    // Issue 10.3: beside the advisor, because both answer "what would happen if" — one about a
+    // purchase, one about the debts already here.
+    CfoSecondaryButton(
+        text = stringResource(R.string.dashboard_simulators_action),
+        onClick = actions.onNavigateToSimulators,
     )
     // Reached from here because this is the screen whose two empty states depend on the monthly
     // income it sets — and because until it existed those states told the user to visit a Settings

@@ -11,6 +11,34 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The Purchase Advisor, buy list, what-if simulators, vehicle prediction, on-device chat + guardrail
 > eval, market signals, and localisation.
 
+### [0.10.2] — Issue 10.3: What-if simulators (AI-SIM)  (2026-09-26)
+
+- **Implemented:** `:domain:engines:simulator` (**AI-SIM** 1.0) and the "What if?" screen over it —
+  §36's stage 6/7 questions and §40.2's CRD-005, answered exactly (**ADR-0051**).
+  - **Pay the loan off, or invest the money?** Both sides over the *same* horizon: what prepaying
+    saves in interest and in months, what the same sum would be worth after tax, which is ahead and
+    by how much — and **the return at which the answer flips**.
+  - **Which debt first?** Dearest-first against smallest-first over everything owed, each with the
+    months to debt-free, the interest paid and the order the debts clear in. A cleared debt's
+    minimum rolls into the next one, which is what makes either plan accelerate.
+  - **Every figure names the engine and the rule behind it** (P-02), and the screen says in words
+    that **nothing has been paid or moved** — `SimulatorRepository` has no write methods at all
+    (P-07).
+  - **A card the app cannot simulate honestly is left out**, not guessed at: no APR recorded, no
+    statement balance or no minimum due means no row (P-03). Loans take the rate from the loan
+    itself, not reverse-engineered from the EMI (FLT-004).
+- **No schema change, and no rule minted.** RULE-PREPAY-VS-INVEST and RULE-PAYOFF-ORDER already
+  described this; their `consumed_by` now names AI-SIM, and neither row's version moved
+  (rules-kb 1.22.0 → **1.23.0**).
+- **The simulators and the accounts screen cannot drift about a rupee:** both run on
+  `Money.percentOf(bps, over 12)`, the loan engine's own arithmetic, and a test pins a single debt
+  against `LoanEngine.schedule`. That test caught the first draft reporting a 37-month loan the
+  schedule called 36 — an extra month run to collect ₹3. A residue under 1% of a payment is now
+  treated as rounding by both simulators.
+- **Tests:** 29 behaviour tests, 6 identities × 300 seeded cases, a golden file from an independent
+  Python oracle, 5 drift tests, 7 repository and 13 UI tests. A "simple interest" mutation survived
+  the first suite and is now caught by a compounding invariant.
+
 ### [0.10.1] — Issue 10.2: Buy list + adaptive interview (AI-PA-INT)  (2026-09-26)
 
 - **Implemented:** the buy list and the interview behind it (**§13.3**, **AI-PA-INT** 1.0,

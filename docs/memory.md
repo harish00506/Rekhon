@@ -19,6 +19,7 @@
     2026-09-23 — Issue 9.7 (AI-GRD numeric guardrail) merged to dev; Epic 9 complete.
     2026-09-25 — Issue 10.1 (AI-PA Purchase Advisor + trace card) merged to dev; schema 25; Epic 10 opened at 0.10.0.
     2026-09-26 — Issue 10.2 (AI-PA-INT buy list + adaptive interview) merged to dev; schema 26.
+    2026-09-26 — Issue 10.3 (AI-SIM what-if simulators) merged to dev; no schema change.
 -->
 
 # AI Personal CFO — Project Memory
@@ -30,14 +31,14 @@
 
 ## Current state
 
-- **Version:** `0.10.1` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v26** (10.2's `wishlist_item`).
+- **Version:** `0.10.2` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v26** (10.2's `wishlist_item`; 10.3 stores nothing).
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
   forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
   feed), 9.6 (the notification policy) and 9.7 (the numeric guardrail) shipped — **Epic 9 is
-  complete**. **Epic 10 is open**: 10.1 (the Purchase Advisor) and 10.2 (the buy list) shipped;
-  10.3 (the simulators) is next, and the chat issues (10.5/10.6) inherit AI-GRD's ladder rather than
-  inventing one.
-- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7, 10.1 and 10.2 are merged to `dev`**
+  complete**. **Epic 10 is open**: 10.1 (the Purchase Advisor), 10.2 (the buy list) and
+  10.3 (the what-if simulators) shipped; 10.4 (vehicle maintenance) is next, and the chat issues
+  (10.5/10.6) inherit AI-GRD's ladder rather than inventing one.
+- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7, 10.1, 10.2 and 10.3 are merged to `dev`**
   ([8.1 tracker](issues/8.1-e2ee-backup-argon2id-aes-256-gcm-tracker.md), ADR-0039;
   [8.2 tracker](issues/8.2-restore-on-fresh-device-tracker.md), ADR-0040;
   [8.3 tracker](issues/8.3-backup-restore-drill-tracker.md), ADR-0041;
@@ -49,7 +50,8 @@
   [9.6 tracker](issues/9.6-notification-engine-policy-tracker.md), ADR-0047;
   [9.7 tracker](issues/9.7-guardrail-ai-arc-004-tracker.md), ADR-0048;
   [10.1 tracker](issues/10.1-purchase-advisor-ai-pa-trace-card-tracker.md), ADR-0049;
-  [10.2 tracker](issues/10.2-buy-list-adaptive-interview-ai-pa-int-tracker.md), ADR-0050).
+  [10.2 tracker](issues/10.2-buy-list-adaptive-interview-ai-pa-int-tracker.md), ADR-0050;
+  [10.3 tracker](issues/10.3-simulators-prepay-vs-invest-payoff-tracker.md), ADR-0051).
 - **`origin/dev` is current again** — `23acb26` (issue 10.1), pushed 2026-09-25. Everything from
   7.4 through 10.1 that had been stranded locally is on the remote. Earlier sessions recorded the
   push as blocked for want of credentials; it works now, so check `git log origin/dev..dev` rather
@@ -63,6 +65,23 @@
 - **The forecast exists now (9.2), but the goals still use the observed P50 surplus** (ADR-0035,
   ADR-0037). Switching `SurplusRepository` to `ForecastRepository` is ADR-0043's recorded follow-up.
 
+### What 10.3 changed that a future issue must know
+
+- **`:domain:engines:simulator` deliberately depends on `:domain:engines:loan`** — the one sanctioned
+  exception to ADR-0046's "an engine imports no other engine", because EMI and amortisation are the
+  loan engine's to own. A test pins a single debt against `LoanEngine.schedule`; **if it goes red,
+  two definitions of a month's interest have appeared** — fix the definition, not the test.
+- **`SimulatorMath.settle` is the one place the rounding rule lives:** a residue under **1% of a
+  payment** clears with it. Both simulators call it. Skipping it costs a phantom extra month.
+- **`SimulatorRepository` has no write methods, by design (P-07).** Do not add one; a simulation is
+  a question, and the screen promises in words that nothing moved.
+- **A card with no APR, statement balance or minimum due is excluded from the payoff plan** (P-03).
+  If a future issue records card APRs by default, those cards start appearing — that is intended.
+- **`PayoffPlan.order` is the order debts are *cleared*, not the order they are targeted.** Under
+  avalanche a small debt can clear from its own minimum first.
+- **Nothing was minted.** RULE-PREPAY-VS-INVEST and RULE-PAYOFF-ORDER only decide what is *shown*;
+  their thresholds are the user's own inputs.
+
 ### What 10.2 changed that a future issue must know
 
 - **AI-PA-INT is a second engine in `:domain:engines:purchase`.** It weighs a purchase the same way
@@ -75,9 +94,9 @@
   it at the repository. Keep it that way (§13.3, P-07).
 - **`target_price_minor` and `last_interviewed_at_utc_millis` are stored but unused** — they are
   where the deferred buy-timing watch and the thirty-day re-ask will read from.
-- **10.3's simulators should reuse `PurchaseRequest`**, as the buy list does through
-  `BuyListRepository.advise`.
-- **rules-kb is 1.22.0**; twelve `*Rules.kt` mirrors restate it.
+- ~~**10.3's simulators should reuse `PurchaseRequest`**~~ — they did not, and should not: a
+  what-if is about a debt, not a purchase. AI-SIM takes its own inputs (ADR-0051).
+- **rules-kb is 1.23.0**; fourteen `*Rules.kt` mirrors restate it.
 
 ### What 10.1 changed that a future issue must know
 

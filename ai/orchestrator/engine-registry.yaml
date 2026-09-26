@@ -20,6 +20,7 @@
 #   2026-09-23 — Issue 9.7: AI-GRD built — AI-ARC-004's numeric guardrail (ADR-0048).
 #   2026-09-25 — Issue 10.1: AI-PA built — §13's Purchase Advisor and its kept trace (ADR-0049).
 #   2026-09-26 — Issue 10.2: AI-PA-INT built — §13.3's buy list and adaptive interview (ADR-0050).
+#   2026-09-26 — Issue 10.3: AI-SIM built — §36's and §40.2's what-if simulators (ADR-0051).
 # =============================================================================
 
 version: "1.1"
@@ -161,6 +162,19 @@ engines:
     reads: [../rules/rules-kb.json]      # RULE-PAI-LADDER, RULE-PAI-SCORE
     depends_on: [AI-PA]
     srs: "§13.3"
+
+  - id: AI-SIM
+    name: What-If Simulators (prepay vs invest, debt payoff)
+    layer: L4
+    module: ":domain:engines:simulator"
+    version: "1.0"
+    # Issue 10.3 built it (ADR-0051): both simulators run on `Money.percentOf(bps, overPeriods = 12)`
+    # — the same arithmetic :domain:engines:loan amortises with — so a simulated tenure and the
+    # schedule on the accounts screen cannot disagree. It mints no threshold of its own: the two
+    # rulebook rows it cites only decide what is shown. Nothing is ever paid (P-07).
+    contract: "prepay: outstanding+rate+EMI+lump sum+expected return+tax -> both paths over one horizon, PREPAY_AHEAD|INVEST_AHEAD|LEVEL, the advantage and the breakeven return; payoff: debts+spare -> avalanche and snowball plans {clearing order, months, interest} + the deltas"
+    reads: [../rules/rules-kb.json]      # RULE-PREPAY-VS-INVEST, RULE-PAYOFF-ORDER
+    srs: "§36, §40.2, CRD-005"
 
   - id: AI-STS
     name: Safe-to-Spend

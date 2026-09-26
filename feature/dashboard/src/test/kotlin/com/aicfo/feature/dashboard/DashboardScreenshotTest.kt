@@ -111,6 +111,7 @@ class DashboardScreenshotTest {
                                 onNavigateToSettings = {},
                                 onNavigateToOrderOfOperations = {},
                                 onNavigateToPurchaseAdvisor = {},
+                                onNavigateToSimulators = {},
                             ),
                     )
                 }

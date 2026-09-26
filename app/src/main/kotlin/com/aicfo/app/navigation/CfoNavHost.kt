@@ -13,6 +13,7 @@ import com.aicfo.feature.accounts.AccountsScreen
 import com.aicfo.feature.accounts.AllocationScreen
 import com.aicfo.feature.accounts.HoldingsScreen
 import com.aicfo.feature.advisor.AdvisorScreen
+import com.aicfo.feature.advisor.SimulatorsScreen
 import com.aicfo.feature.budgets.BudgetsScreen
 import com.aicfo.feature.categories.CategoriesScreen
 import com.aicfo.feature.dashboard.DashboardActions
@@ -74,6 +75,7 @@ fun CfoNavHost(
                         onNavigateToGoals = { navController.navigate(CfoRoute.Goals) },
                         onNavigateToEmergencyFund = { navController.navigate(CfoRoute.EmergencyFund) },
                         onNavigateToPurchaseAdvisor = { navController.navigate(CfoRoute.PurchaseAdvisor) },
+                        onNavigateToSimulators = { navController.navigate(CfoRoute.Simulators) },
                         onNavigateToSettings = { navController.navigate(CfoRoute.Settings) },
                         onNavigateToOrderOfOperations = { navController.navigate(CfoRoute.OrderOfOperations) },
                     ),
@@ -127,6 +129,9 @@ private fun NavGraphBuilder.planningDestinations(navController: NavHostControlle
 
     // Issue 7.2: beside the goals destination. §10.1 suggests pausing goals when the runway is
     // thin, so the screen that says so belongs within a tap of the screen it is about.
+    composable<CfoRoute.Simulators> {
+        SimulatorsScreen(onDone = { navController.popBackStack() })
+    }
     composable<CfoRoute.PurchaseAdvisor> {
         AdvisorScreen(onDone = { navController.popBackStack() })
     }

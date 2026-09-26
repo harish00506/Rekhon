@@ -100,7 +100,7 @@ data class InterviewRules(
             )
 
         /** The rulebook file these values were copied from, as `_meta.version`. */
-        const val RULEBOOK_VERSION = "1.22.0"
+        const val RULEBOOK_VERSION = "1.23.0"
 
         /** `RULE-PAI-LADDER` — how many questions a wish is worth. */
         val LADDER = RuleCitation("RULE-PAI-LADDER", "1.0")

@@ -532,6 +532,35 @@ AdvisorScreen → BuyListSection
   ⇣ each wish: score · band · the next question · the answers behind a removal suggestion
 ```
 
+### 2.15 · What if I paid it off — AI-SIM (issue 10.3)
+
+**Two questions, both answered as comparisons.** The screen writes nothing and pays nothing: a
+simulation is arithmetic (P-07), so `SimulatorRepository` has no write methods at all.
+
+```
+DashboardScreen → "What if?" → SimulatorsScreen
+├─ SimulatePrepay(loan, lump sum, expected return %, tax %)
+│   → SimulatorsViewModel          rupees → paise, percent → bps, nothing else
+│   → SimulatorRepository.prepayVsInvest()               data/repository — ARC-005
+│       ├─ instalments[accountId].openingBalance          what is owed before the next EMI
+│       ├─ loans.find(accountId).annualRateBps            the loan's own rate (FLT-004)
+│       └─ PrepayVsInvestSimulator.simulate()     domain/engines/simulator — pure (AI-SIM)
+│             baseline  = amortise(outstanding)           Money.percentOf(bps, over 12) — shared
+│             prepaid   = amortise(outstanding − lump)    interest saved, months saved
+│             invest    = futureValue(lump) over baseline.months, less tax
+│             verdict   = PREPAY_AHEAD | INVEST_AHEAD | LEVEL    (RULE-PREPAY-VS-INVEST)
+│             breakeven = bisect the return, 40 fixed steps      (P-08)
+└─ SimulatePayoff(spare per month)
+    → SimulatorRepository.payoff()
+        ├─ observeDebts() = loans (rate from the loan) + cards (APR from its terms)
+        │      a card with no APR, statement or minimum is left out, never guessed (P-03)
+        └─ DebtPayoffSimulator.simulate()          both plans over the same money
+              each month: interest on all → minimums on all → the spare on one target
+              a cleared debt's minimum rolls into the next            (RULE-PAYOFF-ORDER)
+              avalanche = dearest rate first · snowball = smallest balance first
+  ⇣ both figures, the gap between them, the breakeven or clearing order, and the engine that said so
+```
+
 ### 2.1 · The dashboard's headline figure (issue 5.2)
 
 Shape C again, but it is the **first read in the app assembled from other repositories** rather than

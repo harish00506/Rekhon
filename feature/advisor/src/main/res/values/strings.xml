@@ -163,6 +163,43 @@
     <string name="buylist_reason_still_wanted">you still wanted it a month later</string>
     <string name="buylist_reason_points">%1$s (%2$d)</string>
 
+    <!--
+      Issue 10.3 — §36's prepay-vs-invest and §40.2's payoff simulators. Every figure comes from
+      AI-SIM and is formatted by MoneyFormatter; no number is written into the copy (P-03). The
+      wording states the comparison and stops: the app simulates, the user decides (P-07).
+    -->
+    <string name="sim_title">What if?</string>
+    <string name="sim_intro">Two questions with exact answers: whether to put spare money against a loan or invest it, and which debt to clear first.</string>
+    <string name="sim_prepay_label">Pay off the loan, or invest?</string>
+    <string name="sim_prepay_none">No loans on file, so there is nothing to prepay.</string>
+    <string name="sim_lump_label">Spare money (₹)</string>
+    <string name="sim_return_label">Return you expect (%)</string>
+    <string name="sim_tax_label">Tax on that return (%)</string>
+    <string name="sim_prepay_run">Compare them</string>
+    <string name="sim_prepay_saved">Prepaying saves %1$s in interest and ends the loan %2$s sooner.</string>
+    <plurals name="sim_months">
+        <item quantity="one">%1$d month</item>
+        <item quantity="other">%1$d months</item>
+    </plurals>
+    <string name="sim_invest_gain">Investing the same money would leave you %1$s after tax.</string>
+    <string name="sim_verdict_prepay">Paying the loan is ahead, by %1$s.</string>
+    <string name="sim_verdict_invest">Investing is ahead, by %1$s.</string>
+    <string name="sim_verdict_level">They come out the same.</string>
+    <string name="sim_breakeven">The answer flips at a return of about %1$d%% a year.</string>
+
+    <string name="sim_payoff_label">Which debt first?</string>
+    <string name="sim_payoff_none">Nothing is owed, so there is nothing to plan.</string>
+    <string name="sim_extra_label">Spare each month (₹)</string>
+    <string name="sim_payoff_run">Compare the two ways</string>
+    <string name="sim_avalanche">Dearest first: debt-free in %1$s, %2$s of interest.</string>
+    <string name="sim_snowball">Smallest first: debt-free in %1$s, %2$s of interest.</string>
+    <string name="sim_payoff_saved">Going dearest first saves %1$s and finishes %2$s sooner.</string>
+    <string name="sim_payoff_same">Both ways come out the same here — the dearest debt is also the smallest.</string>
+    <string name="sim_order">In order: %1$s</string>
+    <string name="sim_evidence">From %1$s v%2$s · %3$s</string>
+    <string name="sim_simulating">Working it out…</string>
+    <string name="sim_nothing_moved">Nothing has been paid or moved — this is arithmetic.</string>
+
     <string name="advisor_error">Something went wrong reading your data. Nothing was changed.</string>
     <string name="advisor_error_dismiss">Dismiss</string>
     <string name="advisor_back">Back</string>
