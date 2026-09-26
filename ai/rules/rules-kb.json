@@ -5,7 +5,7 @@
     "what": "Seed rows for the rules_knowledge_base table (§29.1). RuleEngine.evaluate(ruleId, FeatureSnapshot) -> RuleResult{pass|warn|fail, measuredValue, threshold, evidence, ruleId, version}.",
     "result": "Changing a number here changes the app's advice everywhere that rule is cited, reproducibly and with an audit trail.",
     "source_section": "§29",
-    "version": "1.22.0",
+    "version": "1.23.0",
     "changelog": [
       "2026-07-17 — Created from SRS v1.7 §29.2–§29.5; defaults are the floor, refined by user overrides at runtime.",
       "2026-08-07 — Added RULE-SMS-PARSE for issue 3.9's opt-in, on-device bank-alert parser (§18, §23).",
@@ -19,6 +19,7 @@
       "2026-09-19 — Added RULE-FCT-METHOD and RULE-FCT-CRUNCH for issue 9.2's cash-flow forecast (§9, AI-FCT). §9.2 states the method's numbers in prose — a 90-day horizon, a 90-day lookback, a 10% trimmed mean, 500 seeded Monte-Carlo paths, P10/P50/P90 bands — and AI-FCT-002 names a ₹5,000 default buffer; each is now a params row so no engine carries them as constants (CLAUDE.md §6). New rows at v1.0, no shipped row changed. See ADR-0043.",
       "2026-09-19 — Added RULE-FHS-PILLARS, RULE-FHS-BANDS and RULE-FHS-SIGNALS for issue 9.4's Financial Health Score (§14, AI-FHS). §14.1's table gives the five pillar weights, the band edges and a few scoring anchors in prose (runway 100 at ≥ M, obligation ratio 30%→100 and 55%→0, savings rate 100 at ≥ 30%); each is now a params row. Two numbers §14 leaves unstated are minted here and say so in their source notes: the runway floor boost (25 points at ≥ 1 month) and where card utilisation reaches zero (100%). The utilisation 'good' edge and the savings-rate top are NOT restated — AI-FHS reads RULE-CC-UTIL.max_utilisation_pct and RULE-SAVE-RATE.excellent_pct, which already say 30. New rows at v1.0, no shipped row changed. See ADR-0045.",
       "2026-09-20 — Added RULE-INS-RANK and RULE-INS-DEDUP for issue 9.5's Insight Orchestrator (§7.2, AI-ORCH). §7.2 states the deduplication fingerprint (type + subject + period) and that dismissed fingerprints are suppressed for their snooze window, but names no window length and no feed order; FR-HOME-001 asks for the 'top 3' on the dashboard. The severity order, the tie-breaks, the dashboard size and the seven-day snooze are now params rather than engine constants. New rows at v1.0, no shipped row changed. See ADR-0046.",
+      "2026-09-26 — Issue 10.3 built the simulators these two rows always described, so RULE-PREPAY-VS-INVEST and RULE-PAYOFF-ORDER now name AI-SIM as their consumer in place of the placeholders 'loan_simulator' and 'debt_simulator'. **No params changed and neither row's version moved** — a row's version tracks what it says, not who reads it (ADR-0017's trigger 3 is a params or threshold change). No new row was minted: §36 and §40.2 were already fully described here. See ADR-0051.",
       "2026-09-26 — Added RULE-PAI-LADDER and RULE-PAI-SCORE for issue 10.2's buy list and adaptive interview (AI-PA-INT, §13.3). §13.3.1's escalation table and §13.3.2's outcome bands are params now; the per-answer score deltas are minted, since §13.3.2 names the factors without numbering them. New rows at v1.0, no shipped row changed. See ADR-0050.",
       "2026-09-25 — Added RULE-PA-GATES and RULE-PA-OPPCOST for issue 10.1's Purchase Advisor (AI-PA, §13). §13.1 states the seven gates and 'worst severity across gates, softened by urgency' as prose; the softening limits, the thirty-day month behind a goal delay and the opportunity-cost assumption are params now rather than constants in the engine. New rows at v1.0, no shipped row changed; the advisor also reads RULE-EMI-40, RULE-COOL-OFF, RULE-STS and RULE-FCT-CRUNCH unchanged. See ADR-0049.",
       "2026-09-23 — Added RULE-GRD-LADDER and RULE-GRD-TRANSFORMS for issue 9.7's numeric guardrail (AI-GRD, AI-ARC-004, ai/chat/guardrail.md). That file states N = 2 regeneration attempts and the allowlist of display transforms as prose; both are params now rather than constants in the engine, so tightening the gate — disallowing lakh/crore wording, say — is a data edit. New rows at v1.0, no shipped row changed. See ADR-0048.",
@@ -429,7 +430,7 @@
       "severity": "info",
       "rationale": "Avalanche saves the most; snowball motivates — user chooses with the math shown.",
       "source_note": "Debt payoff strategies.",
-      "consumed_by": ["debt_simulator"],
+      "consumed_by": ["AI-SIM"],
       "enabled": true,
       "version": "1.0"
     },
@@ -442,7 +443,7 @@
       "severity": "info",
       "rationale": "The prepay-or-invest decision is a rate comparison, not a belief (P-07).",
       "source_note": "Order of operations (§36).",
-      "consumed_by": ["loan_simulator", "AI-FOO.stage7"],
+      "consumed_by": ["AI-SIM", "AI-FOO.stage7"],
       "enabled": true,
       "version": "1.0"
     },

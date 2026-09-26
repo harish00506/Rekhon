@@ -54,7 +54,7 @@ data class PurchaseRules(
         private const val DEFAULT_COOL_OFF_BPS = 100
 
         /** The rulebook file these values were copied from, as `_meta.version`. */
-        const val RULEBOOK_VERSION = "1.22.0"
+        const val RULEBOOK_VERSION = "1.23.0"
 
         /** `RULE-PA-GATES` — the seven gates, the worst-of verdict, and what urgency may do. */
         val GATES = RuleCitation("RULE-PA-GATES", "1.0")

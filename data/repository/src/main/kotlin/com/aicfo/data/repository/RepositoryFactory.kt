@@ -35,6 +35,8 @@ import com.aicfo.domain.engines.receipt.ReceiptEngine
 import com.aicfo.domain.engines.recurring.RecurringEngine
 import com.aicfo.domain.engines.safetospend.SafeToSpendEngine
 import com.aicfo.domain.engines.seasonality.SeasonalityEngine
+import com.aicfo.domain.engines.simulator.DebtPayoffSimulator
+import com.aicfo.domain.engines.simulator.PrepayVsInvestSimulator
 import com.aicfo.domain.engines.sms.SmsEngine
 import com.aicfo.domain.engines.stream.StreamEngine
 import com.aicfo.ml.ocr.ReceiptTextRecognizer
@@ -616,6 +618,37 @@ object RepositoryFactory {
         dispatchers: DispatcherProvider,
         activeProfileId: Flow<String>,
     ): StreamRepository = RoomStreamRepository(database, engine, clock, dispatchers, activeProfileId)
+
+    /**
+     * Builds the what-if simulators (issue 10.3; §36, §40.2).
+     * Why:    over the loans and cards the app already tracks, so a simulation runs on the user's
+     *         own debts rather than on numbers they retype (AI-ARC-001). It writes nothing (P-07).
+     * Result: a [SimulatorRepository].
+     * Input:  [accounts]; [loans]; [cards]; [prepay]; [payoff]; [clock]; [dispatchers].
+     * Output: the repository.
+     * Changelog: 2026-09-26 — Created for issue 10.3.
+     */
+    @Suppress("LongParameterList") // three sources, two engines and two seams
+    fun simulators(
+        accounts: AccountRepository,
+        loans: LoanRepository,
+        cards: CreditCardRepository,
+        prepay: PrepayVsInvestSimulator,
+        payoff: DebtPayoffSimulator,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+    ): SimulatorRepository =
+        LiveSimulatorRepository(
+            accounts = accounts.observeAccounts(),
+            loans = loans,
+            cards = cards.observeCardStatuses(),
+            cardTerms = cards,
+            instalments = loans.observeNextInstalments(),
+            prepaySimulator = prepay,
+            payoffSimulator = payoff,
+            clock = clock,
+            dispatchers = dispatchers,
+        )
 
     /**
      * Builds the buy list (issue 10.2; §13.3).

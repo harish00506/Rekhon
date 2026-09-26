@@ -124,6 +124,7 @@ class DashboardPrivacyBlurTest {
                             onNavigateToSettings = {},
                             onNavigateToOrderOfOperations = {},
                             onNavigateToPurchaseAdvisor = {},
+                            onNavigateToSimulators = {},
                         ),
                 )
             }

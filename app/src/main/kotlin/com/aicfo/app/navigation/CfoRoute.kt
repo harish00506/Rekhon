@@ -205,4 +205,13 @@ sealed interface CfoRoute {
      */
     @Serializable
     data object PurchaseAdvisor : CfoRoute
+
+    /**
+     * §36's and §40.2's what-if simulators (issue 10.3).
+     *
+     * **No arguments**: the debts come from the profile, and what the user types is the screen's
+     * state rather than the back stack's — a half-typed lump sum is not a place to navigate to.
+     */
+    @Serializable
+    data object Simulators : CfoRoute
 }

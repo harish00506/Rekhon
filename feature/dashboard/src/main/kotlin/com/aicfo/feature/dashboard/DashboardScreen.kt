@@ -469,7 +469,8 @@ private fun RecentActivitySection(uiState: DashboardUiState) {
  *         income, consents and app lock; [onNavigateToBudgets] — issue 4.4's
  *         per-category plan, behind the nature-level bar this screen already draws;
  *         [onNavigateToOrderOfOperations] — issue 7.5's full ranking, behind the next-best-rupee card;
- *         [onNavigateToPurchaseAdvisor] — issue 10.1's §13 advisor.
+ *         [onNavigateToPurchaseAdvisor] — issue 10.1's §13 advisor; [onNavigateToSimulators] —
+ *         issue 10.3's what-if simulators.
  * Output: an immutable value.
  */
 @Immutable
@@ -482,4 +483,5 @@ data class DashboardActions(
     val onNavigateToSettings: () -> Unit,
     val onNavigateToOrderOfOperations: () -> Unit,
     val onNavigateToPurchaseAdvisor: () -> Unit,
+    val onNavigateToSimulators: () -> Unit,
 )

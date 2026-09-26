@@ -23,7 +23,10 @@ android {
 // runs on debug only, exactly as :feature:emergencyfund and :feature:goals do.
 tasks.withType<Test>()
     .matching { it.name.contains("Release") }
-    .configureEach { exclude("**/AdvisorScreenTest.class") }
+    .configureEach {
+        exclude("**/AdvisorScreenTest.class")
+        exclude("**/SimulatorsScreenTest.class")
+    }
 
 dependencies {
     // Money and MoneyFormatter — every amount here is rendered, never computed (MNY-001, P-03).
@@ -35,6 +38,9 @@ dependencies {
     // The verdict, the gates and their figures are this screen's subject; the module is on the path
     // so the state class can name their types. It never constructs the engine — :app injects it.
     implementation(project(":domain:engines:purchase"))
+    // The simulators' result types are this screen's subject (issue 10.3); the engines themselves
+    // are injected by :app.
+    implementation(project(":domain:engines:simulator"))
 
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.junit)

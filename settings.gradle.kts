@@ -78,6 +78,7 @@ include(":domain:engines:insight")     // §7.2 AI-ORCH — engine results -> a 
 include(":domain:engines:notification") // §17.2 AI-NTF — what may interrupt the user, and when
 include(":domain:engines:guardrail") // AI-ARC-004 AI-GRD — no unverified figure reaches the user
 include(":domain:engines:purchase") // §13 AI-PA — can I afford this? the verdict and its trace
+include(":domain:engines:simulator") // §36/§40.2 AI-SIM — prepay vs invest, and which debt first
 include(":domain:usecase")
 
 // :data:*                  the ONLY DAO/network touchers (ARC-005)

@@ -35,6 +35,7 @@ import com.aicfo.data.repository.ReceiptRepository
 import com.aicfo.data.repository.RecurringRepository
 import com.aicfo.data.repository.RepositoryFactory
 import com.aicfo.data.repository.SafeToSpendRepository
+import com.aicfo.data.repository.SimulatorRepository
 import com.aicfo.data.repository.SmsRepository
 import com.aicfo.data.repository.StreamRepository
 import com.aicfo.data.repository.SurplusRepository
@@ -70,6 +71,9 @@ import com.aicfo.domain.engines.recurring.RecurringEngine
 import com.aicfo.domain.engines.safetospend.SafeToSpendEngine
 import com.aicfo.domain.engines.seasonality.SeasonalityEngine
 import com.aicfo.domain.engines.seasonality.SeasonalityEngineFactory
+import com.aicfo.domain.engines.simulator.DebtPayoffSimulator
+import com.aicfo.domain.engines.simulator.PrepayVsInvestSimulator
+import com.aicfo.domain.engines.simulator.SimulatorFactory
 import com.aicfo.domain.engines.sms.SmsEngine
 import com.aicfo.domain.engines.stream.StreamEngine
 import com.aicfo.domain.engines.stream.StreamEngineFactory
@@ -720,6 +724,35 @@ object RepositoryModule {
             activeProfileId = demoMode.activeProfileId,
             idGenerator = idGenerator,
         )
+
+    /** Result: §36's prepay-vs-invest simulator (issue 10.3). Input: none. */
+    @Provides
+    @Singleton
+    fun providePrepaySimulator(): PrepayVsInvestSimulator = SimulatorFactory.prepayVsInvest()
+
+    /** Result: §40.2's debt-payoff simulator (issue 10.3). Input: none. */
+    @Provides
+    @Singleton
+    fun provideDebtPayoffSimulator(): DebtPayoffSimulator = SimulatorFactory.debtPayoff()
+
+    /**
+     * The what-if simulators over the household's own debts (issue 10.3; §36, §40.2).
+     * Result: a [SimulatorRepository]. Input: the three sources, both simulators, [clock] and
+     *         [dispatchers]. Output: the repository.
+     * Changelog: 2026-09-26 — Created for issue 10.3.
+     */
+    @Provides
+    @Singleton
+    @Suppress("LongParameterList") // three sources, two engines and two seams
+    fun provideSimulatorRepository(
+        accounts: AccountRepository,
+        loans: LoanRepository,
+        cards: CreditCardRepository,
+        prepay: PrepayVsInvestSimulator,
+        payoff: DebtPayoffSimulator,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+    ): SimulatorRepository = RepositoryFactory.simulators(accounts, loans, cards, prepay, payoff, clock, dispatchers)
 
     /**
      * AI-GRD, the numeric guardrail every user-facing figure passes (issue 9.7; AI-ARC-004).

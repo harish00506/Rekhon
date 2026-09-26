@@ -19,6 +19,8 @@
     <string name="dashboard_emergency_fund_action">Emergency fund</string>
     <!-- Issue 10.1: §13's Purchase Advisor. -->
     <string name="dashboard_advisor_action">Can I afford this?</string>
+    <!-- Issue 10.3: §36 and §40.2's what-if simulators. -->
+    <string name="dashboard_simulators_action">What if?</string>
     <string name="dashboard_accounts_action">Your accounts</string>
     <string name="dashboard_transactions_action">View transactions</string>
     <string name="dashboard_settings_action">Settings</string>
