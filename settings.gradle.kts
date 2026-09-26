@@ -79,6 +79,7 @@ include(":domain:engines:notification") // §17.2 AI-NTF — what may interrupt 
 include(":domain:engines:guardrail") // AI-ARC-004 AI-GRD — no unverified figure reaches the user
 include(":domain:engines:purchase") // §13 AI-PA — can I afford this? the verdict and its trace
 include(":domain:engines:simulator") // §36/§40.2 AI-SIM — prepay vs invest, and which debt first
+include(":domain:engines:vehicle")   // §12 AI-VEH — when the next service falls due, and what it will cost
 include(":domain:usecase")
 
 // :data:*                  the ONLY DAO/network touchers (ARC-005)
@@ -100,6 +101,7 @@ include(":feature:emergencyfund") // §10.1 AI-EMF — the runway, the target, a
 include(":feature:settings")     // FR-SET-001 — income, consents and the app lock, after onboarding
 include(":feature:onboarding")
 include(":feature:transactions")
+include(":feature:vehicle")      // §12 AI-VEH — the vehicles, when each is due and what it will cost
 
 // :sync:*                  E2EE backup/restore
 include(":sync:backup")

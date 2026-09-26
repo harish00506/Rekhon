@@ -25,8 +25,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * the migrations themselves. The count is the schema's history rather than a design choice — the
  * same argument `CfoDatabase` makes for its one-accessor-per-table suppression. Splitting the file
  * by version would make a migration harder to find, not easier.
+ *
+ * `LargeClass` is suppressed for that same reason (issue 10.4, when schema 27's four tables crossed
+ * the threshold): the size of this object is the schema's history, one entry per version plus each
+ * version's DDL, and splitting it by epoch would put a migration somewhere a reader has to hunt for.
  */
-@Suppress("TooManyFunctions")
+@Suppress("TooManyFunctions", "LargeClass")
 internal object Migrations {
     /**
      * 1 → 2: adds `audit_log` for security events (issue 2.2; §21.6, SEC-002).
@@ -1436,6 +1440,115 @@ internal object Migrations {
         )
     }
 
+    /**
+     * 26 → 27: the vehicles and everything recorded about them (issue 10.4; §12).
+     *
+     * Why:  §12's prediction needs a history rather than a summary, so the readings and the
+     *       services are rows — one per reading — and not two columns on the vehicle. A "current
+     *       odometer" column would have made the robust slope impossible and a mistyped reading
+     *       permanent.
+     * Result: `vehicle`, `vehicle_odometer`, `vehicle_service` and `vehicle_renewal`, with their
+     *         indices. The two unique indices are the ones that matter: one reading per vehicle per
+     *         day, and one renewal row per item per vehicle, so correcting either replaces rather
+     *         than accumulates.
+     * Input: [db]. Output: none.
+     */
+    val MIGRATION_26_27 =
+        object : Migration(VERSION_26, VERSION_27) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(VEHICLE_TABLE)
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_vehicle_profile_id` ON `vehicle` (`profile_id`)")
+                createVehicleOdometer(db)
+                createVehicleService(db)
+                createVehicleRenewal(db)
+            }
+        }
+
+    /**
+     * The odometer table and its indices (issue 10.4).
+     * Result: `vehicle_odometer` exists. Input: [db]. Output: none.
+     */
+    private fun createVehicleOdometer(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `vehicle_odometer` (" +
+                "`id` TEXT NOT NULL, " +
+                "`profile_id` TEXT NOT NULL, " +
+                "`vehicle_id` TEXT NOT NULL, " +
+                "`read_iso_date` TEXT NOT NULL, " +
+                "`km` INTEGER NOT NULL, " +
+                "`deleted_at_utc_millis` INTEGER, " +
+                "`created_at_utc_millis` INTEGER NOT NULL, " +
+                "`updated_at_utc_millis` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_vehicle_odometer_profile_id` ON `vehicle_odometer` (`profile_id`)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_vehicle_odometer_profile_id_vehicle_id` " +
+                "ON `vehicle_odometer` (`profile_id`, `vehicle_id`)",
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_vehicle_odometer_profile_id_vehicle_id_read_iso_date` " +
+                "ON `vehicle_odometer` (`profile_id`, `vehicle_id`, `read_iso_date`)",
+        )
+    }
+
+    /**
+     * The service-history table and its indices (issue 10.4).
+     * Result: `vehicle_service` exists. Input: [db]. Output: none.
+     */
+    private fun createVehicleService(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `vehicle_service` (" +
+                "`id` TEXT NOT NULL, " +
+                "`profile_id` TEXT NOT NULL, " +
+                "`vehicle_id` TEXT NOT NULL, " +
+                "`serviced_iso_date` TEXT NOT NULL, " +
+                "`odometer_km` INTEGER NOT NULL, " +
+                "`cost_minor` INTEGER NOT NULL, " +
+                "`note` TEXT, " +
+                "`deleted_at_utc_millis` INTEGER, " +
+                "`created_at_utc_millis` INTEGER NOT NULL, " +
+                "`updated_at_utc_millis` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_vehicle_service_profile_id` ON `vehicle_service` (`profile_id`)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_vehicle_service_profile_id_vehicle_id` " +
+                "ON `vehicle_service` (`profile_id`, `vehicle_id`)",
+        )
+    }
+
+    /**
+     * The renewal table and its unique index (issue 10.4).
+     * Result: `vehicle_renewal` exists. Input: [db]. Output: none.
+     */
+    private fun createVehicleRenewal(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `vehicle_renewal` (" +
+                "`id` TEXT NOT NULL, " +
+                "`profile_id` TEXT NOT NULL, " +
+                "`vehicle_id` TEXT NOT NULL, " +
+                "`item` TEXT NOT NULL, " +
+                "`last_done_iso_date` TEXT NOT NULL, " +
+                "`last_cost_minor` INTEGER, " +
+                "`deleted_at_utc_millis` INTEGER, " +
+                "`created_at_utc_millis` INTEGER NOT NULL, " +
+                "`updated_at_utc_millis` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_vehicle_renewal_profile_id` ON `vehicle_renewal` (`profile_id`)",
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_vehicle_renewal_profile_id_vehicle_id_item` " +
+                "ON `vehicle_renewal` (`profile_id`, `vehicle_id`, `item`)",
+        )
+    }
+
     /** Every migration, in order, for `CfoDatabaseFactory` to register. */
     val ALL: Array<Migration> =
         arrayOf(
@@ -1464,6 +1577,7 @@ internal object Migrations {
             MIGRATION_23_24,
             MIGRATION_24_25,
             MIGRATION_25_26,
+            MIGRATION_26_27,
         )
 
     /**
@@ -1580,6 +1694,9 @@ internal object Migrations {
     /** The version issue 10.2 introduced: the buy list and its answers. */
     private const val VERSION_26 = 26
 
+    /** Issue 10.4: the vehicles and their history. */
+    private const val VERSION_27 = 27
+
     /**
      * `wishlist_item`'s columns (issue 10.2).
      * Held as a constant for the reason [PURCHASE_TRACE_TABLE] is: the DDL inside the method would
@@ -1600,6 +1717,19 @@ internal object Migrations {
             "`target_price_minor` INTEGER, " +
             "`last_interviewed_at_utc_millis` INTEGER, " +
             "`last_trace_id` TEXT, " +
+            "`deleted_at_utc_millis` INTEGER, " +
+            "`created_at_utc_millis` INTEGER NOT NULL, " +
+            "`updated_at_utc_millis` INTEGER NOT NULL, " +
+            "PRIMARY KEY(`id`))"
+
+    /** `vehicle`'s columns (issue 10.4). */
+    private const val VEHICLE_TABLE =
+        "CREATE TABLE IF NOT EXISTS `vehicle` (" +
+            "`id` TEXT NOT NULL, " +
+            "`profile_id` TEXT NOT NULL, " +
+            "`label` TEXT NOT NULL, " +
+            "`vehicle_class` TEXT NOT NULL, " +
+            "`account_id` TEXT, " +
             "`deleted_at_utc_millis` INTEGER, " +
             "`created_at_utc_millis` INTEGER NOT NULL, " +
             "`updated_at_utc_millis` INTEGER NOT NULL, " +

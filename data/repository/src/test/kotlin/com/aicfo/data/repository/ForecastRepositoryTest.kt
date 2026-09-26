@@ -23,6 +23,8 @@ import com.aicfo.domain.engines.forecast.ItemSource
 import com.aicfo.domain.engines.seasonality.SeasonalityEngineFactory
 import com.aicfo.domain.engines.seasonality.SeasonalityRules
 import com.aicfo.domain.engines.stream.StreamEngineFactory
+import com.aicfo.domain.engines.vehicle.VehicleClass
+import com.aicfo.domain.engines.vehicle.VehicleEngineFactory
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -54,12 +56,14 @@ import java.time.YearMonth
  * Changelog: 2026-09-19 — Created for issue 9.2.
  *            2026-09-19 — Issue 9.3: AI-SEAS joined — closed-month category history in, the
  *            October lift out as its own term; a young ledger with no season adds nothing.
+ *            2026-09-26 — Issue 10.4: AI-VEH's predicted costs join the horizon as one-offs (§12).
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 class ForecastRepositoryTest {
     private lateinit var database: CfoDatabase
     private lateinit var repository: ForecastRepository
+    private lateinit var vehicles: VehicleRepository
 
     private val dispatcher = UnconfinedTestDispatcher()
     private val dispatchers = TestDispatchers(dispatcher)
@@ -82,6 +86,15 @@ class ForecastRepositoryTest {
                 dispatchers,
                 activeProfileId,
             )
+        vehicles =
+            RepositoryFactory.vehicles(
+                database = database,
+                engine = VehicleEngineFactory.create(),
+                clock = clock,
+                dispatchers = dispatchers,
+                activeProfileId = activeProfileId,
+                idGenerator = UuidIdGenerator(),
+            )
         repository =
             RepositoryFactory.forecast(
                 database = database,
@@ -92,6 +105,7 @@ class ForecastRepositoryTest {
                 clock = clock,
                 dispatchers = dispatchers,
                 activeProfileId = activeProfileId,
+                vehicles = vehicles,
             )
     }
 
@@ -255,6 +269,60 @@ class ForecastRepositoryTest {
             expense("theirs", "demo:bank", "2026-09-10", -99_999_00L, category = null, profileId = "demo")
 
             assertEquals(Money(100_00L), latest().dailyBase)
+        }
+
+    @Test
+    fun `a predicted service lands in the horizon as a dated outflow`() =
+        runTest(dispatcher) {
+            // §12 into 9.2: a cost the app knows is coming and does not forecast is exactly the
+            // crunch day the forecast exists to warn about. The clock is 19 September 2026, so a
+            // hatchback serviced last October is due within the ninety days.
+            seed()
+            steadySpend(days = 30)
+            val vehicleId = vehicles.addVehicle("Swift", VehicleClass.HATCHBACK).expectOk()
+            vehicles.logService(vehicleId, "2025-10-05", 40_000, Money(5_00_000L)).expectOk()
+
+            val scheduled = latest().scheduled
+
+            assertTrue(
+                "the predicted service is not in the horizon: ${scheduled.map { it.label to it.date }}",
+                scheduled.any { it.label == "Swift" && it.source == ItemSource.VEHICLE_PREDICTION },
+            )
+            assertEquals(
+                "a prediction is an outflow, and it carries the midpoint of the range",
+                Money(-5_50_000L),
+                scheduled.first { it.source == ItemSource.VEHICLE_PREDICTION }.amount,
+            )
+        }
+
+    @Test
+    fun `a service beyond the horizon is not carried into it`() =
+        runTest(dispatcher) {
+            // A hatchback serviced this month is due next year — well past the ninety days. A
+            // forecast that carried it would price a day it never shows. Nothing asserted this
+            // until a deliberate break of the horizon filter passed every other test.
+            seed()
+            steadySpend(days = 30)
+            val vehicleId = vehicles.addVehicle("Swift", VehicleClass.HATCHBACK).expectOk()
+            vehicles.logService(vehicleId, "2026-09-10", 40_000, Money(5_00_000L)).expectOk()
+
+            val scheduled = latest().scheduled
+
+            assertTrue(
+                "a service due in 2027 reached a ninety-day horizon: ${scheduled.map { it.date }}",
+                scheduled.none { it.source == ItemSource.VEHICLE_PREDICTION },
+            )
+        }
+
+    @Test
+    fun `a household with no vehicles has nothing extra in its horizon`() =
+        runTest(dispatcher) {
+            seed()
+            steadySpend(days = 30)
+
+            val scheduled = latest().scheduled
+
+            assertTrue(scheduled.none { it.source == ItemSource.VEHICLE_PREDICTION })
         }
 
     // --- fixtures ---------------------------------------------------------------------------------

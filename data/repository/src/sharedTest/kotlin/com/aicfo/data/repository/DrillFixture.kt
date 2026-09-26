@@ -1,6 +1,7 @@
 package com.aicfo.data.repository
 
 import com.aicfo.core.database.CfoDatabase
+import com.aicfo.core.database.dao.ArchiveDao
 import com.aicfo.core.database.entity.AccountEntity
 import com.aicfo.core.database.entity.AttachmentEntity
 import com.aicfo.core.database.entity.BudgetAlertEntity
@@ -28,6 +29,10 @@ import com.aicfo.core.database.entity.TagEntity
 import com.aicfo.core.database.entity.TransactionEntity
 import com.aicfo.core.database.entity.TransactionSplitEntity
 import com.aicfo.core.database.entity.TransactionTagEntity
+import com.aicfo.core.database.entity.VehicleEntity
+import com.aicfo.core.database.entity.VehicleOdometerEntity
+import com.aicfo.core.database.entity.VehicleRenewalEntity
+import com.aicfo.core.database.entity.VehicleServiceEntity
 import com.aicfo.core.database.entity.WishlistItemEntity
 
 /**
@@ -51,6 +56,9 @@ object DrillFixture {
     const val ACCOUNT = "account:1"
     const val CATEGORY = "category:groceries"
     const val TAG = "tag:1"
+
+    /** Issue 10.4: the vehicle every reading, service and renewal hangs off. */
+    const val VEHICLE = "vehicle:1"
     const val BUDGET = "budget:1"
     const val PARENT_CATEGORY = "category:food"
     const val HOLDING = "holding:1"
@@ -500,6 +508,7 @@ object DrillFixture {
                 ),
             ),
         )
+        seedVehicles(dao, profileId)
         dao.insertGoalFundingAccounts(
             listOf(
                 GoalFundingAccountEntity(
@@ -511,6 +520,79 @@ object DrillFixture {
                     createdAtUtcMillis = NOW,
                     updatedAtUtcMillis = NOW,
                     deletedAtUtcMillis = DELETED_AT,
+                ),
+            ),
+        )
+    }
+
+    /**
+     * The vehicle a restored phone must still know about (issue 10.4; §12).
+     * Why:    the readings **are** the prediction, so a restore that brought back the vehicle and
+     *         not its odometer history would come back with no slope and a date a year out — a
+     *         silent loss that looks like a working app.
+     * Result: one row in each of the four tables, every nullable column set. Input: [dao];
+     *         [profileId]. Output: none (suspends).
+     */
+    private suspend fun seedVehicles(
+        dao: ArchiveDao,
+        profileId: String,
+    ) {
+        dao.insertVehicles(
+            listOf(
+                VehicleEntity(
+                    id = VEHICLE,
+                    profileId = profileId,
+                    label = "Swift",
+                    vehicleClass = "HATCHBACK",
+                    accountId = ACCOUNT,
+                    deletedAtUtcMillis = DELETED_AT,
+                    createdAtUtcMillis = NOW,
+                    updatedAtUtcMillis = NOW,
+                ),
+            ),
+        )
+        dao.insertVehicleOdometer(
+            listOf(
+                VehicleOdometerEntity(
+                    id = "odometer:1",
+                    profileId = profileId,
+                    vehicleId = VEHICLE,
+                    readIsoDate = "2026-08-02",
+                    km = 44_000L,
+                    deletedAtUtcMillis = DELETED_AT,
+                    createdAtUtcMillis = NOW,
+                    updatedAtUtcMillis = NOW,
+                ),
+            ),
+        )
+        dao.insertVehicleServices(
+            listOf(
+                VehicleServiceEntity(
+                    id = "service:1",
+                    profileId = profileId,
+                    vehicleId = VEHICLE,
+                    servicedIsoDate = "2026-06-01",
+                    odometerKm = 40_000L,
+                    costMinor = 5_00_000L,
+                    note = "Oil, filter, brake fluid",
+                    deletedAtUtcMillis = DELETED_AT,
+                    createdAtUtcMillis = NOW,
+                    updatedAtUtcMillis = NOW,
+                ),
+            ),
+        )
+        dao.insertVehicleRenewals(
+            listOf(
+                VehicleRenewalEntity(
+                    id = "renewal:1",
+                    profileId = profileId,
+                    vehicleId = VEHICLE,
+                    item = "INSURANCE",
+                    lastDoneIsoDate = "2025-09-01",
+                    lastCostMinor = 12_00_000L,
+                    deletedAtUtcMillis = DELETED_AT,
+                    createdAtUtcMillis = NOW,
+                    updatedAtUtcMillis = NOW,
                 ),
             ),
         )

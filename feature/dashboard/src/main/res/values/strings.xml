@@ -20,6 +20,7 @@
     <!-- Issue 10.1: §13's Purchase Advisor. -->
     <string name="dashboard_advisor_action">Can I afford this?</string>
     <!-- Issue 10.3: §36 and §40.2's what-if simulators. -->
+    <string name="dashboard_vehicles_action">Your vehicles</string>
     <string name="dashboard_simulators_action">What if?</string>
     <string name="dashboard_accounts_action">Your accounts</string>
     <string name="dashboard_transactions_action">View transactions</string>
@@ -94,6 +95,8 @@
     <string name="dashboard_forecast_item">%1$s · %2$s %3$s (%4$s)</string>
     <string name="dashboard_forecast_source_rule">repeats</string>
     <string name="dashboard_forecast_source_fixed">fixed each month</string>
+    <string name="dashboard_forecast_source_vehicle">predicted from your vehicle</string>
+    <string name="dashboard_forecast_unnamed_vehicle">Vehicle upkeep</string>
     <string name="dashboard_forecast_source_future">scheduled</string>
     <string name="dashboard_forecast_unnamed_rule">A repeating payment</string>
     <string name="dashboard_forecast_unnamed_fixed">A fixed monthly cost</string>

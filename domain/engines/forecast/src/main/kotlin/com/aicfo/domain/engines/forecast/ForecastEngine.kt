@@ -121,6 +121,16 @@ enum class ItemSource {
 
     /** A future-dated transaction the user entered (issue 3.4). */
     FUTURE_DATED,
+
+    /**
+     * A cost AI-VEH predicted — the next service, or a renewal the user has recorded a price for
+     * (issue 10.4; §12).
+     *
+     * It is a *prediction*, not a commitment: the user has not agreed to spend it, and the source
+     * is kept distinct so a screen can say where the line came from rather than implying the user
+     * scheduled it.
+     */
+    VEHICLE_PREDICTION,
 }
 
 /**

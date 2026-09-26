@@ -14,7 +14,7 @@ android {
 
     defaultConfig {
         applicationId = "com.aicfo.personalcfo"
-        versionCode = 46
+        versionCode = 47
         versionName = rootProject.file("VERSION").readText().trim()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -43,6 +43,8 @@ tasks.withType<Test>()
 dependencies {
     implementation(project(":core:designsystem"))
     implementation(project(":feature:advisor"))
+    // Issue 10.4: §12's vehicle maintenance screen.
+    implementation(project(":feature:vehicle"))
     implementation(project(":feature:accounts"))
     implementation(project(":feature:budgets"))
     implementation(project(":feature:categories"))

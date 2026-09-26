@@ -214,4 +214,13 @@ sealed interface CfoRoute {
      */
     @Serializable
     data object Simulators : CfoRoute
+
+    /**
+     * §12's vehicles and their maintenance (issue 10.4).
+     *
+     * **No arguments**: the vehicles come from the profile, and which card is expanded is the
+     * screen's own state — an opened log is not a place to navigate back to.
+     */
+    @Serializable
+    data object Vehicles : CfoRoute
 }

@@ -148,6 +148,8 @@ private fun ItemSource.sourceLabel(): Int =
         ItemSource.RECURRING_RULE -> R.string.dashboard_forecast_source_rule
         ItemSource.FIXED_STREAM -> R.string.dashboard_forecast_source_fixed
         ItemSource.FUTURE_DATED -> R.string.dashboard_forecast_source_future
+        // Issue 10.4: a predicted cost, not one the user scheduled — the wording says so.
+        ItemSource.VEHICLE_PREDICTION -> R.string.dashboard_forecast_source_vehicle
     }
 
 /** The name shown for an item that has none of its own. Result: a string resource. */
@@ -156,6 +158,7 @@ private fun ItemSource.fallbackLabel(): Int =
         ItemSource.RECURRING_RULE -> R.string.dashboard_forecast_unnamed_rule
         ItemSource.FIXED_STREAM -> R.string.dashboard_forecast_unnamed_fixed
         ItemSource.FUTURE_DATED -> R.string.dashboard_forecast_unnamed_future
+        ItemSource.VEHICLE_PREDICTION -> R.string.dashboard_forecast_unnamed_vehicle
     }
 
 /** How many of the next scheduled items the card lists. */

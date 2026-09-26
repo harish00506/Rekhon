@@ -29,6 +29,7 @@ import com.aicfo.feature.transactions.AddTransactionScreen
 import com.aicfo.feature.transactions.ReceiptReviewScreen
 import com.aicfo.feature.transactions.SmsDraftsScreen
 import com.aicfo.feature.transactions.TransactionsScreen
+import com.aicfo.feature.vehicle.VehiclesScreen
 
 /**
  * The app's single navigation graph (ARC-001).
@@ -76,6 +77,7 @@ fun CfoNavHost(
                         onNavigateToEmergencyFund = { navController.navigate(CfoRoute.EmergencyFund) },
                         onNavigateToPurchaseAdvisor = { navController.navigate(CfoRoute.PurchaseAdvisor) },
                         onNavigateToSimulators = { navController.navigate(CfoRoute.Simulators) },
+                        onNavigateToVehicles = { navController.navigate(CfoRoute.Vehicles) },
                         onNavigateToSettings = { navController.navigate(CfoRoute.Settings) },
                         onNavigateToOrderOfOperations = { navController.navigate(CfoRoute.OrderOfOperations) },
                     ),
@@ -129,6 +131,9 @@ private fun NavGraphBuilder.planningDestinations(navController: NavHostControlle
 
     // Issue 7.2: beside the goals destination. §10.1 suggests pausing goals when the runway is
     // thin, so the screen that says so belongs within a tap of the screen it is about.
+    composable<CfoRoute.Vehicles> {
+        VehiclesScreen(onDone = { navController.popBackStack() })
+    }
     composable<CfoRoute.Simulators> {
         SimulatorsScreen(onDone = { navController.popBackStack() })
     }

@@ -20,6 +20,7 @@
     2026-09-25 — Issue 10.1 (AI-PA Purchase Advisor + trace card) merged to dev; schema 25; Epic 10 opened at 0.10.0.
     2026-09-26 — Issue 10.2 (AI-PA-INT buy list + adaptive interview) merged to dev; schema 26.
     2026-09-26 — Issue 10.3 (AI-SIM what-if simulators) merged to dev; no schema change.
+    2026-09-26 — Issue 10.4 (AI-VEH vehicle maintenance) merged to dev; schema 27.
 -->
 
 # AI Personal CFO — Project Memory
@@ -31,14 +32,15 @@
 
 ## Current state
 
-- **Version:** `0.10.2` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v26** (10.2's `wishlist_item`; 10.3 stores nothing).
+- **Version:** `0.10.3` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v27** (10.4's four vehicle tables).
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
   forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
   feed), 9.6 (the notification policy) and 9.7 (the numeric guardrail) shipped — **Epic 9 is
-  complete**. **Epic 10 is open**: 10.1 (the Purchase Advisor), 10.2 (the buy list) and
-  10.3 (the what-if simulators) shipped; 10.4 (vehicle maintenance) is next, and the chat issues
-  (10.5/10.6) inherit AI-GRD's ladder rather than inventing one.
-- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7, 10.1, 10.2 and 10.3 are merged to `dev`**
+  complete**. **Epic 10 is open**: 10.1 (the Purchase Advisor), 10.2 (the buy list),
+  10.3 (the what-if simulators) and 10.4 (vehicle maintenance) shipped; 10.5 (the on-device chat
+  assistant) is next, and the chat issues (10.5/10.6) inherit AI-GRD's ladder rather than inventing
+  one.
+- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7 and 10.1–10.4 are merged to `dev`**
   ([8.1 tracker](issues/8.1-e2ee-backup-argon2id-aes-256-gcm-tracker.md), ADR-0039;
   [8.2 tracker](issues/8.2-restore-on-fresh-device-tracker.md), ADR-0040;
   [8.3 tracker](issues/8.3-backup-restore-drill-tracker.md), ADR-0041;
@@ -51,7 +53,8 @@
   [9.7 tracker](issues/9.7-guardrail-ai-arc-004-tracker.md), ADR-0048;
   [10.1 tracker](issues/10.1-purchase-advisor-ai-pa-trace-card-tracker.md), ADR-0049;
   [10.2 tracker](issues/10.2-buy-list-adaptive-interview-ai-pa-int-tracker.md), ADR-0050;
-  [10.3 tracker](issues/10.3-simulators-prepay-vs-invest-payoff-tracker.md), ADR-0051).
+  [10.3 tracker](issues/10.3-simulators-prepay-vs-invest-payoff-tracker.md), ADR-0051;
+  [10.4 tracker](issues/10.4-vehicle-maintenance-prediction-ai-veh-tracker.md), ADR-0052).
 - **`origin/dev` is current again** — `23acb26` (issue 10.1), pushed 2026-09-25. Everything from
   7.4 through 10.1 that had been stranded locally is on the remote. Earlier sessions recorded the
   push as blocked for want of credentials; it works now, so check `git log origin/dev..dev` rather
@@ -64,6 +67,26 @@
   `dev` was two issues behind once and nobody noticed.
 - **The forecast exists now (9.2), but the goals still use the observed P50 surplus** (ADR-0035,
   ADR-0037). Switching `SurplusRepository` to `ForecastRepository` is ADR-0043's recorded follow-up.
+
+### What 10.4 changed that a future issue must know
+
+- **A drift test is vacuous until its knowledge base is a declared test input.** The module's
+  `build.gradle.kts` names `ai/knowledge/vehicle-maintenance-kb.json` as an input to `Test`; without
+  that line Gradle leaves the task `UP-TO-DATE` when only the JSON changes, and two deliberate
+  drifts passed. **Every module that mirrors a file in `ai/` needs the same line** — check it when
+  you add one.
+- **Readings are rows, one per vehicle per day, unique.** A correction replaces; a duplicate would
+  weight the median slope towards that day. Do not add a "current odometer" column.
+- **The KB has cadences, not premiums.** A renewal enters the forecast only with the price the user
+  recorded. Do not seed a default premium.
+- **`ItemSource.VEHICLE_PREDICTION` exists** and every `when` over `ItemSource` must handle it — the
+  compiler enforces that a new source has words before it can ship.
+- **Do not re-add a horizon filter to `ForecastRepository.vehicleItems`.** The engine builds only the
+  days inside its own window; a second filter is a second definition, and the first draft's was
+  provably unreachable.
+- **The demo wipe and `countRowsFor` now cover all eight of Epic 10's tables.** Any new
+  profile-scoped table must be added to both, or the residue check silently lies.
+- **RULE-20-4-10 is still unconsumed.** It belongs to AI-PA and needs a `kind` on `PurchaseRequest`.
 
 ### What 10.3 changed that a future issue must know
 
@@ -96,7 +119,7 @@
   where the deferred buy-timing watch and the thirty-day re-ask will read from.
 - ~~**10.3's simulators should reuse `PurchaseRequest`**~~ — they did not, and should not: a
   what-if is about a debt, not a purchase. AI-SIM takes its own inputs (ADR-0051).
-- **rules-kb is 1.23.0**; fourteen `*Rules.kt` mirrors restate it.
+- **rules-kb is 1.23.0**; fourteen `*Rules.kt` mirrors restate it. The **vehicle KB is 1.1**, mirrored by `VehicleKnowledge.BUNDLED`.
 
 ### What 10.1 changed that a future issue must know
 

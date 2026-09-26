@@ -561,6 +561,33 @@ DashboardScreen → "What if?" → SimulatorsScreen
   ⇣ both figures, the gap between them, the breakeven or clearing order, and the engine that said so
 ```
 
+### 2.16 · What the car will cost, and when — AI-VEH (issue 10.4)
+
+**Two numbers the household already has, turned into a date and a price.** The prediction is
+recomputed on every read, because it depends on today; what is stored is the history it is made of.
+
+```
+DashboardScreen → "Your vehicles" → VehiclesScreen
+├─ AddVehicle(label, class)        → vehicle                     class selects every KB interval
+├─ LogOdometer(day, km)            → vehicle_odometer            one row per day (unique index)
+├─ LogService(day, km, cost)       → vehicle_service             the clock AND the price evidence
+├─ SetRenewal(item, day, cost?)    → vehicle_renewal             one row per item per vehicle
+└─ observeVehicles()               → VehicleRepository — ARC-005
+      combine(vehicles, odometer, services, renewals)
+      → VehicleEngine.predict()    domain/engines/vehicle — pure (AI-VEH)
+            kmPerMonth = median pairwise slope, 12-month window       (VEH-PREDICT)
+            due        = min(lastService + interval_months,
+                             latestReading + (dueOdo − km) ÷ rate)    (VEH-KB.service)
+            cost       = KB range × median(paid ÷ midpoint), clamped  (VEH-PREDICT)
+            alerts     = 30 days or 500 km · renewals at 30 and 7     (VEH-ALERTS)
+  ⇣ the date and which limit set it · the range and whose prices · the alerts · the engine and rows
+
+ForecastRepository.observeForecast()                             §2.9's horizon
+└─ + vehicles.observePredictedOutflows()
+      → ScheduledItem(source = VEHICLE_PREDICTION)               a prediction, not a commitment
+  ⇣ a service everyone knew was coming now shows as the crunch day it may cause
+```
+
 ### 2.1 · The dashboard's headline figure (issue 5.2)
 
 Shape C again, but it is the **first read in the app assembled from other repositories** rather than

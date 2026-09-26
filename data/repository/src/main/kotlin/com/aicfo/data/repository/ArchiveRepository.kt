@@ -143,6 +143,10 @@ internal class RoomArchiveRepository(
             purchaseTraceGates = dao.purchaseTraceGates(profileId),
             wishlistItems = dao.wishlistItems(profileId),
             interviewAnswers = dao.interviewAnswers(profileId),
+            vehicles = dao.vehicles(profileId),
+            vehicleOdometer = dao.vehicleOdometer(profileId),
+            vehicleServices = dao.vehicleServices(profileId),
+            vehicleRenewals = dao.vehicleRenewals(profileId),
         )
 
     override suspend fun import(json: String): Result<ImportSummary, AppError> =
@@ -282,6 +286,10 @@ internal class RoomArchiveRepository(
         dao.insertPurchaseTraceGates(archive.purchaseTraceGates)
         dao.insertWishlistItems(archive.wishlistItems)
         dao.insertInterviewAnswers(archive.interviewAnswers)
+        dao.insertVehicles(archive.vehicles)
+        dao.insertVehicleOdometer(archive.vehicleOdometer)
+        dao.insertVehicleServices(archive.vehicleServices)
+        dao.insertVehicleRenewals(archive.vehicleRenewals)
     }
 
     private companion object {
@@ -340,4 +348,5 @@ internal fun CfoArchive.rowCount(): Int =
         creditCards.size + cardAlerts.size + loans.size + investmentHoldings.size +
         investmentLots.size + goals.size + goalContributions.size + goalFundingAccounts.size +
         insights.size + notificationLog.size + purchaseTraces.size + purchaseTraceGates.size +
-        wishlistItems.size + interviewAnswers.size
+        wishlistItems.size + interviewAnswers.size + vehicles.size + vehicleOdometer.size +
+        vehicleServices.size + vehicleRenewals.size

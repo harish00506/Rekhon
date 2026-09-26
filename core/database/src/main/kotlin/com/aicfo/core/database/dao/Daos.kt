@@ -39,6 +39,10 @@ import com.aicfo.core.database.entity.TagEntity
 import com.aicfo.core.database.entity.TransactionEntity
 import com.aicfo.core.database.entity.TransactionSplitEntity
 import com.aicfo.core.database.entity.TransactionTagEntity
+import com.aicfo.core.database.entity.VehicleEntity
+import com.aicfo.core.database.entity.VehicleOdometerEntity
+import com.aicfo.core.database.entity.VehicleRenewalEntity
+import com.aicfo.core.database.entity.VehicleServiceEntity
 import com.aicfo.core.database.entity.WishlistItemEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -2303,6 +2307,27 @@ interface DemoDao {
     @Query("DELETE FROM interview_answer WHERE profile_id = :profileId")
     suspend fun deleteInterviewAnswers(profileId: String): Int
 
+    /** Result: rows removed from `vehicle_odometer` (issue 10.4). Input: [profileId]. */
+    @Query("DELETE FROM vehicle_odometer WHERE profile_id = :profileId")
+    suspend fun deleteVehicleOdometer(profileId: String): Int
+
+    /** Result: rows removed from `vehicle_service` (issue 10.4). Input: [profileId]. */
+    @Query("DELETE FROM vehicle_service WHERE profile_id = :profileId")
+    suspend fun deleteVehicleServices(profileId: String): Int
+
+    /** Result: rows removed from `vehicle_renewal` (issue 10.4). Input: [profileId]. */
+    @Query("DELETE FROM vehicle_renewal WHERE profile_id = :profileId")
+    suspend fun deleteVehicleRenewals(profileId: String): Int
+
+    /**
+     * Result: rows removed from `vehicle` (issue 10.4). Input: [profileId]. Output: the count.
+     *
+     * Last of the four, for the ordering argument [deleteTransactionSplits] makes: a reading, a
+     * service and a renewal are all children of a vehicle.
+     */
+    @Query("DELETE FROM vehicle WHERE profile_id = :profileId")
+    suspend fun deleteVehicles(profileId: String): Int
+
     /**
      * Result: rows removed from `card_alert`. Input: [profileId]. Output: the count.
      *
@@ -2492,7 +2517,7 @@ interface DemoDao {
      *         Deliberately **not** filtered by `deleted_at_utc_millis`: a soft-deleted row is
      *         precisely the residue being looked for, so it must count.
      * Result: `0` once the profile has been erased.
-     * Input:  [profileId]. Output: the total row count across all twenty-one tables.
+     * Input:  [profileId]. Output: the total row count across every profile-scoped table.
      *
      * Issue 7.4 added the last five. `goal`, `investment_holding` and `investment_lot` had been
      * absent since 7.1 and 6.3 — the demo wipe left all three behind, and this query said the
@@ -2524,7 +2549,21 @@ interface DemoDao {
             // Issue 9.5: the orchestrator's feed is profile-scoped residue like every other claim
             // table, so it is counted here or the wipe could miss it and no test would say so.
             "(SELECT COUNT(*) FROM insight WHERE profile_id = :profileId) + " +
-            "(SELECT COUNT(*) FROM notification_log WHERE profile_id = :profileId)",
+            "(SELECT COUNT(*) FROM notification_log WHERE profile_id = :profileId) + " +
+            // Issue 10.4 found the next four absent: 10.1's kept verdicts and 10.2's buy list were
+            // written while browsing the demo and never counted, so the wipe could leave them and
+            // this query would still call the profile clean — the exact false assertion the note
+            // above describes, made again by the two issues that came after it.
+            "(SELECT COUNT(*) FROM purchase_trace WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM purchase_trace_gate WHERE trace_id IN " +
+            "(SELECT id FROM purchase_trace WHERE profile_id = :profileId)) + " +
+            "(SELECT COUNT(*) FROM wishlist_item WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM interview_answer WHERE profile_id = :profileId) + " +
+            // Issue 10.4's own four.
+            "(SELECT COUNT(*) FROM vehicle WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM vehicle_odometer WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM vehicle_service WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM vehicle_renewal WHERE profile_id = :profileId)",
     )
     suspend fun countRowsFor(profileId: String): Int
 }
@@ -2687,6 +2726,22 @@ interface ArchiveDao {
     @Query("SELECT * FROM interview_answer WHERE profile_id = :profileId ORDER BY id")
     suspend fun interviewAnswers(profileId: String): List<InterviewAnswerEntity>
 
+    /** Result: the vehicles (issue 10.4). Input: [profileId]. */
+    @Query("SELECT * FROM vehicle WHERE profile_id = :profileId ORDER BY id")
+    suspend fun vehicles(profileId: String): List<VehicleEntity>
+
+    /** Result: every odometer reading — the history a prediction is made of. Input: [profileId]. */
+    @Query("SELECT * FROM vehicle_odometer WHERE profile_id = :profileId ORDER BY id")
+    suspend fun vehicleOdometer(profileId: String): List<VehicleOdometerEntity>
+
+    /** Result: every service the household paid for. Input: [profileId]. */
+    @Query("SELECT * FROM vehicle_service WHERE profile_id = :profileId ORDER BY id")
+    suspend fun vehicleServices(profileId: String): List<VehicleServiceEntity>
+
+    /** Result: every renewal row, with what it last cost. Input: [profileId]. */
+    @Query("SELECT * FROM vehicle_renewal WHERE profile_id = :profileId ORDER BY id")
+    suspend fun vehicleRenewals(profileId: String): List<VehicleRenewalEntity>
+
     /** Result: every recurring rule, confirmed and dismissed alike (FR-TXN-006). Input: [profileId]. */
     @Query("SELECT * FROM recurring_rule WHERE profile_id = :profileId ORDER BY id")
     suspend fun recurringRules(profileId: String): List<RecurringRuleEntity>
@@ -2811,6 +2866,22 @@ interface ArchiveDao {
     /** Result: the stored answers are present (issue 10.2). Input: [rows]. Output: none (suspends). */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertInterviewAnswers(rows: List<InterviewAnswerEntity>)
+
+    /** Result: the vehicles are present (issue 10.4). Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertVehicles(rows: List<VehicleEntity>)
+
+    /** Result: every odometer reading is present (issue 10.4). Input: [rows]. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertVehicleOdometer(rows: List<VehicleOdometerEntity>)
+
+    /** Result: every service is present (issue 10.4). Input: [rows]. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertVehicleServices(rows: List<VehicleServiceEntity>)
+
+    /** Result: every renewal row is present (issue 10.4). Input: [rows]. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertVehicleRenewals(rows: List<VehicleRenewalEntity>)
 
     /**
      * Result: the card alerts already sent are present. Input: [rows]. Output: none (suspends).
@@ -4144,4 +4215,91 @@ interface BuyListDao {
     /** Result: every stored answer — the archive's read. Input: [profileId]. */
     @Query("SELECT * FROM interview_answer WHERE profile_id = :profileId")
     suspend fun allAnswers(profileId: String): List<InterviewAnswerEntity>
+}
+
+/**
+ * The vehicle tables (issue 10.4; §12, ARC-005).
+ *
+ * Why:  AI-VEH predicts from a whole history, not a summary, so the screen needs every reading and
+ *       every service for every vehicle in one subscription — four flows that re-emit together
+ *       rather than four round trips each time a number changes.
+ * What: upserts for each table, the live reads the screen subscribes to, the per-vehicle reads a
+ *       single prediction needs, and the unfiltered reads the archive takes.
+ * Result: one place that touches these four tables (ARC-005).
+ * Changelog: 2026-09-26 — Created for issue 10.4.
+ */
+@Dao
+@Suppress("TooManyFunctions") // Four tables, each needing an upsert, a live read and an archive read.
+interface VehicleDao {
+    /** Result: the vehicle exists, replacing any with the same id. Input: [row]. Output: none. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertVehicle(row: VehicleEntity)
+
+    /** Result: the reading exists; a second reading for the same day replaces the first. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertOdometer(row: VehicleOdometerEntity)
+
+    /** Result: the service exists, replacing any with the same id. Input: [row]. Output: none. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertService(row: VehicleServiceEntity)
+
+    /** Result: the renewal exists; one row per item per vehicle. Input: [row]. Output: none. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertRenewal(row: VehicleRenewalEntity)
+
+    /** Result: the profile's vehicles, oldest first. Input: [profileId]. */
+    @Query(
+        "SELECT * FROM vehicle WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
+            "ORDER BY created_at_utc_millis",
+    )
+    fun observeVehicles(profileId: String): Flow<List<VehicleEntity>>
+
+    /** Result: every live reading for the profile, oldest first. Input: [profileId]. */
+    @Query(
+        "SELECT * FROM vehicle_odometer WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
+            "ORDER BY read_iso_date",
+    )
+    fun observeOdometer(profileId: String): Flow<List<VehicleOdometerEntity>>
+
+    /** Result: every live service for the profile, oldest first. Input: [profileId]. */
+    @Query(
+        "SELECT * FROM vehicle_service WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
+            "ORDER BY serviced_iso_date",
+    )
+    fun observeServices(profileId: String): Flow<List<VehicleServiceEntity>>
+
+    /** Result: every live renewal row for the profile. Input: [profileId]. */
+    @Query("SELECT * FROM vehicle_renewal WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL")
+    fun observeRenewals(profileId: String): Flow<List<VehicleRenewalEntity>>
+
+    /** Result: one vehicle, or `null`. Input: [profileId]; [id]. */
+    @Query("SELECT * FROM vehicle WHERE profile_id = :profileId AND id = :id")
+    suspend fun findVehicle(
+        profileId: String,
+        id: String,
+    ): VehicleEntity?
+
+    /** Result: a soft delete — the row stays for the archive and for sync (DB-002). */
+    @Query("UPDATE vehicle SET deleted_at_utc_millis = :nowUtcMillis WHERE profile_id = :profileId AND id = :id")
+    suspend fun softDeleteVehicle(
+        profileId: String,
+        id: String,
+        nowUtcMillis: Long,
+    )
+
+    /** Result: every vehicle row — the archive's read. Input: [profileId]. */
+    @Query("SELECT * FROM vehicle WHERE profile_id = :profileId")
+    suspend fun allVehicles(profileId: String): List<VehicleEntity>
+
+    /** Result: every odometer row — the archive's read. Input: [profileId]. */
+    @Query("SELECT * FROM vehicle_odometer WHERE profile_id = :profileId")
+    suspend fun allOdometer(profileId: String): List<VehicleOdometerEntity>
+
+    /** Result: every service row — the archive's read. Input: [profileId]. */
+    @Query("SELECT * FROM vehicle_service WHERE profile_id = :profileId")
+    suspend fun allServices(profileId: String): List<VehicleServiceEntity>
+
+    /** Result: every renewal row — the archive's read. Input: [profileId]. */
+    @Query("SELECT * FROM vehicle_renewal WHERE profile_id = :profileId")
+    suspend fun allRenewals(profileId: String): List<VehicleRenewalEntity>
 }

@@ -27,6 +27,10 @@ import com.aicfo.core.database.entity.TagEntity
 import com.aicfo.core.database.entity.TransactionEntity
 import com.aicfo.core.database.entity.TransactionSplitEntity
 import com.aicfo.core.database.entity.TransactionTagEntity
+import com.aicfo.core.database.entity.VehicleEntity
+import com.aicfo.core.database.entity.VehicleOdometerEntity
+import com.aicfo.core.database.entity.VehicleRenewalEntity
+import com.aicfo.core.database.entity.VehicleServiceEntity
 import com.aicfo.core.database.entity.WishlistItemEntity
 import kotlinx.serialization.Serializable
 
@@ -49,6 +53,8 @@ import kotlinx.serialization.Serializable
  *   2026-09-20 — Issue 9.5 added [insights]. Issue 9.6 added [notificationLog].
  *   2026-09-25 — Issue 10.1 added [purchaseTraces] and [purchaseTraceGates].
  *   2026-09-26 — Issue 10.2 added [wishlistItems] and [interviewAnswers].
+ *   2026-09-26 — Issue 10.4 added [vehicles], [vehicleOdometer], [vehicleServices] and
+ *   [vehicleRenewals]: a restored phone keeps the readings, because they *are* the prediction.
  *
  * **`goal` was missing from here for two issues, and the warning below is what it disproved.**
  * The argument for holding entities directly is that "a new column is in the archive the moment it
@@ -115,6 +121,11 @@ data class CfoArchive(
     val purchaseTraceGates: List<PurchaseTraceGateEntity> = emptyList(),
     val wishlistItems: List<WishlistItemEntity> = emptyList(),
     val interviewAnswers: List<InterviewAnswerEntity> = emptyList(),
+    /** Issue 10.4: the vehicles, and the history every prediction about them is made from. */
+    val vehicles: List<VehicleEntity> = emptyList(),
+    val vehicleOdometer: List<VehicleOdometerEntity> = emptyList(),
+    val vehicleServices: List<VehicleServiceEntity> = emptyList(),
+    val vehicleRenewals: List<VehicleRenewalEntity> = emptyList(),
 ) {
     companion object {
         /**
