@@ -96,3 +96,4 @@ DashboardScreen → "What if?" → SimulatorsScreen
 | `app/.../di/RepositoryModule.kt`, `CfoRoute.kt`, `CfoNavHost.kt` | AI-SIM provided, and the route to the screen |
 | `feature/dashboard/DashboardScreen.kt`, `DashboardDestinations.kt`, strings | the "What if?" action |
 | `docs/adr/0051-…`, `DECISIONS.md`, `FLOW.md` §2.15, `ai/orchestrator/engine-registry.yaml`, `CHANGELOG.md`, `docs/memory.md` | the records |
+| `docs/AI_Personal_CFO_screens.pdf`, `docs/screens/` | **new** — a 51-page walk through every screen, captured on the emulator in airplane mode, each page naming the engine and rules behind its figures, plus the script that composes it and how to recapture |
