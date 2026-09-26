@@ -39,6 +39,7 @@ import com.aicfo.domain.engines.simulator.DebtPayoffSimulator
 import com.aicfo.domain.engines.simulator.PrepayVsInvestSimulator
 import com.aicfo.domain.engines.sms.SmsEngine
 import com.aicfo.domain.engines.stream.StreamEngine
+import com.aicfo.domain.engines.vehicle.VehicleEngine
 import com.aicfo.ml.ocr.ReceiptTextRecognizer
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -651,6 +652,32 @@ object RepositoryFactory {
         )
 
     /**
+     * The vehicles and their predictions (issue 10.4; §12).
+     * Why:    AI-VEH is pure; this is where a household's readings, bills and renewal dates meet it,
+     *         in the profile's own today.
+     * Result: a [VehicleRepository]. Input: [database]; [engine]; [clock]; [dispatchers];
+     *         [activeProfileId]; [idGenerator]. Output: the repository.
+     * Changelog: 2026-09-26 — Created for issue 10.4.
+     */
+    @Suppress("LongParameterList") // the database, the engine and four seams
+    fun vehicles(
+        database: CfoDatabase,
+        engine: VehicleEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        activeProfileId: Flow<String>,
+        idGenerator: IdGenerator,
+    ): VehicleRepository =
+        StoredVehicleRepository(
+            database = database,
+            engine = engine,
+            clock = clock,
+            dispatchers = dispatchers,
+            activeProfileId = activeProfileId,
+            idGenerator = idGenerator,
+        )
+
+    /**
      * Builds the buy list (issue 10.2; §13.3).
      * Why:    the ladder weighs a price against income, and income is the same median the health
      *         score reads (`HealthSignals.obligations`) — one definition, so a wish never lands in a
@@ -874,8 +901,10 @@ object RepositoryFactory {
      * Output: [ForecastRepository].
      * Changelog: 2026-09-19 — Created for issue 9.2.
      *            2026-09-19 — [seasonality] added for issue 9.3.
+     *            2026-09-26 — [vehicles] added for issue 10.4: AI-VEH's predicted service and
+     *            renewal costs become one-offs inside the horizon (§12).
      */
-    @Suppress("LongParameterList") // eight sources, each one the forecast reads
+    @Suppress("LongParameterList") // nine sources, each one the forecast reads
     fun forecast(
         database: CfoDatabase,
         accounts: AccountRepository,
@@ -885,16 +914,20 @@ object RepositoryFactory {
         clock: Clock,
         dispatchers: DispatcherProvider,
         activeProfileId: Flow<String>,
+        vehicles: VehicleRepository,
     ): ForecastRepository =
         RoomForecastRepository(
-            database,
-            accounts,
-            streams,
-            engine,
-            seasonality,
-            clock,
-            dispatchers,
-            activeProfileId,
+            database = database,
+            accounts = accounts,
+            streams = streams,
+            engine = engine,
+            seasonality = seasonality,
+            clock = clock,
+            dispatchers = dispatchers,
+            activeProfileId = activeProfileId,
+            // Issue 10.4: the forecast takes AI-VEH's predicted costs as one-offs, so a service
+            // everyone knows is coming shows up as the crunch day it may cause (§12 into 9.2).
+            vehicleOutflows = vehicles.observePredictedOutflows(),
         )
 
     /**

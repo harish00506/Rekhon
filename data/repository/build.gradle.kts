@@ -106,6 +106,7 @@ dependencies {
     api(project(":domain:engines:notification"))
     api(project(":domain:engines:purchase"))
     api(project(":domain:engines:simulator"))
+    api(project(":domain:engines:vehicle"))
 
     // withTransaction — the atomicity guarantee applySeeds is built on (issue 2.3).
     // api, not implementation: MarketDataApi is a parameter of RepositoryFactory.marketPrice, so

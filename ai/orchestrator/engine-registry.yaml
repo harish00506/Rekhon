@@ -21,6 +21,8 @@
 #   2026-09-25 — Issue 10.1: AI-PA built — §13's Purchase Advisor and its kept trace (ADR-0049).
 #   2026-09-26 — Issue 10.2: AI-PA-INT built — §13.3's buy list and adaptive interview (ADR-0050).
 #   2026-09-26 — Issue 10.3: AI-SIM built — §36's and §40.2's what-if simulators (ADR-0051).
+#   2026-09-26 — Issue 10.4: AI-VEH built — §12's maintenance prediction, folded into the forecast
+#                (ADR-0052). Its KB moved to 1.1: the method and the alert thresholds are typed.
 # =============================================================================
 
 version: "1.1"
@@ -133,8 +135,14 @@ engines:
     layer: L4
     module: ":domain:engines:vehicle"
     version: "1.0"
-    contract: "odometer + service history -> {nextService.dueAt, predictedCost, alerts}"
-    reads: [../knowledge/vehicle-maintenance-kb.json]
+    # Issue 10.4 built it (ADR-0052): the rate is the median of the pairwise slopes, so one mistyped
+    # odometer reading cannot move it; the date is the earlier of the distance and time limits and
+    # says which it was; the cost is the KB range moved by what this household actually pays; and a
+    # renewal enters the forecast only with a price the user recorded, because the KB has cadences
+    # and not premiums (P-03). Appliances are not built — the name is the registry's, from §12.
+    contract: "odometer readings + service history + renewal dates -> {kmPerMonth, nextService{dueAt, dueOdometer, basis}, predictedCost range, personal cost index, alerts, predicted outflows for the forecast}"
+    reads: [../knowledge/vehicle-maintenance-kb.json]   # v1.1: VEH-KB.service, VEH-PREDICT, VEH-ALERTS
+    feeds: [AI-FCT]
     srs: "§12"
 
   - id: AI-PA

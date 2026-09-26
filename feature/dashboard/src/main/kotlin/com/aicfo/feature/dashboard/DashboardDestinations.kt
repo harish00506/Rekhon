@@ -14,6 +14,7 @@ import com.aicfo.core.designsystem.component.CfoSecondaryButton
  * Changelog: 2026-08-29 — Created for FR-SET-001.
  *            2026-09-25 — Issue 10.1 added the Purchase Advisor.
  *            2026-09-26 — Issue 10.3 added the simulators.
+ *            2026-09-26 — Issue 10.4 added the vehicles.
  */
 @Composable
 internal fun DestinationButtons(actions: DashboardActions) {
@@ -48,6 +49,12 @@ internal fun DestinationButtons(actions: DashboardActions) {
     CfoSecondaryButton(
         text = stringResource(R.string.dashboard_simulators_action),
         onClick = actions.onNavigateToSimulators,
+    )
+    // Issue 10.4: §12's vehicles, beside the other two "what is coming" screens — its predictions
+    // are already inside the ninety-day figure above, and this is where they come from.
+    CfoSecondaryButton(
+        text = stringResource(R.string.dashboard_vehicles_action),
+        onClick = actions.onNavigateToVehicles,
     )
     // Reached from here because this is the screen whose two empty states depend on the monthly
     // income it sets — and because until it existed those states told the user to visit a Settings

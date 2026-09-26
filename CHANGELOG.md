@@ -11,6 +11,43 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The Purchase Advisor, buy list, what-if simulators, vehicle prediction, on-device chat + guardrail
 > eval, market signals, and localisation.
 
+### [0.10.3] — Issue 10.4: Vehicle maintenance prediction (AI-VEH)  (2026-09-26)
+
+- **Implemented:** `:domain:engines:vehicle` (**AI-VEH** 1.0) and the "Your vehicles" screen over it
+  — §12's service and running-cost prediction, folded into the ninety-day forecast (**ADR-0052**).
+  - **Record the odometer now and then, and what each service cost.** From those two things the app
+    works out how far the vehicle goes each month, when the next service falls due, and roughly what
+    to expect.
+  - **It says which limit decided the date** — the distance you are driving it or the calendar —
+    because "you are driving it there" and "it has been sitting a year" are different facts.
+  - **The price follows your own bills.** After two services the national range moves onto what this
+    household actually pays, clamped so one big repair cannot rewrite every future estimate. Before
+    that it shows the book range and says so.
+  - **One mistyped reading cannot move the estimate:** the rate is the median of the slopes between
+    every pair of readings, so a stray digit poisons only the pairs it is in.
+  - **Insurance and the PUC certificate are chased** at thirty days and seven, and a renewal joins
+    the forecast **only if you recorded what it cost** — the knowledge base has cadences, not
+    premiums, and inventing one would be a fabricated figure in your own forecast.
+  - **Predicted costs appear in the 90-day view**, labelled as predictions rather than as something
+    you scheduled.
+- **Schema 27:** `vehicle`, `vehicle_odometer`, `vehicle_service`, `vehicle_renewal` — one row per
+  reading, unique per day, so correcting a figure replaces it rather than weighting the estimate
+  towards that day. All four are backed up, restored, wiped with the profile and seeded in the
+  restore drill.
+- **The knowledge base is 1.1:** the prediction method and the alert windows are typed rows instead
+  of prose inside a comment, so changing when the app speaks is an edit to one file.
+- **Repaired along the way:** the demo wipe and its residue count had missed four tables from issues
+  10.1 and 10.2, so a demo session that asked the advisor or added a wish left both behind while the
+  check called the profile clean. All eight tables are now wiped and counted.
+- **Not yet** (ADR-0052): consumables (the KB gives them no cost range), the mileage-drop alert (no
+  fuel volume is recorded anywhere), the 20/4/10 vehicle affordability gate (it belongs to the
+  Purchase Advisor), appliances, and a combined running-cost screen.
+- **Tests:** 23 behaviour tests, 6 identities × 300 seeded cases, a golden file over five households
+  from an independent Python oracle, 8 drift tests, 12 repository tests, 3 forecast-integration
+  tests and 19 UI tests. Seven deliberate breaks were each watched go red — and two more survived
+  and were fixed: the drift gate never ran until the knowledge base was declared a test input, and
+  the repository's own horizon filter turned out to be unreachable and was removed.
+
 ### [0.10.2] — Issue 10.3: What-if simulators (AI-SIM)  (2026-09-26)
 
 - **Implemented:** `:domain:engines:simulator` (**AI-SIM** 1.0) and the "What if?" screen over it —

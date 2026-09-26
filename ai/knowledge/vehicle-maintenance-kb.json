@@ -5,16 +5,40 @@
     "what": "Per vehicle class: service intervals (km and months), typical Indian cost ranges (minor units, INR paise), and consumable replacement intervals.",
     "result": "'Service due ~Aug 20, expect INR 3,000-4,500' style alerts, adjusted by the user's own service-cost history (personal index).",
     "source_section": "§12",
-    "version": "1.0",
+    "version": "1.1",
     "changelog": [
-      "2026-07-17 — Created from SRS v1.7 §12. Cost ranges are starter estimates in INR minor units; refined by the user's personal cost index."
+      "2026-07-17 — Created from SRS v1.7 §12. Cost ranges are starter estimates in INR minor units; refined by the user's personal cost index.",
+      "2026-09-26 — Issue 10.4 built AI-VEH against this file. The prediction method and the alert thresholds moved out of `_meta`'s prose and into the typed `prediction` and `alerts` blocks below, because an engine cannot consume a sentence: `\"30 days / 500 km before due\"` had to become two numbers an engine reads and a drift test can check. No interval, cost range or consumable changed. See ADR-0052."
     ],
     "prediction_note": "kmPerMonth = robustSlope(odometer readings, last 12 months). nextService.dueAt = min(lastService.odo + interval_km via kmPerMonth, lastService.date + interval_months). predictedCost adjusted by user's personal cost index.",
-    "alerts": {
-      "service_due": "30 days / 500 km before due",
-      "mileage_drop": "mileage drop > 15% vs 3-month baseline -> 'possible maintenance issue'",
-      "renewal": "insurance / PUC expiry at -30 and -7 days"
+    "alerts_note": "The prose these two blocks replaced, kept for the reader: service due '30 days / 500 km before due'; mileage drop '> 15% vs 3-month baseline'; renewal 'insurance / PUC expiry at -30 and -7 days'."
+  },
+
+  "prediction": {
+    "id": "VEH-PREDICT",
+    "version": "1.0",
+    "why": "AI-VEH has to turn a handful of odometer readings into a rate, and a rate into a date. Every number that decision needs is here, so changing how far back the app looks, or how many services it wants before it trusts a household's own prices, is an edit to this file rather than to an engine.",
+    "slope_window_months": 12,
+    "min_readings_for_slope": 2,
+    "min_services_for_personal_index": 2,
+    "personal_index_floor_bps": 5000,
+    "personal_index_ceiling_bps": 20000,
+    "default_km_per_month": 0,
+    "notes": {
+      "slope": "Median of the pairwise slopes between readings in the window (Theil-Sen), in whole km per month, so one mistyped odometer reading cannot move the estimate the way a mean would.",
+      "personal_index": "Median of (this household's service cost / the class midpoint), in basis points, clamped to the floor and ceiling. Below two services there is no index and the KB range is shown as it stands.",
+      "default_km_per_month": "Zero means 'not enough readings to say' — the engine then predicts on the time interval alone and says so, rather than inventing a distance."
     }
+  },
+
+  "alerts": {
+    "id": "VEH-ALERTS",
+    "version": "1.0",
+    "why": "When to speak. A service alert that arrives the day the service is due is useless; one that arrives three months early is noise.",
+    "service_due_days": 30,
+    "service_due_km": 500,
+    "mileage_drop_bps": 1500,
+    "renewal_reminder_days": [30, 7]
   },
 
   "vehicle_classes": [

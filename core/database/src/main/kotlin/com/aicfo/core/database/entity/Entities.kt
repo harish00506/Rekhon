@@ -2030,3 +2030,176 @@ data class InterviewAnswerEntity(
     @ColumnInfo(name = "updated_at_utc_millis")
     val updatedAtUtcMillis: Long,
 )
+
+/**
+ * A vehicle the household owns (issue 10.4; §12).
+ *
+ * Why:  AI-VEH predicts from a class, a history of readings and a history of services. The class is
+ *       the one field a prediction cannot be made without, because it selects every interval and
+ *       cost range in the knowledge base.
+ * What: one row per vehicle, optionally linked to the account that holds its loan.
+ * Result: the engine's `Vehicle`, rebuilt by the repository.
+ * Changelog: 2026-09-26 — Created for issue 10.4 (schema 27).
+ *
+ * Input:  [id]; [profileId]; [label] — the user's own name for it; [vehicleClass] — the KB class
+ *         (`2W`, `hatch`, `sedan`, `SUV`, `EV`); [accountId] — the loan or asset account, when the
+ *         user linked one; [deletedAtUtcMillis] — the soft-delete tombstone (DB-002);
+ *         [createdAtUtcMillis]; [updatedAtUtcMillis].
+ * Output: a Room row.
+ */
+@Serializable
+@Entity(
+    tableName = "vehicle",
+    indices = [Index("profile_id")],
+)
+data class VehicleEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    @ColumnInfo(name = "label")
+    val label: String,
+    /** The knowledge base's own class string, so a row and a KB row cannot drift apart. */
+    @ColumnInfo(name = "vehicle_class")
+    val vehicleClass: String,
+    @ColumnInfo(name = "account_id")
+    val accountId: String? = null,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+)
+
+/**
+ * One odometer reading (issue 10.4; §12).
+ *
+ * Why:  the readings **are** the prediction: their slope is the distance the vehicle covers, and
+ *       one row per reading is what lets a median ignore a mistyped one. A single "current
+ *       odometer" column on the vehicle could not.
+ * Result: the engine's `OdometerReading`.
+ * Changelog: 2026-09-26 — Created for issue 10.4 (schema 27).
+ *
+ * Input:  [id]; [profileId]; [vehicleId]; [readIsoDate] — a date-only ISO string (TIM-002);
+ *         [km] — whole kilometres; the tombstone and timestamps as elsewhere.
+ * Output: a Room row.
+ */
+@Serializable
+@Entity(
+    tableName = "vehicle_odometer",
+    indices = [
+        Index("profile_id"),
+        Index(value = ["profile_id", "vehicle_id"]),
+        Index(value = ["profile_id", "vehicle_id", "read_iso_date"], unique = true),
+    ],
+)
+data class VehicleOdometerEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    @ColumnInfo(name = "vehicle_id")
+    val vehicleId: String,
+    @ColumnInfo(name = "read_iso_date")
+    val readIsoDate: String,
+    @ColumnInfo(name = "km")
+    val km: Long,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+)
+
+/**
+ * One service that was paid for (issue 10.4; §12).
+ *
+ * Why:  it is both the clock the next interval runs from and the evidence for what a service costs
+ *       *this* household — which is what moves the knowledge base's national range onto the user's
+ *       own prices.
+ * Result: the engine's `ServiceRecord`.
+ * Changelog: 2026-09-26 — Created for issue 10.4 (schema 27).
+ *
+ * Input:  [id]; [profileId]; [vehicleId]; [servicedIsoDate]; [odometerKm] — the reading at the
+ *         time; [costMinor] — paise (MNY-001); [note]; the tombstone and timestamps.
+ * Output: a Room row.
+ */
+@Serializable
+@Entity(
+    tableName = "vehicle_service",
+    indices = [
+        Index("profile_id"),
+        Index(value = ["profile_id", "vehicle_id"]),
+    ],
+)
+data class VehicleServiceEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    @ColumnInfo(name = "vehicle_id")
+    val vehicleId: String,
+    @ColumnInfo(name = "serviced_iso_date")
+    val servicedIsoDate: String,
+    @ColumnInfo(name = "odometer_km")
+    val odometerKm: Long,
+    @ColumnInfo(name = "cost_minor")
+    val costMinor: Long,
+    @ColumnInfo(name = "note")
+    val note: String? = null,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+)
+
+/**
+ * When a policy or certificate was last renewed, and what it cost (issue 10.4; §12).
+ *
+ * Why:  the knowledge base has the cadence but no price, and it should not have one — a premium
+ *       depends on the vehicle, the city and the claim history. [lastCostMinor] is the household's
+ *       own figure, and it is what lets a renewal enter the forecast at all (P-03).
+ * Result: the engine's `RenewalRecord`. One row per item per vehicle, enforced by a unique index.
+ * Changelog: 2026-09-26 — Created for issue 10.4 (schema 27).
+ *
+ * Input:  [id]; [profileId]; [vehicleId]; [item] — `insurance` or `PUC`; [lastDoneIsoDate];
+ *         [lastCostMinor] — paise, or `null` when the user has not recorded it; the tombstone and
+ *         timestamps.
+ * Output: a Room row.
+ */
+@Serializable
+@Entity(
+    tableName = "vehicle_renewal",
+    indices = [
+        Index("profile_id"),
+        Index(value = ["profile_id", "vehicle_id", "item"], unique = true),
+    ],
+)
+data class VehicleRenewalEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    @ColumnInfo(name = "vehicle_id")
+    val vehicleId: String,
+    @ColumnInfo(name = "item")
+    val item: String,
+    @ColumnInfo(name = "last_done_iso_date")
+    val lastDoneIsoDate: String,
+    @ColumnInfo(name = "last_cost_minor")
+    val lastCostMinor: Long? = null,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+)

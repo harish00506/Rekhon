@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Why:  §21.6 — every user-visible string lives here, with ICU plurals, so the app can be
+        translated and so an engine never writes a sentence (P-03).
+  What: §12's vehicle screen (issue 10.4).
+  Changelog: 2026-09-26 — Created for issue 10.4.
+-->
+<resources>
+    <string name="vehicles_title">Your vehicles</string>
+    <string name="vehicles_intro">Record the odometer now and then, and what each service cost. The app works out when the next one is due and roughly what to expect — and puts it in your 90-day view.</string>
+    <string name="vehicles_empty">No vehicles yet. Add one and the app starts predicting from the first reading.</string>
+
+    <string name="vehicles_add_label">What do you call it?</string>
+    <string name="vehicles_add_class">What kind is it?</string>
+    <string name="vehicles_add_action">Add vehicle</string>
+    <string name="vehicles_class_two_wheeler">Two-wheeler</string>
+    <string name="vehicles_class_hatchback">Hatchback</string>
+    <string name="vehicles_class_sedan">Sedan</string>
+    <string name="vehicles_class_suv">SUV</string>
+    <string name="vehicles_class_electric">Electric</string>
+
+    <string name="vehicles_due_distance">Next service around %1$s, at about %2$s km — you are driving it there.</string>
+    <string name="vehicles_due_time">Next service around %1$s — it is due on the calendar before the odometer.</string>
+    <string name="vehicles_due_odometer_unknown">Next service around %1$s.</string>
+    <string name="vehicles_expect">Expect %1$s to %2$s.</string>
+    <string name="vehicles_expect_personal">Expect %1$s to %2$s, based on what you have paid before.</string>
+    <string name="vehicles_rate">About %1$s km a month, from your readings.</string>
+    <string name="vehicles_rate_unknown">Not enough readings yet to tell how far it goes each month.</string>
+
+    <string name="vehicles_alert_service_due">Service due in %1$s.</string>
+    <string name="vehicles_alert_service_overdue">Service overdue by %1$s.</string>
+    <string name="vehicles_alert_renewal_due">Renewal due in %1$s.</string>
+    <string name="vehicles_alert_renewal_expired">Renewal expired %1$s ago.</string>
+    <plurals name="vehicles_days">
+        <item quantity="one">%d day</item>
+        <item quantity="other">%d days</item>
+    </plurals>
+
+    <string name="vehicles_log_action">Record something</string>
+    <string name="vehicles_log_hide">Hide</string>
+    <string name="vehicles_odometer_km">Odometer now (km)</string>
+    <string name="vehicles_odometer_date">Read on (YYYY-MM-DD)</string>
+    <string name="vehicles_odometer_action">Save reading</string>
+    <string name="vehicles_service_cost">What the service cost (₹)</string>
+    <string name="vehicles_service_km">Odometer at the service (km)</string>
+    <string name="vehicles_service_date">Serviced on (YYYY-MM-DD)</string>
+    <string name="vehicles_service_action">Save service</string>
+    <string name="vehicles_insurance_action">Insurance renewed today</string>
+    <string name="vehicles_puc_action">PUC done today</string>
+    <string name="vehicles_remove">Remove</string>
+
+    <string name="vehicles_history">%1$s recorded.</string>
+    <plurals name="vehicles_readings">
+        <item quantity="one">%d reading</item>
+        <item quantity="other">%d readings</item>
+    </plurals>
+    <plurals name="vehicles_services">
+        <item quantity="one">%d service</item>
+        <item quantity="other">%d services</item>
+    </plurals>
+
+    <string name="vehicles_evidence">From %1$s v%2$s · %3$s</string>
+    <string name="vehicles_nothing_booked">Nothing has been booked or paid — these are predictions.</string>
+    <string name="vehicles_back">Back</string>
+    <string name="vehicles_error">That did not save. Check what you typed.</string>
+</resources>

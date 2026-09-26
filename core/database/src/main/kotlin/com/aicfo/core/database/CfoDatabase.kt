@@ -30,6 +30,7 @@ import com.aicfo.core.database.dao.SmsDraftDao
 import com.aicfo.core.database.dao.TagDao
 import com.aicfo.core.database.dao.TransactionDao
 import com.aicfo.core.database.dao.TransactionSplitDao
+import com.aicfo.core.database.dao.VehicleDao
 import com.aicfo.core.database.entity.AccountEntity
 import com.aicfo.core.database.entity.AttachmentEntity
 import com.aicfo.core.database.entity.AuditLogEntity
@@ -58,6 +59,10 @@ import com.aicfo.core.database.entity.TagEntity
 import com.aicfo.core.database.entity.TransactionEntity
 import com.aicfo.core.database.entity.TransactionSplitEntity
 import com.aicfo.core.database.entity.TransactionTagEntity
+import com.aicfo.core.database.entity.VehicleEntity
+import com.aicfo.core.database.entity.VehicleOdometerEntity
+import com.aicfo.core.database.entity.VehicleRenewalEntity
+import com.aicfo.core.database.entity.VehicleServiceEntity
 import com.aicfo.core.database.entity.WishlistItemEntity
 
 /**
@@ -110,6 +115,10 @@ import com.aicfo.core.database.entity.WishlistItemEntity
         PurchaseTraceGateEntity::class,
         WishlistItemEntity::class,
         InterviewAnswerEntity::class,
+        VehicleEntity::class,
+        VehicleOdometerEntity::class,
+        VehicleServiceEntity::class,
+        VehicleRenewalEntity::class,
     ],
     version = CfoDatabase.VERSION,
     exportSchema = true,
@@ -194,6 +203,9 @@ abstract class CfoDatabase : RoomDatabase() {
     /** Result: the buy list and its stored answers (issue 10.2; §13.3). */
     abstract fun buyListDao(): BuyListDao
 
+    /** Result: the vehicles, their odometer readings, services and renewals (issue 10.4; §12). */
+    abstract fun vehicleDao(): VehicleDao
+
     /**
      * Input:  none. Output: the demo wipe DAO (issue 2.4, FR-ONB-004).
      *
@@ -244,9 +256,13 @@ abstract class CfoDatabase : RoomDatabase() {
          * (`goal_contribution`, one movement the user says funded a goal; `goal_funding_account`,
          * a whole account dedicated to one from a stated day. Neither holds an amount — the
          * contribution *is* the linked transaction's, summed at query time, so nothing can drift
-         * away from the ledger it came from; §15, FR-GOAL-002, FR-GOAL-004).
+         * away from the ledger it came from; §15, FR-GOAL-002, FR-GOAL-004) · 27 — issue 10.4
+         * (`vehicle`, `vehicle_odometer`, `vehicle_service`, `vehicle_renewal`. One row per
+         * odometer reading rather than a "current odometer" column, because the readings **are**
+         * the prediction: their median slope is what a mistyped one cannot move. A renewal keeps
+         * what it last cost, which the knowledge base cannot know and will not guess; §12).
          */
-        const val VERSION = 26
+        const val VERSION = 27
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"

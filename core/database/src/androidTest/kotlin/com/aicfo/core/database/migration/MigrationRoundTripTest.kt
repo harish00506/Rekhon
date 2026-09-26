@@ -2,6 +2,7 @@ package com.aicfo.core.database.migration
 
 import android.database.sqlite.SQLiteConstraintException
 import androidx.room.testing.MigrationTestHelper
+import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.aicfo.core.database.CfoDatabase
@@ -1738,6 +1739,95 @@ class MigrationRoundTripTest {
             assertEquals("the points the answer was worth at the time survive (AI-ARC-006)", 15, cursor.getInt(1))
         }
     }
+
+    /**
+     * 26 → 27: the vehicles and their history (issue 10.4; §12).
+     *
+     * Why:  two promises in this migration are storage promises rather than code ones, and both
+     *       would be easy to leave to whichever function happens to write a row: one odometer
+     *       reading per vehicle per day, and one renewal row per item per vehicle. Correcting a
+     *       figure must replace it, never add a second — a duplicated reading would quietly weight
+     *       the median slope towards that day.
+     * Result: all four tables exist, keep their rows across the upgrade, and the two unique indices
+     *         refuse the duplicates.
+     */
+    @Test
+    fun migrate26To27_keepsAVehicleAndRefusesDuplicateReadingsAndRenewals() {
+        helper.createDatabase(TEST_DB, 26).close()
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 27, true, Migrations.MIGRATION_26_27)
+
+        migrated.execSQL(vehicleInsert())
+        migrated.execSQL(odometerInsert(id = "odo:1"))
+        migrated.execSQL(serviceInsert())
+        migrated.execSQL(renewalInsert(id = "renewal:1"))
+        assertTrue(
+            "two readings for one day would weight the median towards that day",
+            refuses(migrated, odometerInsert(id = "odo:2")),
+        )
+        assertTrue(
+            "a second insurance row for one vehicle is a contradiction, not a correction",
+            refuses(migrated, renewalInsert(id = "renewal:2")),
+        )
+
+        migrated.query("SELECT label, vehicle_class FROM vehicle WHERE id = 'vehicle:1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("Swift", cursor.getString(0))
+            assertEquals("hatch", cursor.getString(1))
+        }
+        migrated.query("SELECT km FROM vehicle_odometer WHERE vehicle_id = 'vehicle:1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(44_000L, cursor.getLong(0))
+        }
+        migrated.query("SELECT cost_minor FROM vehicle_service WHERE vehicle_id = 'vehicle:1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("what the household actually paid, in paise", 500_000L, cursor.getLong(0))
+        }
+        migrated.query("SELECT last_cost_minor FROM vehicle_renewal WHERE vehicle_id = 'vehicle:1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(1_200_000L, cursor.getLong(0))
+        }
+    }
+
+    /**
+     * Result: true when [sql] was refused by a constraint. Input: [db]; [sql]. Output: [Boolean].
+     */
+    private fun refuses(
+        db: SupportSQLiteDatabase,
+        sql: String,
+    ): Boolean =
+        try {
+            db.execSQL(sql)
+            false
+        } catch (expected: SQLiteConstraintException) {
+            true
+        }
+
+    /** One vehicle's SQL. */
+    private fun vehicleInsert(): String =
+        "INSERT INTO vehicle (id, profile_id, label, vehicle_class, account_id, " +
+            "deleted_at_utc_millis, created_at_utc_millis, updated_at_utc_millis) " +
+            "VALUES ('vehicle:1', 'local', 'Swift', 'hatch', NULL, NULL, 1790000000000, 1790000000000)"
+
+    /** One odometer reading, so the duplicate case differs only by id. */
+    private fun odometerInsert(id: String): String =
+        "INSERT INTO vehicle_odometer (id, profile_id, vehicle_id, read_iso_date, km, " +
+            "deleted_at_utc_millis, created_at_utc_millis, updated_at_utc_millis) " +
+            "VALUES ('$id', 'local', 'vehicle:1', '2026-08-02', 44000, NULL, 1790000000000, 1790000000000)"
+
+    /** One service's SQL. */
+    private fun serviceInsert(): String =
+        "INSERT INTO vehicle_service (id, profile_id, vehicle_id, serviced_iso_date, odometer_km, " +
+            "cost_minor, note, deleted_at_utc_millis, created_at_utc_millis, updated_at_utc_millis) " +
+            "VALUES ('service:1', 'local', 'vehicle:1', '2026-06-01', 40000, 500000, NULL, NULL, " +
+            "1790000000000, 1790000000000)"
+
+    /** One renewal row, so the duplicate case differs only by id. */
+    private fun renewalInsert(id: String): String =
+        "INSERT INTO vehicle_renewal (id, profile_id, vehicle_id, item, last_done_iso_date, " +
+            "last_cost_minor, deleted_at_utc_millis, created_at_utc_millis, updated_at_utc_millis) " +
+            "VALUES ('$id', 'local', 'vehicle:1', 'insurance', '2025-09-01', 1200000, NULL, " +
+            "1790000000000, 1790000000000)"
 
     /** One wish's SQL. */
     private fun wishlistInsert(): String =

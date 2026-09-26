@@ -33,6 +33,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import java.time.LocalDate
 import java.time.YearMonth
@@ -86,6 +87,11 @@ internal class RoomForecastRepository(
     private val clock: Clock,
     private val dispatchers: DispatcherProvider,
     private val activeProfileId: Flow<String>,
+    /**
+     * AI-VEH's predicted costs (issue 10.4; §12). A flow rather than the whole repository, because
+     * the forecast needs one thing from vehicles and should not be able to reach for more.
+     */
+    private val vehicleOutflows: Flow<List<VehicleOutflow>> = flowOf(emptyList()),
     private val rules: ForecastRules = ForecastRules(),
     private val seasonalityRules: SeasonalityRules = SeasonalityRules(),
 ) : ForecastRepository {
@@ -121,8 +127,9 @@ internal class RoomForecastRepository(
                     today.withDayOfMonth(1).minusMonths(seasonalityRules.historyMonths.toLong()).toString(),
                     today.withDayOfMonth(1).minusDays(1).toString(),
                 )
-            combine(context, ledger, history) { ctx, rows, months -> forecastOf(today, ctx, rows, months) }
-                .flowOn(dispatchers.io)
+            combine(context, ledger, history, vehicleOutflows) { ctx, rows, months, vehicles ->
+                forecastOf(today, ctx, rows, months, vehicles)
+            }.flowOn(dispatchers.io)
         }
 
     /**
@@ -138,12 +145,15 @@ internal class RoomForecastRepository(
         ctx: Context,
         rows: List<NatureCandidateRow>,
         history: List<MonthlyCategorySpendRow>,
+        vehicles: List<VehicleOutflow>,
     ): Result<CashFlowForecast, AppError> {
         val liquid = rows.filter(::movesLiquidMoney)
         val everyday = everydayRows(liquid, today, Obligations.of(ctx.recurring), fixedStreams(ctx.streams).keys)
+        val input = inputOf(today, ctx, liquid, everyday)
+        val withVehicles = input.copy(oneOffs = input.oneOffs + vehicleItems(vehicles))
         return when (val seasonal = seasonality.index(seasonalityInput(today, ctx, everyday, history))) {
             is Err -> Err(seasonal.error)
-            is Ok -> engine.forecast(inputOf(today, ctx, liquid, everyday).copy(seasonality = seasonal.value))
+            is Ok -> engine.forecast(withVehicles.copy(seasonality = seasonal.value))
         }
     }
 
@@ -354,3 +364,28 @@ internal class RoomForecastRepository(
  */
 private fun isLiquidAccount(account: Account): Boolean =
     account.type in LIQUID_ACCOUNT_TYPES && account.includeInNetWorth && !account.isArchived
+
+/**
+ * AI-VEH's predictions as scheduled outflows (issue 10.4; §12 into 9.2's horizon).
+ *
+ * Why:  a service everyone knows is coming, and that nobody put in the forecast, is exactly the
+ *       crunch day the forecast exists to warn about. They are **negative** amounts, because the
+ *       horizon signs an outflow that way, and they carry the vehicle's name so the lowest-day
+ *       explanation can say which vehicle it was.
+ * Result: one item per prediction. **Nothing is filtered by date here**: the engine builds only the
+ *         days inside its own horizon, so an item beyond it is already dropped — and a second
+ *         horizon test in this file would be a second definition of the window. The first draft had
+ *         one, and a deliberate break of it passed every test, which is how it was found to be
+ *         unreachable rather than merely untested.
+ * Input:  [vehicles]. Output: `List<ScheduledItem>`.
+ * Changelog: 2026-09-26 — Created for issue 10.4.
+ */
+private fun vehicleItems(vehicles: List<VehicleOutflow>): List<ScheduledItem> =
+    vehicles.map { entry ->
+        ScheduledItem(
+            date = LocalDate.parse(entry.outflow.isoDate),
+            amount = Money(-entry.outflow.amount.minor),
+            label = entry.vehicleLabel,
+            source = ItemSource.VEHICLE_PREDICTION,
+        )
+    }

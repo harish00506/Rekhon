@@ -40,6 +40,7 @@ import com.aicfo.data.repository.SmsRepository
 import com.aicfo.data.repository.StreamRepository
 import com.aicfo.data.repository.SurplusRepository
 import com.aicfo.data.repository.TransactionRepository
+import com.aicfo.data.repository.VehicleRepository
 import com.aicfo.data.sms.SmsInboxReader
 import com.aicfo.domain.engines.budget.BudgetEngine
 import com.aicfo.domain.engines.card.CardEngine
@@ -77,6 +78,8 @@ import com.aicfo.domain.engines.simulator.SimulatorFactory
 import com.aicfo.domain.engines.sms.SmsEngine
 import com.aicfo.domain.engines.stream.StreamEngine
 import com.aicfo.domain.engines.stream.StreamEngineFactory
+import com.aicfo.domain.engines.vehicle.VehicleEngine
+import com.aicfo.domain.engines.vehicle.VehicleEngineFactory
 import com.aicfo.ml.ocr.ReceiptTextRecognizer
 import dagger.Module
 import dagger.Provides
@@ -847,7 +850,7 @@ object RepositoryModule {
      */
     @Provides
     @Singleton
-    @Suppress("LongParameterList") // eight, each one source the forecast reads
+    @Suppress("LongParameterList") // nine, each one source the forecast reads
     fun provideForecastRepository(
         database: CfoDatabase,
         accounts: AccountRepository,
@@ -857,16 +860,53 @@ object RepositoryModule {
         clock: Clock,
         dispatchers: DispatcherProvider,
         demoMode: DemoModeRepository,
+        vehicles: VehicleRepository,
     ): ForecastRepository =
         RepositoryFactory.forecast(
-            database,
-            accounts,
-            streams,
-            engine,
-            seasonality,
-            clock,
-            dispatchers,
-            demoMode.activeProfileId,
+            database = database,
+            accounts = accounts,
+            streams = streams,
+            engine = engine,
+            seasonality = seasonality,
+            clock = clock,
+            dispatchers = dispatchers,
+            activeProfileId = demoMode.activeProfileId,
+            vehicles = vehicles,
+        )
+
+    /**
+     * AI-VEH, §12's maintenance predictor (issue 10.4).
+     * Result: the engine. Input: none. Output: [VehicleEngine].
+     * Changelog: 2026-09-26 — Created for issue 10.4.
+     */
+    @Provides
+    @Singleton
+    fun provideVehicleEngine(): VehicleEngine = VehicleEngineFactory.create()
+
+    /**
+     * The household's vehicles and what AI-VEH says about each (issue 10.4; §12).
+     * Result: a [VehicleRepository]. Input: [database]; [engine]; [clock]; [dispatchers];
+     *         [demoMode] — for the active profile; [idGenerator]. Output: the repository.
+     * Changelog: 2026-09-26 — Created for issue 10.4.
+     */
+    @Provides
+    @Singleton
+    @Suppress("LongParameterList") // the database, the engine and four seams
+    fun provideVehicleRepository(
+        database: CfoDatabase,
+        engine: VehicleEngine,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        demoMode: DemoModeRepository,
+        idGenerator: IdGenerator,
+    ): VehicleRepository =
+        RepositoryFactory.vehicles(
+            database = database,
+            engine = engine,
+            clock = clock,
+            dispatchers = dispatchers,
+            activeProfileId = demoMode.activeProfileId,
+            idGenerator = idGenerator,
         )
 
     /**
