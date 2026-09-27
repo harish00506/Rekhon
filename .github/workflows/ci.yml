@@ -84,6 +84,13 @@ jobs:
         # enforced. Demonstrated by disabling MoneyDoubleDetector — `testDebugUnitTest` passed.
         run: ./gradlew unitTests koverVerify --stacktrace
 
+      - name: Chat guardrail evaluation (AI-ARC-004, §21.5)
+        # Issue 10.6. The frozen set in `ai/eval/guardrail-eval.json` runs inside `unitTests` above
+        # — this step exists so the pipeline *names* the gate, and so a failure reads as "the
+        # guardrail regressed" rather than as one of four thousand anonymous tests. The threshold is
+        # absolute on the side that matters: every fabricated or adversarial figure must be blocked.
+        run: ./gradlew guardrailEval --stacktrace
+
       - name: Paparazzi screenshot diff
         # Wired by issue 1.8. Renders on the JVM, so no emulator is needed — which is the only
         # reason this project has any visual coverage at all.
