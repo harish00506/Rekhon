@@ -22,6 +22,7 @@
     2026-09-26 — Issue 10.3 (AI-SIM what-if simulators) merged to dev; no schema change.
     2026-09-26 — Issue 10.4 (AI-VEH vehicle maintenance) merged to dev; schema 27.
     2026-09-27 — Issue 10.5 (AI-CHAT assistant + tool registry) merged to dev; schema 28.
+    2026-09-27 — Issue 10.6 (the frozen guardrail eval) merged to dev; no schema change.
 -->
 
 # AI Personal CFO — Project Memory
@@ -33,14 +34,14 @@
 
 ## Current state
 
-- **Version:** `0.10.4` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v28** (10.5's `chat_message`).
+- **Version:** `0.10.5` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v28** (10.5's `chat_message`; 10.6 stores nothing).
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
   forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
   feed), 9.6 (the notification policy) and 9.7 (the numeric guardrail) shipped — **Epic 9 is
   complete**. **Epic 10 is open**: 10.1 (the Purchase Advisor), 10.2 (the buy list),
-  10.3 (the what-if simulators), 10.4 (vehicle maintenance) and 10.5 (the chat assistant) shipped;
-  **10.6 (the guardrail eval) is next**, and it now has something to evaluate.
-- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7 and 10.1–10.5 are merged to `dev`**
+  10.3 (the what-if simulators), 10.4 (vehicle maintenance), 10.5 (the chat assistant) and
+  10.6 (the frozen guardrail eval) shipped; **10.7 (market signals, AI-MKT) is next**.
+- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7 and 10.1–10.6 are merged to `dev`**
   ([8.1 tracker](issues/8.1-e2ee-backup-argon2id-aes-256-gcm-tracker.md), ADR-0039;
   [8.2 tracker](issues/8.2-restore-on-fresh-device-tracker.md), ADR-0040;
   [8.3 tracker](issues/8.3-backup-restore-drill-tracker.md), ADR-0041;
@@ -55,7 +56,8 @@
   [10.2 tracker](issues/10.2-buy-list-adaptive-interview-ai-pa-int-tracker.md), ADR-0050;
   [10.3 tracker](issues/10.3-simulators-prepay-vs-invest-payoff-tracker.md), ADR-0051;
   [10.4 tracker](issues/10.4-vehicle-maintenance-prediction-ai-veh-tracker.md), ADR-0052;
-  [10.5 tracker](issues/10.5-chat-assistant-on-device-llm-tool-registry-tracker.md), ADR-0053).
+  [10.5 tracker](issues/10.5-chat-assistant-on-device-llm-tool-registry-tracker.md), ADR-0053;
+  [10.6 tracker](issues/10.6-chat-guardrail-eval-tracker.md), ADR-0054).
 - **`origin/dev` is current again** — `23acb26` (issue 10.1), pushed 2026-09-25. Everything from
   7.4 through 10.1 that had been stranded locally is on the remote. Earlier sessions recorded the
   push as blocked for want of credentials; it works now, so check `git log origin/dev..dev` rather
@@ -68,6 +70,21 @@
   `dev` was two issues behind once and nobody noticed.
 - **The forecast exists now (9.2), but the goals still use the observed P50 surplus** (ADR-0035,
   ADR-0037). Switching `SurplusRepository` to `ForecastRepository` is ADR-0043's recorded follow-up.
+
+### What 10.6 changed that a future issue must know
+
+- **`ai/eval/guardrail-eval.json` is frozen.** Add a case with a **new id**; never edit an existing
+  row. A duplicate id fails the harness, and ids are how a failure is discussed in a commit.
+- **`fabricated_blocked_pct` is 100 and is not negotiable.** `honest_answered_pct` is the one with
+  room, and lowering it has to be argued in the commit that does it.
+- **Any number a sentence contains is a claim.** Two bugs of this shape in two days — the health
+  score's "out of 1000" and the forecast's "90 days" — were both constants in string resources with
+  no engine behind them. If a template needs a number, the tool publishes it. There are none left;
+  a one-line script over `strings.xml` will tell you if that changes.
+- **The eval runs through `ChatEngine.compose`, not AI-GRD directly.** What is measured is what
+  reaches a user, which includes the chat layer dropping a blocked reply and its figures.
+- **Issue 12.2 owns the other §21.5 datasets** (categorisation ≥ 92%, receipts ≥ 95%, forecast
+  backtests). They need real labelled data; inventing it would measure the invention.
 
 ### What 10.5 changed that a future issue must know
 

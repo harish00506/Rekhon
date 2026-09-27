@@ -14,7 +14,10 @@
         <item quantity="other">You spent %1$s in that period, across %2$d transactions.</item>
     </plurals>
     <string name="llm_balance">You have %1$s available right now.</string>
-    <string name="llm_forecast">Your lowest point in the next 90 days is %1$s, on %2$s.</string>
+    <plurals name="llm_forecast">
+        <item quantity="one">Your lowest point in the next %1$d day is %2$s, on %3$s.</item>
+        <item quantity="other">Your lowest point in the next %1$d days is %2$s, on %3$s.</item>
+    </plurals>
     <string name="llm_budget">You have spent %1$s of your budgets so far this month.</string>
     <string name="llm_goals">Your goals need %1$s a month between them.</string>
     <string name="llm_afford">That would leave you with %1$s.</string>

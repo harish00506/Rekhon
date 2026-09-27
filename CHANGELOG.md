@@ -11,6 +11,31 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The Purchase Advisor, buy list, what-if simulators, vehicle prediction, on-device chat + guardrail
 > eval, market signals, and localisation.
 
+### [0.10.5] — Issue 10.6: The guardrail, measured (AI-ARC-004)  (2026-09-27)
+
+- **Implemented:** a frozen evaluation set that **proves** the assistant never states a number
+  nothing computed — 28 cases in `ai/eval/guardrail-eval.json`, run through the real chat pipeline
+  on every build (**§21.5**, **ADR-0054**).
+  - **Eight honest replies** that must get through, **seven fabricated ones** that must not, and
+    **thirteen adversarial ones** — the interesting middle, where the assistant does something that
+    looks like language and is actually arithmetic: adding two real figures together, subtracting,
+    rounding "helpfully", negating, working out a percentage, calling a transaction count rupees, or
+    slipping a figure into a refusal.
+  - **The threshold that matters has no room in it.** Every fabricated and adversarial case must be
+    blocked — 100%, or the build fails. "Almost never states an invented figure" is not a claim
+    worth making.
+  - **It has its own name in the pipeline** (`./gradlew guardrailEval`), so a failure reads as "the
+    guardrail regressed" rather than as one of four thousand anonymous tests.
+- **What the first run found, before a user could:** the assistant's forecast sentence said "in the
+  next 90 days" — and **90 was a number nothing had computed**. The guardrail was right to block it.
+  The forecast now publishes its own window, the sentence uses it, and the failing shape is frozen
+  as a case so it cannot come back. This is the second bug of exactly this kind in two days (the
+  health score's "out of 1000" was the first), so every sentence the assistant can say was checked:
+  none of them contains a number of its own any more.
+- **Tests:** the set itself, plus seven harness tests. Four deliberate breaks were each watched fail
+  the build: ignoring the guardrail's verdict, relaxing the threshold in the file, gutting the set,
+  and reusing a case id.
+
 ### [0.10.4] — Issue 10.5: The assistant, and the tools it may use (AI-CHAT)  (2026-09-27)
 
 - **Implemented:** `:domain:engines:chat` (**AI-CHAT** 1.0), `:ml:llm` and the "Ask your CFO"

@@ -125,7 +125,8 @@ class TemplateLlmEngine(
             mapOf(
                 ChatIntent.SPEND to Template(R.plurals.llm_spend, listOf("total", "count"), quantitySlot = 1),
                 ChatIntent.BALANCE to Template(R.string.llm_balance, listOf("liquid")),
-                ChatIntent.FORECAST to Template(R.string.llm_forecast, listOf("lowest", "lowestOn")),
+                ChatIntent.FORECAST to
+                    Template(R.plurals.llm_forecast, listOf("horizonDays", "lowest", "lowestOn"), quantitySlot = 0),
                 ChatIntent.BUDGET to Template(R.string.llm_budget, listOf("spent")),
                 ChatIntent.GOALS to Template(R.string.llm_goals, listOf("required")),
                 ChatIntent.AFFORD to Template(R.string.llm_afford, listOf("leftAfter")),

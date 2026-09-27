@@ -50,6 +50,7 @@ External-data engines (market, tax) sit alongside L3–L5 and read
 | **Skill** | `skills/tool-registry.json` | the ONLY way chat touches data | §19.2 |
 | **Other** | `chat/system-prompt.md` | the chat LLM's system prompt + behaviour | §19.1, §19.3 |
 | **Other** | `chat/guardrail.md` | AI-ARC-004 numeric-verification contract | §7.1 |
+| **Eval** | `eval/guardrail-eval.json` | the frozen set that **measures** AI-ARC-004 — the one file here the app does **not** load; a test reads it at build time (issue 10.6) | §21.5 |
 | **Other** | `architecture/ai-architecture.md` | binding architecture + product principles | §1.3, §7.1 |
 | **Other** | `knowledge/classification-kb.json` | AI-CLS category + nature classification | §8 |
 | **Other** | `knowledge/market-signals.json` | AI-MKT signal library + backtest policy | §30 |

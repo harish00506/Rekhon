@@ -602,7 +602,8 @@ DashboardScreen → "Ask your CFO" → ChatScreen
      │     else best keyword match → <= max_tools_per_turn calls     (CHT-ROUTE)
      ├─ ChatToolExecutor.run(call)       the complete list of what chat may see (§19.2)
      │     get_balance → AI-STS · query_spend → AI-STS's SPENT line
-     │     get_forecast → AI-FCT · get_goals → AI-GOAL · get_health_score → AI-FHS
+     │     get_forecast → AI-FCT (the window too, because the sentence says it)
+     │     get_goals → AI-GOAL · get_health_score → AI-FHS (the scale too, same reason)
      │     review_buylist → AI-PA-INT · get_vehicle_status → AI-VEH
      ├─ LlmEngine.verbalise(intent + results)    :ml:llm — the template verbaliser, offline (P-04)
      │     ⇡ §19.4's context pack: no ledger, no merchant list, not even the question
@@ -611,6 +612,9 @@ DashboardScreen → "Ask your CFO" → ChatScreen
              Pass → the words, their figures and citations
              else → GUARDRAIL_BLOCKED: no words, **and no figures** for a screen to reassemble
    → chat_message                                       kept, never backed up, hard deleted (CHT-004)
+                                                        ⇡ measured by ai/eval/guardrail-eval.json
+                                                          (issue 10.6: 28 frozen cases, 100% of
+                                                           fabricated ones must be blocked)
   ⇣ the answer, the model that wrote it, the rules behind its figures — or which refusal it was
 ```
 

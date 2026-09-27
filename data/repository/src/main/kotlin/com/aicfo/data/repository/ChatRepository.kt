@@ -26,6 +26,7 @@ import com.aicfo.domain.engines.chat.ToolFigure
 import com.aicfo.domain.engines.chat.ToolName
 import com.aicfo.domain.engines.chat.ToolResult
 import com.aicfo.domain.engines.chat.VerbalisationDraft
+import com.aicfo.domain.engines.forecast.ForecastRules
 import com.aicfo.domain.engines.healthscore.HealthRules
 import com.aicfo.domain.engines.safetospend.SafeToSpendComponent
 import kotlinx.coroutines.flow.Flow
@@ -302,7 +303,15 @@ internal class RepositoryChatToolExecutor(
         }
     }
 
-    /** Result: the horizon's worst day, from AI-FCT. Input: none. Output: [ToolResult]. */
+    /**
+     * The horizon's worst day, from AI-FCT.
+     * Why:    it publishes **the length of the horizon as well as the day**. "In the next 90 days"
+     *         is a claim about a number, and the frozen eval set caught the template asserting it
+     *         with nothing behind it — the same shape of bug a device run found in the health
+     *         sentence's "/ 1000". If a sentence says a number, an engine has to have produced it.
+     * Result: the lowest day, its date and the window, or a failed result.
+     * Input:  none. Output: [ToolResult].
+     */
     private suspend fun forecast(): ToolResult {
         val result = forecast.observeForecast().first()
         val lowest = (result as? Ok)?.value?.lowest
@@ -313,6 +322,7 @@ internal class RepositoryChatToolExecutor(
                 tool = ToolName.GET_FORECAST,
                 figures =
                     listOf(
+                        ToolFigure("horizonDays", FigureKind.COUNT, number = ForecastRules().horizonDays),
                         ToolFigure("lowest", FigureKind.AMOUNT, amount = lowest.p50),
                         ToolFigure("lowestOn", FigureKind.DATE, isoDate = lowest.date.toString()),
                     ),
