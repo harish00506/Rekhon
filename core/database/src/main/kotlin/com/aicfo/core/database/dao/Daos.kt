@@ -29,6 +29,7 @@ import com.aicfo.core.database.entity.InterviewAnswerEntity
 import com.aicfo.core.database.entity.InvestmentHoldingEntity
 import com.aicfo.core.database.entity.InvestmentLotEntity
 import com.aicfo.core.database.entity.LoanEntity
+import com.aicfo.core.database.entity.MarketCloseEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
 import com.aicfo.core.database.entity.NotificationLogEntity
 import com.aicfo.core.database.entity.ProfileEntity
@@ -2308,6 +2309,10 @@ interface DemoDao {
     @Query("DELETE FROM interview_answer WHERE profile_id = :profileId")
     suspend fun deleteInterviewAnswers(profileId: String): Int
 
+    /** Result: rows removed from `market_close` (issue 10.7). Input: [profileId]. */
+    @Query("DELETE FROM market_close WHERE profile_id = :profileId")
+    suspend fun deleteMarketCloses(profileId: String): Int
+
     /** Result: rows removed from `vehicle_odometer` (issue 10.4). Input: [profileId]. */
     @Query("DELETE FROM vehicle_odometer WHERE profile_id = :profileId")
     suspend fun deleteVehicleOdometer(profileId: String): Int
@@ -2564,7 +2569,9 @@ interface DemoDao {
             "(SELECT COUNT(*) FROM vehicle WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM vehicle_odometer WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM vehicle_service WHERE profile_id = :profileId) + " +
-            "(SELECT COUNT(*) FROM vehicle_renewal WHERE profile_id = :profileId)",
+            "(SELECT COUNT(*) FROM vehicle_renewal WHERE profile_id = :profileId) + " +
+            // Issue 10.7's own.
+            "(SELECT COUNT(*) FROM market_close WHERE profile_id = :profileId)",
     )
     suspend fun countRowsFor(profileId: String): Int
 }
@@ -2743,6 +2750,15 @@ interface ArchiveDao {
     @Query("SELECT * FROM vehicle_renewal WHERE profile_id = :profileId ORDER BY id")
     suspend fun vehicleRenewals(profileId: String): List<VehicleRenewalEntity>
 
+    /**
+     * Result: every cached close (issue 10.7). Input: [profileId].
+     *
+     * Carried by the archive deliberately: the series **is** AI-MKT's input, and a restored phone
+     * that lost it would go back to "not enough history" for months.
+     */
+    @Query("SELECT * FROM market_close WHERE profile_id = :profileId ORDER BY id")
+    suspend fun marketCloses(profileId: String): List<MarketCloseEntity>
+
     /** Result: every recurring rule, confirmed and dismissed alike (FR-TXN-006). Input: [profileId]. */
     @Query("SELECT * FROM recurring_rule WHERE profile_id = :profileId ORDER BY id")
     suspend fun recurringRules(profileId: String): List<RecurringRuleEntity>
@@ -2883,6 +2899,10 @@ interface ArchiveDao {
     /** Result: every renewal row is present (issue 10.4). Input: [rows]. */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertVehicleRenewals(rows: List<VehicleRenewalEntity>)
+
+    /** Result: the cached closes are present (issue 10.7). Input: [rows]. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMarketCloses(rows: List<MarketCloseEntity>)
 
     /**
      * Result: the card alerts already sent are present. Input: [rows]. Output: none (suspends).
@@ -4330,4 +4350,43 @@ interface ChatDao {
      */
     @Query("DELETE FROM chat_message WHERE profile_id = :profileId")
     suspend fun deleteAll(profileId: String): Int
+}
+
+/**
+ * The cached daily closes AI-MKT scores (issue 10.7; §30, ARC-005).
+ *
+ * Why:  the series is the engine's entire input, so this is the one place it is written and read.
+ *       The upsert replaces by `(profile, key, day)` rather than appending, because a second
+ *       refresh on the same day is a correction and two points for one day would weight that day
+ *       twice in every average the engine takes.
+ * What: the upsert, the per-instrument read, the archive read, and the pruning query.
+ * Result: one place that touches `market_close`.
+ * Changelog: 2026-09-27 — Created for issue 10.7.
+ */
+@Dao
+interface MarketCloseDao {
+    /** Result: the close exists; a second one for the same day replaces it. Input: [row]. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(row: MarketCloseEntity)
+
+    /** Result: every live close for the profile, oldest first. Input: [profileId]. */
+    @Query(
+        "SELECT * FROM market_close WHERE profile_id = :profileId AND deleted_at_utc_millis IS NULL " +
+            "ORDER BY price_key, close_iso_date",
+    )
+    fun observeCloses(profileId: String): Flow<List<MarketCloseEntity>>
+
+    /** Result: one instrument's series, oldest first. Input: [profileId]; [priceKey]. */
+    @Query(
+        "SELECT * FROM market_close WHERE profile_id = :profileId AND price_key = :priceKey " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY close_iso_date",
+    )
+    suspend fun seriesFor(
+        profileId: String,
+        priceKey: String,
+    ): List<MarketCloseEntity>
+
+    /** Result: every row — the archive's read. Input: [profileId]. */
+    @Query("SELECT * FROM market_close WHERE profile_id = :profileId")
+    suspend fun allCloses(profileId: String): List<MarketCloseEntity>
 }

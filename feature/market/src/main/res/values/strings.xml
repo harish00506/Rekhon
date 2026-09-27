@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Why:  §21.6 — every user-visible string lives here. On this screen that matters more than most:
+        the wording is what keeps a score from reading as an instruction (P-07).
+  What: §30's Opportunity screen (issue 10.7).
+  Changelog: 2026-09-27 — Created for issue 10.7.
+-->
+<resources>
+    <string name="market_title">Is today a good day to invest?</string>
+    <string name="market_intro">A score out of what could actually be measured, from prices this app has already cached. It is shown with how often the same verdict has been followed by a higher price — and it never buys anything.</string>
+    <string name="market_empty">Nothing to score yet. Add an investment with a price key, and a history builds up as prices are fetched.</string>
+
+    <string name="market_verdict_strong">Today scores as a strong day to deploy.</string>
+    <string name="market_verdict_good">Today scores better than usual.</string>
+    <string name="market_verdict_neutral">Today looks ordinary.</string>
+    <string name="market_verdict_no_edge">Today shows no particular edge.</string>
+    <string name="market_verdict_young">Not enough price history yet to score this one.</string>
+    <string name="market_verdict_stale">The last price here is too old to judge today by.</string>
+
+    <plurals name="market_score">
+        <item quantity="one">%1$d point out of a possible %2$d.</item>
+        <item quantity="other">%1$d points out of a possible %2$d.</item>
+    </plurals>
+    <string name="market_hit_rate">In this household\'s own history, this verdict was followed by a higher price %1$d%% of the time.</string>
+    <plurals name="market_hit_samples">
+        <item quantity="one">Measured over %d comparable day.</item>
+        <item quantity="other">Measured over %d comparable days.</item>
+    </plurals>
+    <string name="market_hit_rate_unknown">Not enough comparable days yet to say how this verdict has done.</string>
+
+    <string name="market_signal_points">%1$s — %2$d of %3$d</string>
+    <string name="market_signal_unavailable">%1$s — not measured, so it counts for nothing either way</string>
+    <string name="market_signal_pct">%1$s%%</string>
+
+    <string name="market_signal_valuation">How cheap the market is</string>
+    <string name="market_signal_drawdown">How far below its 52-week high</string>
+    <string name="market_signal_vix">How frightened the market is</string>
+    <string name="market_signal_ma200">How far below its 200-day average</string>
+    <string name="market_signal_rsi">How oversold it is (RSI)</string>
+    <string name="market_signal_rarity">How rare this price is this year</string>
+    <string name="market_signal_streak">Days it has fallen in a row</string>
+
+    <plurals name="market_tranches">
+        <item quantity="one">If you were going to invest, %d tranche would be the size to consider.</item>
+        <item quantity="other">If you were going to invest, %d tranches would be the size to consider.</item>
+    </plurals>
+    <string name="market_tranches_none">No deployment is suggested right now.</string>
+    <string name="market_gate_idle_cash">You have nothing spare to deploy.</string>
+    <string name="market_gate_runway">Your emergency fund is not at its target yet.</string>
+    <string name="market_gate_forecast">There is a tight day in your next 90.</string>
+
+    <plurals name="market_as_of">
+        <item quantity="one">Price from %d day ago.</item>
+        <item quantity="other">Price from %d days ago.</item>
+    </plurals>
+    <string name="market_as_of_today">Price from today.</string>
+
+    <string name="market_evidence">From %1$s v%2$s · %3$s</string>
+    <string name="market_nothing_bought">This screen never buys anything. It scores, it shows its working, and you decide.</string>
+    <string name="market_back">Back</string>
+</resources>

@@ -95,7 +95,7 @@ class MarketPriceRepositoryTest {
                 )
             prices =
                 RepositoryFactory.marketPrice(
-                    database, api, engine, consents, clock, dispatchers, activeProfileId,
+                    database, api, engine, consents, clock, dispatchers, activeProfileId, FakeIdGenerator(),
                 )
             consents.set(ConsentFeature.MARKET_DATA, granted = true)
             accountId =

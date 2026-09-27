@@ -1572,6 +1572,34 @@ internal object Migrations {
             }
         }
 
+    /**
+     * 28 → 29: the cached daily closes AI-MKT scores (issue 10.7; §30).
+     *
+     * Why:  the app has a quote feed and the engine needs a history, so the history accumulates
+     *       locally — one row per instrument per day. The unique index is the point: a second
+     *       refresh on the same day must **correct** the price, because two points for one day
+     *       would weight it twice in every average the engine takes.
+     * Result: `market_close` and its indices. Input: [db]. Output: none.
+     */
+    val MIGRATION_28_29 =
+        object : Migration(VERSION_28, VERSION_29) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(MARKET_CLOSE_TABLE)
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_market_close_profile_id` ON `market_close` (`profile_id`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_market_close_profile_id_price_key` " +
+                        "ON `market_close` (`profile_id`, `price_key`)",
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS " +
+                        "`index_market_close_profile_id_price_key_close_iso_date` " +
+                        "ON `market_close` (`profile_id`, `price_key`, `close_iso_date`)",
+                )
+            }
+        }
+
     /** Every migration, in order, for `CfoDatabaseFactory` to register. */
     val ALL: Array<Migration> =
         arrayOf(
@@ -1602,6 +1630,7 @@ internal object Migrations {
             MIGRATION_25_26,
             MIGRATION_26_27,
             MIGRATION_27_28,
+            MIGRATION_28_29,
         )
 
     /**
@@ -1724,6 +1753,9 @@ internal object Migrations {
     /** Issue 10.5: the assistant's conversation. */
     private const val VERSION_28 = 28
 
+    /** Issue 10.7: the cached daily closes. */
+    private const val VERSION_29 = 29
+
     /**
      * `wishlist_item`'s columns (issue 10.2).
      * Held as a constant for the reason [PURCHASE_TRACE_TABLE] is: the DDL inside the method would
@@ -1774,6 +1806,20 @@ internal object Migrations {
             "`model_id` TEXT NOT NULL, " +
             "`citations` TEXT NOT NULL, " +
             "`asked_at_utc_millis` INTEGER NOT NULL, " +
+            "`created_at_utc_millis` INTEGER NOT NULL, " +
+            "`updated_at_utc_millis` INTEGER NOT NULL, " +
+            "PRIMARY KEY(`id`))"
+
+    /** `market_close`'s columns (issue 10.7). */
+    private const val MARKET_CLOSE_TABLE =
+        "CREATE TABLE IF NOT EXISTS `market_close` (" +
+            "`id` TEXT NOT NULL, " +
+            "`profile_id` TEXT NOT NULL, " +
+            "`price_key` TEXT NOT NULL, " +
+            "`close_iso_date` TEXT NOT NULL, " +
+            "`close_minor` INTEGER NOT NULL, " +
+            "`source` TEXT NOT NULL, " +
+            "`deleted_at_utc_millis` INTEGER, " +
             "`created_at_utc_millis` INTEGER NOT NULL, " +
             "`updated_at_utc_millis` INTEGER NOT NULL, " +
             "PRIMARY KEY(`id`))"

@@ -16,6 +16,7 @@ import com.aicfo.core.designsystem.component.CfoSecondaryButton
  *            2026-09-26 — Issue 10.3 added the simulators.
  *            2026-09-26 — Issue 10.4 added the vehicles.
  *            2026-09-26 — Issue 10.5 added the assistant.
+ *            2026-09-27 — Issue 10.7 added the opportunity screen.
  */
 @Composable
 internal fun DestinationButtons(actions: DashboardActions) {
@@ -39,6 +40,18 @@ internal fun DestinationButtons(actions: DashboardActions) {
         text = stringResource(R.string.dashboard_emergency_fund_action),
         onClick = actions.onNavigateToEmergencyFund,
     )
+    AdvisorButtons(actions)
+}
+
+/**
+ * The screens that answer a question rather than list a thing.
+ * Why:    split from the plan buttons because they are a different kind of destination — and
+ *         because the list had grown past the length a reader can hold at once.
+ * Result: the buttons. Input: [actions]. Output: none.
+ * Changelog: 2026-09-27 — Split out for issue 10.7.
+ */
+@Composable
+private fun AdvisorButtons(actions: DashboardActions) {
     // Issue 10.1: §13's advisor answers "can I afford this?", which is the question the rest of
     // this screen only implies. It sits below the plan buttons because it reads all of them.
     CfoSecondaryButton(
@@ -62,6 +75,12 @@ internal fun DestinationButtons(actions: DashboardActions) {
     CfoSecondaryButton(
         text = stringResource(R.string.dashboard_chat_action),
         onClick = actions.onNavigateToChat,
+    )
+    // Issue 10.7: §30's opportunity score. Below the assistant because it answers a narrower
+    // question, and one only a household with investments has.
+    CfoSecondaryButton(
+        text = stringResource(R.string.dashboard_opportunity_action),
+        onClick = actions.onNavigateToOpportunity,
     )
     // Reached from here because this is the screen whose two empty states depend on the monthly
     // income it sets — and because until it existed those states told the user to visit a Settings

@@ -2259,3 +2259,53 @@ data class ChatMessageEntity(
     @ColumnInfo(name = "updated_at_utc_millis")
     val updatedAtUtcMillis: Long,
 )
+
+/**
+ * One day's closing price for one instrument (issue 10.7; §30, §16).
+ *
+ * Why:  AI-MKT scores a **history**, and this app has no history feed — it has a daily quote. So
+ *       every refresh appends one row here, and the series accumulates locally. That is not a
+ *       workaround: it is what makes the engine work offline (P-04) and means no extra data leaves
+ *       the device to get it (P-01). The consequence is honest and visible — a fresh install has no
+ *       history and the engine says so rather than scoring three weeks as if it were three years.
+ * What: one row per instrument per day, unique on `(profile, price_key, close_iso_date)`, so a
+ *       second refresh on the same day corrects the price rather than adding a second point.
+ * Result: the series `MarketSignalRepository` hands AI-MKT.
+ * Changelog: 2026-09-27 — Created for issue 10.7 (schema 29).
+ *
+ * Input:  [id]; [profileId]; [priceKey] — the same key the quote API uses; [closeIsoDate] — the day
+ *         the price applies to, not the day it was fetched (TIM-002); [closeMinor] — paise
+ *         (MNY-001); [source] — `quote` today, so a future backfill can be told apart; the
+ *         tombstone and timestamps as elsewhere.
+ * Output: a Room row.
+ */
+@Serializable
+@Entity(
+    tableName = "market_close",
+    indices = [
+        Index("profile_id"),
+        Index(value = ["profile_id", "price_key"]),
+        Index(value = ["profile_id", "price_key", "close_iso_date"], unique = true),
+    ],
+)
+data class MarketCloseEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    @ColumnInfo(name = "price_key")
+    val priceKey: String,
+    @ColumnInfo(name = "close_iso_date")
+    val closeIsoDate: String,
+    @ColumnInfo(name = "close_minor")
+    val closeMinor: Long,
+    @ColumnInfo(name = "source")
+    val source: String = "quote",
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+)

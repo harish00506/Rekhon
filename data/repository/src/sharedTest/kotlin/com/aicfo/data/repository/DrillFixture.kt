@@ -18,6 +18,7 @@ import com.aicfo.core.database.entity.InterviewAnswerEntity
 import com.aicfo.core.database.entity.InvestmentHoldingEntity
 import com.aicfo.core.database.entity.InvestmentLotEntity
 import com.aicfo.core.database.entity.LoanEntity
+import com.aicfo.core.database.entity.MarketCloseEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
 import com.aicfo.core.database.entity.NotificationLogEntity
 import com.aicfo.core.database.entity.ProfileEntity
@@ -509,6 +510,21 @@ object DrillFixture {
             ),
         )
         seedVehicles(dao, profileId)
+        dao.insertMarketCloses(
+            listOf(
+                MarketCloseEntity(
+                    id = "close:1",
+                    profileId = profileId,
+                    priceKey = "NSE:NIFTYBEES",
+                    closeIsoDate = "2026-09-26",
+                    closeMinor = 28_450L,
+                    source = "quote",
+                    deletedAtUtcMillis = DELETED_AT,
+                    createdAtUtcMillis = NOW,
+                    updatedAtUtcMillis = NOW,
+                ),
+            ),
+        )
         dao.insertGoalFundingAccounts(
             listOf(
                 GoalFundingAccountEntity(

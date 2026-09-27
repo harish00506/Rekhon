@@ -11,6 +11,43 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The Purchase Advisor, buy list, what-if simulators, vehicle prediction, on-device chat + guardrail
 > eval, market signals, and localisation.
 
+### [0.10.6] — Issue 10.7: Is today a good day to invest? (AI-MKT)  (2026-09-27)
+
+- **Implemented:** `:domain:engines:marketsignal` (**AI-MKT** 1.0) and the Opportunity screen over
+  it — §30's objective, backtestable buy-day verdict (**ADR-0055**).
+  - **A score out of what could actually be measured.** Seven signals: how far below its 52-week
+    high, how far below its 200-day average, how oversold, how rare this price is this year, how
+    many days it has fallen in a row — plus how cheap and how frightened the market is, **when the
+    app has those figures**.
+  - **When it cannot measure something, it says so.** Two of the seven need data this app has no
+    feed for, so they are shown as "not measured, so it counts for nothing either way" and the
+    score is out of a smaller total. A zero would have read as "valuation says this is expensive".
+  - **Every verdict comes with its own record.** How often the same verdict, on this very
+    instrument, was followed by a higher price ninety days later — measured only from what was
+    knowable on each past day, and **withheld entirely** when there are fewer than twenty
+    comparable days to measure.
+  - **It suggests tranches, never all-in, and never at all** if there is nothing spare, if the
+    emergency fund is short, or if there is a tight day in the next ninety. It names which of those
+    stopped it.
+  - **It works offline.** The history is the prices this app has already fetched — nothing extra
+    leaves the device to build it, and the screen says how old the newest price is.
+  - **It never buys anything, and the screen says so.**
+- **Schema 29:** `market_close` — one row per instrument per day, appended by the price refresh.
+  Unique per day, so a second refresh corrects the price rather than counting that day twice.
+- **The signal library is 1.1:** each signal's "bottom quartile scores, bottom decile maxes" became
+  an explicit ladder of numbers, beside new blocks for how much history is enough, what "measured"
+  means, and when a price is too old to judge by. No weight or threshold changed.
+- **Not yet** (ADR-0055): valuation and volatility feeds; the three context-only signals; per-signal
+  backtests in a rule editor; the two market tools in chat; and any backfill of history from a
+  provider — which would make the screen useful on day one instead of in a year, and is a network
+  path worth deciding deliberately.
+- **Tests:** 20 behaviour tests, 6 identities × 300 generated markets, a golden file over eight
+  histories from an independent Python oracle, 11 drift tests, 6 repository tests, 4 state-holder
+  tests and 11 UI tests.
+  Eleven deliberate breaks were watched go red — and **two real defects were caught this way**: a
+  percentile that called a perfectly flat market the cheapest day of the year, and a crash on the
+  most ordinary case of all, an instrument the user holds that the app has never priced.
+
 ### [0.10.5] — Issue 10.6: The guardrail, measured (AI-ARC-004)  (2026-09-27)
 
 - **Implemented:** a frozen evaluation set that **proves** the assistant never states a number

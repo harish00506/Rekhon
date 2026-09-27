@@ -472,7 +472,8 @@ private fun RecentActivitySection(uiState: DashboardUiState) {
  *         [onNavigateToPurchaseAdvisor] — issue 10.1's §13 advisor; [onNavigateToSimulators] —
  *         issue 10.3's what-if simulators; [onNavigateToVehicles] — issue 10.4's §12 maintenance
  *         screen, whose predictions are already inside the ninety-day figure;
- *         [onNavigateToChat] — issue 10.5's assistant.
+ *         [onNavigateToChat] — issue 10.5's assistant; [onNavigateToOpportunity] — issue 10.7's
+ *         §30 screen.
  * Output: an immutable value.
  */
 @Immutable
@@ -488,4 +489,5 @@ data class DashboardActions(
     val onNavigateToSimulators: () -> Unit,
     val onNavigateToVehicles: () -> Unit,
     val onNavigateToChat: () -> Unit,
+    val onNavigateToOpportunity: () -> Unit,
 )

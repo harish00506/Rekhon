@@ -20,6 +20,7 @@
     <!-- Issue 10.1: §13's Purchase Advisor. -->
     <string name="dashboard_advisor_action">Can I afford this?</string>
     <!-- Issue 10.3: §36 and §40.2's what-if simulators. -->
+    <string name="dashboard_opportunity_action">Good day to invest?</string>
     <string name="dashboard_chat_action">Ask your CFO</string>
     <string name="dashboard_vehicles_action">Your vehicles</string>
     <string name="dashboard_simulators_action">What if?</string>

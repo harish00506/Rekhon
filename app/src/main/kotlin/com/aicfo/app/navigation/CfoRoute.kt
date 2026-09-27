@@ -232,4 +232,13 @@ sealed interface CfoRoute {
      */
     @Serializable
     data object Chat : CfoRoute
+
+    /**
+     * §30's Opportunity screen (issue 10.7).
+     *
+     * **No arguments**: the instruments are the ones the profile holds, and the scoring is of
+     * today — there is nothing about this screen a back-stack entry could usefully carry.
+     */
+    @Serializable
+    data object Opportunity : CfoRoute
 }

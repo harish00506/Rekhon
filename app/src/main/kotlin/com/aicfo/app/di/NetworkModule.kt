@@ -2,6 +2,7 @@ package com.aicfo.app.di
 
 import com.aicfo.core.common.Clock
 import com.aicfo.core.common.DispatcherProvider
+import com.aicfo.core.common.IdGenerator
 import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.datastore.ConsentStore
 import com.aicfo.core.network.MarketDataApi
@@ -85,6 +86,7 @@ object NetworkModule {
         clock: Clock,
         dispatchers: DispatcherProvider,
         demoMode: DemoModeRepository,
+        idGenerator: IdGenerator,
     ): MarketPriceRepository =
         RepositoryFactory.marketPrice(
             database = database,
@@ -94,5 +96,6 @@ object NetworkModule {
             clock = clock,
             dispatchers = dispatchers,
             activeProfileId = demoMode.activeProfileId,
+            idGenerator = idGenerator,
         )
 }

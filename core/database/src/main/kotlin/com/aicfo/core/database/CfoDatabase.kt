@@ -22,6 +22,7 @@ import com.aicfo.core.database.dao.InsightDao
 import com.aicfo.core.database.dao.InvestmentHoldingDao
 import com.aicfo.core.database.dao.InvestmentLotDao
 import com.aicfo.core.database.dao.LoanDao
+import com.aicfo.core.database.dao.MarketCloseDao
 import com.aicfo.core.database.dao.NetWorthSnapshotDao
 import com.aicfo.core.database.dao.NotificationLogDao
 import com.aicfo.core.database.dao.ProfileDao
@@ -50,6 +51,7 @@ import com.aicfo.core.database.entity.InterviewAnswerEntity
 import com.aicfo.core.database.entity.InvestmentHoldingEntity
 import com.aicfo.core.database.entity.InvestmentLotEntity
 import com.aicfo.core.database.entity.LoanEntity
+import com.aicfo.core.database.entity.MarketCloseEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
 import com.aicfo.core.database.entity.NotificationLogEntity
 import com.aicfo.core.database.entity.ProfileEntity
@@ -122,6 +124,7 @@ import com.aicfo.core.database.entity.WishlistItemEntity
         VehicleServiceEntity::class,
         VehicleRenewalEntity::class,
         ChatMessageEntity::class,
+        MarketCloseEntity::class,
     ],
     version = CfoDatabase.VERSION,
     exportSchema = true,
@@ -212,6 +215,9 @@ abstract class CfoDatabase : RoomDatabase() {
     /** Result: the assistant's conversation (issue 10.5; §19, CHT-004). */
     abstract fun chatDao(): ChatDao
 
+    /** Result: the cached daily closes AI-MKT scores (issue 10.7; §30). */
+    abstract fun marketCloseDao(): MarketCloseDao
+
     /**
      * Input:  none. Output: the demo wipe DAO (issue 2.4, FR-ONB-004).
      *
@@ -270,9 +276,12 @@ abstract class CfoDatabase : RoomDatabase() {
          * 28 — issue 10.5 (`chat_message`. The one profile-scoped table the archive deliberately
          * skips: §19's CHT-004 keeps conversations on the device and out of backups, and its
          * delete is hard rather than a tombstone, because a conversation the user asked to forget
-         * must actually be gone; §19).
+         * must actually be gone; §19) · 29 — issue 10.7 (`market_close`. One row per instrument
+         * per day, unique per day so a second refresh corrects rather than double-counts. The app
+         * has a quote feed and AI-MKT needs a history, so the history accumulates here — which is
+         * also what lets the engine work offline and means nothing extra leaves the device; §30).
          */
-        const val VERSION = 28
+        const val VERSION = 29
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"
