@@ -114,6 +114,7 @@ class DashboardScreenshotTest {
                                 onNavigateToSimulators = {},
                                 onNavigateToVehicles = {},
                                 onNavigateToChat = {},
+                                onNavigateToOpportunity = {},
                             ),
                     )
                 }

@@ -618,6 +618,31 @@ DashboardScreen → "Ask your CFO" → ChatScreen
   ⇣ the answer, the model that wrote it, the rules behind its figures — or which refusal it was
 ```
 
+### 2.18 · Is today unusual? — AI-MKT (issue 10.7)
+
+**The history is the app's own.** Every price refresh leaves a close behind, and months later those
+closes are what the score is made of — which is why this screen works with the network off.
+
+```
+MarketPriceRepository.refresh()            (issue 6.5, consented, throttled)
+└─ per quote → investment_holding.price     the value the accounts screen shows
+            → market_close                  one row per instrument per day (unique) — issue 10.7
+
+DashboardScreen → "Good day to invest?" → OpportunityScreen
+└─ MarketSignalRepository.observeOpportunities()        data/repository — ARC-005
+   ├─ held instruments with a price key   +   their cached closes
+   ├─ capacityFlow(AI-STS, AI-EMF, AI-FCT) → idle cash · runway met · crunch days
+   └─ MarketSignalEngine.assess()    domain/engines/marketsignal — pure (AI-MKT)
+         score  = Σ ladders over drawdown · MA200 · RSI · rarity · streak      (MKT-SIGNALS v1.1)
+                  valuation and VIX: no feed → **not evaluated**, possible score shrinks
+         band   = KB's verdict bands, capped at 100
+         rate   = walk-forward over the same history, withheld below 20 samples   (MKT-HITRATE)
+         plan   = GOOD_DAY 1 · STRONG_BUY_DAY 2 tranches, zero if any gate closed (§30.4)
+  ⇣ the verdict · the score out of what was measurable · every signal and its number ·
+    how often this verdict has been followed by a higher price · what blocked the suggestion ·
+    how old the price is · and that the screen never buys anything
+```
+
 ### 2.1 · The dashboard's headline figure (issue 5.2)
 
 Shape C again, but it is the **first read in the app assembled from other repositories** rather than

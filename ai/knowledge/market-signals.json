@@ -5,14 +5,14 @@
     "what": "The scored signal library (§30.2), the context-only (never-scored) signals, the OpportunityScore formula, the honesty/backtesting policy (§30.3), and the tranche deployment policy (§30.4).",
     "result": "OpportunityScore(instrument, day) is a sum of signal points (0-100, capped) reproducible from cached OHLC; every verdict ships with its measured historical hit rate.",
     "source_section": "§30",
-    "version": "1.0",
+    "version": "1.1",
     "changelog": [
-      "2026-07-17 — Created from SRS v1.7 §30.2, §30.3, §30.4."
+      "2026-07-17 — Created from SRS v1.7 §30.2, §30.3, §30.4.",
+      "2026-09-27 — Issue 10.7 built AI-MKT against this file. Every signal's prose became numbers: \"bottom quartile scores, bottom decile maxes\" cannot be read by an engine, so each signal now carries an explicit `score_points` ladder. Added `history`, `hit_rate` and `staleness` blocks — the three things the engine needs to know before it may say anything at all. No max_points, tier or lookback changed. See ADR-0055."
     ],
     "principle": "Valuation + fear (VIX) carry the highest weights because they have the strongest published evidence for medium-term forward returns; pure price-pattern signals are capped low. The rule editor shows each signal's own backtest so weights can be personalised on evidence.",
     "personal_mode": "PERSONAL_MODE=true enables direct verdict language ('Strong buy day') and drops disclaimers, but transparency rules still apply: every verdict reproducible from data, always shown with its backtest hit rate."
   },
-
   "opportunity_score": {
     "formula": "OpportunityScore(instrument, day) = sum(signal points)",
     "range": "0-100+, capped at 100",
@@ -24,71 +24,266 @@
     },
     "note": "Bands are defaults; editable. A verdict is only shown alongside its measured hit rate (§30.3)."
   },
-
   "scored_signals": [
     {
       "id": "SIG-VALUATION",
       "definition": "Index P/E (and P/B) percentile vs its own 10-year history; bottom quartile scores, bottom decile maxes.",
       "max_points": 25,
       "evidence": "Strongest research support (valuation mean-reversion / CAPE literature): low starting valuations -> better 3-5y forward returns.",
-      "params_json": { "lookback_years": 10, "score_at_percentile": 25, "max_at_percentile": 10 }
+      "params_json": {
+        "lookback_years": 10,
+        "score_at_percentile": 25,
+        "max_at_percentile": 10
+      },
+      "score_points": {
+        "kind": "percentile_low",
+        "ladder": [
+          [
+            25,
+            13
+          ],
+          [
+            10,
+            25
+          ]
+        ],
+        "note": "Percentile of the index's own P/E against its 10-year history. At or below the 25th percentile scores; at or below the 10th it maxes. The two points are half and full of max_points."
+      }
     },
     {
       "id": "SIG-DRAWDOWN",
       "definition": "% below 52-week high; tiers at -5 / -8 / -12 / -20%.",
       "max_points": 20,
-      "params_json": { "tiers_pct": [-5, -8, -12, -20] }
+      "params_json": {
+        "tiers_pct": [
+          -5,
+          -8,
+          -12,
+          -20
+        ]
+      },
+      "score_points": {
+        "kind": "tier_negative_pct",
+        "ladder": [
+          [
+            -5,
+            5
+          ],
+          [
+            -8,
+            10
+          ],
+          [
+            -12,
+            15
+          ],
+          [
+            -20,
+            20
+          ]
+        ],
+        "note": "Percent below the 52-week high. One step per tier the KB already listed, evenly spread across max_points."
+      }
     },
     {
       "id": "SIG-VIX",
       "definition": "India VIX percentile vs 5y history; top quartile scores, top decile (panic/capitulation) maxes.",
       "max_points": 15,
       "evidence": "Implied-vol spikes historically coincide with above-average forward returns.",
-      "params_json": { "lookback_years": 5, "score_at_percentile": 75, "max_at_percentile": 90 }
+      "params_json": {
+        "lookback_years": 5,
+        "score_at_percentile": 75,
+        "max_at_percentile": 90
+      },
+      "score_points": {
+        "kind": "percentile_high",
+        "ladder": [
+          [
+            75,
+            8
+          ],
+          [
+            90,
+            15
+          ]
+        ],
+        "note": "India VIX percentile against 5 years. Top quartile scores, top decile maxes."
+      }
     },
     {
       "id": "SIG-MA200",
       "definition": "% deviation below the 200-day moving average; tiers at -2 / -5 / -10%.",
       "max_points": 15,
-      "params_json": { "tiers_pct": [-2, -5, -10] }
+      "params_json": {
+        "tiers_pct": [
+          -2,
+          -5,
+          -10
+        ]
+      },
+      "score_points": {
+        "kind": "tier_negative_pct",
+        "ladder": [
+          [
+            -2,
+            5
+          ],
+          [
+            -5,
+            10
+          ],
+          [
+            -10,
+            15
+          ]
+        ],
+        "note": "Percent below the 200-day moving average, one step per listed tier."
+      }
     },
     {
       "id": "SIG-RSI",
       "definition": "RSI(14) < 30 oversold (=10 pts), < 25 deeply oversold (=15).",
       "max_points": 15,
-      "params_json": { "period": 14, "oversold": { "30": 10, "25": 15 } }
+      "params_json": {
+        "period": 14,
+        "oversold": {
+          "30": 10,
+          "25": 15
+        }
+      },
+      "score_points": {
+        "kind": "threshold_below",
+        "ladder": [
+          [
+            30,
+            10
+          ],
+          [
+            25,
+            15
+          ]
+        ],
+        "note": "The KB already stated these two points; they are repeated here in the same shape as every other signal so the engine reads one structure."
+      }
     },
     {
       "id": "SIG-RARITY",
       "definition": "Percentile of today's price vs trailing 12 months (bottom decile = max).",
       "max_points": 5,
-      "params_json": { "lookback_months": 12, "max_at_percentile": 10 }
+      "params_json": {
+        "lookback_months": 12,
+        "max_at_percentile": 10
+      },
+      "score_points": {
+        "kind": "percentile_low",
+        "ladder": [
+          [
+            25,
+            2
+          ],
+          [
+            10,
+            5
+          ]
+        ],
+        "note": "Percentile of today's close against the trailing 12 months. Bottom decile maxes, as the KB says; the quartile step is the same half-of-max convention as SIG-VALUATION."
+      }
     },
     {
       "id": "SIG-STREAK",
       "definition": "N consecutive down days (>= 4 = 3 pts, >= 6 = 5).",
       "max_points": 5,
-      "params_json": { "down_days": { "4": 3, "6": 5 } }
+      "params_json": {
+        "down_days": {
+          "4": 3,
+          "6": 5
+        }
+      },
+      "score_points": {
+        "kind": "threshold_at_least",
+        "ladder": [
+          [
+            4,
+            3
+          ],
+          [
+            6,
+            5
+          ]
+        ],
+        "note": "The KB already stated these two points; repeated in the common shape."
+      }
     }
   ],
-
   "context_signals_never_scored": [
-    { "id": "SIG-SUPPORT", "note": "Proximity to recent held lows - descriptive, levels shift." },
-    { "id": "SIG-YIELD-GAP", "note": "Index earnings yield vs 10-yr G-Sec - contested 'Fed model' evidence, useful colour only." },
-    { "id": "SIG-OI-PCR", "note": "Open interest / put-call ratio (MKT-006) - shown as context, not an input to the score." }
+    {
+      "id": "SIG-SUPPORT",
+      "note": "Proximity to recent held lows - descriptive, levels shift."
+    },
+    {
+      "id": "SIG-YIELD-GAP",
+      "note": "Index earnings yield vs 10-yr G-Sec - contested 'Fed model' evidence, useful colour only."
+    },
+    {
+      "id": "SIG-OI-PCR",
+      "note": "Open interest / put-call ratio (MKT-006) - shown as context, not an input to the score."
+    }
   ],
-
   "honesty_backtesting": {
     "_source": "§30.3 - the core differentiator",
     "rule": "Every verdict is accompanied by the measured historical hit rate of the same signal configuration on this instrument's cached history. The app persuades with evidence, never with certainty it does not have.",
     "backtest_history_years": 5,
     "reproducibility": "A verdict must be reproducible from cached OHLC (P-02, AI-ARC-004)."
   },
-
   "tranche_policy": {
     "_source": "§30.4 - tranches, not all-in",
     "rule": "Deployment suggestions are staged tranches, never all-in, and are gated by user capacity.",
-    "capacity_gates": ["RULE-IDLE-CASH", "RULE-RUNWAY-M", "AI-FCT 30-day crunch-day forecast"],
-    "example_ladder": { "GOOD_DAY": "1 tranche", "STRONG_BUY_DAY": "up to 2 tranches", "cap": "user tranche policy" }
+    "capacity_gates": [
+      "RULE-IDLE-CASH",
+      "RULE-RUNWAY-M",
+      "AI-FCT 30-day crunch-day forecast"
+    ],
+    "example_ladder": {
+      "GOOD_DAY": "1 tranche",
+      "STRONG_BUY_DAY": "up to 2 tranches",
+      "cap": "user tranche policy"
+    }
+  },
+  "history": {
+    "id": "MKT-HISTORY",
+    "version": "1.0",
+    "why": "AI-MKT reads the daily closes this app has cached, not a feed. So the first question is always whether there is enough history to say anything — and the honest answer on a fresh install is no.",
+    "minimum_days_for_any_score": 60,
+    "minimum_days_for_ma200": 200,
+    "minimum_days_for_52w_high": 250,
+    "notes": {
+      "minimum_days_for_any_score": "Below this the engine scores nothing and says so. A drawdown measured against three weeks of history is not a drawdown.",
+      "minimum_days_for_ma200": "A 200-day average needs 200 days. Fewer means SIG-MA200 is not evaluated, and the possible score shrinks by its max_points rather than the signal quietly scoring zero.",
+      "minimum_days_for_52w_high": "Roughly a year of trading days."
+    }
+  },
+  "hit_rate": {
+    "id": "MKT-HITRATE",
+    "version": "1.0",
+    "why": "§30.3 is the core differentiator: a verdict is shown with the measured hit rate of the same configuration on this instrument's own cached history, or it is shown with nothing. These are the numbers that decide what 'measured' means.",
+    "horizon_days": 90,
+    "hit_definition": "forward_close_greater_than_today",
+    "min_samples": 20,
+    "notes": {
+      "horizon_days": "A medium-term horizon, matching the valuation evidence the weights lean on. Trading days, not calendar days: the history is closes.",
+      "min_samples": "Below twenty past days in the same band, no rate is shown at all. A hit rate from four samples is a number that persuades without informing, which is the opposite of §30.3.",
+      "walk_forward": "Every historical score is computed from data available on that day only. Scoring a past day with tomorrow's closes would measure a machine that can see the future."
+    }
+  },
+  "staleness": {
+    "id": "MKT-STALE",
+    "version": "1.0",
+    "why": "P-04: the app works offline and says when what it is showing is old. A price from three weeks ago produces a verdict about three weeks ago.",
+    "stale_after_days": 3,
+    "refuse_after_days": 30,
+    "notes": {
+      "stale_after_days": "Beyond this the screen labels the verdict as based on old data.",
+      "refuse_after_days": "Beyond this the engine will not produce a verdict at all. A month-old close is not evidence about today, and labelling it would be a hedge rather than an answer."
+    }
   }
 }

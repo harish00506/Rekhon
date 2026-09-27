@@ -127,6 +127,7 @@ class DashboardPrivacyBlurTest {
                             onNavigateToSimulators = {},
                             onNavigateToVehicles = {},
                             onNavigateToChat = {},
+                            onNavigateToOpportunity = {},
                         ),
                 )
             }

@@ -24,6 +24,7 @@ import com.aicfo.feature.dashboard.OrderOfOperationsScreen
 import com.aicfo.feature.emergencyfund.EmergencyFundScreen
 import com.aicfo.feature.goals.GoalDetailScreen
 import com.aicfo.feature.goals.GoalsScreen
+import com.aicfo.feature.market.OpportunityScreen
 import com.aicfo.feature.onboarding.OnboardingScreen
 import com.aicfo.feature.settings.SettingsScreen
 import com.aicfo.feature.transactions.AddTransactionScreen
@@ -80,6 +81,7 @@ fun CfoNavHost(
                         onNavigateToSimulators = { navController.navigate(CfoRoute.Simulators) },
                         onNavigateToVehicles = { navController.navigate(CfoRoute.Vehicles) },
                         onNavigateToChat = { navController.navigate(CfoRoute.Chat) },
+                        onNavigateToOpportunity = { navController.navigate(CfoRoute.Opportunity) },
                         onNavigateToSettings = { navController.navigate(CfoRoute.Settings) },
                         onNavigateToOrderOfOperations = { navController.navigate(CfoRoute.OrderOfOperations) },
                     ),
@@ -91,6 +93,7 @@ fun CfoNavHost(
             )
         }
         planningDestinations(navController)
+        adviceDestinations(navController)
         captureDestinations(navController)
         accountsDestinations(navController)
     }
@@ -114,6 +117,7 @@ fun CfoNavHost(
  *
  * Input:  none. Output: none (registers destinations).
  */
+
 private fun NavGraphBuilder.planningDestinations(navController: NavHostController) {
     composable<CfoRoute.Categories> { CategoriesScreen() }
     composable<CfoRoute.Budgets> { BudgetsScreen() }
@@ -284,5 +288,18 @@ private fun NavGraphBuilder.onboardingDestination(navController: NavHostControll
                 }
             },
         )
+    }
+}
+
+/**
+ * The two §30/§19 screens that score rather than list (issues 10.5, 10.7).
+ * Why:    split from [planningDestinations] when it reached detekt's length limit — and they do
+ *         belong together: both answer a question about today rather than showing a ledger.
+ * Result: the destinations are registered. Input: [navController]. Output: none.
+ * Changelog: 2026-09-27 — Split out for issue 10.7.
+ */
+private fun NavGraphBuilder.adviceDestinations(navController: NavHostController) {
+    composable<CfoRoute.Opportunity> {
+        OpportunityScreen(onDone = { navController.popBackStack() })
     }
 }

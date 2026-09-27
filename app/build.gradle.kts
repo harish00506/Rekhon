@@ -14,7 +14,7 @@ android {
 
     defaultConfig {
         applicationId = "com.aicfo.personalcfo"
-        versionCode = 49
+        versionCode = 50
         versionName = rootProject.file("VERSION").readText().trim()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -47,6 +47,8 @@ dependencies {
     implementation(project(":feature:vehicle"))
     // Issue 10.5: §19's assistant, and the model behind LlmEngine.
     implementation(project(":feature:chat"))
+    // Issue 10.7: §30's opportunity screen.
+    implementation(project(":feature:market"))
     implementation(project(":ml:llm"))
     implementation(project(":feature:accounts"))
     implementation(project(":feature:budgets"))

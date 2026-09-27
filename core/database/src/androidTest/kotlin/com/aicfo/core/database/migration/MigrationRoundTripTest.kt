@@ -1822,6 +1822,34 @@ class MigrationRoundTripTest {
     }
 
     /**
+     * 28 → 29: the cached daily closes AI-MKT scores (issue 10.7; §30).
+     *
+     * Why:  one promise here is a storage promise: **one close per instrument per day**. Two points
+     *       for one day would weight that day twice in every average the engine takes, and nothing
+     *       in the engine could tell. The other is that the series survives an upgrade — it takes
+     *       months to rebuild, so losing it would send the screen back to "not enough history".
+     * Result: the table exists, keeps its row, and refuses a second close for the same day.
+     */
+    @Test
+    fun migrate28To29_keepsASeriesAndRefusesTwoClosesForOneDay() {
+        helper.createDatabase(TEST_DB, 28).close()
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 29, true, Migrations.MIGRATION_28_29)
+
+        migrated.execSQL(closeInsert(id = "close:1"))
+        assertTrue(
+            "two closes for one day would weight that day twice in every average",
+            refuses(migrated, closeInsert(id = "close:2")),
+        )
+
+        migrated.query("SELECT close_minor, source FROM market_close WHERE id = 'close:1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(28_450L, cursor.getLong(0))
+            assertEquals("quote", cursor.getString(1))
+        }
+    }
+
+    /**
      * Result: true when [sql] was refused by a constraint. Input: [db]; [sql]. Output: [Boolean].
      */
     private fun refuses(
@@ -1834,6 +1862,13 @@ class MigrationRoundTripTest {
         } catch (expected: SQLiteConstraintException) {
             true
         }
+
+    /** One day's close, so the duplicate case differs only by id. */
+    private fun closeInsert(id: String): String =
+        "INSERT INTO market_close (id, profile_id, price_key, close_iso_date, close_minor, source, " +
+            "deleted_at_utc_millis, created_at_utc_millis, updated_at_utc_millis) " +
+            "VALUES ('$id', 'local', 'NSE:NIFTYBEES', '2026-09-26', 28450, 'quote', NULL, " +
+            "1790000000000, 1790000000000)"
 
     /** One exchange's SQL. */
     private fun chatInsert(): String =

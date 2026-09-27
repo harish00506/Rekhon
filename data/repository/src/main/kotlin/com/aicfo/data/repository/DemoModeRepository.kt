@@ -148,6 +148,31 @@ internal class RoomDemoModeRepository(
             // the next enter() overwrites and the next exit() erases.
         }.flatMap { settingsStore.setDemoModeActive(true) }
 
+    /**
+     * Epic 10's tables, wiped children-first (issues 10.1–10.7).
+     * Why:    split out when [exit] reached detekt's length limit — and they belong together: the
+     *         first four were written by 10.1 and 10.2 and **never wiped at all** until 10.4 found
+     *         them, which is the failure this grouping now makes visible.
+     * Result: the advisor's traces, the buy list, the vehicles and the cached closes are gone.
+     * Input:  [demo]. Output: none (suspends).
+     * Changelog: 2026-09-27 — Extracted for issue 10.7.
+     */
+    private suspend fun wipeEpicTen(demo: com.aicfo.core.database.dao.DemoDao) {
+        // Gates before traces and answers before wishes, on the children-first rule [exit] follows.
+        demo.deletePurchaseTraceGates(DemoModeRepository.DEMO_PROFILE_ID)
+        demo.deletePurchaseTraces(DemoModeRepository.DEMO_PROFILE_ID)
+        demo.deleteInterviewAnswers(DemoModeRepository.DEMO_PROFILE_ID)
+        demo.deleteWishlistItems(DemoModeRepository.DEMO_PROFILE_ID)
+        // Readings, services and renewals are children of a vehicle (issue 10.4).
+        demo.deleteVehicleOdometer(DemoModeRepository.DEMO_PROFILE_ID)
+        demo.deleteVehicleServices(DemoModeRepository.DEMO_PROFILE_ID)
+        demo.deleteVehicleRenewals(DemoModeRepository.DEMO_PROFILE_ID)
+        demo.deleteVehicles(DemoModeRepository.DEMO_PROFILE_ID)
+        // Issue 10.7: a demo session's cached closes are the sample household's, not the user's,
+        // and a series that survived the wipe would be scored as theirs.
+        demo.deleteMarketCloses(DemoModeRepository.DEMO_PROFILE_ID)
+    }
+
     override suspend fun exit(): Result<Unit, AppError> =
         settingsStore.setDemoModeActive(false).flatMap {
             runCatchingToResult {
@@ -165,19 +190,7 @@ internal class RoomDemoModeRepository(
                     demo.deleteInsights(DemoModeRepository.DEMO_PROFILE_ID)
                     // Issue 9.6: the demo's sends must not count against the real profile's caps.
                     demo.deleteNotificationLog(DemoModeRepository.DEMO_PROFILE_ID)
-                    // Issue 10.4: the next six were written by 10.1 and 10.2 and never wiped —
-                    // a demo session that asked the advisor or added a wish left both behind, and
-                    // countRowsFor did not count them either, so nothing said so. Gates before
-                    // traces and answers before wishes, on the children-first rule above.
-                    demo.deletePurchaseTraceGates(DemoModeRepository.DEMO_PROFILE_ID)
-                    demo.deletePurchaseTraces(DemoModeRepository.DEMO_PROFILE_ID)
-                    demo.deleteInterviewAnswers(DemoModeRepository.DEMO_PROFILE_ID)
-                    demo.deleteWishlistItems(DemoModeRepository.DEMO_PROFILE_ID)
-                    // Issue 10.4's own: readings, services and renewals are children of a vehicle.
-                    demo.deleteVehicleOdometer(DemoModeRepository.DEMO_PROFILE_ID)
-                    demo.deleteVehicleServices(DemoModeRepository.DEMO_PROFILE_ID)
-                    demo.deleteVehicleRenewals(DemoModeRepository.DEMO_PROFILE_ID)
-                    demo.deleteVehicles(DemoModeRepository.DEMO_PROFILE_ID)
+                    wipeEpicTen(demo)
                     demo.deleteBudgetAlerts(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteCardAlerts(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteCreditCards(DemoModeRepository.DEMO_PROFILE_ID)

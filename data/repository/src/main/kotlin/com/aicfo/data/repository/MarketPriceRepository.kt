@@ -3,11 +3,13 @@ package com.aicfo.data.repository
 import com.aicfo.core.common.AppError
 import com.aicfo.core.common.Clock
 import com.aicfo.core.common.DispatcherProvider
+import com.aicfo.core.common.IdGenerator
 import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
 import com.aicfo.core.common.runCatchingToResult
 import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.database.entity.InvestmentHoldingEntity
+import com.aicfo.core.database.entity.MarketCloseEntity
 import com.aicfo.core.datastore.ConsentFeature
 import com.aicfo.core.datastore.ConsentStore
 import com.aicfo.core.model.AssetClass
@@ -71,6 +73,7 @@ interface MarketPriceRepository {
 internal class RoomMarketPriceRepository(
     private val database: CfoDatabase,
     private val api: MarketDataApi,
+    private val idGenerator: IdGenerator,
     private val engine: InvestmentEngine,
     private val consents: ConsentStore,
     private val clock: Clock,
@@ -204,6 +207,22 @@ internal class RoomMarketPriceRepository(
                     pricedOnIsoDate = quote.asOfIsoDate,
                     fetchedAtUtcMillis = fetchedAt,
                 )
+            // Issue 10.7: the same quote is appended to the daily series AI-MKT scores. The app has
+            // a quote feed and the engine needs a history, so the history accumulates here — which
+            // is what lets the opportunity screen work offline and means nothing extra is fetched
+            // to build it. The row is keyed on the day the price applies to, so a second refresh
+            // the same day corrects it rather than weighting that day twice.
+            database.marketCloseDao().upsert(
+                MarketCloseEntity(
+                    id = idGenerator.newId("close"),
+                    profileId = profileId,
+                    priceKey = quote.priceKey.value,
+                    closeIsoDate = quote.asOfIsoDate,
+                    closeMinor = quote.unitPrice.minor,
+                    createdAtUtcMillis = fetchedAt,
+                    updatedAtUtcMillis = fetchedAt,
+                ),
+            )
         }
         return updated
     }

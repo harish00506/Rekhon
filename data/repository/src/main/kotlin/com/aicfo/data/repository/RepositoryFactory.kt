@@ -27,6 +27,7 @@ import com.aicfo.domain.engines.healthscore.HealthScoreEngine
 import com.aicfo.domain.engines.insight.InsightEngine
 import com.aicfo.domain.engines.investment.InvestmentEngine
 import com.aicfo.domain.engines.loan.LoanEngine
+import com.aicfo.domain.engines.marketsignal.MarketSignalEngine
 import com.aicfo.domain.engines.nature.NatureEngine
 import com.aicfo.domain.engines.networth.NetWorthEngine
 import com.aicfo.domain.engines.notification.NotificationPolicyEngine
@@ -447,8 +448,9 @@ object RepositoryFactory {
      * Result: a [MarketPriceRepository] over the encrypted database.
      * Input:  [database]; [api] — the market-data client; [engine] — decides what is due;
      *         [consents] — the MARKET_DATA gate (P-01); [clock] — TIM-001; [dispatchers];
-     *         [activeProfileId]. **No `IdGenerator`**: this never creates a row, only updates
-     *         four columns of rows that already exist.
+     *         [activeProfileId]; [idGenerator] — issue 10.7 made this a creator as well as an
+     *         updater: every quote is also appended to `market_close`, the daily series AI-MKT
+     *         scores. Before that it genuinely only updated four columns of existing rows.
      * Output: [MarketPriceRepository].
      */
     @Suppress("LongParameterList") // Seven collaborators, each a distinct binding — as [receipts].
@@ -460,8 +462,49 @@ object RepositoryFactory {
         clock: Clock,
         dispatchers: DispatcherProvider,
         activeProfileId: Flow<String>,
+        idGenerator: IdGenerator,
     ): MarketPriceRepository =
-        RoomMarketPriceRepository(database, api, engine, consents, clock, dispatchers, activeProfileId)
+        RoomMarketPriceRepository(
+            database = database,
+            api = api,
+            idGenerator = idGenerator,
+            engine = engine,
+            consents = consents,
+            clock = clock,
+            dispatchers = dispatchers,
+            activeProfileId = activeProfileId,
+        )
+
+    /**
+     * The opportunity screen's data side (issue 10.7; §30).
+     * Why:    the capacity gates are three other engines' published figures, combined into one flow
+     *         here so AI-MKT's repository needs exactly them and can reach for nothing else.
+     * Result: a [MarketSignalRepository]. Input: [database]; [engine] — AI-MKT; [safeToSpend];
+     *         [emergencyFund]; [forecast]; [clock]; [dispatchers]; [activeProfileId];
+     *         [idGenerator]. Output: the repository.
+     * Changelog: 2026-09-27 — Created for issue 10.7.
+     */
+    @Suppress("LongParameterList") // the database, the engine, three capacity sources and four seams
+    fun marketSignals(
+        database: CfoDatabase,
+        engine: MarketSignalEngine,
+        safeToSpend: SafeToSpendRepository,
+        emergencyFund: EmergencyFundRepository,
+        forecast: ForecastRepository,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        activeProfileId: Flow<String>,
+        idGenerator: IdGenerator,
+    ): MarketSignalRepository =
+        CachedMarketSignalRepository(
+            database = database,
+            engine = engine,
+            capacity = capacityFlow(safeToSpend, emergencyFund, forecast),
+            clock = clock,
+            dispatchers = dispatchers,
+            activeProfileId = activeProfileId,
+            idGenerator = idGenerator,
+        )
 
     /**
      * Builds the recurring-series store (issue 3.7, FR-TXN-006).

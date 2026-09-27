@@ -25,6 +25,9 @@
 #                (ADR-0052). Its KB moved to 1.1: the method and the alert thresholds are typed.
 #   2026-09-27 — Issue 10.5: AI-CHAT built — §19's assistant, behind AI-GRD (ADR-0053). The tool
 #                registry moved to 1.1: routing is data, and it gained get_vehicle_status.
+#   2026-09-27 — Issue 10.7: AI-MKT built — §30's opportunity score over cached closes (ADR-0055).
+#                Its library moved to 1.1: the ladders, the minimums and the hit-rate policy are
+#                numbers an engine can read instead of prose.
 # =============================================================================
 
 version: "1.1"
@@ -264,8 +267,16 @@ engines:
     layer: L4/L5
     module: ":domain:engines:marketsignal"
     version: "1.0"
-    contract: "OHLC history + capacity -> OpportunityScore + verdict + backtest line"
-    reads: [../knowledge/market-signals.json, ../rules/rules-kb.json]
+    # Issue 10.7 built it (ADR-0055): the history is the app's **own cached closes**, appended by
+    # the price refresh, so the engine works offline and nothing extra leaves the device. The two
+    # heaviest signals need feeds this app does not have, so they are reported as not evaluated and
+    # the possible score shrinks — a zero would read as "valuation says no". The verdict is only
+    # ever shown with the walk-forward hit rate that verdict has had on this instrument's own
+    # history, and tranches are gated on three other engines' verdicts. It suggests; it never buys.
+    contract: "cached daily closes + optional valuation/VIX percentiles + capacity -> {outcome, score, possibleScore, band, per-signal points and measured values, walk-forward hitRate or null, gated tranche plan, staleness}"
+    reads: [../knowledge/market-signals.json]     # v1.1: the 7 ladders, bands, history, hit_rate, staleness
+    consumes_rules: [RULE-IDLE-CASH, RULE-RUNWAY-M]
+    depends_on: [AI-STS, AI-EMF, AI-FCT]
     srs: "§30"
 
   - id: AI-TAX

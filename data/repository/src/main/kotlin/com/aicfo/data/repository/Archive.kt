@@ -16,6 +16,7 @@ import com.aicfo.core.database.entity.InterviewAnswerEntity
 import com.aicfo.core.database.entity.InvestmentHoldingEntity
 import com.aicfo.core.database.entity.InvestmentLotEntity
 import com.aicfo.core.database.entity.LoanEntity
+import com.aicfo.core.database.entity.MarketCloseEntity
 import com.aicfo.core.database.entity.NetWorthSnapshotEntity
 import com.aicfo.core.database.entity.NotificationLogEntity
 import com.aicfo.core.database.entity.ProfileEntity
@@ -53,6 +54,7 @@ import kotlinx.serialization.Serializable
  *   2026-09-20 — Issue 9.5 added [insights]. Issue 9.6 added [notificationLog].
  *   2026-09-25 — Issue 10.1 added [purchaseTraces] and [purchaseTraceGates].
  *   2026-09-26 — Issue 10.2 added [wishlistItems] and [interviewAnswers].
+ *   2026-09-27 — Issue 10.7 added [marketCloses].
  *   2026-09-26 — Issue 10.4 added [vehicles], [vehicleOdometer], [vehicleServices] and
  *   [vehicleRenewals]: a restored phone keeps the readings, because they *are* the prediction.
  *
@@ -126,6 +128,8 @@ data class CfoArchive(
     val vehicleOdometer: List<VehicleOdometerEntity> = emptyList(),
     val vehicleServices: List<VehicleServiceEntity> = emptyList(),
     val vehicleRenewals: List<VehicleRenewalEntity> = emptyList(),
+    /** Issue 10.7: the cached closes — AI-MKT's whole input, and months to rebuild if lost. */
+    val marketCloses: List<MarketCloseEntity> = emptyList(),
 ) {
     companion object {
         /**

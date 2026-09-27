@@ -147,6 +147,7 @@ internal class RoomArchiveRepository(
             vehicleOdometer = dao.vehicleOdometer(profileId),
             vehicleServices = dao.vehicleServices(profileId),
             vehicleRenewals = dao.vehicleRenewals(profileId),
+            marketCloses = dao.marketCloses(profileId),
         )
 
     override suspend fun import(json: String): Result<ImportSummary, AppError> =
@@ -290,6 +291,7 @@ internal class RoomArchiveRepository(
         dao.insertVehicleOdometer(archive.vehicleOdometer)
         dao.insertVehicleServices(archive.vehicleServices)
         dao.insertVehicleRenewals(archive.vehicleRenewals)
+        dao.insertMarketCloses(archive.marketCloses)
     }
 
     private companion object {
@@ -349,4 +351,4 @@ internal fun CfoArchive.rowCount(): Int =
         investmentLots.size + goals.size + goalContributions.size + goalFundingAccounts.size +
         insights.size + notificationLog.size + purchaseTraces.size + purchaseTraceGates.size +
         wishlistItems.size + interviewAnswers.size + vehicles.size + vehicleOdometer.size +
-        vehicleServices.size + vehicleRenewals.size
+        vehicleServices.size + vehicleRenewals.size + marketCloses.size

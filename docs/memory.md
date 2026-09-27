@@ -23,6 +23,7 @@
     2026-09-26 — Issue 10.4 (AI-VEH vehicle maintenance) merged to dev; schema 27.
     2026-09-27 — Issue 10.5 (AI-CHAT assistant + tool registry) merged to dev; schema 28.
     2026-09-27 — Issue 10.6 (the frozen guardrail eval) merged to dev; no schema change.
+    2026-09-27 — Issue 10.7 (AI-MKT opportunity score) merged to dev; schema 29.
 -->
 
 # AI Personal CFO — Project Memory
@@ -34,14 +35,15 @@
 
 ## Current state
 
-- **Version:** `0.10.5` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v28** (10.5's `chat_message`; 10.6 stores nothing).
+- **Version:** `0.10.6` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v29** (10.7's `market_close`).
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
   forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
   feed), 9.6 (the notification policy) and 9.7 (the numeric guardrail) shipped — **Epic 9 is
   complete**. **Epic 10 is open**: 10.1 (the Purchase Advisor), 10.2 (the buy list),
-  10.3 (the what-if simulators), 10.4 (vehicle maintenance), 10.5 (the chat assistant) and
-  10.6 (the frozen guardrail eval) shipped; **10.7 (market signals, AI-MKT) is next**.
-- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7 and 10.1–10.6 are merged to `dev`**
+  10.3 (the what-if simulators), 10.4 (vehicle maintenance), 10.5 (the chat assistant),
+  10.6 (the frozen guardrail eval) and 10.7 (the opportunity score) shipped; **10.8 (Hindi
+  localisation) is the last of Epic 10**.
+- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7 and 10.1–10.7 are merged to `dev`**
   ([8.1 tracker](issues/8.1-e2ee-backup-argon2id-aes-256-gcm-tracker.md), ADR-0039;
   [8.2 tracker](issues/8.2-restore-on-fresh-device-tracker.md), ADR-0040;
   [8.3 tracker](issues/8.3-backup-restore-drill-tracker.md), ADR-0041;
@@ -57,7 +59,8 @@
   [10.3 tracker](issues/10.3-simulators-prepay-vs-invest-payoff-tracker.md), ADR-0051;
   [10.4 tracker](issues/10.4-vehicle-maintenance-prediction-ai-veh-tracker.md), ADR-0052;
   [10.5 tracker](issues/10.5-chat-assistant-on-device-llm-tool-registry-tracker.md), ADR-0053;
-  [10.6 tracker](issues/10.6-chat-guardrail-eval-tracker.md), ADR-0054).
+  [10.6 tracker](issues/10.6-chat-guardrail-eval-tracker.md), ADR-0054;
+  [10.7 tracker](issues/10.7-market-signal-engine-ai-mkt-opportunity-screen-tracker.md), ADR-0055).
 - **`origin/dev` is current again** — `23acb26` (issue 10.1), pushed 2026-09-25. Everything from
   7.4 through 10.1 that had been stranded locally is on the remote. Earlier sessions recorded the
   push as blocked for want of credentials; it works now, so check `git log origin/dev..dev` rather
@@ -70,6 +73,24 @@
   `dev` was two issues behind once and nobody noticed.
 - **The forecast exists now (9.2), but the goals still use the observed P50 surplus** (ADR-0035,
   ADR-0037). Switching `SurplusRepository` to `ForecastRepository` is ADR-0043's recorded follow-up.
+
+### What 10.7 changed that a future issue must know
+
+- **`market_close` is the app's own price history**, appended by `MarketPriceRepository.refresh()`.
+  One row per instrument per day, unique. Never write two rows for one day, and never backfill it
+  with numbers the device did not observe without deciding that deliberately (ADR-0055).
+- **A signal AI-MKT cannot evaluate is reported, not scored zero** — and `possibleScore` shrinks.
+  Any new signal must follow that, or the score silently starts meaning something else.
+- **The percentile is a mid-rank.** Strictly-below put a flat market in the bottom decile. If you
+  touch `MarketMath.percentile`, the flat-series test is the one that matters.
+- **The hit rate is walk-forward and withheld below 20 samples.** Both are KB numbers. A rate
+  computed over the whole series would measure a machine that can see the future.
+- **The tranche gates are other engines' verdicts** (AI-STS, AI-EMF, AI-FCT) and AI-MKT re-derives
+  none of them. Add a gate by adding a published figure, not a calculation.
+- **`market_status` and `opportunity_check` are still unserved chat tools.** Wiring them is a chat
+  question — how a verdict reads in a sentence — not a market one.
+- **An engine that reads `series.last()` needs an empty-series path.** This one crashed without it,
+  on a holding the app had never priced, and a repository test found it rather than the engine suite.
 
 ### What 10.6 changed that a future issue must know
 
@@ -159,7 +180,7 @@
   where the deferred buy-timing watch and the thirty-day re-ask will read from.
 - ~~**10.3's simulators should reuse `PurchaseRequest`**~~ — they did not, and should not: a
   what-if is about a debt, not a purchase. AI-SIM takes its own inputs (ADR-0051).
-- **rules-kb is 1.23.0**; fourteen `*Rules.kt` mirrors restate it. The **vehicle KB is 1.1** (`VehicleKnowledge.BUNDLED`) and the **tool registry is 1.1** (`ToolRegistry.BUNDLED`).
+- **rules-kb is 1.23.0**; fourteen `*Rules.kt` mirrors restate it. The **vehicle KB is 1.1** (`VehicleKnowledge.BUNDLED`), the **tool registry is 1.1** (`ToolRegistry.BUNDLED`) and the **signal library is 1.1** (`MarketKnowledge.BUNDLED`).
 
 ### What 10.1 changed that a future issue must know
 

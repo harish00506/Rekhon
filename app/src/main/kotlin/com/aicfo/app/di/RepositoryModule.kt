@@ -29,6 +29,7 @@ import com.aicfo.data.repository.HealthScoreRepository
 import com.aicfo.data.repository.InsightRepository
 import com.aicfo.data.repository.InvestmentRepository
 import com.aicfo.data.repository.LoanRepository
+import com.aicfo.data.repository.MarketSignalRepository
 import com.aicfo.data.repository.NetWorthRepository
 import com.aicfo.data.repository.NotificationRepository
 import com.aicfo.data.repository.OrderOfOperationsRepository
@@ -64,6 +65,8 @@ import com.aicfo.domain.engines.insight.InsightEngine
 import com.aicfo.domain.engines.insight.InsightEngineFactory
 import com.aicfo.domain.engines.investment.InvestmentEngine
 import com.aicfo.domain.engines.loan.LoanEngine
+import com.aicfo.domain.engines.marketsignal.MarketSignalEngine
+import com.aicfo.domain.engines.marketsignal.MarketSignalEngineFactory
 import com.aicfo.domain.engines.nature.NatureEngine
 import com.aicfo.domain.engines.networth.NetWorthEngine
 import com.aicfo.domain.engines.notification.NotificationPolicyEngine
@@ -122,7 +125,10 @@ import javax.inject.Singleton
  */
 @Module
 @InstallIn(SingletonComponent::class)
-@Suppress("TooManyFunctions") // One binding per repository (ARC-003) — see the note above.
+// `LargeClass` joins it at issue 10.7: the size of this object is the dependency graph's, one
+// @Provides per binding, and splitting it by epoch would put a binding somewhere a reader has to
+// hunt for. The same argument `CfoDatabase` and `Migrations` make for theirs.
+@Suppress("TooManyFunctions", "LargeClass") // One binding per repository (ARC-003) — see the note above.
 object RepositoryModule {
     /**
      * The quick-setup store (issue 2.3; FR-ONB-002).
@@ -880,6 +886,47 @@ object RepositoryModule {
             dispatchers = dispatchers,
             activeProfileId = demoMode.activeProfileId,
             vehicles = vehicles,
+        )
+
+    /**
+     * AI-MKT, §30's signal engine (issue 10.7).
+     * Result: the engine. Input: none. Output: [MarketSignalEngine].
+     * Changelog: 2026-09-27 — Created for issue 10.7.
+     */
+    @Provides
+    @Singleton
+    fun provideMarketSignalEngine(): MarketSignalEngine = MarketSignalEngineFactory.create()
+
+    /**
+     * The opportunity screen's data side (issue 10.7; §30).
+     * Result: a [MarketSignalRepository]. Input: [database]; [engine]; the three capacity sources;
+     *         [clock]; [dispatchers]; [demoMode]; [idGenerator]. Output: the repository.
+     * Changelog: 2026-09-27 — Created for issue 10.7.
+     */
+    @Provides
+    @Singleton
+    @Suppress("LongParameterList") // the database, the engine, three capacity sources and four seams
+    fun provideMarketSignalRepository(
+        database: CfoDatabase,
+        engine: MarketSignalEngine,
+        safeToSpend: SafeToSpendRepository,
+        emergencyFund: EmergencyFundRepository,
+        forecast: ForecastRepository,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        demoMode: DemoModeRepository,
+        idGenerator: IdGenerator,
+    ): MarketSignalRepository =
+        RepositoryFactory.marketSignals(
+            database = database,
+            engine = engine,
+            safeToSpend = safeToSpend,
+            emergencyFund = emergencyFund,
+            forecast = forecast,
+            clock = clock,
+            dispatchers = dispatchers,
+            activeProfileId = demoMode.activeProfileId,
+            idGenerator = idGenerator,
         )
 
     /**
