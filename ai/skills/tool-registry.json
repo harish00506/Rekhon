@@ -5,9 +5,11 @@
     "what": "The registry of callable 'skills' the L6 chat layer may invoke. Each tool maps a natural-language intent to a deterministic engine/query and returns a STRUCTURED result the LLM then verbalises (never computes).",
     "result": "Every numeric statement in a reply originates from a tool result here; the guardrail (../chat/guardrail.md) cross-checks and blocks any figure not traceable to one of these tools.",
     "source_section": "§19.2, §19.3",
-    "version": "1.0",
+    "version": "1.1",
     "changelog": [
-      "2026-07-17 — Created from SRS v1.7 §19.2 tool registry."
+      "2026-07-17 — Created from SRS v1.7 §19.2 tool registry.",
+      "2026-09-26 — Issue 10.5 added `get_vehicle_status`: issue 10.4 shipped AI-VEH, and the VEHICLE intent had been routed at `get_forecast` — which answers a different question, so 'when is the car service due?' would have come back with the ninety-day low. A tool the app can actually serve is a registry change, not a code change.",
+      "2026-09-26 — Issue 10.5 built AI-CHAT against this file. The `intents` block below is new: which words route to which tool, which tools each intent needs, and what to offer next. It was going to be a `when` in an engine, and a `when` is not a thing a reader can audit or a translator can extend. `routing` holds the two numbers the planner needs. No tool, parameter or return changed. See ADR-0053."
     ],
     "behaviour_rules": {
       "CHT-001": "Every numeric statement in a reply MUST originate from a tool result; the guardrail blocks fabricated figures.",
@@ -17,6 +19,91 @@
       "CHT-005": "On-device model is the default engine; cloud assist lists exactly which structured fields are sent and logs every call."
     },
     "write_policy": "Chat NEVER writes directly. The only mutating tool is create_txn_draft / add_to_buylist, which produce a draft or a list entry the user must confirm."
+  },
+
+  "routing": {
+    "id": "CHT-ROUTE",
+    "version": "1.0",
+    "why": "The planner matches the user's words against the intents below. Two numbers decide how it behaves when the match is poor, and both belong here rather than in an engine.",
+    "min_keyword_hits": 1,
+    "max_tools_per_turn": 2,
+    "max_chips": 3,
+    "notes": {
+      "min_keyword_hits": "How many of an intent's keywords must appear before it is chosen. One is deliberate: a single strong word ('balance', 'afford') is usually the whole question.",
+      "max_tools_per_turn": "A turn calls at most this many tools, so one question cannot walk the whole registry.",
+      "max_chips": "CHT-003's discovery chips: two or three, never a wall."
+    }
+  },
+
+  "intents": [
+    {
+      "id": "SPEND",
+      "tools": ["query_spend"],
+      "keywords": ["spend", "spent", "spending", "money go", "where did", "outgoings"],
+      "chips": ["BALANCE", "BUDGET"]
+    },
+    {
+      "id": "BALANCE",
+      "tools": ["get_balance"],
+      "keywords": ["balance", "how much do i have", "left", "runway", "liquid"],
+      "chips": ["SPEND", "FORECAST"]
+    },
+    {
+      "id": "FORECAST",
+      "tools": ["get_forecast"],
+      "keywords": ["forecast", "next 90", "ninety days", "run out", "crunch", "shortfall"],
+      "chips": ["BALANCE", "GOALS"]
+    },
+    {
+      "id": "BUDGET",
+      "tools": ["get_budget_status"],
+      "keywords": ["budget", "over budget", "on track", "limit"],
+      "chips": ["SPEND", "HEALTH"]
+    },
+    {
+      "id": "GOALS",
+      "tools": ["get_goals"],
+      "keywords": ["goal", "goals", "saving for", "target", "when can i buy"],
+      "chips": ["FORECAST", "AFFORD"]
+    },
+    {
+      "id": "AFFORD",
+      "tools": ["purchase_check"],
+      "keywords": ["afford", "should i buy", "can i buy", "worth it"],
+      "chips": ["BUYLIST", "GOALS"]
+    },
+    {
+      "id": "HEALTH",
+      "tools": ["get_health_score"],
+      "keywords": ["health", "score", "how am i doing", "doing financially"],
+      "chips": ["BUDGET", "FORECAST"]
+    },
+    {
+      "id": "DEBT",
+      "tools": ["simulate"],
+      "keywords": ["prepay", "pay off", "payoff", "which debt", "loan first", "invest instead"],
+      "chips": ["BALANCE", "HEALTH"]
+    },
+    {
+      "id": "BUYLIST",
+      "tools": ["review_buylist"],
+      "keywords": ["buy list", "buylist", "wish", "wishlist", "wanted"],
+      "chips": ["AFFORD", "SPEND"]
+    },
+    {
+      "id": "VEHICLE",
+      "tools": ["get_vehicle_status"],
+      "keywords": ["car", "bike", "scooter", "service due", "vehicle"],
+      "chips": ["FORECAST", "SPEND"]
+    }
+  ],
+
+  "out_of_scope": {
+    "id": "CHT-REFUSE",
+    "version": "1.0",
+    "why": "CHT-002: an out-of-scope ask gets a friendly refusal and an offer of what the assistant CAN do. The words live in the app's string resources; the triggers live here, so the list can grow without a code change.",
+    "keywords": ["stock tip", "should i buy reliance", "which stock", "file my taxes", "tax filing", "itr", "legal advice", "sue", "lawyer", "crypto tip", "guaranteed return", "insider"],
+    "offer_chips": ["HEALTH", "AFFORD"]
   },
 
   "tools": [
@@ -159,6 +246,15 @@
       "parameters": {},
       "returns": { "items": "array<{item, price_minor, verdict, interview_progress}>" },
       "srs": "§19.2, §13.3"
+    },
+    {
+      "name": "get_vehicle_status",
+      "access": "read",
+      "engine": "AI-VEH (L4)",
+      "description": "When each vehicle's next service is due, and what it and any recorded renewals will cost.",
+      "parameters": { "vehicleId": { "type": "string", "required": false } },
+      "returns": { "cost_minor": "int", "due_iso_date": "date", "km_per_month": "int" },
+      "srs": "§19.2, §12"
     },
     {
       "name": "convert_currency",

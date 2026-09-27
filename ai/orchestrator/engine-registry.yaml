@@ -23,6 +23,8 @@
 #   2026-09-26 — Issue 10.3: AI-SIM built — §36's and §40.2's what-if simulators (ADR-0051).
 #   2026-09-26 — Issue 10.4: AI-VEH built — §12's maintenance prediction, folded into the forecast
 #                (ADR-0052). Its KB moved to 1.1: the method and the alert thresholds are typed.
+#   2026-09-27 — Issue 10.5: AI-CHAT built — §19's assistant, behind AI-GRD (ADR-0053). The tool
+#                registry moved to 1.1: routing is data, and it gained get_vehicle_status.
 # =============================================================================
 
 version: "1.1"
@@ -278,8 +280,14 @@ engines:
   - id: AI-CHAT
     name: Chat Assistant (verbaliser)
     layer: L6
-    module: ":feature:chat + :ml:llm"
+    module: ":domain:engines:chat + :ml:llm + :feature:chat"
     version: "1.0"
-    contract: "NL intent -> tool calls -> structured results -> guardrailed reply"
+    # Issue 10.5 built it (ADR-0053): the engine plans which registry tools to call and composes the
+    # reply; a repository executes the tools (ARC-005); the model behind LlmEngine is handed only
+    # the results (§19.4) and asked for words; and AI-GRD checks every figure in those words before
+    # anyone sees them. The model that ships is a deterministic template verbaliser — the offline
+    # path (P-04), not a stub — because a neural model is weights this repository cannot carry.
+    contract: "question -> intent + <=2 registry tool calls -> structured results -> model draft -> AI-GRD -> answered reply {text, figures, citations, chips} | refusal {OUT_OF_SCOPE | NOT_UNDERSTOOD | NO_DATA | NO_MODEL | GUARDRAIL_BLOCKED}"
     reads: [../skills/tool-registry.json, ../chat/system-prompt.md, ../chat/guardrail.md]
+    depends_on: [AI-GRD, AI-STS, AI-FCT, AI-GOAL, AI-FHS, AI-PA-INT, AI-VEH]
     srs: "§19"

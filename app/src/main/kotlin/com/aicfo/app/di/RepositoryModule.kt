@@ -1,5 +1,6 @@
 package com.aicfo.app.di
 
+import android.content.Context
 import com.aicfo.core.common.Clock
 import com.aicfo.core.common.DispatcherProvider
 import com.aicfo.core.common.IdGenerator
@@ -15,6 +16,8 @@ import com.aicfo.data.repository.BackupRepository
 import com.aicfo.data.repository.BudgetRepository
 import com.aicfo.data.repository.BuyListRepository
 import com.aicfo.data.repository.CategoryRepository
+import com.aicfo.data.repository.ChatRepository
+import com.aicfo.data.repository.ChatToolExecutor
 import com.aicfo.data.repository.CreditCardRepository
 import com.aicfo.data.repository.DemoModeRepository
 import com.aicfo.data.repository.EmergencyFundRepository
@@ -44,6 +47,9 @@ import com.aicfo.data.repository.VehicleRepository
 import com.aicfo.data.sms.SmsInboxReader
 import com.aicfo.domain.engines.budget.BudgetEngine
 import com.aicfo.domain.engines.card.CardEngine
+import com.aicfo.domain.engines.chat.ChatEngine
+import com.aicfo.domain.engines.chat.ChatEngineFactory
+import com.aicfo.domain.engines.chat.LlmEngine
 import com.aicfo.domain.engines.classification.ClassificationEngine
 import com.aicfo.domain.engines.emergencyfund.EmergencyFundEngine
 import com.aicfo.domain.engines.forecast.ForecastEngine
@@ -80,10 +86,12 @@ import com.aicfo.domain.engines.stream.StreamEngine
 import com.aicfo.domain.engines.stream.StreamEngineFactory
 import com.aicfo.domain.engines.vehicle.VehicleEngine
 import com.aicfo.domain.engines.vehicle.VehicleEngineFactory
+import com.aicfo.ml.llm.TemplateLlmEngine
 import com.aicfo.ml.ocr.ReceiptTextRecognizer
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
@@ -872,6 +880,84 @@ object RepositoryModule {
             dispatchers = dispatchers,
             activeProfileId = demoMode.activeProfileId,
             vehicles = vehicles,
+        )
+
+    /**
+     * AI-CHAT, §19's assistant (issue 10.5).
+     * Result: the engine. Input: none. Output: [ChatEngine].
+     * Changelog: 2026-09-26 — Created for issue 10.5.
+     */
+    @Provides
+    @Singleton
+    fun provideChatEngine(): ChatEngine = ChatEngineFactory.create()
+
+    /**
+     * The model behind [LlmEngine] (issue 10.5; §19, AI-ARC-007).
+     * Why:    the template verbaliser is what the app ships with, and it is the offline path rather
+     *         than a stand-in — ADR-0053 records what a neural model would replace. Swapping it is
+     *         this binding and nothing else.
+     * Result: the model. Input: [context]. Output: [LlmEngine].
+     * Changelog: 2026-09-26 — Created for issue 10.5.
+     */
+    @Provides
+    @Singleton
+    fun provideLlmEngine(
+        @ApplicationContext context: Context,
+    ): LlmEngine = TemplateLlmEngine(context)
+
+    /**
+     * The complete list of what chat may read (issue 10.5; §19.2).
+     * Result: the executor. Input: the six repositories it reads. Output: [ChatToolExecutor].
+     * Changelog: 2026-09-26 — Created for issue 10.5.
+     */
+    @Provides
+    @Singleton
+    @Suppress("LongParameterList") // one per tool served; the length is the registry's
+    fun provideChatToolExecutor(
+        safeToSpend: SafeToSpendRepository,
+        forecast: ForecastRepository,
+        goals: GoalRepository,
+        health: HealthScoreRepository,
+        buyList: BuyListRepository,
+        vehicles: VehicleRepository,
+    ): ChatToolExecutor =
+        RepositoryFactory.chatTools(
+            safeToSpend = safeToSpend,
+            forecast = forecast,
+            goals = goals,
+            health = health,
+            buyList = buyList,
+            vehicles = vehicles,
+        )
+
+    /**
+     * The chat pipeline (issue 10.5; §19).
+     * Result: a [ChatRepository]. Input: [database]; [engine]; [llm]; [tools]; [clock];
+     *         [dispatchers]; [demoMode] — for the active profile; [idGenerator]. Output: it.
+     * Changelog: 2026-09-26 — Created for issue 10.5.
+     */
+    @Provides
+    @Singleton
+    @Suppress("LongParameterList") // the database, two engines, the executor and four seams
+    fun provideChatRepository(
+        database: CfoDatabase,
+        engine: ChatEngine,
+        llm: LlmEngine,
+        tools: ChatToolExecutor,
+        clock: Clock,
+        dispatchers: DispatcherProvider,
+        demoMode: DemoModeRepository,
+        idGenerator: IdGenerator,
+    ): ChatRepository =
+        RepositoryFactory.chat(
+            database = database,
+            engine = engine,
+            llm = llm,
+            tools = tools,
+            clock = clock,
+            dispatchers = dispatchers,
+            activeProfileId = demoMode.activeProfileId,
+            idGenerator = idGenerator,
         )
 
     /**

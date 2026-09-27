@@ -588,6 +588,32 @@ ForecastRepository.observeForecast()                             §2.9's horizon
   ⇣ a service everyone knew was coming now shows as the crunch day it may cause
 ```
 
+### 2.17 · Asking a question — AI-CHAT (issue 10.5)
+
+**The model never chooses a number.** It is handed what the tools returned and asked for words, and
+those words are checked against the same figures before anyone reads them.
+
+```
+DashboardScreen → "Ask your CFO" → ChatScreen
+└─ Ask(text) | AskChip(intent)                          a chip sends the words a person would type
+   → ChatRepository.ask()                               data/repository — ARC-005
+     ├─ ChatEngine.plan()                domain/engines/chat — pure (AI-CHAT)
+     │     out-of-scope keywords FIRST → refuse, read nothing        (CHT-002)
+     │     else best keyword match → <= max_tools_per_turn calls     (CHT-ROUTE)
+     ├─ ChatToolExecutor.run(call)       the complete list of what chat may see (§19.2)
+     │     get_balance → AI-STS · query_spend → AI-STS's SPENT line
+     │     get_forecast → AI-FCT · get_goals → AI-GOAL · get_health_score → AI-FHS
+     │     review_buylist → AI-PA-INT · get_vehicle_status → AI-VEH
+     ├─ LlmEngine.verbalise(intent + results)    :ml:llm — the template verbaliser, offline (P-04)
+     │     ⇡ §19.4's context pack: no ledger, no merchant list, not even the question
+     └─ ChatEngine.compose()
+           GuardrailEngine.verify(draft, allowlist built from the tool figures)   (AI-ARC-004)
+             Pass → the words, their figures and citations
+             else → GUARDRAIL_BLOCKED: no words, **and no figures** for a screen to reassemble
+   → chat_message                                       kept, never backed up, hard deleted (CHT-004)
+  ⇣ the answer, the model that wrote it, the rules behind its figures — or which refusal it was
+```
+
 ### 2.1 · The dashboard's headline figure (issue 5.2)
 
 Shape C again, but it is the **first read in the app assembled from other repositories** rather than

@@ -80,6 +80,7 @@ include(":domain:engines:guardrail") // AI-ARC-004 AI-GRD — no unverified figu
 include(":domain:engines:purchase") // §13 AI-PA — can I afford this? the verdict and its trace
 include(":domain:engines:simulator") // §36/§40.2 AI-SIM — prepay vs invest, and which debt first
 include(":domain:engines:vehicle")   // §12 AI-VEH — when the next service falls due, and what it will cost
+include(":domain:engines:chat")      // §19 AI-CHAT — intent -> registry tools -> a guardrailed reply
 include(":domain:usecase")
 
 // :data:*                  the ONLY DAO/network touchers (ARC-005)
@@ -102,6 +103,7 @@ include(":feature:settings")     // FR-SET-001 — income, consents and the app 
 include(":feature:onboarding")
 include(":feature:transactions")
 include(":feature:vehicle")      // §12 AI-VEH — the vehicles, when each is due and what it will cost
+include(":feature:chat")         // §19 AI-CHAT — ask about your own money, in words
 
 // :sync:*                  E2EE backup/restore
 include(":sync:backup")

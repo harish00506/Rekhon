@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Why:  §21.6 — every user-visible string lives here. That includes the assistant's refusals: an
+        engine that wrote "I can't do that" would be writing UI text in the wrong layer, and one
+        that could not be translated (issue 10.8).
+  What: §19's chat screen (issue 10.5).
+  Changelog: 2026-09-26 — Created for issue 10.5.
+-->
+<resources>
+    <string name="chat_title">Ask your CFO</string>
+    <string name="chat_intro">Ask about your own money. Every figure comes from an engine in this app — the assistant only puts it into words, and anything it cannot back up is not shown.</string>
+    <string name="chat_input_label">Ask something</string>
+    <string name="chat_send">Ask</string>
+    <string name="chat_clear">Forget this conversation</string>
+    <string name="chat_empty">Nothing asked yet. Try one of these.</string>
+    <string name="chat_you">You asked</string>
+
+    <string name="chat_refusal_out_of_scope">I can\'t help with that one — no stock tips, tax filing or legal advice. Here is what I can do.</string>
+    <string name="chat_refusal_not_understood">I did not follow that. Try one of these.</string>
+    <string name="chat_refusal_no_data">I do not have enough recorded yet to answer that honestly.</string>
+    <string name="chat_refusal_no_model">The assistant is not available right now, so I would rather say nothing than guess.</string>
+    <string name="chat_refusal_guardrail">I had an answer, but it contained a figure I could not trace to an engine — so I did not show it.</string>
+
+    <string name="chat_chip_spend">Where did my money go?</string>
+    <string name="chat_chip_balance">What is my balance?</string>
+    <string name="chat_chip_forecast">Will I run out in 90 days?</string>
+    <string name="chat_chip_budget">Am I on budget?</string>
+    <string name="chat_chip_goals">What am I saving for?</string>
+    <string name="chat_chip_afford">Can I afford this?</string>
+    <string name="chat_chip_health">How am I doing?</string>
+    <string name="chat_chip_debt">Prepay or invest?</string>
+    <string name="chat_chip_buylist">What is on my buy list?</string>
+    <string name="chat_chip_vehicle">When is the service due?</string>
+
+    <string name="chat_evidence">From %1$s · %2$s</string>
+    <string name="chat_evidence_checked">Checked against %1$s</string>
+    <plurals name="chat_figures">
+        <item quantity="one">%d engine figure</item>
+        <item quantity="other">%d engine figures</item>
+    </plurals>
+    <string name="chat_nothing_moved">The assistant reads and explains. It never moves money.</string>
+    <string name="chat_back">Back</string>
+</resources>

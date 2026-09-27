@@ -1549,6 +1549,29 @@ internal object Migrations {
         )
     }
 
+    /**
+     * 27 → 28: the assistant's conversation (issue 10.5; §19, CHT-004).
+     *
+     * Why:  §19 keeps conversations on the device, deletable, and out of backups. Two of those
+     *       three are decided here: the table has **no tombstone column**, because a conversation
+     *       the user asked to forget is hard deleted, and it is the one profile-scoped table the
+     *       archive skips by design.
+     * Result: `chat_message` and its indices. Input: [db]. Output: none.
+     */
+    val MIGRATION_27_28 =
+        object : Migration(VERSION_27, VERSION_28) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(CHAT_MESSAGE_TABLE)
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_chat_message_profile_id` ON `chat_message` (`profile_id`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_chat_message_profile_id_asked_at_utc_millis` " +
+                        "ON `chat_message` (`profile_id`, `asked_at_utc_millis`)",
+                )
+            }
+        }
+
     /** Every migration, in order, for `CfoDatabaseFactory` to register. */
     val ALL: Array<Migration> =
         arrayOf(
@@ -1578,6 +1601,7 @@ internal object Migrations {
             MIGRATION_24_25,
             MIGRATION_25_26,
             MIGRATION_26_27,
+            MIGRATION_27_28,
         )
 
     /**
@@ -1697,6 +1721,9 @@ internal object Migrations {
     /** Issue 10.4: the vehicles and their history. */
     private const val VERSION_27 = 27
 
+    /** Issue 10.5: the assistant's conversation. */
+    private const val VERSION_28 = 28
+
     /**
      * `wishlist_item`'s columns (issue 10.2).
      * Held as a constant for the reason [PURCHASE_TRACE_TABLE] is: the DDL inside the method would
@@ -1731,6 +1758,22 @@ internal object Migrations {
             "`vehicle_class` TEXT NOT NULL, " +
             "`account_id` TEXT, " +
             "`deleted_at_utc_millis` INTEGER, " +
+            "`created_at_utc_millis` INTEGER NOT NULL, " +
+            "`updated_at_utc_millis` INTEGER NOT NULL, " +
+            "PRIMARY KEY(`id`))"
+
+    /** `chat_message`'s columns (issue 10.5). No tombstone: CHT-004's delete is a real delete. */
+    private const val CHAT_MESSAGE_TABLE =
+        "CREATE TABLE IF NOT EXISTS `chat_message` (" +
+            "`id` TEXT NOT NULL, " +
+            "`profile_id` TEXT NOT NULL, " +
+            "`question` TEXT NOT NULL, " +
+            "`answer` TEXT NOT NULL, " +
+            "`intent` TEXT, " +
+            "`refusal` TEXT, " +
+            "`model_id` TEXT NOT NULL, " +
+            "`citations` TEXT NOT NULL, " +
+            "`asked_at_utc_millis` INTEGER NOT NULL, " +
             "`created_at_utc_millis` INTEGER NOT NULL, " +
             "`updated_at_utc_millis` INTEGER NOT NULL, " +
             "PRIMARY KEY(`id`))"

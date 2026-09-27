@@ -21,6 +21,7 @@
     2026-09-26 — Issue 10.2 (AI-PA-INT buy list + adaptive interview) merged to dev; schema 26.
     2026-09-26 — Issue 10.3 (AI-SIM what-if simulators) merged to dev; no schema change.
     2026-09-26 — Issue 10.4 (AI-VEH vehicle maintenance) merged to dev; schema 27.
+    2026-09-27 — Issue 10.5 (AI-CHAT assistant + tool registry) merged to dev; schema 28.
 -->
 
 # AI Personal CFO — Project Memory
@@ -32,15 +33,14 @@
 
 ## Current state
 
-- **Version:** `0.10.3` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v27** (10.4's four vehicle tables).
+- **Version:** `0.10.4` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v28** (10.5's `chat_message`).
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
   forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
   feed), 9.6 (the notification policy) and 9.7 (the numeric guardrail) shipped — **Epic 9 is
   complete**. **Epic 10 is open**: 10.1 (the Purchase Advisor), 10.2 (the buy list),
-  10.3 (the what-if simulators) and 10.4 (vehicle maintenance) shipped; 10.5 (the on-device chat
-  assistant) is next, and the chat issues (10.5/10.6) inherit AI-GRD's ladder rather than inventing
-  one.
-- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7 and 10.1–10.4 are merged to `dev`**
+  10.3 (the what-if simulators), 10.4 (vehicle maintenance) and 10.5 (the chat assistant) shipped;
+  **10.6 (the guardrail eval) is next**, and it now has something to evaluate.
+- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7 and 10.1–10.5 are merged to `dev`**
   ([8.1 tracker](issues/8.1-e2ee-backup-argon2id-aes-256-gcm-tracker.md), ADR-0039;
   [8.2 tracker](issues/8.2-restore-on-fresh-device-tracker.md), ADR-0040;
   [8.3 tracker](issues/8.3-backup-restore-drill-tracker.md), ADR-0041;
@@ -54,7 +54,8 @@
   [10.1 tracker](issues/10.1-purchase-advisor-ai-pa-trace-card-tracker.md), ADR-0049;
   [10.2 tracker](issues/10.2-buy-list-adaptive-interview-ai-pa-int-tracker.md), ADR-0050;
   [10.3 tracker](issues/10.3-simulators-prepay-vs-invest-payoff-tracker.md), ADR-0051;
-  [10.4 tracker](issues/10.4-vehicle-maintenance-prediction-ai-veh-tracker.md), ADR-0052).
+  [10.4 tracker](issues/10.4-vehicle-maintenance-prediction-ai-veh-tracker.md), ADR-0052;
+  [10.5 tracker](issues/10.5-chat-assistant-on-device-llm-tool-registry-tracker.md), ADR-0053).
 - **`origin/dev` is current again** — `23acb26` (issue 10.1), pushed 2026-09-25. Everything from
   7.4 through 10.1 that had been stranded locally is on the remote. Earlier sessions recorded the
   push as blocked for want of credentials; it works now, so check `git log origin/dev..dev` rather
@@ -67,6 +68,28 @@
   `dev` was two issues behind once and nobody noticed.
 - **The forecast exists now (9.2), but the goals still use the observed P50 surplus** (ADR-0035,
   ADR-0037). Switching `SurplusRepository` to `ForecastRepository` is ADR-0043's recorded follow-up.
+
+### What 10.5 changed that a future issue must know
+
+- **The model can never be the source of a figure, and that is structural.** `ChatEngine.compose`
+  builds AI-GRD's allowlist from the tool results and nothing else. Do not add a path that shows a
+  draft without composing it, and do not widen the allowlist to "things the screen also knows".
+- **`ChatToolExecutor` is the complete list of what chat may see.** Adding a capability means adding
+  an executor there — a reviewable act. Nine of the fifteen registered tools deliberately fail.
+- **`VerbalisationDraft` is §19.4's context pack.** When cloud assist is built, **that type is the
+  whole payload**. Keep it that way; do not pass the question or the ledger into it.
+- **Routing lives in `ai/skills/tool-registry.json` (1.1), not in a `when`.** Teaching a new phrase
+  is a JSON edit plus the mirror, held together by a drift test — and the module declares the file
+  as a test input, without which the gate silently does not run.
+- **The out-of-scope check runs before the intent match.** A test pins the order; do not "optimise"
+  it away.
+- **`chat_message` is excluded from the archive and has no tombstone** (CHT-004). Both exemptions
+  are argued in `ProfileSnapshot.EXCLUDED` and `MigrationSafetyTest`'s map. A new profile-scoped
+  table still needs the opposite: a tombstone, a wipe entry and a residue count.
+- **`:ml:llm` is an Android library on purpose** — its sentences are string resources, so 10.8's
+  Hindi pass reaches the assistant's own words.
+- **10.6 (the guardrail eval) now has something to evaluate**: feed it drafts and the tool results
+  they were built from.
 
 ### What 10.4 changed that a future issue must know
 
@@ -119,7 +142,7 @@
   where the deferred buy-timing watch and the thirty-day re-ask will read from.
 - ~~**10.3's simulators should reuse `PurchaseRequest`**~~ — they did not, and should not: a
   what-if is about a debt, not a purchase. AI-SIM takes its own inputs (ADR-0051).
-- **rules-kb is 1.23.0**; fourteen `*Rules.kt` mirrors restate it. The **vehicle KB is 1.1**, mirrored by `VehicleKnowledge.BUNDLED`.
+- **rules-kb is 1.23.0**; fourteen `*Rules.kt` mirrors restate it. The **vehicle KB is 1.1** (`VehicleKnowledge.BUNDLED`) and the **tool registry is 1.1** (`ToolRegistry.BUNDLED`).
 
 ### What 10.1 changed that a future issue must know
 

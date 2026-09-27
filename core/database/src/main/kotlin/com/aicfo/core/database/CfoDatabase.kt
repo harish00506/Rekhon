@@ -12,6 +12,7 @@ import com.aicfo.core.database.dao.BudgetReviewDao
 import com.aicfo.core.database.dao.BuyListDao
 import com.aicfo.core.database.dao.CardAlertDao
 import com.aicfo.core.database.dao.CategoryDao
+import com.aicfo.core.database.dao.ChatDao
 import com.aicfo.core.database.dao.CreditCardDao
 import com.aicfo.core.database.dao.DemoDao
 import com.aicfo.core.database.dao.GoalContributionDao
@@ -39,6 +40,7 @@ import com.aicfo.core.database.entity.BudgetEntity
 import com.aicfo.core.database.entity.BudgetReviewEntity
 import com.aicfo.core.database.entity.CardAlertEntity
 import com.aicfo.core.database.entity.CategoryEntity
+import com.aicfo.core.database.entity.ChatMessageEntity
 import com.aicfo.core.database.entity.CreditCardEntity
 import com.aicfo.core.database.entity.GoalContributionEntity
 import com.aicfo.core.database.entity.GoalEntity
@@ -119,6 +121,7 @@ import com.aicfo.core.database.entity.WishlistItemEntity
         VehicleOdometerEntity::class,
         VehicleServiceEntity::class,
         VehicleRenewalEntity::class,
+        ChatMessageEntity::class,
     ],
     version = CfoDatabase.VERSION,
     exportSchema = true,
@@ -206,6 +209,9 @@ abstract class CfoDatabase : RoomDatabase() {
     /** Result: the vehicles, their odometer readings, services and renewals (issue 10.4; §12). */
     abstract fun vehicleDao(): VehicleDao
 
+    /** Result: the assistant's conversation (issue 10.5; §19, CHT-004). */
+    abstract fun chatDao(): ChatDao
+
     /**
      * Input:  none. Output: the demo wipe DAO (issue 2.4, FR-ONB-004).
      *
@@ -260,9 +266,13 @@ abstract class CfoDatabase : RoomDatabase() {
          * (`vehicle`, `vehicle_odometer`, `vehicle_service`, `vehicle_renewal`. One row per
          * odometer reading rather than a "current odometer" column, because the readings **are**
          * the prediction: their median slope is what a mistyped one cannot move. A renewal keeps
-         * what it last cost, which the knowledge base cannot know and will not guess; §12).
+         * what it last cost, which the knowledge base cannot know and will not guess; §12) ·
+         * 28 — issue 10.5 (`chat_message`. The one profile-scoped table the archive deliberately
+         * skips: §19's CHT-004 keeps conversations on the device and out of backups, and its
+         * delete is hard rather than a tombstone, because a conversation the user asked to forget
+         * must actually be gone; §19).
          */
-        const val VERSION = 27
+        const val VERSION = 28
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"

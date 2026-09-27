@@ -1790,6 +1790,38 @@ class MigrationRoundTripTest {
     }
 
     /**
+     * 27 → 28: the assistant's conversation (issue 10.5; §19, CHT-004).
+     *
+     * Why:  two promises are storage promises here. The table carries **no tombstone column**,
+     *       because a conversation the user asked to forget is hard deleted — so this asserts the
+     *       delete actually removes the row rather than hiding it. And the words survive an
+     *       upgrade, because a conversation that silently emptied itself on a version bump would
+     *       be a broken promise nobody would notice until they went looking for an old answer.
+     * Result: the table exists, keeps its row across the upgrade, and a delete leaves nothing.
+     */
+    @Test
+    fun migrate27To28_keepsAConversationAndForgetsItCompletely() {
+        helper.createDatabase(TEST_DB, 27).close()
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 28, true, Migrations.MIGRATION_27_28)
+
+        migrated.execSQL(chatInsert())
+        migrated.query("SELECT question, answer, model_id FROM chat_message WHERE id = 'chat:1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("what is my balance?", cursor.getString(0))
+            assertEquals("You have ₹9,823.00 available.", cursor.getString(1))
+            assertEquals("the model that wrote it is kept (P-02)", "template", cursor.getString(2))
+        }
+
+        migrated.execSQL("DELETE FROM chat_message WHERE profile_id = 'local'")
+
+        migrated.query("SELECT COUNT(*) FROM chat_message").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("a tombstone is not forgetting (CHT-004)", 0, cursor.getInt(0))
+        }
+    }
+
+    /**
      * Result: true when [sql] was refused by a constraint. Input: [db]; [sql]. Output: [Boolean].
      */
     private fun refuses(
@@ -1802,6 +1834,13 @@ class MigrationRoundTripTest {
         } catch (expected: SQLiteConstraintException) {
             true
         }
+
+    /** One exchange's SQL. */
+    private fun chatInsert(): String =
+        "INSERT INTO chat_message (id, profile_id, question, answer, intent, refusal, model_id, " +
+            "citations, asked_at_utc_millis, created_at_utc_millis, updated_at_utc_millis) " +
+            "VALUES ('chat:1', 'local', 'what is my balance?', 'You have ₹9,823.00 available.', " +
+            "'BALANCE', NULL, 'template', 'RULE-STS', 1790000000000, 1790000000000, 1790000000000)"
 
     /** One vehicle's SQL. */
     private fun vehicleInsert(): String =

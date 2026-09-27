@@ -223,4 +223,13 @@ sealed interface CfoRoute {
      */
     @Serializable
     data object Vehicles : CfoRoute
+
+    /**
+     * §19's assistant (issue 10.5).
+     *
+     * **No arguments**: the conversation is the profile's, and a half-typed question is the
+     * screen's state rather than a place to navigate to.
+     */
+    @Serializable
+    data object Chat : CfoRoute
 }
