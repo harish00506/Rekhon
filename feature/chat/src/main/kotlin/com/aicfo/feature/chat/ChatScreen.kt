@@ -83,27 +83,43 @@ internal fun ChatContent(
                 )
             }
         }
-        OutlinedTextField(
-            value = uiState.typed,
-            onValueChange = { onEvent(ChatEvent.Typed(it)) },
-            label = { Text(stringResource(R.string.chat_input_label)) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        CfoButton(
-            text = stringResource(R.string.chat_send),
-            onClick = { onEvent(ChatEvent.Ask) },
-            enabled = uiState.canAsk,
-        )
-        if (uiState.turns.isNotEmpty()) {
-            CfoSecondaryButton(
-                text = stringResource(R.string.chat_clear),
-                onClick = { onEvent(ChatEvent.Clear) },
-            )
-        }
-        Text(stringResource(R.string.chat_nothing_moved), style = MaterialTheme.typography.labelSmall)
-        CfoSecondaryButton(text = stringResource(R.string.chat_back), onClick = onDone)
+        AskBox(uiState, onEvent, onDone)
     }
+}
+
+/**
+ * The question box, the clear, and the standing promise underneath it.
+ * Why:    split from the conversation above it because the two change for different reasons — and
+ *         because the promise that the assistant never moves money belongs on screen, not in a
+ *         help page nobody opens (P-07).
+ * Result: the footer. Input: [uiState]; [onEvent]; [onDone]. Output: none.
+ */
+@Composable
+private fun AskBox(
+    uiState: ChatUiState,
+    onEvent: (ChatEvent) -> Unit,
+    onDone: () -> Unit,
+) {
+    OutlinedTextField(
+        value = uiState.typed,
+        onValueChange = { onEvent(ChatEvent.Typed(it)) },
+        label = { Text(stringResource(R.string.chat_input_label)) },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    CfoButton(
+        text = stringResource(R.string.chat_send),
+        onClick = { onEvent(ChatEvent.Ask) },
+        enabled = uiState.canAsk,
+    )
+    if (uiState.turns.isNotEmpty()) {
+        CfoSecondaryButton(
+            text = stringResource(R.string.chat_clear),
+            onClick = { onEvent(ChatEvent.Clear) },
+        )
+    }
+    Text(stringResource(R.string.chat_nothing_moved), style = MaterialTheme.typography.labelSmall)
+    CfoSecondaryButton(text = stringResource(R.string.chat_back), onClick = onDone)
 }
 
 /**

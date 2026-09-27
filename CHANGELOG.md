@@ -11,6 +11,41 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The Purchase Advisor, buy list, what-if simulators, vehicle prediction, on-device chat + guardrail
 > eval, market signals, and localisation.
 
+### [0.10.4] — Issue 10.5: The assistant, and the tools it may use (AI-CHAT)  (2026-09-27)
+
+- **Implemented:** `:domain:engines:chat` (**AI-CHAT** 1.0), `:ml:llm` and the "Ask your CFO"
+  screen — §19's copilot over your own money, behind the numeric guardrail (**ADR-0053**).
+  - **Ask about your own money in plain words.** "What is my balance?", "Will I run out in 90
+    days?", "How am I doing?", "What is on my buy list?", "When is the service due?" — free text or
+    a tap on a suggested question.
+  - **The assistant cannot make a number up.** It is never the source of a figure: the app looks
+    the figure up with a tool, hands the assistant only that, and then checks every number in the
+    reply against it. If anything does not match, **the reply is not shown** — and the screen says
+    that is what happened, rather than apologising vaguely.
+  - **It refuses what it should.** No stock tips, no tax filing, no legal advice — and a question
+    that mixes one of those with a real one is refused **without reading any of your data**.
+  - **It says where every answer came from:** which model wrote the words, and which rules produced
+    the figures.
+  - **It works in airplane mode**, on any phone. The assistant that ships is a deterministic
+    verbaliser rather than a neural model — the same answer from the same figures, every time.
+  - **Your conversation stays on the phone**, is never included in a backup, and "Forget this
+    conversation" actually deletes it.
+- **Schema 28:** `chat_message` — the one table deliberately left out of backups, and the only one
+  with no tombstone, because a conversation you asked to forget should be gone.
+- **The routing is data, not code:** which words reach which tool, how many tools one question may
+  use, and what counts as out of scope are all rows in the tool registry (1.0 → **1.1**). The
+  registry also gained `get_vehicle_status`, so "when is the car service due?" now reaches the
+  vehicle engine instead of the 90-day forecast.
+- **Not yet** (ADR-0053): a neural on-device model (the port, the prompt and the guardrail are all
+  in place — what is missing is the weights); cloud assist (the payload type exists, nothing sends
+  it, and nothing leaves the device); nine of the fifteen registered tools, which say so rather than
+  approximating; follow-up questions that remember the last one.
+- **Tests:** 17 behaviour tests, 6 identities × 300 seeded cases, a golden file over fourteen
+  questions from an independent Python oracle, 9 registry-drift tests, 7 verbaliser tests, 10
+  pipeline tests and 17 UI tests. Six deliberate breaks were each watched go red — including
+  removing the guardrail call and collapsing the figure kinds so a transaction count could be
+  stated as rupees.
+
 ### [0.10.3] — Issue 10.4: Vehicle maintenance prediction (AI-VEH)  (2026-09-26)
 
 - **Implemented:** `:domain:engines:vehicle` (**AI-VEH** 1.0) and the "Your vehicles" screen over it

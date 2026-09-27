@@ -89,7 +89,7 @@ data class ToolRegistry(
                         ),
                         IntentRoute(
                             ChatIntent.VEHICLE,
-                            listOf(ToolName.GET_FORECAST),
+                            listOf(ToolName.GET_VEHICLE_STATUS),
                             listOf("car", "bike", "scooter", "service due", "vehicle"),
                             listOf(ChatIntent.FORECAST, ChatIntent.SPEND),
                         ),
@@ -240,6 +240,9 @@ enum class ToolName(
 
     /** The buy list with its interview state. */
     REVIEW_BUYLIST("review_buylist", ToolAccess.READ),
+
+    /** When a vehicle is next due, and what it will cost (§12, AI-VEH — issue 10.5 added it). */
+    GET_VEHICLE_STATUS("get_vehicle_status", ToolAccess.READ),
 
     /** FX conversion at cached reference rates. */
     CONVERT_CURRENCY("convert_currency", ToolAccess.READ),

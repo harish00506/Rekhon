@@ -9,7 +9,7 @@ Can I afford a phone for 45000? -> intent=AFFORD tools=purchase_check chips=BUYL
 How am I doing financially? -> intent=HEALTH tools=get_health_score chips=BUDGET|FORECAST refusal=-
 Should I prepay the loan or invest instead? -> intent=DEBT tools=simulate chips=BALANCE|HEALTH refusal=-
 What is on my buy list? -> intent=BUYLIST tools=review_buylist chips=AFFORD|SPEND refusal=-
-When is the car service due? -> intent=VEHICLE tools=get_forecast chips=FORECAST|SPEND refusal=-
+When is the car service due? -> intent=VEHICLE tools=get_vehicle_status chips=FORECAST|SPEND refusal=-
 My budget, my goals, my balance, my score and my spend -> intent=GOALS tools=get_goals|query_spend chips=FORECAST|AFFORD refusal=-
 Should I buy Reliance today? -> intent=- tools=- chips=HEALTH|AFFORD refusal=OUT_OF_SCOPE
 Can I afford to file my taxes with a lawyer? -> intent=- tools=- chips=HEALTH|AFFORD refusal=OUT_OF_SCOPE

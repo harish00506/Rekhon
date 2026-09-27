@@ -8,6 +8,7 @@
     "version": "1.1",
     "changelog": [
       "2026-07-17 — Created from SRS v1.7 §19.2 tool registry.",
+      "2026-09-26 — Issue 10.5 added `get_vehicle_status`: issue 10.4 shipped AI-VEH, and the VEHICLE intent had been routed at `get_forecast` — which answers a different question, so 'when is the car service due?' would have come back with the ninety-day low. A tool the app can actually serve is a registry change, not a code change.",
       "2026-09-26 — Issue 10.5 built AI-CHAT against this file. The `intents` block below is new: which words route to which tool, which tools each intent needs, and what to offer next. It was going to be a `when` in an engine, and a `when` is not a thing a reader can audit or a translator can extend. `routing` holds the two numbers the planner needs. No tool, parameter or return changed. See ADR-0053."
     ],
     "behaviour_rules": {
@@ -91,7 +92,7 @@
     },
     {
       "id": "VEHICLE",
-      "tools": ["get_forecast"],
+      "tools": ["get_vehicle_status"],
       "keywords": ["car", "bike", "scooter", "service due", "vehicle"],
       "chips": ["FORECAST", "SPEND"]
     }
@@ -245,6 +246,15 @@
       "parameters": {},
       "returns": { "items": "array<{item, price_minor, verdict, interview_progress}>" },
       "srs": "§19.2, §13.3"
+    },
+    {
+      "name": "get_vehicle_status",
+      "access": "read",
+      "engine": "AI-VEH (L4)",
+      "description": "When each vehicle's next service is due, and what it and any recorded renewals will cost.",
+      "parameters": { "vehicleId": { "type": "string", "required": false } },
+      "returns": { "cost_minor": "int", "due_iso_date": "date", "km_per_month": "int" },
+      "srs": "§19.2, §12"
     },
     {
       "name": "convert_currency",

@@ -26,6 +26,7 @@ import com.aicfo.domain.engines.chat.ToolFigure
 import com.aicfo.domain.engines.chat.ToolName
 import com.aicfo.domain.engines.chat.ToolResult
 import com.aicfo.domain.engines.chat.VerbalisationDraft
+import com.aicfo.domain.engines.healthscore.HealthRules
 import com.aicfo.domain.engines.safetospend.SafeToSpendComponent
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -161,7 +162,7 @@ internal class PipelineChatRepository(
         val value =
             when (reply) {
                 is Ok -> reply.value
-                is Err -> throw IllegalStateException("compose refused: ${reply.error}")
+                is Err -> error("compose refused: ${reply.error}")
             }
         return store(request, value)
     }
@@ -283,6 +284,7 @@ internal class RepositoryChatToolExecutor(
             ToolName.GET_HEALTH_SCORE -> health()
             ToolName.REVIEW_BUYLIST -> buyList()
             ToolName.QUERY_SPEND -> spend()
+            ToolName.GET_VEHICLE_STATUS -> vehicle()
             else -> ToolResult(call.tool, failed = true)
         }
 
@@ -331,7 +333,15 @@ internal class RepositoryChatToolExecutor(
                 )
         }
 
-    /** Result: the health score, from AI-FHS. Input: none. Output: [ToolResult]. */
+    /**
+     * The health score, from AI-FHS.
+     * Why:    it publishes **the top of the scale as well as the score**. "988 out of 1000" contains
+     *         two claims, and the second one is as much an engine's figure as the first — the
+     *         guardrail blocked the sentence on a device until the tool started returning it, which
+     *         is the gate doing exactly what it exists for (AI-ARC-004).
+     * Result: the score and the scale, or a failed result before there is one.
+     * Input:  none. Output: [ToolResult].
+     */
     private suspend fun health(): ToolResult {
         val score = (health.observeHealthScore().first() as? Ok)?.value?.score
         return if (score == null) {
@@ -339,7 +349,11 @@ internal class RepositoryChatToolExecutor(
         } else {
             ToolResult(
                 tool = ToolName.GET_HEALTH_SCORE,
-                figures = listOf(ToolFigure("score", FigureKind.COUNT, number = score)),
+                figures =
+                    listOf(
+                        ToolFigure("score", FigureKind.COUNT, number = score),
+                        ToolFigure("scoreMax", FigureKind.COUNT, number = HealthRules().scoreMax),
+                    ),
                 citations = listOf("RULE-FHS-PILLARS"),
             )
         }

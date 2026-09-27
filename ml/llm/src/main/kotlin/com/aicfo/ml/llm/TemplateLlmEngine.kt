@@ -70,14 +70,46 @@ class TemplateLlmEngine(
         return if (arguments.any { it == null }) {
             Err(AppError.Validation(FIELD_FIGURE))
         } else {
-            Ok(context.getString(template.resource, *arguments.toTypedArray()))
+            // The spread copies an array of one or two elements, which is the price of
+            // `getString`'s vararg — and the only alternative is a `when` over slot counts that
+            // would have to grow every time a sentence does.
+            @Suppress("SpreadOperator")
+            Ok(render(template, figures, arguments.toTypedArray<Any?>()))
         }
     }
 
-    /** One intent's sentence and the figure keys that fill it. */
+    /**
+     * Result: the sentence, pluralised on the slot that counts things (§21.6's ICU rule).
+     * Why:    "1 transactions" is the kind of wrongness that makes everything around it look
+     *         careless — and a count in a sentence is exactly what `plurals` exists for.
+     * Input:  [template]; [figures] — in slot order; [arguments] — already formatted.
+     * Output: [String].
+     */
+    @Suppress("SpreadOperator") // one or two elements; the price of getString's vararg
+    private fun render(
+        template: Template,
+        figures: List<ToolFigure>,
+        arguments: Array<Any?>,
+    ): String {
+        val quantity = template.quantitySlot?.let { figures[it].number }
+        return if (quantity == null) {
+            context.getString(template.resource, *arguments)
+        } else {
+            context.resources.getQuantityString(template.resource, quantity, *arguments)
+        }
+    }
+
+    /**
+     * One intent's sentence and the figure keys that fill it.
+     * Input:  [resource] — a string, or a plurals resource when [quantitySlot] is set;
+     *         [slots] — the figure keys, in the order the sentence uses them;
+     *         [quantitySlot] — which slot counts things, for the plural.
+     * Output: an immutable value.
+     */
     private data class Template(
         val resource: Int,
         val slots: List<String>,
+        val quantitySlot: Int? = null,
     )
 
     private companion object {
@@ -91,15 +123,15 @@ class TemplateLlmEngine(
          */
         val TEMPLATES =
             mapOf(
-                ChatIntent.SPEND to Template(R.string.llm_spend, listOf("total", "count")),
+                ChatIntent.SPEND to Template(R.plurals.llm_spend, listOf("total", "count"), quantitySlot = 1),
                 ChatIntent.BALANCE to Template(R.string.llm_balance, listOf("liquid")),
                 ChatIntent.FORECAST to Template(R.string.llm_forecast, listOf("lowest", "lowestOn")),
                 ChatIntent.BUDGET to Template(R.string.llm_budget, listOf("spent")),
                 ChatIntent.GOALS to Template(R.string.llm_goals, listOf("required")),
                 ChatIntent.AFFORD to Template(R.string.llm_afford, listOf("leftAfter")),
-                ChatIntent.HEALTH to Template(R.string.llm_health, listOf("score")),
+                ChatIntent.HEALTH to Template(R.string.llm_health, listOf("score", "scoreMax")),
                 ChatIntent.DEBT to Template(R.string.llm_debt, listOf("saved")),
-                ChatIntent.BUYLIST to Template(R.string.llm_buylist, listOf("count")),
+                ChatIntent.BUYLIST to Template(R.plurals.llm_buylist, listOf("count"), quantitySlot = 0),
                 ChatIntent.VEHICLE to Template(R.string.llm_vehicle, listOf("cost", "dueOn")),
             )
     }

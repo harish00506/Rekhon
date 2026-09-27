@@ -51,6 +51,22 @@ class TemplateLlmEngineTest {
     }
 
     @Test
+    fun `one transaction is not 1 transactions`() {
+        // §21.6's ICU rule reaches the assistant too: a count in a sentence needs a plural, and
+        // "1 transactions" is the kind of wrongness that makes everything around it look careless.
+        val text =
+            engine.verbalise(
+                draft(
+                    ChatIntent.SPEND,
+                    ToolFigure("total", FigureKind.AMOUNT, amount = Money(1_200_00L)),
+                    ToolFigure("count", FigureKind.COUNT, number = 1),
+                ),
+            ).expectOk()
+
+        assertEquals("You spent ₹1,200.00 in that period, across 1 transaction.", text)
+    }
+
+    @Test
     fun `a missing figure produces the sentence that claims nothing`() {
         // Writing around the gap would produce a half-answer that reads like a whole one.
         val text =
@@ -96,11 +112,18 @@ class TemplateLlmEngineTest {
 
     @Test
     fun `the same figures produce the same words every time`() {
-        val first = engine.verbalise(draft(ChatIntent.HEALTH, ToolFigure("score", FigureKind.COUNT, number = 988)))
-        val second = engine.verbalise(draft(ChatIntent.HEALTH, ToolFigure("score", FigureKind.COUNT, number = 988)))
+        // The scale is slotted in from a tool figure too, not written into the sentence: a device
+        // run found the guardrail blocking "988 / 1000" because nothing had produced the 1000.
+        val health =
+            listOf(
+                ToolFigure("score", FigureKind.COUNT, number = 988),
+                ToolFigure("scoreMax", FigureKind.COUNT, number = 1_000),
+            )
+        val first = engine.verbalise(draft(ChatIntent.HEALTH, *health.toTypedArray()))
+        val second = engine.verbalise(draft(ChatIntent.HEALTH, *health.toTypedArray()))
 
         assertEquals(first.expectOk(), second.expectOk())
-        assertEquals("Your financial health score is 988 out of 1000.", first.expectOk())
+        assertEquals("Your financial health score is 988 / 1000.", first.expectOk())
     }
 
     private fun draft(

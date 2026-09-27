@@ -9,15 +9,21 @@
   Changelog: 2026-09-26 — Created for issue 10.5.
 -->
 <resources>
-    <string name="llm_spend">You spent %1$s in that period, across %2$d transactions.</string>
+    <plurals name="llm_spend">
+        <item quantity="one">You spent %1$s in that period, across %2$d transaction.</item>
+        <item quantity="other">You spent %1$s in that period, across %2$d transactions.</item>
+    </plurals>
     <string name="llm_balance">You have %1$s available right now.</string>
     <string name="llm_forecast">Your lowest point in the next 90 days is %1$s, on %2$s.</string>
     <string name="llm_budget">You have spent %1$s of your budgets so far this month.</string>
     <string name="llm_goals">Your goals need %1$s a month between them.</string>
     <string name="llm_afford">That would leave you with %1$s.</string>
-    <string name="llm_health">Your financial health score is %1$d out of 1000.</string>
+    <string name="llm_health">Your financial health score is %1$d / %2$d.</string>
     <string name="llm_debt">Clearing the dearest debt first saves %1$s in interest.</string>
-    <string name="llm_buylist">You have %1$d things on your buy list.</string>
+    <plurals name="llm_buylist">
+        <item quantity="one">You have %1$d thing on your buy list.</item>
+        <item quantity="other">You have %1$d things on your buy list.</item>
+    </plurals>
     <string name="llm_vehicle">Your vehicle costs %1$s before the next service, due %2$s.</string>
     <string name="llm_nothing">I could not find anything to answer that with yet.</string>
 </resources>
