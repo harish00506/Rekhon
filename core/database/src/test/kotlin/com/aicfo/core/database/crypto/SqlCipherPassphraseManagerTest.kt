@@ -109,15 +109,18 @@ class SqlCipherPassphraseManagerTest {
     // --- rotation ------------------------------------------------------------------------------
 
     /**
-     * Input:  a rotation after first run.
+     * Input:  a rotation whose re-key succeeds, after first run.
      * Output: asserts a different passphrase is issued and persisted, and that later opens return
      *         the new one — a rotation that did not stick would leave the DB keyed to a passphrase
      *         nothing can produce again.
+     *
+     * The ordering and the crash windows are [PassphraseRotationTest]'s subject (issue 11.1); this
+     * is the ordinary path, kept here beside first-run generation and reuse.
      */
     @Test
     fun `rotate issues and persists a new passphrase`() {
         val original = manager.getOrCreate().getOrNull()!!
-        val rotated = manager.rotate().getOrNull()!!
+        val rotated = manager.rotate { Ok(Unit) }.getOrNull()!!
         assertNotEquals(original.toList(), rotated.toList())
         assertArrayEquals(rotated, manager.getOrCreate().getOrNull())
     }
@@ -129,18 +132,64 @@ class SqlCipherPassphraseManagerTest {
      */
     @Test
     fun `rotate reports the previous passphrase so the database can be re-keyed`() {
-        val original = manager.getOrCreate().getOrNull()!!
-        val change = manager.rotateWithPrevious().getOrNull()!!
-        assertArrayEquals(original, change.previous)
-        assertNotEquals(original.toList(), change.current.toList())
+        val original = manager.getOrCreate().getOrNull()!!.copyOf()
+        var seen: List<Byte>? = null
+        var minted: List<Byte>? = null
+
+        // Read inside the callback: that is the only moment the old key is still live, because a
+        // successful rotation zeroes it (issue 11.1's security review).
+        manager.rotate { change ->
+            seen = change.previous.toList()
+            minted = change.current.toList()
+            Ok(Unit)
+        }
+
+        assertEquals(original.toList(), seen)
+        assertNotEquals(original.toList(), minted)
+    }
+
+    /**
+     * Input:  a rotation that succeeds.
+     * Output: asserts the superseded key is zeroed. It opens nothing from that moment on, so
+     *         leaving it in the heap is cost without benefit — the security review's finding.
+     */
+    @Test
+    fun `the old key stops existing once the new one is promoted`() {
+        manager.getOrCreate()
+        var previous: ByteArray? = null
+
+        manager.rotate { change ->
+            previous = change.previous
+            Ok(Unit)
+        }
+
+        assertArrayEquals(ByteArray(SqlCipherPassphraseManager.PASSPHRASE_BYTES), previous)
+    }
+
+    /**
+     * Input:  a rotation whose re-key fails.
+     * Output: asserts the old key is **not** zeroed — the file is still encrypted with it, and
+     *         wiping it here would lock the user out of their own database.
+     */
+    @Test
+    fun `a failed rotation leaves the old key intact, because the file still needs it`() {
+        val original = manager.getOrCreate().getOrNull()!!.copyOf()
+        var previous: ByteArray? = null
+
+        manager.rotate { change ->
+            previous = change.previous
+            Err(com.aicfo.core.common.AppError.Crypto("rekey_failed"))
+        }
+
+        assertArrayEquals(original, previous)
     }
 
     /** Input: rotation before any passphrase exists. Output: asserts it fails rather than guessing. */
     @Test
-    fun `rotate with previous fails when there is nothing to rotate`() {
+    fun `rotate fails when there is nothing to rotate`() {
         val result =
             SqlCipherPassphraseManager(InMemoryWrappedPassphraseStore(), aead, SecureRandom())
-                .rotateWithPrevious()
+                .rotate { Ok(Unit) }
         assertTrue(result is Err)
     }
 
@@ -187,12 +236,25 @@ class SqlCipherPassphraseManagerTest {
  *         fast and free of temp-directory cleanup.
  * Changelog: 2026-07-25 — Created for issue 1.6.
  */
-private class InMemoryWrappedPassphraseStore : WrappedPassphraseStore {
+internal class InMemoryWrappedPassphraseStore : WrappedPassphraseStore {
     private var bytes: ByteArray? = null
+    private var staged: ByteArray? = null
 
     override fun read() = Ok(bytes)
 
     override fun write(wrapped: ByteArray) = Ok(Unit).also { bytes = wrapped }
+
+    override fun readPending() = Ok(staged)
+
+    override fun writePending(wrapped: ByteArray) = Ok(Unit).also { staged = wrapped }
+
+    override fun promotePending() =
+        Ok(Unit).also {
+            bytes = staged
+            staged = null
+        }
+
+    override fun clearPending() = Ok(Unit).also { staged = null }
 
     fun hasWrappedPassphrase() = bytes != null
 
@@ -207,6 +269,14 @@ private class FailingStore : WrappedPassphraseStore {
     override fun read() = Err(com.aicfo.core.common.AppError.Storage("IOException"))
 
     override fun write(wrapped: ByteArray) = Err(com.aicfo.core.common.AppError.Storage("IOException"))
+
+    override fun readPending() = Err(com.aicfo.core.common.AppError.Storage("IOException"))
+
+    override fun writePending(wrapped: ByteArray) = Err(com.aicfo.core.common.AppError.Storage("IOException"))
+
+    override fun promotePending() = Err(com.aicfo.core.common.AppError.Storage("IOException"))
+
+    override fun clearPending() = Err(com.aicfo.core.common.AppError.Storage("IOException"))
 }
 
 /**
@@ -217,7 +287,7 @@ private class FailingStore : WrappedPassphraseStore {
  *         all the orchestration tests need.
  * Changelog: 2026-07-25 — Created for issue 1.6.
  */
-private class ReversibleFakeAead : Aead {
+internal class ReversibleFakeAead : Aead {
     var encryptCalls = 0
     var lastAssociatedData: ByteArray? = null
     private val mask: Byte = 0x5A

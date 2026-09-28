@@ -21,12 +21,14 @@ import com.google.crypto.tink.integration.android.AndroidKeysetManager
  *       branches, which is the point of putting every decision in the manager instead.
  * Changelog: 2026-07-25 — Created for issue 1.6.
  *
- * **On StrongBox:** the `keystore-crypto` skill asks for StrongBox where available. Tink's Android
- * integration does not expose a StrongBox flag, and selecting it would mean building the
- * `KeyGenParameterSpec` by hand with `javax.crypto` — which SEC-003 forbids outright, and which
- * would be a far worse trade: hand-rolled crypto is the exact failure the rule exists to prevent.
- * The master key is therefore TEE-backed via the standard Keystore provider, StrongBox where the
- * platform chooses it. Revisit if Tink adds a first-class option.
+ * **On StrongBox (corrected at issue 11.1, ADR-0057):** this note used to say that asking for
+ * StrongBox would mean hand-rolled crypto and was therefore forbidden by SEC-003. That was a
+ * misreading. Asking the platform's own `KeyGenerator` for a key — which is all
+ * [KeystoreMasterKey] does — implements no cryptography at all; it is the same call Tink makes
+ * internally, with one builder flag that puts the key in a separate security chip. Tink still has
+ * no StrongBox option of its own, so the key is created at the alias **before** Tink looks for it,
+ * and Tink uses what it finds. Where StrongBox is absent or refuses, the key is TEE-backed exactly
+ * as it was.
  */
 object KeystoreAeadFactory {
     /** Keyset name inside the preferences file; changing it orphans the existing key. */
@@ -36,7 +38,10 @@ object KeystoreAeadFactory {
     private const val KEYSET_PREF_FILE = "cfo_db_keyset_prefs"
 
     /** The Keystore alias of the master key that encrypts the keyset. Never exported. */
-    private const val MASTER_KEY_URI = "android-keystore://cfo_db_master_key"
+    private const val MASTER_KEY_ALIAS = "cfo_db_master_key"
+
+    /** The same alias, in the form Tink's KMS client expects. */
+    private const val MASTER_KEY_URI = "android-keystore://$MASTER_KEY_ALIAS"
 
     /**
      * Creates (or loads) the Keystore-backed AEAD.
@@ -53,6 +58,10 @@ object KeystoreAeadFactory {
      */
     fun create(context: Context): Aead {
         AeadConfig.register()
+        // Issue 11.1: before Tink looks for the master key, make sure the strongest one this
+        // device can hold is already there. On an installation that already has a key this is a
+        // single `containsAlias` and nothing else — see MasterKeyPolicy for why that matters.
+        KeystoreMasterKey.ensure(context.applicationContext, MASTER_KEY_ALIAS)
         return AndroidKeysetManager
             .Builder()
             .withSharedPref(context.applicationContext, KEYSET_NAME, KEYSET_PREF_FILE)

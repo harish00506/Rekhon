@@ -643,6 +643,29 @@ DashboardScreen → "Good day to invest?" → OpportunityScreen
     how old the price is · and that the screen never buys anything
 ```
 
+### 2.20 · The key that opens the database (issue 11.1)
+
+**Below everything.** Nothing in the app reads a row until this path has produced a passphrase, and
+it is the one path whose failure must never look like an empty database.
+
+```
+CfoDatabaseFactory.open(context)
+└─ KeystoreAeadFactory.create
+│  └─ KeystoreMasterKey.ensure(alias)          MasterKeyPolicy: keep existing · StrongBox · Keystore
+│     └─ AndroidKeysetManager                  the keyset, encrypted by a key that never leaves the TEE
+└─ SqlCipherPassphraseManager.candidates()     current + (pending, only mid-rotation)
+   ├─ try current → Room + SQLCipher           forced open: a wrong key must surface here
+   ├─ else try pending                         the crash window of an interrupted rotation
+   └─ confirm(whichever opened)                promote the staged key, or discard it
+      ⇣ the losing candidate is zeroed
+
+CfoDatabaseFactory.rotateKey(context)          no CfoDatabase may be open
+└─ SqlCipherPassphraseManager.rotate { change ->
+   │   DatabaseRekeyer.rekey(file, change)     SQLCipher changePassword — PRAGMA rekey, done properly
+   │ }
+   ⇣ stage → re-key → promote, in that order, so both keys are on disk throughout
+```
+
 ### 2.19 · Which language the app speaks (issue 10.8)
 
 **Above everything, including the lock.** The language wraps the whole composition, so the PIN

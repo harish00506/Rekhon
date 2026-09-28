@@ -37,6 +37,38 @@ interface WrappedPassphraseStore {
      * Input:  [wrapped] — the ciphertext. Output: `Result<Unit, AppError>`.
      */
     fun write(wrapped: ByteArray): Result<Unit, AppError>
+
+    /**
+     * Reads the **staged** ciphertext — a key that has been minted but not yet promoted.
+     * Why:    a rotation is two writes that must agree, and a process can die between them
+     *         (issue 11.1). A second slot is what makes that survivable: both keys are on disk
+     *         for the length of the window, so the next open can simply try them in turn.
+     * Result: `Ok(bytes)`, `Ok(null)` when no rotation is in flight, or `Err(Storage)`.
+     * Input:  none. Output: `Result<ByteArray?, AppError>`.
+     */
+    fun readPending(): Result<ByteArray?, AppError>
+
+    /**
+     * Stages a ciphertext without disturbing the current one.
+     * Result: `Ok(Unit)` or `Err(Storage)`. Input: [wrapped]. Output: `Result<Unit, AppError>`.
+     */
+    fun writePending(wrapped: ByteArray): Result<Unit, AppError>
+
+    /**
+     * Makes the staged ciphertext the current one, in a single step.
+     * Why:    the last act of a rotation. It must not be able to leave *neither* in place, which
+     *         is why the file implementation is a rename rather than a delete and a write.
+     * Result: `Ok(Unit)` or `Err(Storage)`. Input: none. Output: `Result<Unit, AppError>`.
+     */
+    fun promotePending(): Result<Unit, AppError>
+
+    /**
+     * Discards the staged ciphertext.
+     * Why:    called when the re-key failed or never took effect. A staged key left behind is a
+     *         candidate that opens nothing, offered on every future open.
+     * Result: `Ok(Unit)`, including when there was nothing staged. Input: none. Output: `Result`.
+     */
+    fun clearPending(): Result<Unit, AppError>
 }
 
 /**
@@ -69,14 +101,55 @@ class FileWrappedPassphraseStore(
      * Input:  [wrapped] — the ciphertext to persist.
      * Output: `Ok(Unit)`, or `Err(Storage)` if the write or the move failed.
      */
-    override fun write(wrapped: ByteArray): Result<Unit, AppError> =
+    override fun write(wrapped: ByteArray): Result<Unit, AppError> = replace(file, wrapped)
+
+    /** Input: none. Output: the staged ciphertext, or `Ok(null)` when no rotation is in flight. */
+    override fun readPending(): Result<ByteArray?, AppError> =
+        if (!pendingFile.exists()) Ok(null) else runCatchingToResult { pendingFile.readBytes() }
+
+    /** Input: [wrapped] — the staged ciphertext. Output: `Ok(Unit)` or `Err(Storage)`. */
+    override fun writePending(wrapped: ByteArray): Result<Unit, AppError> = replace(pendingFile, wrapped)
+
+    /**
+     * Input:  none.
+     * Output: `Ok(Unit)`; `Err(Storage)` if the move failed or there was nothing staged.
+     * Why:    a rename, so the promotion cannot be interrupted between deleting one file and
+     *         writing the other — the state where *neither* key is on disk and the database is
+     *         gone for good.
+     */
+    override fun promotePending(): Result<Unit, AppError> =
         runCatchingToResult {
-            val staging = File(file.parentFile, file.name + ".tmp")
-            staging.writeBytes(wrapped)
-            if (!staging.renameTo(file)) {
-                // Windows and some filesystems refuse a rename onto an existing file.
+            if (!pendingFile.exists()) throw IOException("nothing staged to promote")
+            if (!pendingFile.renameTo(file)) {
                 file.delete()
-                if (!staging.renameTo(file)) {
+                if (!pendingFile.renameTo(file)) {
+                    throw IOException("could not promote the staged passphrase")
+                }
+            }
+        }
+
+    /** Input: none. Output: `Ok(Unit)`, whether or not anything was staged. */
+    override fun clearPending(): Result<Unit, AppError> = runCatchingToResult { pendingFile.delete() }
+
+    /**
+     * Writes bytes to [destination] through a staging file.
+     * Why:    a half-written key file is indistinguishable from a tampered one, and both lock the
+     *         user out. Writing elsewhere and moving into place means the destination is either
+     *         the old contents or the new, never a truncation.
+     * Result: `Ok(Unit)` or `Err(Storage)`. Input: [destination]; [bytes]. Output: `Result`.
+     * Changelog: 2026-09-28 — Issue 11.1: lifted out of `write` so the staged slot shares it.
+     */
+    private fun replace(
+        destination: File,
+        bytes: ByteArray,
+    ): Result<Unit, AppError> =
+        runCatchingToResult {
+            val staging = File(destination.parentFile, destination.name + ".tmp")
+            staging.writeBytes(bytes)
+            if (!staging.renameTo(destination)) {
+                // Windows and some filesystems refuse a rename onto an existing file.
+                destination.delete()
+                if (!staging.renameTo(destination)) {
                     // IOException, not check(): a failed move is an I/O condition, so it must
                     // become Err(Storage). runCatchingToResult rethrows IllegalStateException by
                     // design, which would crash the app over a full disk.
@@ -84,4 +157,7 @@ class FileWrappedPassphraseStore(
                 }
             }
         }
+
+    /** The staged slot, beside the current one so a promotion is a rename on the same volume. */
+    private val pendingFile: File get() = File(file.parentFile, file.name + ".pending")
 }

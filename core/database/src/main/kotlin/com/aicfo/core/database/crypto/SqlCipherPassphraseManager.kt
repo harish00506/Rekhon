@@ -58,33 +58,101 @@ class SqlCipherPassphraseManager(
         }
 
     /**
-     * Issues a fresh passphrase, replacing the stored one.
-     * Why:    SEC-003 asks for a rotation path. The caller must re-key the database with
-     *         `PRAGMA rekey` before the old file becomes unreadable, so use
-     *         [rotateWithPrevious] unless the database does not exist yet.
-     * Result: `Ok(newPassphrase)`, or the wrap/store failure.
-     * Input:  none. Output: `Result<ByteArray, AppError>`.
+     * Every passphrase that might open the database right now.
+     * Why:    ordinarily there is one. There are two for the length of a rotation, and a process
+     *         that dies inside that window leaves the file on one key and the store naming the
+     *         other — so the opener is given both and reports back which one worked
+     *         ([confirm]). Returning only the current key is what would lose the database.
+     * Result: `Ok(PassphraseCandidates)` — creating the first passphrase if there is none;
+     *         `Err(Crypto)` if a stored ciphertext will not unwrap; `Err(Storage)` if the store
+     *         itself failed.
+     * Input:  none. Output: `Result<PassphraseCandidates, AppError>`.
+     * Changelog: 2026-09-28 — Created for issue 11.1.
      */
-    fun rotate(): Result<ByteArray, AppError> = createAndStore()
+    fun candidates(): Result<PassphraseCandidates, AppError> =
+        store.read().flatMap { wrapped ->
+            when (wrapped) {
+                // A staged key with no current one cannot be a candidate — there is nothing for it
+                // to be pending *to*. Only a partial wipe or a half-copied restore reaches this.
+                null -> store.clearPending().flatMap { createAndStore() }.map { PassphraseCandidates(it, null) }
+                else -> unwrap(wrapped).flatMap { current -> withPending(current) }
+            }
+        }
 
     /**
-     * Rotates and reports both keys.
-     * Why:    re-keying SQLCipher needs the old passphrase to open the file and the new one to
-     *         write it back. Handing over only the new key would leave the database openable by
-     *         nothing — the failure mode rotation exists to avoid.
-     * Result: `Ok(PassphraseChange(previous, current))`; `Err` if there is no existing passphrase
-     *         to rotate, because that means the caller is confused about the DB's state.
-     * Input:  none. Output: `Result<PassphraseChange, AppError>`.
+     * Records which candidate actually opened the database.
+     * Why:    it is the opener, not this class, that learns whether a rotation took effect — only
+     *         the file knows which key it is encrypted with. Promoting the staged key means the
+     *         re-key completed; anything else means it did not, and the staged key must go before
+     *         it is offered again on a later open.
+     * Result: `Ok(Unit)`, or the store's failure.
+     * Input:  [opened] — the passphrase the database accepted. Output: `Result<Unit, AppError>`.
+     * Changelog: 2026-09-28 — Created for issue 11.1.
      */
-    fun rotateWithPrevious(): Result<PassphraseChange, AppError> =
+    fun confirm(opened: ByteArray): Result<Unit, AppError> =
+        store.readPending().flatMap { pending ->
+            val staged = pending?.let { unwrap(it).getOrNullOrThrowNothing() }
+            if (staged != null && staged.contentEquals(opened)) store.promotePending() else store.clearPending()
+        }
+
+    /**
+     * Rotates the database key, re-keying the file in the middle of it.
+     *
+     * Why:    SEC-003 asks for a rotation path, and the order is the whole design. The new key is
+     *         staged **before** [rekey] runs and promoted **after** it returns, so every instant
+     *         of the operation has both keys on disk. A crash inside the window is recovered by
+     *         [candidates]; a failure reported by [rekey] rolls the staging back, because the file
+     *         is still on the old key and a staged key that opens nothing would be offered for
+     *         ever.
+     * What:   unwrap the current key, mint and stage a new one, hand both to [rekey], promote.
+     * Result: `Ok(newPassphrase)`; `Err(Crypto)` if there is nothing to rotate — a caller in that
+     *         state is confused about whether a database exists, and minting a second key is how
+     *         the two slots start disagreeing.
+     * Input:  [rekey] — runs `PRAGMA rekey` on the file, given both keys.
+     * Output: `Result<ByteArray, AppError>`.
+     * Changelog: 2026-09-28 — Created for issue 11.1, replacing a `rotate()` that changed the
+     *            stored key without touching the file — which would have locked the user out of
+     *            their own database the first time anyone called it.
+     */
+    fun rotate(rekey: (PassphraseChange) -> Result<Unit, AppError>): Result<ByteArray, AppError> =
         store.read().flatMap { wrapped ->
             when (wrapped) {
                 null -> Err(AppError.Crypto("rotate_without_existing_key"))
-                else ->
-                    unwrap(wrapped).flatMap { previous ->
-                        createAndStore().map { current -> PassphraseChange(previous, current) }
-                    }
+                else -> unwrap(wrapped).flatMap { previous -> stageAndRekey(previous, rekey) }
             }
+        }
+
+    /**
+     * The staged half of [rotate].
+     * Result: `Ok(newPassphrase)` once promoted; the staging is rolled back on any failure.
+     * Input:  [previous] — the key the file is on; [rekey]. Output: `Result<ByteArray, AppError>`.
+     * Changelog: 2026-09-28 — Created for issue 11.1.
+     */
+    private fun stageAndRekey(
+        previous: ByteArray,
+        rekey: (PassphraseChange) -> Result<Unit, AppError>,
+    ): Result<ByteArray, AppError> {
+        val current = ByteArray(PASSPHRASE_BYTES).also(random::nextBytes)
+        return wrap(current)
+            .flatMap { store.writePending(it) }
+            .flatMap { rekey(PassphraseChange(previous, current)) }
+            .flatMap { store.promotePending().map { current } }
+            // The old key is dead the instant the new one is promoted, so it stops existing in
+            // this process too. Not a defence against a debugger — SQLCipher holds the live key
+            // regardless — but a key that no longer opens anything has no business lingering in a
+            // heap dump (security review, issue 11.1).
+            .also { outcome -> if (outcome is Ok) previous.fill(0) }
+            .recoverBy { failure -> store.clearPending().flatMap { Err(failure) } }
+    }
+
+    /**
+     * Adds the staged key, when there is one, to the candidates.
+     * Result: `Ok(PassphraseCandidates)`. Input: [current]. Output: `Result`.
+     * Changelog: 2026-09-28 — Created for issue 11.1.
+     */
+    private fun withPending(current: ByteArray): Result<PassphraseCandidates, AppError> =
+        store.readPending().map { pending ->
+            PassphraseCandidates(current, pending?.let { unwrap(it).getOrNullOrThrowNothing() })
         }
 
     /**
@@ -138,6 +206,71 @@ class SqlCipherPassphraseManager(
         @JvmField
         val ASSOCIATED_DATA: ByteArray = "cfo.database.passphrase.v1".toByteArray()
     }
+}
+
+/**
+ * Result: the value, or `null` for an error — used only where a failure means "this candidate
+ *         is not usable", never where it means "the database is unreadable".
+ * Why:    a staged key that will not unwrap is debris from an interrupted rotation, not a
+ *         reason to refuse to open a database the current key opens perfectly well.
+ * Input:  the receiver. Output: `T?`.
+ * Changelog: 2026-09-28 — Created for issue 11.1.
+ */
+private fun <T> Result<T, AppError>.getOrNullOrThrowNothing(): T? = (this as? Ok)?.value
+
+/**
+ * Runs [fallback] when this result failed, keeping the failure's own error.
+ * Why:    the rollback in [stageAndRekey] must run on *every* failure and must not hide it.
+ * Result: this result when it succeeded, otherwise [fallback]'s.
+ * Input:  [fallback]. Output: `Result<T, AppError>`.
+ * Changelog: 2026-09-28 — Created for issue 11.1.
+ */
+private fun <T> Result<T, AppError>.recoverBy(fallback: (AppError) -> Result<T, AppError>): Result<T, AppError> =
+    when (this) {
+        is Ok -> this
+        is Err -> fallback(error)
+    }
+
+/**
+ * Every passphrase that might open the database at this moment (issue 11.1).
+ *
+ * Why:    there are two only while a rotation is in flight or was interrupted, and the opener has
+ *         to try them in order rather than assume. A type with a nullable second slot says that
+ *         out loud; a list would invite a caller to try them in any order they liked.
+ * Result: what `candidates()` returns.
+ * Input:  [current] — the promoted key; [pending] — a staged key from an interrupted rotation.
+ * Output: an immutable value.
+ * Changelog: 2026-09-28 — Created for issue 11.1.
+ */
+data class PassphraseCandidates(
+    val current: ByteArray,
+    val pending: ByteArray?,
+) {
+    /**
+     * Zeroes every candidate except [kept].
+     * Why:    exactly one of these opened the database; the other opens nothing, now or ever.
+     *         Holding it costs nothing and gains nothing, which is the definition of a key that
+     *         should be gone (security review, issue 11.1).
+     * Result: the other array is filled with zeros. Input: [kept] — the passphrase that worked.
+     * Output: none.
+     * Changelog: 2026-09-28 — Created for issue 11.1.
+     */
+    fun discardAllBut(kept: ByteArray) {
+        if (current !== kept) current.fill(0)
+        if (pending != null && pending !== kept) pending.fill(0)
+    }
+
+    /** Content equality: these are byte arrays, and reference equality would be a bug. */
+    override fun equals(other: Any?): Boolean =
+        this === other ||
+            (
+                other is PassphraseCandidates &&
+                    current.contentEquals(other.current) &&
+                    pending.contentEquals(other.pending)
+            )
+
+    /** Matches [equals]: derived from the array contents. */
+    override fun hashCode(): Int = 31 * current.contentHashCode() + (pending?.contentHashCode() ?: 0)
 }
 
 /**
