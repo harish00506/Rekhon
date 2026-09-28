@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  हिन्दी (hi) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <string name="emf_title">आपातकालीन कोष</string>
+    <string name="emf_error">आपका आपातकालीन कोष पढ़ने में कुछ गड़बड़ हो गई।</string>
+    <string name="emf_dismiss_error">बंद करें</string>
+    <string name="emf_back">वापस</string>
+    <string name="emf_runway">%1$s महीने का खर्च निकल जाएगा</string>
+    <string name="emf_runway_unknown">अभी हम आपका कवर नहीं निकाल पा रहे</string>
+    <string name="emf_target">लक्ष्य %1$s</string>
+    <string name="emf_saved_of_target">%2$s में से %1$s अलग रखा गया</string>
+    <string name="emf_shortfall">%1$s अभी और जुटाने हैं</string>
+    <string name="emf_top_up">हर महीने %1$s से यह %2$d महीनों में पूरा हो जाएगा</string>
+    <string name="emf_fully_funded">अब और अलग रखने की ज़रूरत नहीं</string>
+    <string name="emf_status_surplus">ज़रूरत से ज़्यादा</string>
+    <string name="emf_status_funded">पूरा भरा हुआ</string>
+    <string name="emf_status_building">बन रहा है</string>
+    <string name="emf_status_unknown">अभी कहने लायक जानकारी नहीं</string>
+    <string name="emf_status_urgent">एक महीने से भी कम का कवर</string>
+    <string name="emf_coach_surplus">आप अपने लक्ष्य से काफ़ी आगे हैं। ज़्यादा पड़ी रकम को किसी लक्ष्य की तरफ़ लगाने पर विचार कर सकते हैं — यहाँ वह यूँ ही पड़ी है।</string>
+    <string name="emf_coach_funded">आपका आपातकालीन कोष अपने लक्ष्य जितना हो गया है। इसके आगे जो बचत हो, वह आपके लक्ष्यों में जा सकती है।</string>
+    <string name="emf_coach_building">आपके पास एक असली सहारा है, पर वह अभी पूरा नहीं है। हर महीने जो बचता है उसी से इसे बढ़ाना आम तौर पर अगला कदम होता है।</string>
+    <string name="emf_coach_unknown">कुछ महीनों का खर्च दर्ज करें, या सेटअप में अपनी मासिक ज़रूरतें बताएँ, तो ऐप इसका आकार निकाल सकेगा।</string>
+    <string name="emf_coach_urgent">ज़रूरी खर्चों का एक महीना भी कवर नहीं है। जब तक इसमें कुछ गहराई न आ जाए, ग़ैर-ज़रूरी लक्ष्यों को रोक रखना आम तौर पर ठीक रहता है।</string>
+    <string name="emf_evidence_show">हिसाब दिखाएँ</string>
+    <string name="emf_evidence_hide">हिसाब छिपाएँ</string>
+    <string name="emf_evidence_essentials">एक महीने के ज़रूरी खर्च: %1$s</string>
+    <string name="emf_basis_observed">ज़रूरतों पर आपके असली खर्च का बीच वाला महीना</string>
+    <string name="emf_basis_declared">सेटअप में आपकी बताई मासिक ज़रूरतें</string>
+    <string name="emf_basis_none">अभी पता नहीं</string>
+    <string name="emf_evidence_multiplier">%1$d महीनों के लिए रखा गया: शुरुआत 6 से, %2$s</string>
+    <string name="emf_multiplier_steady">और कुछ नहीं जोड़ा गया — आपकी आमदनी स्थिर रही है</string>
+    <string name="emf_multiplier_bumped">साथ में %1$d और, क्योंकि आपकी आमदनी महीने-दर-महीने ऊपर-नीचे होती है</string>
+    <string name="emf_multiplier_unmeasured">और कुछ नहीं जोड़ा गया — अभी आमदनी का इतना इतिहास नहीं कि बताया जा सके</string>
+    <string name="emf_multiplier_clamped">फिर सीमित कर दिया गया, क्योंकि नियम इसे 3 से 12 महीनों के बीच रखता है</string>
+    <string name="emf_evidence_categories">ज़रूरी माना गया: %1$s</string>
+    <string name="emf_essential_nature_need">वह सब जिसे आपने ज़रूरत की श्रेणी में रखा है</string>
+    <string name="emf_evidence_liquid">आज खर्च योग्य माना गया: %1$s</string>
+    <string name="emf_evidence_liquid_none">अभी कोई बचत या नकद खाता नहीं</string>
+    <string name="emf_evidence_liquid_note">फ़िलहाल सिर्फ़ बचत और नकद गिने जाते हैं। जमा और निवेश शामिल नहीं हैं, इसलिए आपका असली कवर इससे लंबा हो सकता है।</string>
+    <string name="emf_rule">नियम RULE-EMF-MULT v1.0, RULE-EMF-COACH v1.0</string>
+    <string name="emf_disclaimer">ये आँकड़े आपके दर्ज किए हुए से निकाले गए हैं — ज़रूरी खर्च कितना है और बचत व नकद में कितना पड़ा है। ये एक मार्गदर्शन हैं, किसी खास उत्पाद की सलाह नहीं।</string>
+</resources>

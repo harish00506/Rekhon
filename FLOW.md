@@ -643,6 +643,30 @@ DashboardScreen → "Good day to invest?" → OpportunityScreen
     how old the price is · and that the screen never buys anything
 ```
 
+### 2.19 · Which language the app speaks (issue 10.8)
+
+**Above everything, including the lock.** The language wraps the whole composition, so the PIN
+prompt is already in the user's language — and it is its own state holder, so nothing that opens the
+encrypted database is composed before the PIN (SEC-002).
+
+```
+MainActivity.setContent
+└─ AppLanguageViewModel.language        SettingsStore → proto field 18 (a BCP-47 tag, "" = the phone's)
+   └─ LocalisedContent(language)
+      ├─ API 33+ → LocaleManager.applicationLocales = tag     the system picker agrees; the widget
+      │                                                        and notifications follow it too
+      └─ CompositionLocalProvider(LocalContext, LocalConfiguration, LocalLayoutDirection)
+         └─ CfoTheme → AppLockGate → CfoNavHost               every stringResource below resolves in `tag`
+
+SettingsScreen → "Language" → SettingsEvent.LanguageChosen → SettingsStore.setLanguage
+  ⇣ read back from the store, never set optimistically: the picker cannot show a choice that
+    never reached disk
+```
+
+Amounts do **not** travel this path: `MoneyFormatter` writes the 2,2,3 grouping and ASCII digits
+itself in every locale (ADR-0056 §4). Dates do: `DateFormatter` asks the platform, which is the half
+of §3.5 that is meant to change.
+
 ### 2.1 · The dashboard's headline figure (issue 5.2)
 
 Shape C again, but it is the **first read in the app assembled from other repositories** rather than

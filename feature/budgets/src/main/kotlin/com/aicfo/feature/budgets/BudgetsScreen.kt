@@ -140,6 +140,7 @@ private fun PlannedSection(
         BudgetCard(
             budget = budget,
             band = uiState.bandByCategoryId[budget.category.id],
+            usedPct = uiState.usedPctByCategoryId[budget.category.id] ?: 0,
             onEvent = onEvent,
         )
     }
@@ -203,6 +204,7 @@ private fun UnplannedSection(
 private fun BudgetCard(
     budget: CategoryBudget,
     band: BudgetAlertBand?,
+    usedPct: Int,
     onEvent: (BudgetsEvent) -> Unit,
 ) {
     CfoCard {
@@ -217,7 +219,7 @@ private fun BudgetCard(
                     )
                 },
             )
-            BudgetBandChip(band = band)
+            BudgetBandChip(band = band, usedPct = usedPct)
             BudgetFigures(budget = budget)
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(CfoDimens.spaceSm),

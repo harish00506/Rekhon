@@ -98,4 +98,16 @@ message CfoSettingsProto {
   // about a scan, not financial data — and because it must be resettable to 0 without touching the
   // ledger when the consent is revoked and re-granted.
   int64 sms_scan_cursor_id = 17;
+
+  // --- Language (issue 10.8; SRS §3.5, NFR-011) ---
+
+  // The BCP-47 tag of the language the user chose, e.g. "hi". Empty means "follow the phone",
+  // which is the proto3 default and the right default: a phone already in Kannada should not have
+  // to be told twice.
+  //
+  // A tag rather than an enum, unlike ThemePreferenceProto above: adding a language is then a
+  // resource folder and a row in locales_config.xml, with nothing to migrate on disk. An unknown
+  // tag — a language a later build dropped, or an older build reading a newer one's choice — reads
+  // back as "follow the phone" rather than crashing on a value it has no strings for.
+  string language_tag = 18;
 }

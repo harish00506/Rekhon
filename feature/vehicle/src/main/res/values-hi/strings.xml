@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  हिन्दी (hi) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <string name="vehicles_title">आपके वाहन</string>
+    <string name="vehicles_intro">बीच-बीच में ओडोमीटर दर्ज करते रहें, और हर सर्विस का खर्च भी। ऐप हिसाब लगाता है कि अगली कब होनी है और लगभग कितना खर्च होगा — और उसे आपके 90-दिन के नज़रिए में रख देता है।</string>
+    <string name="vehicles_empty">अभी कोई वाहन नहीं। एक जोड़ें और पहली रीडिंग से ही ऐप अनुमान लगाना शुरू कर देगा।</string>
+    <string name="vehicles_add_label">आप इसे क्या कहते हैं?</string>
+    <string name="vehicles_add_class">यह किस तरह का है?</string>
+    <string name="vehicles_add_action">वाहन जोड़ें</string>
+    <string name="vehicles_class_two_wheeler">दोपहिया</string>
+    <string name="vehicles_class_hatchback">हैचबैक</string>
+    <string name="vehicles_class_sedan">सेडान</string>
+    <string name="vehicles_class_suv">एसयूवी</string>
+    <string name="vehicles_class_electric">इलेक्ट्रिक</string>
+    <string name="vehicles_due_distance">अगली सर्विस करीब %1$s को, लगभग %2$s किमी पर — आप उतना चला ही रहे हैं।</string>
+    <string name="vehicles_due_time">अगली सर्विस करीब %1$s को — ओडोमीटर से पहले कैलेंडर के हिसाब से आ रही है।</string>
+    <string name="vehicles_due_odometer_unknown">अगली सर्विस करीब %1$s को।</string>
+    <string name="vehicles_expect">%1$s से %2$s तक की उम्मीद रखें।</string>
+    <string name="vehicles_expect_personal">%1$s से %2$s तक की उम्मीद रखें, आपके पहले दिए गए खर्च के आधार पर।</string>
+    <string name="vehicles_rate">आपकी रीडिंग के हिसाब से महीने में करीब %1$s किमी।</string>
+    <string name="vehicles_rate_unknown">महीने में कितना चलता है, यह बताने लायक रीडिंग अभी नहीं हैं।</string>
+    <string name="vehicles_alert_service_due">सर्विस %1$s में होनी है।</string>
+    <string name="vehicles_alert_service_overdue">सर्विस %1$s से टली हुई है।</string>
+    <string name="vehicles_alert_renewal_due">नवीनीकरण %1$s में होना है।</string>
+    <string name="vehicles_alert_renewal_expired">नवीनीकरण %1$s पहले खत्म हो चुका।</string>
+    <plurals name="vehicles_days">
+        <item quantity="one">%d दिन</item>
+        <item quantity="other">%d दिन</item>
+    </plurals>
+    <string name="vehicles_log_action">कुछ दर्ज करें</string>
+    <string name="vehicles_log_hide">छिपाएँ</string>
+    <string name="vehicles_odometer_km">अभी का ओडोमीटर (किमी)</string>
+    <string name="vehicles_odometer_date">किस दिन पढ़ा (YYYY-MM-DD)</string>
+    <string name="vehicles_odometer_action">रीडिंग सहेजें</string>
+    <string name="vehicles_service_cost">सर्विस का खर्च (₹)</string>
+    <string name="vehicles_service_km">सर्विस के समय ओडोमीटर (किमी)</string>
+    <string name="vehicles_service_date">सर्विस की तारीख (YYYY-MM-DD)</string>
+    <string name="vehicles_service_action">सर्विस सहेजें</string>
+    <string name="vehicles_insurance_action">बीमा आज नवीनीकृत हुआ</string>
+    <string name="vehicles_puc_action">पीयूसी आज हो गया</string>
+    <string name="vehicles_remove">हटाएँ</string>
+    <string name="vehicles_history">%1$s दर्ज हैं।</string>
+    <plurals name="vehicles_readings">
+        <item quantity="one">%d रीडिंग</item>
+        <item quantity="other">%d रीडिंग</item>
+    </plurals>
+    <plurals name="vehicles_services">
+        <item quantity="one">%d सर्विस</item>
+        <item quantity="other">%d सर्विस</item>
+    </plurals>
+    <string name="vehicles_evidence">%1$s v%2$s से · %3$s</string>
+    <string name="vehicles_nothing_booked">कुछ भी बुक या भुगतान नहीं किया गया है — ये सिर्फ़ अनुमान हैं।</string>
+    <string name="vehicles_back">वापस</string>
+    <string name="vehicles_error">यह सहेजा नहीं गया। जो लिखा है उसे जाँच लें।</string>
+</resources>

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ಕನ್ನಡ (kn) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <plurals name="llm_spend">
+        <item quantity="one">ಆ ಅವಧಿಯಲ್ಲಿ ನೀವು %2$d ವಹಿವಾಟಿನಲ್ಲಿ %1$s ಖರ್ಚು ಮಾಡಿದ್ದೀರಿ.</item>
+        <item quantity="other">ಆ ಅವಧಿಯಲ್ಲಿ ನೀವು %2$d ವಹಿವಾಟುಗಳಲ್ಲಿ %1$s ಖರ್ಚು ಮಾಡಿದ್ದೀರಿ.</item>
+    </plurals>
+    <string name="llm_balance">ಸದ್ಯಕ್ಕೆ ನಿಮ್ಮ ಬಳಿ %1$s ಲಭ್ಯವಿದೆ.</string>
+    <plurals name="llm_forecast">
+        <item quantity="one">ಮುಂದಿನ %1$d ದಿನದಲ್ಲಿ ನಿಮ್ಮ ಅತ್ಯಂತ ಕಡಿಮೆ ಮಟ್ಟ %2$s, %3$s ರಂದು.</item>
+        <item quantity="other">ಮುಂದಿನ %1$d ದಿನಗಳಲ್ಲಿ ನಿಮ್ಮ ಅತ್ಯಂತ ಕಡಿಮೆ ಮಟ್ಟ %2$s, %3$s ರಂದು.</item>
+    </plurals>
+    <string name="llm_budget">ಈ ತಿಂಗಳು ಇಲ್ಲಿಯವರೆಗೆ ನಿಮ್ಮ ಬಜೆಟ್‌ನಿಂದ %1$s ಖರ್ಚಾಗಿದೆ.</string>
+    <string name="llm_goals">ನಿಮ್ಮ ಗುರಿಗಳಿಗೆ ಒಟ್ಟಾಗಿ ತಿಂಗಳಿಗೆ %1$s ಬೇಕು.</string>
+    <string name="llm_afford">ಅದಾದ ಮೇಲೆ ನಿಮ್ಮ ಬಳಿ %1$s ಉಳಿಯುತ್ತದೆ.</string>
+    <string name="llm_health">ನಿಮ್ಮ ಆರ್ಥಿಕ ಆರೋಗ್ಯ ಅಂಕ %1$d / %2$d.</string>
+    <string name="llm_debt">ಅತ್ಯಂತ ದುಬಾರಿ ಸಾಲವನ್ನು ಮೊದಲು ತೀರಿಸಿದರೆ ಬಡ್ಡಿಯಲ್ಲಿ %1$s ಉಳಿತಾಯವಾಗುತ್ತದೆ.</string>
+    <plurals name="llm_buylist">
+        <item quantity="one">ನಿಮ್ಮ ಖರೀದಿ ಪಟ್ಟಿಯಲ್ಲಿ %1$d ವಸ್ತು ಇದೆ.</item>
+        <item quantity="other">ನಿಮ್ಮ ಖರೀದಿ ಪಟ್ಟಿಯಲ್ಲಿ %1$d ವಸ್ತುಗಳಿವೆ.</item>
+    </plurals>
+    <string name="llm_vehicle">ಮುಂದಿನ ಸರ್ವಿಸ್‌ವರೆಗೆ ನಿಮ್ಮ ವಾಹನದ ವೆಚ್ಚ %1$s, ಅದು %2$s ರಂದು ಬರಲಿದೆ.</string>
+    <string name="llm_nothing">ಅದಕ್ಕೆ ಉತ್ತರಿಸಲು ನನಗೆ ಇನ್ನೂ ಏನೂ ಸಿಗಲಿಲ್ಲ.</string>
+</resources>

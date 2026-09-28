@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ಕನ್ನಡ (kn) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <string name="widget_title">Rekhon</string>
+    <string name="widget_description">ನಿಮ್ಮ ಖರ್ಚಿಗೆ ಸುರಕ್ಷಿತ ಮೊತ್ತ ಮತ್ತು ನಿವ್ವಳ ಆಸ್ತಿ, ಒಂದೇ ನೋಟದಲ್ಲಿ.</string>
+    <string name="widget_safe_to_spend_label">ಖರ್ಚಿಗೆ ಸುರಕ್ಷಿತ</string>
+    <string name="widget_net_worth_label">ನಿವ್ವಳ ಆಸ್ತಿ</string>
+    <string name="widget_pending">ಇನ್ನೂ ಲೆಕ್ಕ ಹಾಕಿಲ್ಲ</string>
+</resources>

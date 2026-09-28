@@ -4,11 +4,14 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import com.aicfo.core.datastore.ConsentFeature
+import com.aicfo.core.datastore.LanguageSetting
 import com.aicfo.core.designsystem.theme.CfoTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -192,6 +195,34 @@ class SettingsScreenTest {
             .onNodeWithText(compose.activity.resources.getQuantityString(R.plurals.settings_restore_done, 42, 42))
             .performScrollTo()
             .assertIsDisplayed()
+    }
+
+    @Test
+    fun `every language the app ships is offered, in its own script`() {
+        // Issue 10.8: a list of endonyms is how someone finds their language *before* they can read
+        // the language the app is currently in. A missing row is a language nobody can select.
+        setContent(SettingsUiState(isLoading = false))
+
+        LanguageSetting.entries.forEach { language ->
+            compose.onNodeWithText(text(languageLabel(language))).performScrollTo().assertIsDisplayed()
+        }
+    }
+
+    @Test
+    fun `choosing a language raises the event, with the language chosen`() {
+        setContent(SettingsUiState(isLoading = false))
+
+        compose.onNodeWithText(text(R.string.settings_language_hindi)).performScrollTo().performClick()
+
+        assertEquals(listOf(SettingsEvent.LanguageChosen(LanguageSetting.HINDI)), events)
+    }
+
+    @Test
+    fun `the language in use is the one shown as selected`() {
+        setContent(SettingsUiState(isLoading = false, language = LanguageSetting.TAMIL))
+
+        compose.onNodeWithText(text(R.string.settings_language_tamil)).performScrollTo().assertIsSelected()
+        compose.onNodeWithText(text(R.string.settings_language_system)).performScrollTo().assertIsNotSelected()
     }
 
     // --- helpers ----------------------------------------------------------------------------------

@@ -3,6 +3,7 @@ package com.aicfo.feature.settings
 import androidx.compose.runtime.Immutable
 import com.aicfo.core.crypto.BackupCipher
 import com.aicfo.core.datastore.ConsentFeature
+import com.aicfo.core.datastore.LanguageSetting
 
 /**
  * Everything the settings screen shows, in one immutable value (FR-SET-001; ARC-004).
@@ -46,6 +47,7 @@ data class SettingsUiState(
     val savedAtLeastOnce: Boolean = false,
     val backup: BackupUiState = BackupUiState(),
     val restore: RestoreUiState = RestoreUiState(),
+    val language: LanguageSetting = LanguageSetting.SYSTEM,
 ) {
     /**
      * Whether the money plan can be saved.
@@ -135,6 +137,13 @@ sealed interface SettingsEvent {
 
     /** Dismiss the error banner. */
     data object DismissError : SettingsEvent
+
+    /**
+     * The user picked a language (issue 10.8; SRS §3.5).
+     * Why: a typed choice rather than a tag, so a language the app has no strings for cannot be
+     *      selected — the enum is the list of languages that actually ship.
+     */
+    data class LanguageChosen(val language: LanguageSetting) : SettingsEvent
 
     /**
      * The encrypted backup's events (issue 8.1; SEC-005), grouped so the ViewModel routes them with

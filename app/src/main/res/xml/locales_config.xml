@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The languages this app ships (issue 10.8; SRS §3.5, NFR-011).
+
+  Why:  from Android 13 this file is what puts "App languages" in the system settings for this app,
+        and what the per-app language picker reads. A locale left out of it is one the system will
+        never switch to, however complete its strings are — and a locale listed here with no
+        strings behind it is a language the user can choose and then not read. `TranslationCoverageTest`
+        holds this file, `LanguageSetting` and the `values-*` folders to each other so neither can
+        happen.
+  What: English (the base, always present) plus §3.5's three — Hindi, Kannada and Tamil.
+  Changelog: 2026-09-28 — Created for issue 10.8.
+-->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="en" />
+    <locale android:name="hi" />
+    <locale android:name="kn" />
+    <locale android:name="ta" />
+</locale-config>

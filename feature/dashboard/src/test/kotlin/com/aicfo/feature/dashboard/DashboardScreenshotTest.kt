@@ -122,6 +122,39 @@ class DashboardScreenshotTest {
         }
     }
 
+    /**
+     * Input:  the loaded dashboard rendered in each language the app ships (issue 10.8, §3.5).
+     * Output: one baseline per locale — the only way anyone sees a Hindi, Kannada or Tamil
+     *         dashboard without a device. Translations are longer than their English originals
+     *         far more often than not, so what these catch is the thing a coverage test cannot:
+     *         a label that wraps into two lines, a figure pushed off a row, a button whose text
+     *         no longer fits.
+     */
+    @Test
+    fun loaded_hindi() {
+        renderIn("hi")
+    }
+
+    @Test
+    fun loaded_kannada() {
+        renderIn("kn")
+    }
+
+    @Test
+    fun loaded_tamil() {
+        renderIn("ta")
+    }
+
+    /**
+     * Result: records or verifies the populated dashboard in one language.
+     * Input:  [tag] — a BCP-47 tag Paparazzi hands to the resource resolver. Output: none.
+     * Changelog: 2026-09-28 — Created for issue 10.8.
+     */
+    private fun renderIn(tag: String) {
+        paparazzi.unsafeUpdateConfig(deviceConfig = DeviceConfig.PIXEL_5.copy(locale = tag))
+        paparazzi.snapshot { Screen(populatedDashboardState(), darkTheme = false) }
+    }
+
     private companion object {
         /** The DoD's accessibility case: text at twice the default size. */
         const val LARGE_FONT_SCALE = 2.0f

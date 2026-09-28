@@ -5,12 +5,14 @@ import com.aicfo.core.common.AppError
 import com.aicfo.core.common.Err
 import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
+import com.aicfo.core.common.getOrNull
 import com.aicfo.core.crypto.PinVerifier
 import com.aicfo.core.datastore.AppLockSettings
 import com.aicfo.core.datastore.AppLockStore
 import com.aicfo.core.datastore.ConsentFeature
 import com.aicfo.core.datastore.ConsentState
 import com.aicfo.core.datastore.ConsentStore
+import com.aicfo.core.datastore.LanguageSetting
 import com.aicfo.core.datastore.OnboardingProfile
 import com.aicfo.core.datastore.QuickSetupSeeds
 import com.aicfo.core.datastore.SettingsSnapshot
@@ -22,6 +24,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -52,6 +55,7 @@ import org.junit.Test
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class SettingsViewModelTest {
+    private val settings = FakeSettingsStore()
     private val consents = FakeConsentStore()
     private val appLock = FakeAppLockStore()
     private val pins = FakePinVerifier()
@@ -436,13 +440,36 @@ class SettingsViewModelTest {
     /** Result: a ViewModel over the fakes. The money writer is null-object: its own test covers it. */
     private fun viewModel() =
         SettingsViewModel(
-            settingsStore = FakeSettingsStore(),
+            settingsStore = settings,
             consentStore = consents,
             appLockStore = appLock,
             pinVerifier = pins,
             moneyPlan = NeverCalledMoneyPlanWriter,
             backupRepository = backups,
         )
+
+    @Test
+    fun `the language the screen offers is the one that is stored`() =
+        runTest {
+            // Issue 10.8: a picker that shows "System default" while the app is speaking Tamil is
+            // worse than no picker — it tells the user their choice did not take.
+            settings.setLanguage(LanguageSetting.TAMIL)
+
+            val model = viewModel()
+
+            assertEquals(LanguageSetting.TAMIL, model.uiState.value.language)
+        }
+
+    @Test
+    fun `choosing a language tells the store, so it survives the app being killed`() =
+        runTest {
+            val model = viewModel()
+
+            model.onEvent(SettingsEvent.LanguageChosen(LanguageSetting.HINDI))
+
+            assertEquals(LanguageSetting.HINDI, settings.observe().first().getOrNull()!!.language)
+            assertEquals(LanguageSetting.HINDI, model.uiState.value.language)
+        }
 
     /**
      * Stands in for the money writer, which none of these tests reaches: the validation path
@@ -470,6 +497,11 @@ class SettingsViewModelTest {
         override suspend fun setPrivacyBlurEnabled(enabled: Boolean): Result<Unit, AppError> = Ok(Unit)
 
         override suspend fun setTheme(theme: ThemeSetting): Result<Unit, AppError> = Ok(Unit)
+
+        override suspend fun setLanguage(language: LanguageSetting): Result<Unit, AppError> {
+            snapshot.value = snapshot.value.copy(language = language)
+            return Ok(Unit)
+        }
 
         override suspend fun setQuickSetupSeeds(seeds: QuickSetupSeeds): Result<Unit, AppError> {
             snapshot.value = snapshot.value.copy(quickSetup = seeds)

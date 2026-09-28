@@ -96,4 +96,18 @@
         data, so it holds none of your own. Nothing was changed.</string>
     <string name="settings_restore_failed">The backup could not be restored. Nothing was
         changed.</string>
+
+    <!--
+      Language (issue 10.8; SRS §3.5, NFR-011). The language names are written in their own script
+      in every translation of this file — that is how a person finds their language in a list they
+      cannot otherwise read, and it is why `TranslationCoverageTest` exempts them from the
+      "still English" check by name rather than by accident.
+    -->
+    <string name="settings_language_title">Language</string>
+    <string name="settings_language_body">Which language this app speaks. Your phone\'s language is used until you choose another.</string>
+    <string name="settings_language_system">Use my phone\'s language</string>
+    <string name="settings_language_english">English</string>
+    <string name="settings_language_hindi">हिन्दी</string>
+    <string name="settings_language_kannada">ಕನ್ನಡ</string>
+    <string name="settings_language_tamil">தமிழ்</string>
 </resources>

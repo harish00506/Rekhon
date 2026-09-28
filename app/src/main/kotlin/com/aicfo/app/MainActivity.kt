@@ -73,28 +73,35 @@ class MainActivity : FragmentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContent {
-            CfoTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Box(modifier = Modifier.padding(innerPadding)) {
-                        // Everything below is composed only once the session is unlocked (SEC-002).
-                        // The gate wraps the graph rather than being a destination inside it, so
-                        // there is no navigation — deep link, restored back stack or otherwise —
-                        // that reaches a screen without passing it. It covers onboarding too.
-                        AppLockGate {
-                            // API-002: one market-price refresh per open. Inside the gate, so it is
-                            // composed exactly once per unlock and never on a locked device — and
-                            // it enqueues work rather than fetching, so the activity never touches
-                            // a repository. With no backend configured the job does nothing (6.5).
-                            val context = LocalContext.current
-                            LaunchedEffect(Unit) { MarketPriceWorker.refreshNow(context) }
+            // Issue 10.8: the language wraps everything, the lock screen included — a PIN prompt in
+            // a language the user does not read is a poor way to start. Its own state holder, so
+            // nothing that opens the encrypted database is composed before the PIN (SEC-002).
+            val languageViewModel: AppLanguageViewModel = hiltViewModel()
+            val language by languageViewModel.language.collectAsStateWithLifecycle()
+            LocalisedContent(language) {
+                CfoTheme {
+                    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                        Box(modifier = Modifier.padding(innerPadding)) {
+                            // Everything below is composed only once the session is unlocked (SEC-002).
+                            // The gate wraps the graph rather than being a destination inside it, so
+                            // there is no navigation — deep link, restored back stack or otherwise —
+                            // that reaches a screen without passing it. It covers onboarding too.
+                            AppLockGate {
+                                // API-002: one market-price refresh per open. Inside the gate, so it is
+                                // composed exactly once per unlock and never on a locked device — and
+                                // it enqueues work rather than fetching, so the activity never touches
+                                // a repository. With no backend configured the job does nothing (6.5).
+                                val context = LocalContext.current
+                                LaunchedEffect(Unit) { MarketPriceWorker.refreshNow(context) }
 
-                            // The graph is only built once the stored onboarding flag has been read.
-                            // Until then the surface stays empty rather than guessing: a returning
-                            // user must never see the welcome screen appear and vanish. This is a
-                            // disk read of one small file, so it is a frame or two, not a splash.
-                            val viewModel: MainViewModel = hiltViewModel()
-                            val startDestination by viewModel.startDestination.collectAsStateWithLifecycle()
-                            startDestination?.let { AppContent(it, viewModel) }
+                                // The graph is only built once the stored onboarding flag has been read.
+                                // Until then the surface stays empty rather than guessing: a returning
+                                // user must never see the welcome screen appear and vanish. This is a
+                                // disk read of one small file, so it is a frame or two, not a splash.
+                                val viewModel: MainViewModel = hiltViewModel()
+                                val startDestination by viewModel.startDestination.collectAsStateWithLifecycle()
+                                startDestination?.let { AppContent(it, viewModel) }
+                            }
                         }
                     }
                 }

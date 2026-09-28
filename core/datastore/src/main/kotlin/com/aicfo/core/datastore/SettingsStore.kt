@@ -67,6 +67,17 @@ interface SettingsStore {
     suspend fun setTheme(theme: ThemeSetting): Result<Unit, AppError>
 
     /**
+     * Sets the language the app speaks (issue 10.8; SRS §3.5, NFR-011).
+     * Why:    a phone in English belonging to someone who reads Hindi is the ordinary case in
+     *         India, so the choice belongs to the app and not only to the device — and it is stored
+     *         rather than held in memory, because a language that resets when the app is killed is
+     *         not a setting.
+     * Result: `Ok(Unit)` or `Err(Storage)`.
+     * Input:  [language] — [LanguageSetting.SYSTEM] to follow the phone. Output: `Result`.
+     */
+    suspend fun setLanguage(language: LanguageSetting): Result<Unit, AppError>
+
+    /**
      * Records everything first-run onboarding captured, in one write (issue 2.1, FR-ONB-001/002).
      *
      * Why:    **one call, not five setters.** `updateData` is atomic per call, so writing the
@@ -174,18 +185,24 @@ internal class DataStoreSettingsStore(
             .flowOn(dispatchers.io)
 
     override suspend fun setProfileTimeZone(zoneId: String): Result<Unit, AppError> =
-        update { it.setProfileTimeZoneId(zoneId) }
+        dataStore.update(dispatchers) { it.setProfileTimeZoneId(zoneId) }
 
     override suspend fun setCurrencyCode(currencyCode: String): Result<Unit, AppError> =
-        update { it.setCurrencyCode(currencyCode) }
+        dataStore.update(dispatchers) { it.setCurrencyCode(currencyCode) }
 
     override suspend fun setPrivacyBlurEnabled(enabled: Boolean): Result<Unit, AppError> =
-        update { it.setPrivacyBlurEnabled(enabled) }
+        dataStore.update(dispatchers) { it.setPrivacyBlurEnabled(enabled) }
 
-    override suspend fun setTheme(theme: ThemeSetting): Result<Unit, AppError> = update { it.setTheme(theme.toProto()) }
+    override suspend fun setTheme(theme: ThemeSetting): Result<Unit, AppError> =
+        dataStore.update(dispatchers) { it.setTheme(theme.toProto()) }
+
+    // SYSTEM has no tag, and the empty string is exactly how proto3 spells "unset" — so following
+    // the phone and never having chosen are the same bytes, which is what they should be.
+    override suspend fun setLanguage(language: LanguageSetting): Result<Unit, AppError> =
+        dataStore.update(dispatchers) { it.setLanguageTag(language.tag.orEmpty()) }
 
     override suspend fun setQuickSetupSeeds(seeds: QuickSetupSeeds): Result<Unit, AppError> =
-        update { builder ->
+        dataStore.update(dispatchers) { builder ->
             builder
                 .setQuickSetupMonthlyIncomeMinor(seeds.monthlyIncome.orZero())
                 .setQuickSetupRentEmiMinor(seeds.rentOrEmi.orZero())
@@ -193,7 +210,7 @@ internal class DataStoreSettingsStore(
         }
 
     override suspend fun completeOnboarding(profile: OnboardingProfile): Result<Unit, AppError> =
-        update { builder ->
+        dataStore.update(dispatchers) { builder ->
             builder
                 .setProfileTimeZoneId(profile.timeZoneId)
                 .setCurrencyCode(profile.currencyCode)
@@ -206,27 +223,38 @@ internal class DataStoreSettingsStore(
         }
 
     override suspend fun setDemoModeActive(active: Boolean): Result<Unit, AppError> =
-        update { it.setDemoModeActive(active) }
+        dataStore.update(dispatchers) { it.setDemoModeActive(active) }
 
-    override suspend fun setSmsScanCursor(smsId: Long): Result<Unit, AppError> = update { it.setSmsScanCursorId(smsId) }
-
-    /**
-     * Applies one field change atomically.
-     * Result: `Ok(Unit)` or `Err(Storage)` — nothing throws across the boundary (§21.6).
-     * Input:  [transform] — mutates the builder. Output: `Result<Unit, AppError>`.
-     */
-    private suspend fun update(
-        transform: (CfoSettingsProto.Builder) -> CfoSettingsProto.Builder,
-    ): Result<Unit, AppError> =
-        withContext(dispatchers.io) {
-            try {
-                dataStore.updateData { current -> transform(current.toBuilder()).build() }
-                Ok(Unit)
-            } catch (failure: IOException) {
-                Err(failure.toStorageError())
-            }
-        }
+    override suspend fun setSmsScanCursor(smsId: Long): Result<Unit, AppError> =
+        dataStore.update(dispatchers) { it.setSmsScanCursorId(smsId) }
 }
+
+/**
+ * Applies one field change atomically.
+ *
+ * Why:    every setter needs the same three things — the I/O dispatcher, one `updateData`, and an
+ *         `IOException` turned into an `Err` rather than thrown across the layer boundary (§21.6).
+ *         It sits **outside** the store rather than inside it because eleven setters plus a helper
+ *         is one member more than detekt's limit, and of the two ways to lose one, moving the
+ *         helper out is the one that does not split a single atomic store into two classes.
+ * Result: `Ok(Unit)` or `Err(Storage)`.
+ * Input:  the receiver — the settings store; [dispatchers]; [transform] — mutates the builder.
+ * Output: `Result<Unit, AppError>`.
+ * Changelog: 2026-07-25 — Created for issue 1.9, as a member.
+ *            2026-09-28 — Issue 10.8: lifted out of the class when `setLanguage` joined it.
+ */
+private suspend fun DataStore<CfoSettingsProto>.update(
+    dispatchers: DispatcherProvider,
+    transform: (CfoSettingsProto.Builder) -> CfoSettingsProto.Builder,
+): Result<Unit, AppError> =
+    withContext(dispatchers.io) {
+        try {
+            updateData { current -> transform(current.toBuilder()).build() }
+            Ok(Unit)
+        } catch (failure: IOException) {
+            Err(failure.toStorageError())
+        }
+    }
 
 /**
  * Converts the stored proto to the caller-facing snapshot.
@@ -250,6 +278,9 @@ internal fun CfoSettingsProto.toSnapshot(): SettingsSnapshot =
         // 0 is both proto3's default and this field's meaning of "nothing read yet", so unlike the
         // quick-setup seeds there is nothing to disambiguate — there is no inbox row with _ID 0.
         smsScanCursorId = smsScanCursorId,
+        // An unknown or empty tag reads as "follow the phone" rather than throwing — see
+        // LanguageSetting.ofTag.
+        language = LanguageSetting.ofTag(languageTag.takeIf { it.isNotEmpty() }),
         quickSetup =
             QuickSetupSeeds(
                 monthlyIncome = quickSetupMonthlyIncomeMinor.toSeed(),

@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ಕನ್ನಡ (kn) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <string name="settings_title">ಸೆಟ್ಟಿಂಗ್‌ಗಳು</string>
+    <string name="settings_done">ಮುಗಿಯಿತು</string>
+    <string name="settings_error">ಏನೋ ಉಳಿಯಲಿಲ್ಲ. ಏನೂ ಬದಲಾಗಿಲ್ಲ.</string>
+    <string name="settings_dismiss">ಮುಚ್ಚಿ</string>
+    <string name="settings_money_title">ನಿಮ್ಮ ಮಾಸಿಕ ಹಣ</string>
+    <string name="settings_money_body">ಇದನ್ನು ಅಗತ್ಯಗಳು, ಬಯಕೆಗಳು ಮತ್ತು ಉಳಿತಾಯ ಎಂದು ಹಂಚುತ್ತೇವೆ, ಮತ್ತು ಖರ್ಚಿಗೆ ಎಷ್ಟು ಸುರಕ್ಷಿತ ಎಂಬುದನ್ನು ಇದರಿಂದಲೇ ಲೆಕ್ಕ ಹಾಕುತ್ತೇವೆ. ಬದಲಾದಾಗೆಲ್ಲ ನೀವು ಇದನ್ನು ಬದಲಿಸಬಹುದು.</string>
+    <string name="settings_monthly_income">ಮಾಸಿಕ ಆದಾಯ</string>
+    <string name="settings_rent_or_emi">ಬಾಡಿಗೆ ಅಥವಾ EMI (ಐಚ್ಛಿಕ)</string>
+    <string name="settings_typical_savings">ಸಾಮಾನ್ಯವಾಗಿ ಎಷ್ಟು ಉಳಿಸುತ್ತೀರಿ (ಐಚ್ಛಿಕ)</string>
+    <string name="settings_money_save">ಮಾಸಿಕ ಹಣ ಉಳಿಸಿ</string>
+    <string name="settings_money_saved">ಉಳಿಸಲಾಗಿದೆ. ನಿಮ್ಮ ಡ್ಯಾಶ್‌ಬೋರ್ಡ್ ನವೀಕರಿಸಲಾಗಿದೆ.</string>
+    <string name="settings_income_required">ನಿಮ್ಮ ಮಾಸಿಕ ಆದಾಯವನ್ನು ಸಂಖ್ಯೆಯಾಗಿ ಬರೆಯಿರಿ, ಉದಾಹರಣೆಗೆ 95000.</string>
+    <string name="settings_consents_title">ಆ್ಯಪ್ ಏನನ್ನು ಬಳಸಬಹುದು</string>
+    <string name="settings_consents_body">ಇವುಗಳಲ್ಲಿ ಪ್ರತಿಯೊಂದೂ ನೀವು ಆನ್ ಮಾಡುವವರೆಗೆ ಆಫ್ ಇರುತ್ತದೆ, ಮತ್ತು ಯಾವುದನ್ನಾದರೂ ಇಲ್ಲಿಂದಲೇ ಯಾವಾಗ ಬೇಕಾದರೂ ಮತ್ತೆ ಆಫ್ ಮಾಡಬಹುದು. ಇವುಗಳಲ್ಲಿ ಒಂದೂ ಆನ್ ಆಗಿಲ್ಲದಿದ್ದರೆ ನಿಮ್ಮ ಹಣದ ಯಾವ ಮಾಹಿತಿಯೂ ಈ ಸಾಧನದಿಂದ ಹೊರಹೋಗುವುದಿಲ್ಲ.</string>
+    <string name="consent_sms_parsing">ಈ ಸಾಧನದ ಬ್ಯಾಂಕ್ ಸಂದೇಶಗಳನ್ನು ಓದಿ</string>
+    <string name="consent_market_data">ಚಿನ್ನ, ಕ್ರಿಪ್ಟೊ ಮತ್ತು ಫಂಡ್ ಬೆಲೆಗಳನ್ನು ತನ್ನಿ</string>
+    <string name="consent_cloud_llm">ಕ್ಲೌಡ್ ಸಹಾಯಕನನ್ನು ಕೇಳಿ</string>
+    <string name="consent_cloud_backup">ಎನ್‌ಕ್ರಿಪ್ಟ್ ಮಾಡಿದ ಬ್ಯಾಕಪ್‌ಗಳನ್ನು ಈ ಸಾಧನದ ಹೊರಗೆ ಉಳಿಸಿ</string>
+    <string name="settings_lock_title">ಆ್ಯಪ್ ಅನ್ನು ಲಾಕ್ ಮಾಡಿ</string>
+    <string name="settings_lock_body">ಆ್ಯಪ್ ತೆರೆಯುವಾಗ PIN ಅಥವಾ ಬೆರಳಚ್ಚು ಕೇಳಲಿ.</string>
+    <string name="settings_lock_toggle">ಆ್ಯಪ್ ತೆರೆಯಲು PIN ಕಡ್ಡಾಯ</string>
+    <string name="settings_pin">ಹೊಸ PIN (ಕನಿಷ್ಠ 4 ಅಂಕಿ)</string>
+    <string name="settings_pin_required">ಲಾಕ್ ಆನ್ ಮಾಡುವ ಮೊದಲು ಕನಿಷ್ಠ 4 ಅಂಕಿ ಬರೆಯಿರಿ.</string>
+    <string name="settings_backup_title">ಎನ್‌ಕ್ರಿಪ್ಟ್ ಮಾಡಿದ ಬ್ಯಾಕಪ್</string>
+    <string name="settings_backup_body">ಆ್ಯಪ್‌ನಲ್ಲಿರುವ ಎಲ್ಲದರ ಪ್ರತಿ, ನಿಮಗೆ ಮಾತ್ರ ಗೊತ್ತಿರುವ ಪಾಸ್‌ಫ್ರೇಸ್‌ನಿಂದ ಬಂಧಿತ. ಎಲ್ಲಿ ಬೇಕಾದರೂ ಉಳಿಸಿ — ಮೆಮೊರಿ ಕಾರ್ಡ್, ಕಂಪ್ಯೂಟರ್, ಕ್ಲೌಡ್ ಡ್ರೈವ್. ಪಾಸ್‌ಫ್ರೇಸ್ ಇಲ್ಲದೆ ಅದನ್ನು ಯಾರೂ ಓದಲಾಗದು.</string>
+    <string name="settings_backup_passphrase">ಬ್ಯಾಕಪ್ ಪಾಸ್‌ಫ್ರೇಸ್ (ಕನಿಷ್ಠ 12 ಅಕ್ಷರ)</string>
+    <string name="settings_backup_confirmation">ಪಾಸ್‌ಫ್ರೇಸ್ ಅನ್ನು ಮತ್ತೊಮ್ಮೆ ಬರೆಯಿರಿ</string>
+    <string name="settings_backup_irrecoverable">ಈ ಪಾಸ್‌ಫ್ರೇಸ್ ಮರೆತರೆ ಈ ಬ್ಯಾಕಪ್ ಎಂದಿಗೂ ತೆರೆಯುವುದಿಲ್ಲ — ನನಗೂ ಅಲ್ಲ, ಆ್ಯಪ್‌ಗೂ ಅಲ್ಲ ಎಂಬುದು ನನಗೆ ಅರ್ಥವಾಗಿದೆ. ಮರುಹೊಂದಿಸುವ ದಾರಿ ಇಲ್ಲ.</string>
+    <string name="settings_backup_create">ಎನ್‌ಕ್ರಿಪ್ಟ್ ಮಾಡಿದ ಬ್ಯಾಕಪ್ ರಚಿಸಿ</string>
+    <string name="settings_backup_needs_consent">ಮೊದಲು ಮೇಲಿನ \"ಎನ್‌ಕ್ರಿಪ್ಟ್ ಮಾಡಿದ ಬ್ಯಾಕಪ್‌ಗಳನ್ನು ಈ ಸಾಧನದ ಹೊರಗೆ ಉಳಿಸಿ\" ಅನ್ನು ಆನ್ ಮಾಡಿ.</string>
+    <string name="settings_backup_too_short">ಕನಿಷ್ಠ 12 ಅಕ್ಷರ ಬಳಸಿ — ಒಂದು ಚಿಕ್ಕ ವಾಕ್ಯ ಚೆನ್ನಾಗಿ ಕೆಲಸ ಮಾಡುತ್ತದೆ.</string>
+    <string name="settings_backup_mismatch">ಎರಡು ಪಾಸ್‌ಫ್ರೇಸ್‌ಗಳು ಹೊಂದಾಣಿಕೆಯಾಗುತ್ತಿಲ್ಲ.</string>
+    <string name="settings_backup_needs_acknowledgement">ನಿಮಗೆ ಅರ್ಥವಾಗಿದೆ ಎಂದು ದೃಢಪಡಿಸಲು ಮೇಲಿನ ಪೆಟ್ಟಿಗೆಯನ್ನು ಗುರುತಿಸಿ.</string>
+    <string name="settings_backup_sealing">ನಿಮ್ಮ ಬ್ಯಾಕಪ್ ಅನ್ನು ಬಂಧಿಸಲಾಗುತ್ತಿದೆ. ಇದಕ್ಕೆ ಕೆಲವು ಸೆಕೆಂಡುಗಳು ಬೇಕು.</string>
+    <string name="settings_backup_written">ಬ್ಯಾಕಪ್ ಉಳಿಸಲಾಗಿದೆ. ಪಾಸ್‌ಫ್ರೇಸ್ ಅನ್ನು ಸುರಕ್ಷಿತ ಜಾಗದಲ್ಲಿ ಇಡಿ — ಆ್ಯಪ್ ಅದರ ಪ್ರತಿ ಇಟ್ಟುಕೊಳ್ಳುವುದಿಲ್ಲ.</string>
+    <string name="settings_backup_write_failed">ಆ ಕಡತಕ್ಕೆ ಬ್ಯಾಕಪ್ ಬರೆಯಲಾಗಲಿಲ್ಲ. ಏನೂ ಉಳಿಸಲಾಗಿಲ್ಲ.</string>
+    <string name="settings_backup_failed">ಬ್ಯಾಕಪ್ ಮಾಡಲಾಗಲಿಲ್ಲ. ಏನೂ ಉಳಿಸಲಾಗಿಲ್ಲ.</string>
+    <string name="settings_restore_title">ಬ್ಯಾಕಪ್‌ನಿಂದ ಮರುಸ್ಥಾಪಿಸಿ</string>
+    <string name="settings_restore_body">ಹೊಸ ಫೋನ್ ಹೊಂದಿಸುತ್ತಿದ್ದೀರಾ, ಅಥವಾ ಮತ್ತೆ ಆರಂಭಿಸುತ್ತಿದ್ದೀರಾ? ಈ ಆ್ಯಪ್‌ನಿಂದ ಉಳಿಸಿದ ಬ್ಯಾಕಪ್ ಅನ್ನು ಆರಿಸಿ ಮತ್ತು ಅದರ ಪಾಸ್‌ಫ್ರೇಸ್ ಬರೆಯಿರಿ.</string>
+    <string name="settings_restore_pick">ಬ್ಯಾಕಪ್ ಕಡತ ಆರಿಸಿ</string>
+    <string name="settings_restore_warning">ಮರುಸ್ಥಾಪನೆ ಈ ಸಾಧನದ ಎಲ್ಲವನ್ನೂ ಬ್ಯಾಕಪ್‌ನಲ್ಲಿರುವುದರಿಂದ ಬದಲಿಸುತ್ತದೆ. ಬ್ಯಾಕಪ್ ಮಾಡಿದ ನಂತರ ಸೇರಿಸಿದ್ದೆಲ್ಲ ಹೋಗುತ್ತದೆ.</string>
+    <string name="settings_restore_passphrase">ಬ್ಯಾಕಪ್‌ನ ಪಾಸ್‌ಫ್ರೇಸ್</string>
+    <string name="settings_restore_confirm">ಎಲ್ಲವನ್ನೂ ಈ ಬ್ಯಾಕಪ್‌ನಿಂದ ಬದಲಿಸಿ</string>
+    <string name="settings_restore_cancel">ರದ್ದುಗೊಳಿಸಿ</string>
+    <string name="settings_restore_working">ನಿಮ್ಮ ಬ್ಯಾಕಪ್ ಅನ್ನು ತೆರೆದು ಪರಿಶೀಲಿಸಲಾಗುತ್ತಿದೆ. ಇದಕ್ಕೆ ಕೆಲವು ಸೆಕೆಂಡುಗಳು ಬೇಕು.</string>
+    <plurals name="settings_restore_done">
+        <item quantity="one">%1$d ಅಂಶ ಮರುಸ್ಥಾಪಿಸಲಾಗಿದೆ. ನಿಮ್ಮ ಡ್ಯಾಶ್‌ಬೋರ್ಡ್ ಈಗ ಬ್ಯಾಕಪ್ ಅನ್ನು ತೋರಿಸುತ್ತಿದೆ.</item>
+        <item quantity="other">%1$d ಅಂಶಗಳನ್ನು ಮರುಸ್ಥಾಪಿಸಲಾಗಿದೆ. ನಿಮ್ಮ ಡ್ಯಾಶ್‌ಬೋರ್ಡ್ ಈಗ ಬ್ಯಾಕಪ್ ಅನ್ನು ತೋರಿಸುತ್ತಿದೆ.</item>
+    </plurals>
+    <string name="settings_restore_wrong_passphrase">ಆ ಪಾಸ್‌ಫ್ರೇಸ್ ಈ ಬ್ಯಾಕಪ್ ಅನ್ನು ತೆರೆಯುವುದಿಲ್ಲ, ಅಥವಾ ಕಡತ ಹಾಳಾಗಿದೆ. ಏನೂ ಬದಲಾಗಿಲ್ಲ.</string>
+    <string name="settings_restore_not_a_backup">ಆ ಕಡತ ಈ ಆ್ಯಪ್‌ನ ಬ್ಯಾಕಪ್ ಅಲ್ಲ. ಏನೂ ಬದಲಾಗಿಲ್ಲ.</string>
+    <string name="settings_restore_wrong_version">ಈ ಬ್ಯಾಕಪ್ ಆ್ಯಪ್‌ನ ಬೇರೆ ಆವೃತ್ತಿಯದು. ಆ್ಯಪ್ ನವೀಕರಿಸಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ. ಏನೂ ಬದಲಾಗಿಲ್ಲ.</string>
+    <string name="settings_restore_wrong_profile">ಈ ಬ್ಯಾಕಪ್ ಮಾದರಿ ಮಾಹಿತಿಯನ್ನು ನೋಡುವಾಗ ಮಾಡಿದ್ದು, ಹಾಗಾಗಿ ಅದರಲ್ಲಿ ನಿಮ್ಮದೇನೂ ಇಲ್ಲ. ಏನೂ ಬದಲಾಗಿಲ್ಲ.</string>
+    <string name="settings_restore_failed">ಬ್ಯಾಕಪ್ ಮರುಸ್ಥಾಪಿಸಲಾಗಲಿಲ್ಲ. ಏನೂ ಬದಲಾಗಿಲ್ಲ.</string>
+    <string name="settings_language_title">ಭಾಷೆ</string>
+    <string name="settings_language_body">ಈ ಆ್ಯಪ್ ಯಾವ ಭಾಷೆಯಲ್ಲಿ ಮಾತನಾಡಬೇಕು. ನೀವು ಬೇರೊಂದನ್ನು ಆರಿಸುವವರೆಗೆ ನಿಮ್ಮ ಫೋನಿನ ಭಾಷೆಯೇ ಬಳಕೆಯಾಗುತ್ತದೆ.</string>
+    <string name="settings_language_system">ನನ್ನ ಫೋನಿನ ಭಾಷೆಯನ್ನೇ ಬಳಸಿ</string>
+    <string name="settings_language_english">English</string>
+    <string name="settings_language_hindi">हिन्दी</string>
+    <string name="settings_language_kannada">ಕನ್ನಡ</string>
+    <string name="settings_language_tamil">தமிழ்</string>
+</resources>

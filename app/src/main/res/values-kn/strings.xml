@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ಕನ್ನಡ (kn) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <string name="app_name">Rekhon</string>
+    <string name="demo_banner_message">ಮಾದರಿ ಮಾಹಿತಿ — ಇದರಲ್ಲಿ ಯಾವುದೂ ನಿಮ್ಮದಲ್ಲ</string>
+    <string name="demo_banner_exit">ಡೆಮೊದಿಂದ ಹೊರಬನ್ನಿ</string>
+    <string name="add_transaction">ವಹಿವಾಟು ಸೇರಿಸಿ</string>
+    <string name="privacy_blur_toggle">ಮೊತ್ತಗಳನ್ನು ಮರೆಮಾಡಿ</string>
+    <string name="privacy_blur_state_on">ಆನ್</string>
+    <string name="privacy_blur_state_off">ಆಫ್</string>
+    <string name="lock_title">ಲಾಕ್ ಆಗಿದೆ</string>
+    <string name="lock_body">ನಿಮ್ಮ ಹಣಕಾಸು ನೋಡಲು PIN ಹಾಕಿ.</string>
+    <string name="lock_pin_label">PIN</string>
+    <string name="lock_unlock">ತೆರೆಯಿರಿ</string>
+    <string name="lock_use_biometric">ಬೆರಳಚ್ಚು ಅಥವಾ ಮುಖ ಬಳಸಿ</string>
+    <string name="lock_biometric_prompt_title">AI Personal CFO ಅನ್ನು ಅನ್‌ಲಾಕ್ ಮಾಡಿ</string>
+    <string name="lock_biometric_prompt_subtitle">ನಿಮ್ಮ ಹಣಕಾಸು ನೋಡಲು ನೀವೇ ಎಂದು ದೃಢಪಡಿಸಿ.</string>
+    <string name="lock_biometric_prompt_negative">PIN ಬಳಸಿ</string>
+    <string name="lock_error_wrong_pin">ಆ PIN ಸರಿಯಿಲ್ಲ.</string>
+    <string name="lock_error_biometric">ನಿಮ್ಮನ್ನು ಗುರುತಿಸಲಾಗಲಿಲ್ಲ. PIN ಪ್ರಯತ್ನಿಸಿ.</string>
+    <string name="lock_error_dismiss">ಮುಚ್ಚಿ</string>
+    <string name="notification_channel_budget_alerts">ಬಜೆಟ್ ಎಚ್ಚರಿಕೆಗಳು</string>
+    <string name="notification_channel_budget_alerts_description">ಒಂದು ವರ್ಗ ತನ್ನ ಬಜೆಟ್‌ನ 80%% ತಲುಪಿದಾಗ ಒಮ್ಮೆ, 100%% ತಲುಪಿದಾಗ ಒಮ್ಮೆ ತಿಳಿಸುತ್ತದೆ.</string>
+    <string name="budget_alert_warn_title">%1$s ಬಜೆಟ್‌ನ %2$d%% ತಲುಪಿದೆ</string>
+    <string name="budget_alert_warn_body">ಈ ತಿಂಗಳು %2$s ರಲ್ಲಿ %1$s ಖರ್ಚು ಮಾಡಿದ್ದೀರಿ.</string>
+    <string name="budget_alert_exceeded_title">%1$s ಬಜೆಟ್ ಮೀರಿದೆ</string>
+    <string name="budget_alert_exceeded_body">ಈ ತಿಂಗಳು %2$s ರಲ್ಲಿ %1$s ಖರ್ಚಾಗಿದೆ — %3$s ಹೆಚ್ಚು.</string>
+    <string name="budget_alert_warn_title_blurred">%1$s ತನ್ನ ಬಜೆಟ್‌ಗೆ ಹತ್ತಿರವಿದೆ</string>
+    <string name="budget_alert_body_blurred">ಎಲ್ಲಿದ್ದೀರಿ ಎಂದು ನೋಡಲು ಆ್ಯಪ್ ತೆರೆಯಿರಿ.</string>
+    <string name="notification_channel_critical_money">ತುರ್ತು ಹಣದ ವಿಷಯಗಳು</string>
+    <string name="notification_channel_critical_money_description">ಬಾಕಿ ಬರಲಿರುವ ಪಾವತಿಗಳು. ಮೌನ ಸಮಯದಲ್ಲೂ ಬರಬಹುದಾದ ಏಕೈಕ ಅಧಿಸೂಚನೆಗಳು.</string>
+    <string name="notification_channel_debt_discipline">ಕಾರ್ಡ್ ಮತ್ತು ಸಾಲ</string>
+    <string name="notification_channel_debt_discipline_description">ಒಂದು ಕಾರ್ಡ್ ತನ್ನ ಮಿತಿಯ ದೊಡ್ಡ ಭಾಗವನ್ನು ಬಳಸುತ್ತಿದ್ದರೆ ಪ್ರತಿ ಸ್ಟೇಟ್‌ಮೆಂಟ್‌ಗೆ ಒಮ್ಮೆ ತಿಳಿಸುತ್ತದೆ.</string>
+    <string name="card_due_title">%1$s ಪಾವತಿ %2$d ದಿನಗಳಲ್ಲಿ ಬಾಕಿ</string>
+    <string name="card_due_title_today">%1$s ಪಾವತಿ ಇಂದು ಬಾಕಿ</string>
+    <string name="card_due_body">%1$s ಪಾವತಿಸಬೇಕು. ಕನಿಷ್ಠ %2$s.</string>
+    <string name="card_due_body_no_minimum">ಈ ಸ್ಟೇಟ್‌ಮೆಂಟ್‌ನಲ್ಲಿ %1$s ಪಾವತಿಸಬೇಕು.</string>
+    <string name="card_due_title_blurred">%1$s ಪಾವತಿ ಶೀಘ್ರದಲ್ಲೇ ಬಾಕಿ</string>
+    <string name="card_due_body_blurred">ಮೊತ್ತ ನೋಡಲು ಆ್ಯಪ್ ತೆರೆಯಿರಿ.</string>
+    <string name="card_utilisation_title">%1$s ತನ್ನ ಮಿತಿಯ %2$d%% ತಲುಪಿದೆ</string>
+    <string name="card_utilisation_body">ಈ ಸ್ಟೇಟ್‌ಮೆಂಟ್‌ನಲ್ಲಿ %2$s ರಲ್ಲಿ %1$s ಬಳಕೆಯಾಗಿದೆ.</string>
+    <string name="card_utilisation_title_blurred">%1$s ತನ್ನ ಮಿತಿಯ ಬಹುಪಾಲು ಬಳಸುತ್ತಿದೆ</string>
+    <string name="card_utilisation_body_blurred">ಎಲ್ಲಿದ್ದೀರಿ ಎಂದು ನೋಡಲು ಆ್ಯಪ್ ತೆರೆಯಿರಿ.</string>
+    <string name="notification_channel_ai_insights">ಒಳನೋಟಗಳು</string>
+    <string name="notification_channel_ai_insights_description">ನಿಮ್ಮ ಹಣದ ಬಗ್ಗೆ ಕ್ರಮ ತೆಗೆದುಕೊಳ್ಳಲು ಯೋಗ್ಯವಾದ ವಿಷಯಗಳು. ದಿನಕ್ಕೆ ಹೆಚ್ಚೆಂದರೆ ಎರಡು ಸಾಮಾನ್ಯ ಅಧಿಸೂಚನೆಗಳು, ರಾತ್ರಿ 10 ರಿಂದ ಬೆಳಿಗ್ಗೆ 8 ರ ನಡುವೆ ಎಂದಿಗೂ ಇಲ್ಲ.</string>
+    <string name="notification_channel_maintenance">ನಿರ್ವಹಣೆ ಮತ್ತು ನವೀಕರಣ</string>
+    <string name="notification_channel_maintenance_description">ಮುಂಬರುವ ಸರ್ವಿಸ್, ವಿಮೆ ಮತ್ತು ಚಂದಾದಾರಿಕೆ ನವೀಕರಣಗಳು.</string>
+    <string name="notification_channel_goal_events">ಗುರಿಗಳು</string>
+    <string name="notification_channel_goal_events_description">ಒಂದು ಗುರಿ ತನ್ನ ಯೋಜನೆಯಿಂದ ಹಿಂದೆ ಬಿದ್ದಾಗ.</string>
+    <string name="notification_channel_habit">ದೈನಂದಿನ ಅಭ್ಯಾಸಗಳು</string>
+    <string name="notification_channel_habit_description">ಖರ್ಚನ್ನು ದಾಖಲಿಸಲು ಮೃದುವಾದ ನೆನಪೋಲೆಗಳು. ನೀವು ಕೇಳದ ಹೊರತು ಆಫ್.</string>
+    <string name="insight_crunch_title">%1$s ರಂದು ಹಣ ಕಡಿಮೆಯಾಗಬಹುದು</string>
+    <plurals name="insight_crunch_body">
+        <item quantity="one">ಆ ದಿನ ಸುಮಾರು %2$s ಉಳಿಯುತ್ತದೆ, ಅದು ನಿಮ್ಮ %3$s ಮೀಸಲಿಗಿಂತ ಕಡಿಮೆ.</item>
+        <item quantity="other">%1$d ದಿನಗಳು ನಿಮ್ಮ %3$s ಮೀಸಲಿಗಿಂತ ಕೆಳಗಿರುತ್ತವೆ, ಅತ್ಯಂತ ಕಡಿಮೆ ದಿನ ಸುಮಾರು %2$s ಉಳಿಯುತ್ತದೆ.</item>
+    </plurals>
+    <string name="insight_crunch_title_blurred">ಶೀಘ್ರದಲ್ಲೇ ಹಣ ಕಡಿಮೆಯಾಗಬಹುದು</string>
+    <string name="insight_crunch_body_blurred">ದಿನಗಳು ಮತ್ತು ಮೊತ್ತಗಳನ್ನು ನೋಡಲು ಆ್ಯಪ್ ತೆರೆಯಿರಿ.</string>
+    <string name="insight_goal_title">%1$s ಹಿಂದೆ ಬೀಳುತ್ತಿದೆ</string>
+    <string name="insight_goal_body">%2$s ರೊಳಗೆ ಗುರಿ ತಲುಪಲು ತಿಂಗಳಿಗೆ ಇನ್ನೂ %1$s ಬೇಕು.</string>
+    <string name="insight_goal_body_blurred">ಎಷ್ಟು ಬೇಕು ಎಂದು ನೋಡಲು ಆ್ಯಪ್ ತೆರೆಯಿರಿ.</string>
+    <plurals name="lock_attempts_remaining">
+        <item quantity="one">ಸಮಯ ಮಿತಿಗೂ ಮೊದಲು %1$d ಪ್ರಯತ್ನ ಉಳಿದಿದೆ</item>
+        <item quantity="other">ಸಮಯ ಮಿತಿಗೂ ಮೊದಲು %1$d ಪ್ರಯತ್ನಗಳು ಉಳಿದಿವೆ</item>
+    </plurals>
+    <plurals name="lock_locked_out">
+        <item quantity="one">ತುಂಬಾ ಪ್ರಯತ್ನಗಳು. %1$d ಸೆಕೆಂಡ್ ನಂತರ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.</item>
+        <item quantity="other">ತುಂಬಾ ಪ್ರಯತ್ನಗಳು. %1$d ಸೆಕೆಂಡುಗಳ ನಂತರ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.</item>
+    </plurals>
+</resources>

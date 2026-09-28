@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  தமிழ் (ta) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <string name="market_title">இன்று முதலீடு செய்ய நல்ல நாளா?</string>
+    <string name="market_intro">உண்மையில் அளக்க முடிந்தவற்றில் ஒரு மதிப்பெண் — இந்த ஆப் ஏற்கெனவே சேமித்த விலைகளிலிருந்தே. இதே தீர்ப்புக்குப் பிறகு எத்தனை முறை விலை உயர்ந்தது என்பதோடு காட்டப்படுகிறது — இது எதையும் வாங்குவதில்லை.</string>
+    <string name="market_empty">இன்னும் மதிப்பெண் தர எதுவும் இல்லை. விலைக் குறியீடு உள்ள முதலீட்டைச் சேர்த்தால், விலைகள் வரவர வரலாறு உருவாகும்.</string>
+    <string name="market_verdict_strong">இன்று முதலீட்டுக்கு வலுவான நாளாகத் தெரிகிறது.</string>
+    <string name="market_verdict_good">இன்று வழக்கத்தைவிட சிறப்பாக உள்ளது.</string>
+    <string name="market_verdict_neutral">இன்று சாதாரண நாளாகவே உள்ளது.</string>
+    <string name="market_verdict_no_edge">இன்று தனிச் சிறப்பு எதுவும் தெரியவில்லை.</string>
+    <string name="market_verdict_young">இதற்கு மதிப்பெண் தரும் அளவுக்கு விலை வரலாறு இன்னும் இல்லை.</string>
+    <string name="market_verdict_stale">இங்குள்ள கடைசி விலை மிகப் பழையது; அதை வைத்து இன்றை மதிப்பிட முடியாது.</string>
+    <plurals name="market_score">
+        <item quantity="one">சாத்தியமான %2$d இல் %1$d புள்ளி.</item>
+        <item quantity="other">சாத்தியமான %2$d இல் %1$d புள்ளிகள்.</item>
+    </plurals>
+    <string name="market_hit_rate">இந்த வீட்டின் சொந்த வரலாற்றில், இந்தத் தீர்ப்புக்குப் பிறகு %1$d%% முறை விலை உயர்ந்துள்ளது.</string>
+    <plurals name="market_hit_samples">
+        <item quantity="one">%d ஒப்பிடத்தக்க நாளில் அளக்கப்பட்டது.</item>
+        <item quantity="other">%d ஒப்பிடத்தக்க நாட்களில் அளக்கப்பட்டது.</item>
+    </plurals>
+    <string name="market_hit_rate_unknown">இந்தத் தீர்ப்பு எப்படிச் செயல்பட்டது எனச் சொல்லும் அளவுக்கு ஒப்பிடத்தக்க நாட்கள் இன்னும் இல்லை.</string>
+    <string name="market_signal_points">%1$s — %3$d இல் %2$d</string>
+    <string name="market_signal_unavailable">%1$s — அளக்கப்படவில்லை, எனவே இது எந்தப் பக்கமும் எடுபடாது</string>
+    <string name="market_signal_pct">%1$s%%</string>
+    <string name="market_signal_valuation">சந்தை எவ்வளவு மலிவாக உள்ளது</string>
+    <string name="market_signal_drawdown">52-வார உச்சத்திலிருந்து எவ்வளவு கீழே</string>
+    <string name="market_signal_vix">சந்தை எவ்வளவு பயத்தில் உள்ளது</string>
+    <string name="market_signal_ma200">200-நாள் சராசரியிலிருந்து எவ்வளவு கீழே</string>
+    <string name="market_signal_rsi">எவ்வளவு ஓவர்சோல்டு (RSI)</string>
+    <string name="market_signal_rarity">இந்த ஆண்டில் இந்த விலை எவ்வளவு அரிது</string>
+    <string name="market_signal_streak">தொடர்ந்து எத்தனை நாள் சரிந்துள்ளது</string>
+    <plurals name="market_tranches">
+        <item quantity="one">முதலீடு செய்வதெனில், %d தவணை அளவு பரிசீலிக்கத்தக்கது.</item>
+        <item quantity="other">முதலீடு செய்வதெனில், %d தவணைகள் அளவு பரிசீலிக்கத்தக்கது.</item>
+    </plurals>
+    <string name="market_tranches_none">இப்போது எதையும் முதலீடு செய்யப் பரிந்துரைக்கப்படவில்லை.</string>
+    <string name="market_gate_idle_cash">முதலீடு செய்ய உங்களிடம் மிச்சம் எதுவும் இல்லை.</string>
+    <string name="market_gate_runway">உங்கள் அவசரகால நிதி இன்னும் இலக்கை எட்டவில்லை.</string>
+    <string name="market_gate_forecast">அடுத்த 90 நாட்களில் ஒரு நெருக்கடியான நாள் உள்ளது.</string>
+    <plurals name="market_as_of">
+        <item quantity="one">%d நாள் பழைய விலை.</item>
+        <item quantity="other">%d நாட்கள் பழைய விலை.</item>
+    </plurals>
+    <string name="market_as_of_today">இன்றைய விலை.</string>
+    <string name="market_evidence">%1$s v%2$s இலிருந்து · %3$s</string>
+    <string name="market_nothing_bought">இந்தத் திரை எதையும் வாங்குவதில்லை. மதிப்பெண் தருகிறது, தன் கணக்கைக் காட்டுகிறது, முடிவு உங்களுடையது.</string>
+    <string name="market_back">பின்செல்</string>
+</resources>

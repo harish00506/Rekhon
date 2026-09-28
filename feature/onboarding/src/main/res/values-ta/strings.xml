@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  தமிழ் (ta) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <string name="onboarding_step_of">%2$d இல் %1$d ஆவது படி</string>
+    <string name="onboarding_back">பின்செல்</string>
+    <string name="onboarding_next">அடுத்து</string>
+    <string name="onboarding_finish">முடி</string>
+    <string name="onboarding_skip">இப்போதைக்குத் தவிர்</string>
+    <string name="onboarding_saving">உங்கள் அமைப்பு சேமிக்கப்படுகிறது…</string>
+    <string name="onboarding_error">உங்கள் அமைப்பைச் சேமிக்க முடியவில்லை. மீண்டும் முயலுங்கள்.</string>
+    <string name="onboarding_error_dismiss">மூடு</string>
+    <string name="onboarding_welcome_title">உங்கள் பணம், உங்கள் ஃபோனில்</string>
+    <string name="onboarding_welcome_body">உங்கள் நிதிக்கு முழுநேர CFO — கணக்கு வைக்கிறது, முன்கணிக்கிறது, ஆலோசனை சொல்கிறது, எப்போதும் தன் கணக்கைக் காட்டுகிறது.</string>
+    <string name="onboarding_welcome_pledge_title">எங்கள் தனியுரிமை உறுதி</string>
+    <string name="onboarding_welcome_pledge">அனைத்தும் இந்தச் சாதனத்திலேயே மறைகுறியாக்கப்பட்டு சேமிக்கப்படுகிறது. நீங்களே ஒரு வசதியை இயக்கும் வரை உங்கள் பணம் பற்றிய எதுவும் எங்கும் அனுப்பப்படுவதில்லை, அதை எப்போது வேண்டுமானாலும் அணைக்கலாம். ஆப் முழுமையாக இணையம் இல்லாமல் இயங்கும்.</string>
+    <string name="onboarding_demo_title">முதலில் பார்க்க மட்டும் விரும்புகிறீர்களா?</string>
+    <string name="onboarding_demo_body">ஒரு மாதிரிக் குடும்பத்தின் நிதியில் ஆப் முழுவதையும் சுற்றிப் பாருங்கள் — அமைப்பு எதுவும் இல்லை, உங்களுடையது எதுவும் பதிவாகாது. பார்க்கும்போது மாதிரித் தரவு தெளிவாகக் குறிக்கப்பட்டிருக்கும், டெமோவிலிருந்து வெளியேறினால் அதன் ஒவ்வொரு துளியும் அழிந்துவிடும்.</string>
+    <string name="onboarding_demo_action">மாதிரித் தரவுடன் பார்</string>
+    <string name="onboarding_consent_title">வங்கிச் செய்திகளைப் படிக்கவா?</string>
+    <string name="onboarding_consent_body">இதை இயக்கினால், வங்கிகள் மற்றும் UPI ஆப்களின் பரிவர்த்தனை அறிவிப்புகளைப் படித்து உங்கள் செலவை ஆப் தானாக நிரப்பும்.</string>
+    <string name="onboarding_consent_what_is_read">என்ன படிக்கிறது: தொகை, கடை, தேதி, கணக்கு — வங்கிகளும் கட்டண ஆப்களும் அனுப்பிய செய்திகளிலிருந்து மட்டுமே. தனிப்பட்ட செய்திகளை அது ஒருபோதும் படிப்பதில்லை.</string>
+    <string name="onboarding_consent_on_device">இவை அனைத்தும் இந்தச் சாதனத்திலேயே நடக்கின்றன. எந்தச் செய்தியும் உங்கள் ஃபோனை விட்டு வெளியே செல்லாது.</string>
+    <string name="onboarding_consent_toggle">பரிவர்த்தனைச் செய்திகளைப் படி</string>
+    <string name="onboarding_consent_optional">இது விருப்பத்தேர்வு; நீங்கள் இயக்கும் வரை எதுவும் படிக்கப்படாது. இப்போதே தேர்ந்தெடுங்கள் — இதைப் பிறகு மாற்ற இந்தப் பதிப்பில் அமைப்புகள் திரை இல்லை.</string>
+    <string name="onboarding_profile_title">உங்களைப் பற்றி</string>
+    <string name="onboarding_profile_body">இந்தச் சாதனத்தில் மட்டுமே வைக்கப்படுகிறது.</string>
+    <string name="onboarding_profile_name_label">உங்களை எப்படி அழைக்கலாம்?</string>
+    <string name="onboarding_profile_currency_label">நாணயம்</string>
+    <string name="onboarding_profile_time_zone_label">நேர மண்டலம்</string>
+    <string name="onboarding_profile_time_zone_help">உங்கள் நாளும் மாதமும் எப்போது மாறுகின்றன என்பதை இது தீர்மானிக்கிறது; அதனால் பட்ஜெட்டுகளும் கெடு தேதிகளும் உங்கள் ஃபோனுக்கல்ல, உங்கள் வாழ்க்கைக்கே பொருந்தும்.</string>
+    <string name="onboarding_profile_selected">தேர்ந்தெடுக்கப்பட்டது</string>
+    <string name="onboarding_quick_setup_title">ஒரு சிறு முன்னேற்றம் (விருப்பத்தேர்வு)</string>
+    <string name="onboarding_quick_setup_body">மூன்று தோராயமான எண்கள் இருந்தால், ஆப் உடனே பட்ஜெட்டுகளையும் அவசரகால நிதி இலக்கையும் பரிந்துரைக்கும். மதிப்பீடுகளே போதும், இதை முற்றிலும் தவிர்க்கவும் முடியும்.</string>
+    <string name="onboarding_quick_setup_income_label">மாத வருமானம்</string>
+    <string name="onboarding_quick_setup_rent_label">மாதம் வாடகை அல்லது EMI</string>
+    <string name="onboarding_quick_setup_savings_label">மாதம் வழக்கமான சேமிப்பு</string>
+    <string name="onboarding_account_title">உங்கள் முதல் கணக்கு</string>
+    <string name="onboarding_account_body">நீங்கள் அதிகம் பயன்படுத்தும் கணக்கைச் சேருங்கள். மீதியை பிறகு சேர்க்கலாம்; பெயரைக் காலியாக விட்டு இதை முற்றிலும் தவிர்க்கவும் முடியும்.</string>
+    <string name="onboarding_account_name_label">கணக்கின் பெயர்</string>
+    <string name="onboarding_account_balance_label">தொடக்க இருப்பு (விருப்பத்தேர்வு)</string>
+    <string name="onboarding_account_balance_help">இப்போது அதில் எவ்வளவு உள்ளது. கிரெடிட் கார்டுக்கு, நீங்கள் செலுத்த வேண்டியதை எதிர்மறைத் தொகையாக உள்ளிடுங்கள்.</string>
+    <string name="onboarding_account_type_bank">வங்கிக் கணக்கு</string>
+    <string name="onboarding_account_type_cash">ரொக்கம்</string>
+    <string name="onboarding_account_type_credit_card">கிரெடிட் கார்டு</string>
+    <string name="onboarding_account_type_investment">முதலீடு</string>
+    <string name="onboarding_quick_setup_amount_hint">₹</string>
+    <string name="onboarding_quick_setup_summary_title">நாங்கள் எதை அமைப்போம்</string>
+    <string name="onboarding_quick_setup_summary_needs">தேவைகள்</string>
+    <string name="onboarding_quick_setup_summary_wants">விருப்பங்கள்</string>
+    <string name="onboarding_quick_setup_summary_savings">சேமிப்பு</string>
+    <string name="onboarding_quick_setup_summary_emergency">அவசரகால நிதி இலக்கு</string>
+    <string name="onboarding_quick_setup_summary_emergency_help">உங்கள் தேவைகள் பட்ஜெட்டின் %1$d மாதங்கள்.</string>
+    <string name="onboarding_quick_setup_summary_obligations">வாடகையும் EMI-யும் உங்கள் வருமானத்தில் %1$s எடுத்துக்கொள்கின்றன.</string>
+    <string name="onboarding_quick_setup_summary_obligations_within">அது வழிகாட்டுதலுக்குள் உள்ளது.</string>
+    <string name="onboarding_quick_setup_summary_obligations_above">அது வழக்கமான 40% வழிகாட்டுதலுக்கு மேல் உள்ளது.</string>
+    <string name="onboarding_quick_setup_summary_obligations_fail">அது மிக அதிகம்; பெரும்பாலான கடன் வழங்குநர்கள் மேலும் கடன் தர மறுப்பார்கள்.</string>
+    <string name="onboarding_quick_setup_summary_short">உங்கள் வாடகை இந்தப் பட்ஜெட் ஈடுகட்டுவதைவிட அதிகம். காகிதத்தில் கணக்கைச் சரிசெய்வதற்குப் பதிலாக உங்கள் சேமிப்பைத் தொடாமல் விட்டுள்ளோம்.</string>
+    <string name="onboarding_quick_setup_summary_rules">%1$s அடிப்படையில்</string>
+    <string name="onboarding_quick_setup_summary_editable">இவற்றில் எதையும் பிறகு மாற்றலாம்.</string>
+    <string name="onboarding_security_title">ஆப்பைப் பூட்டு</string>
+    <string name="onboarding_security_body">உங்கள் ஃபோனை எடுப்பவர் உங்கள் நிதிநிலையைத் திறக்க முடியாதபடி ஒரு பூட்டைச் சேருங்கள்.</string>
+    <string name="onboarding_security_explainer">உங்கள் PIN இந்தச் சாதனத்தை விட்டு ஒருபோதும் வெளியே செல்லாது, நீங்கள் எழுதியபடியே ஒருபோதும் சேமிக்கப்படாது. உங்கள் ஃபோன் கைரேகை அல்லது முகத்தால் திறந்தால், அதையும் பயன்படுத்தலாம்.</string>
+    <string name="onboarding_security_toggle">ஆப்பைத் திறக்க PIN கட்டாயம்</string>
+    <string name="onboarding_security_pin_label">ஒரு PIN-ஐத் தேர்ந்தெடுங்கள்</string>
+    <string name="onboarding_security_pin_confirm_label">அதை மீண்டும் உள்ளிடுங்கள்</string>
+    <string name="onboarding_security_pin_help">4 முதல் 6 இலக்கங்கள். அதை மீட்க வழி இல்லை, எனவே நினைவில் நிற்பதையே தேர்ந்தெடுங்கள்.</string>
+    <string name="onboarding_security_optional">இப்போதே தேர்ந்தெடுங்கள் — இதைப் பிறகு இயக்க இந்தப் பதிப்பில் அமைப்புகள் திரை இல்லை.</string>
+    <string name="onboarding_security_error_pin_short">PIN-இல் 4 முதல் 6 இலக்கங்கள் இருக்க வேண்டும்.</string>
+    <string name="onboarding_security_error_pin_mismatch">அந்த இரு PIN-களும் வேறுவேறு.</string>
+</resources>

@@ -15,13 +15,20 @@
     -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!--
+      Issue 10.8: `localeConfig` is what puts this app in Android 13's per-app language settings.
+      It is read from API 33 only — on 26–32 the in-app picker in Settings is the way in, which is
+      why lint's UnusedAttribute is suppressed here rather than the attribute dropped (ADR-0056).
+    -->
     <application
         android:name=".CfoApplication"
         android:allowBackup="false"
         android:fullBackupContent="false"
         android:label="@string/app_name"
+        android:localeConfig="@xml/locales_config"
         android:supportsRtl="true"
-        android:theme="@style/Theme.AiPersonalCfo">
+        android:theme="@style/Theme.AiPersonalCfo"
+        tools:ignore="UnusedAttribute">
         <activity
             android:name=".MainActivity"
             android:exported="true"

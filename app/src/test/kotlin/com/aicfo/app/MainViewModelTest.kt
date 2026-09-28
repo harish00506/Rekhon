@@ -6,6 +6,7 @@ import com.aicfo.core.common.AppError
 import com.aicfo.core.common.Err
 import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
+import com.aicfo.core.datastore.LanguageSetting
 import com.aicfo.core.datastore.OnboardingProfile
 import com.aicfo.core.datastore.QuickSetupSeeds
 import com.aicfo.core.datastore.SettingsSnapshot
@@ -322,6 +323,8 @@ private class StubSettingsStore(
     override suspend fun setPrivacyBlurEnabled(enabled: Boolean): Result<Unit, AppError> = Ok(Unit)
 
     override suspend fun setTheme(theme: ThemeSetting): Result<Unit, AppError> = Ok(Unit)
+
+    override suspend fun setLanguage(language: LanguageSetting): Result<Unit, AppError> = Ok(Unit)
 
     override suspend fun setQuickSetupSeeds(seeds: QuickSetupSeeds): Result<Unit, AppError> = Ok(Unit)
 

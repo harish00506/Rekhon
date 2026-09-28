@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  हिन्दी (hi) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <string name="chat_title">अपने CFO से पूछें</string>
+    <string name="chat_intro">अपने ही पैसे के बारे में पूछें। हर आँकड़ा इसी ऐप के किसी इंजन से आता है — सहायक उसे सिर्फ़ शब्दों में रखता है, और जिसका आधार न हो वह दिखाया ही नहीं जाता।</string>
+    <string name="chat_input_label">कुछ पूछें</string>
+    <string name="chat_send">पूछें</string>
+    <string name="chat_clear">यह बातचीत भुला दें</string>
+    <string name="chat_empty">अभी कुछ नहीं पूछा गया। इनमें से कोई आज़माएँ।</string>
+    <string name="chat_you">आपने पूछा</string>
+    <string name="chat_refusal_out_of_scope">इसमें मैं मदद नहीं कर सकता — शेयर की सलाह, टैक्स फाइलिंग या कानूनी सलाह नहीं। जो मैं कर सकता हूँ, वह यह है।</string>
+    <string name="chat_refusal_not_understood">मैं समझ नहीं पाया। इनमें से कोई आज़माएँ।</string>
+    <string name="chat_refusal_no_data">ईमानदारी से जवाब देने लायक अभी इतना दर्ज नहीं है।</string>
+    <string name="chat_refusal_no_model">सहायक अभी उपलब्ध नहीं है, इसलिए अंदाज़ा लगाने से बेहतर है कि मैं कुछ न कहूँ।</string>
+    <string name="chat_refusal_guardrail">जवाब तैयार था, पर उसमें एक ऐसा आँकड़ा था जिसे मैं किसी इंजन तक नहीं जोड़ पाया — इसलिए मैंने उसे नहीं दिखाया।</string>
+    <string name="chat_chip_spend">मेरा पैसा कहाँ गया?</string>
+    <string name="chat_chip_balance">मेरा बैलेंस कितना है?</string>
+    <string name="chat_chip_forecast">क्या 90 दिनों में पैसा खत्म हो जाएगा?</string>
+    <string name="chat_chip_budget">क्या मैं बजट में हूँ?</string>
+    <string name="chat_chip_goals">मैं किसके लिए बचत कर रहा हूँ?</string>
+    <string name="chat_chip_afford">क्या मैं यह ले सकता हूँ?</string>
+    <string name="chat_chip_health">मेरा हाल कैसा है?</string>
+    <string name="chat_chip_debt">कर्ज़ चुकाऊँ या निवेश करूँ?</string>
+    <string name="chat_chip_buylist">मेरी खरीद सूची में क्या है?</string>
+    <string name="chat_chip_vehicle">सर्विस कब करानी है?</string>
+    <string name="chat_evidence">%1$s से · %2$s</string>
+    <string name="chat_evidence_checked">%1$s के विरुद्ध जाँचा गया</string>
+    <plurals name="chat_figures">
+        <item quantity="one">%d इंजन आँकड़ा</item>
+        <item quantity="other">%d इंजन आँकड़े</item>
+    </plurals>
+    <string name="chat_nothing_moved">सहायक पढ़ता और समझाता है। यह कभी पैसा नहीं भेजता।</string>
+    <string name="chat_back">वापस</string>
+</resources>

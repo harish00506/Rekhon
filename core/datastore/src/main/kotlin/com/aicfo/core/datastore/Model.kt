@@ -57,6 +57,45 @@ enum class ThemeSetting {
 }
 
 /**
+ * The language the app speaks (issue 10.8; SRS §3.5, NFR-011).
+ *
+ * Why:    §3.5 names the three languages this app ships beyond English — Hindi, Kannada and Tamil
+ *         — and every one of them has to be *choosable*. It is an enum rather than a free string
+ *         because a language the user can pick must be one the app actually has strings for:
+ *         `TranslationCoverageTest` holds these entries, `res/xml/locales_config.xml` and the
+ *         `values-*` folders to each other, so a language cannot appear in the picker with nothing
+ *         behind it, and cannot ship translations nobody can select.
+ * What:   the offered languages, each with the BCP-47 tag stored on disk and handed to the system.
+ * Result: what the settings screen lists and `SettingsSnapshot.language` carries.
+ * Changelog: 2026-09-28 — Created for issue 10.8.
+ *
+ * Input:  [tag] — the BCP-47 tag, `null` for "follow the phone". Output: the enum constant.
+ */
+enum class LanguageSetting(
+    val tag: String?,
+) {
+    /** Follow the phone. The default — a phone already in Tamil should not have to be told twice. */
+    SYSTEM(null),
+    ENGLISH("en"),
+    HINDI("hi"),
+    KANNADA("kn"),
+    TAMIL("ta"),
+    ;
+
+    companion object {
+        /**
+         * Reads a stored tag back.
+         * Why:    a tag from a newer build, or one a later build stops shipping, must not crash or
+         *         strand the user in a language the app cannot render. Falling back to the phone's
+         *         own language is the only answer that is always sensible.
+         * Result: the matching constant, or [SYSTEM]. Input: [tag] — may be null, empty or unknown.
+         * Output: [LanguageSetting].
+         */
+        fun ofTag(tag: String?): LanguageSetting = entries.firstOrNull { it.tag == tag } ?: SYSTEM
+    }
+}
+
+/**
  * The user's settings, as one immutable snapshot.
  *
  * Why:    a single value means the UI observes one Flow rather than four, and a screen can never
@@ -77,6 +116,8 @@ enum class ThemeSetting {
  *         **independent of [isOnboarded]**, because the demo is reachable without a profile.
  *         [smsScanCursorId] — the highest inbox `_ID` already read (issue 3.9), `0` when nothing
  *         has been. Reset to `0` when the SMS consent is revoked, so a re-grant starts clean.
+ *         [language] — issue 10.8: which of the shipped languages the app speaks, or
+ *         [LanguageSetting.SYSTEM] to follow the phone.
  * Output: an immutable value.
  */
 data class SettingsSnapshot(
@@ -89,6 +130,7 @@ data class SettingsSnapshot(
     val quickSetup: QuickSetupSeeds = QuickSetupSeeds(),
     val demoModeActive: Boolean = false,
     val smsScanCursorId: Long = 0L,
+    val language: LanguageSetting = LanguageSetting.SYSTEM,
 ) {
     /**
      * Whether first-run onboarding has been completed.

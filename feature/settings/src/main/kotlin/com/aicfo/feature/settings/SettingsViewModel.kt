@@ -12,6 +12,7 @@ import com.aicfo.core.crypto.PinVerifier
 import com.aicfo.core.datastore.AppLockStore
 import com.aicfo.core.datastore.ConsentFeature
 import com.aicfo.core.datastore.ConsentStore
+import com.aicfo.core.datastore.LanguageSetting
 import com.aicfo.core.datastore.SettingsStore
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.MoneyFormatter
@@ -95,8 +96,29 @@ class SettingsViewModel
                 is SettingsEvent.PinChanged -> _uiState.update { it.copy(pinText = event.value, fieldError = null) }
                 is SettingsEvent.AppLockToggled -> toggleAppLock(event.enabled)
                 SettingsEvent.DismissError -> _uiState.update { it.copy(errorCode = null, fieldError = null) }
+                is SettingsEvent.LanguageChosen -> chooseLanguage(event.language)
                 is SettingsEvent.Backup -> backupActions.onBackupEvent(event)
                 is SettingsEvent.Restore -> backupActions.onRestoreEvent(event)
+            }
+        }
+
+        /**
+         * Stores the chosen language (issue 10.8; SRS §3.5).
+         * Why:    written to the store rather than held here, because a language that resets when
+         *         the app is killed is not a setting — and because `AppLanguageViewModel`, which
+         *         wraps the whole app, reads the same store. The screen does not update its own
+         *         state: it re-reads what was written, so the picker can never show a choice that
+         *         did not reach disk.
+         * Result: the store is told; a failed write surfaces as the error banner.
+         * Input:  [language]. Output: none (launches on `viewModelScope`).
+         * Changelog: 2026-09-28 — Created for issue 10.8.
+         */
+        private fun chooseLanguage(language: LanguageSetting) {
+            viewModelScope.launch {
+                when (val result = settingsStore.setLanguage(language)) {
+                    is Ok -> Unit
+                    is Err -> _uiState.update { it.copy(errorCode = result.error::class.simpleName) }
+                }
             }
         }
 
@@ -111,13 +133,17 @@ class SettingsViewModel
         private fun observeSettings() {
             settingsStore.observe()
                 .onEach { result ->
-                    val seeds = (result as? Ok)?.value?.quickSetup
+                    val settings = (result as? Ok)?.value
+                    val seeds = settings?.quickSetup
                     _uiState.update { state ->
                         state.copy(
                             monthlyIncomeText = state.monthlyIncomeText.ifBlank { seeds?.monthlyIncome.plain() },
                             rentOrEmiText = state.rentOrEmiText.ifBlank { seeds?.rentOrEmi.plain() },
                             typicalSavingsText = state.typicalSavingsText.ifBlank { seeds?.typicalSavings.plain() },
                             isLoading = false,
+                            // Read back rather than set optimistically: the picker shows what is on
+                            // disk, so it cannot claim a choice that never got there (issue 10.8).
+                            language = settings?.language ?: state.language,
                         )
                     }
                 }

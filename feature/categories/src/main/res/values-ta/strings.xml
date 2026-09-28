@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  தமிழ் (ta) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <string name="categories_title">வகைகள்</string>
+    <string name="categories_add">வகையைச் சேர்</string>
+    <string name="categories_edit">திருத்து</string>
+    <string name="categories_delete">நீக்கு</string>
+    <string name="categories_default_label">இயல்புநிலை</string>
+    <string name="categories_empty_title">இன்னும் வகைகள் இல்லை</string>
+    <string name="categories_empty_body">ஒரு செலவு எதற்காக என்பதை ஆப் அறிவது வகைகள் மூலமே. ஒன்றைச் சேர்த்தால், பரிவர்த்தனையைப் பதியும்போது அது ஒரு தேர்வாக வரும்.</string>
+    <string name="category_editor_title_add">புதிய வகை</string>
+    <string name="category_editor_title_edit">வகையைத் திருத்து</string>
+    <string name="category_editor_name">பெயர்</string>
+    <string name="category_editor_nature">இந்தப் பணம் எதுவாக மாறுகிறது</string>
+    <string name="category_editor_parent">எதன் கீழ் சேர்க்க</string>
+    <string name="category_editor_parent_none">எதன் கீழும் இல்லை — மேல்நிலையிலேயே இருக்கட்டும்</string>
+    <string name="category_editor_save">சேமி</string>
+    <string name="category_editor_cancel">ரத்து செய்</string>
+    <string name="category_nature_need">தேவை</string>
+    <string name="category_nature_want">விருப்பம்</string>
+    <string name="category_nature_invest">முதலீடு</string>
+    <string name="category_nature_asset">சொத்து</string>
+    <string name="category_nature_liability">கடன் திருப்பிச் செலுத்தல்</string>
+    <string name="categories_delete_title">“%1$s” நீக்கவா?</string>
+    <string name="categories_delete_counting">இந்த வகையை எவை பயன்படுத்துகின்றன எனப் பார்க்கிறோம்…</string>
+    <string name="categories_delete_unknown_usage">இந்த வகையை எவை பயன்படுத்துகின்றன எனச் சரிபார்க்க முடியவில்லை. இது நீக்கப்படும், இதைப் பயன்படுத்தியவை வகைப்படுத்தப்படாதவை எனக் காட்டப்படும்.</string>
+    <plurals name="categories_delete_usage">
+        <item quantity="one">%1$d பரிவர்த்தனை இந்த வகையைப் பயன்படுத்துகிறது; அது வகைப்படுத்தப்படாதது எனக் காட்டப்படும். எதுவும் நீக்கப்படாது, எந்தத் தொகையும் மாறாது.</item>
+        <item quantity="other">%1$d பரிவர்த்தனைகள் இந்த வகையைப் பயன்படுத்துகின்றன; அவை வகைப்படுத்தப்படாதவை எனக் காட்டப்படும். எதுவும் நீக்கப்படாது, எந்தத் தொகையும் மாறாது.</item>
+    </plurals>
+    <string name="categories_delete_unused">இந்த வகையை இன்னும் எதுவும் பயன்படுத்தவில்லை.</string>
+    <string name="categories_delete_confirm">நீக்கு</string>
+    <string name="categories_delete_cancel">வைத்திரு</string>
+    <string name="categories_error_dismiss">மூடு</string>
+    <string name="categories_error_duplicate_name">இதுவரை பயன்படுத்தாத பெயரைக் கொடுங்கள்.</string>
+    <string name="categories_error_bad_parent">இதைச் சேர்க்க ஒரு மேல்நிலை வகையைத் தேர்ந்தெடுங்கள். வகைகள் இரண்டு நிலை வரை மட்டுமே, அதற்கு மேல் இல்லை.</string>
+    <string name="categories_error_has_children">முதலில் இதற்குள் உள்ள வகைகளை நீக்குங்கள்.</string>
+    <string name="categories_error_storage">உங்கள் சேமித்த வகைகளை அணுக முடியவில்லை. மீண்டும் முயலுங்கள்.</string>
+    <string name="categories_error_not_found">அந்த வகை இப்போது இல்லை.</string>
+    <string name="categories_error_generic">ஏதோ தவறு நடந்தது. மீண்டும் முயலுங்கள்.</string>
+</resources>

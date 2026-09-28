@@ -1,5 +1,6 @@
 package com.aicfo.lint
 
+import com.android.tools.lint.checks.infrastructure.TestFiles.java
 import com.android.tools.lint.checks.infrastructure.TestFiles.kotlin
 import com.android.tools.lint.checks.infrastructure.TestLintTask.lint
 import org.junit.Test
@@ -322,6 +323,35 @@ class CfoLintDetectorsTest {
             .expectContains("strings.xml")
     }
 
+    /**
+     * Input:  a literal in the app module (issue 10.8).
+     * Output: asserts `:app` is in scope. It holds the lock screen and the demo banner, and its
+     *         own `strings.xml` had been noting since 1.5 that nothing enforced this — for a
+     *         localisation issue, a literal here is a sentence no translation can reach.
+     */
+    @Test
+    fun `flags a hardcoded string in the app module`() {
+        lint()
+            .files(
+                kotlin(
+                    "src/main/kotlin/LockScreen.kt",
+                    """
+                    package com.aicfo.app
+
+                    fun Content() {
+                        Text("Enter your PIN")
+                    }
+
+                    fun Text(text: String) = text
+                    """,
+                ).indented(),
+            ).issues(HardcodedUiStringDetector.ISSUE)
+            .allowMissingSdk()
+            .run()
+            .expectErrorCount(1)
+            .expectContains("strings.xml")
+    }
+
     /** Input: a literal in a non-feature module. Output: asserts the rule is scoped to UI. */
     @Test
     fun `does not flag a string literal outside a feature module`() {
@@ -364,6 +394,7 @@ class CfoLintDetectorsTest {
                     }
                     """,
                 ).indented(),
+                logStub,
             ).issues(PiiLoggingDetector.ISSUE)
             .allowMissingSdk()
             .run()
@@ -411,9 +442,37 @@ class CfoLintDetectorsTest {
                     }
                     """,
                 ).indented(),
+                logStub,
             ).issues(PiiLoggingDetector.ISSUE)
             .allowMissingSdk()
             .run()
             .expectClean()
     }
+
+    // --- fixtures ---------------------------------------------------------------------------
+
+    /**
+     * A stand-in for `android.util.Log` (issue 10.8).
+     *
+     * Why:  lint's test harness resolves imports, and without the SDK on its classpath
+     *       `import android.util.Log` fails to resolve — which it reports as a `LintError`, so the
+     *       two PII tests below failed **inside** the harness rather than on their assertion. They
+     *       had been failing silently: Gradle held `:lint:test` up to date, so the red only appeared
+     *       when something in this module changed. A stub is what the harness asks for.
+     * Result: `Log.d(...)` resolves, and the detector is tested on what it is meant to catch.
+     * Changelog: 2026-09-28 — Created for issue 10.8.
+     */
+    private val logStub =
+        java(
+            """
+            package android.util;
+
+            public final class Log {
+                public static int d(String tag, String msg) { return 0; }
+                public static int i(String tag, String msg) { return 0; }
+                public static int w(String tag, String msg) { return 0; }
+                public static int e(String tag, String msg) { return 0; }
+            }
+            """,
+        ).indented()
 }

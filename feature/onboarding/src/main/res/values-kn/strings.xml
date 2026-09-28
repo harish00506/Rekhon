@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ಕನ್ನಡ (kn) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <string name="onboarding_step_of">%2$d ರಲ್ಲಿ %1$d ನೇ ಹಂತ</string>
+    <string name="onboarding_back">ಹಿಂದೆ</string>
+    <string name="onboarding_next">ಮುಂದೆ</string>
+    <string name="onboarding_finish">ಮುಗಿಸಿ</string>
+    <string name="onboarding_skip">ಸದ್ಯಕ್ಕೆ ಬಿಟ್ಟುಬಿಡಿ</string>
+    <string name="onboarding_saving">ನಿಮ್ಮ ಸೆಟಪ್ ಉಳಿಸಲಾಗುತ್ತಿದೆ…</string>
+    <string name="onboarding_error">ನಿಮ್ಮ ಸೆಟಪ್ ಉಳಿಸಲಾಗಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.</string>
+    <string name="onboarding_error_dismiss">ಮುಚ್ಚಿ</string>
+    <string name="onboarding_welcome_title">ನಿಮ್ಮ ಹಣ, ನಿಮ್ಮ ಫೋನಿನಲ್ಲಿ</string>
+    <string name="onboarding_welcome_body">ನಿಮ್ಮ ಹಣಕಾಸಿಗೆ ಪೂರ್ಣಾವಧಿ CFO — ಇದು ಲೆಕ್ಕ ಇಡುತ್ತದೆ, ಮುನ್ನೋಟ ನೀಡುತ್ತದೆ, ಸಲಹೆ ಕೊಡುತ್ತದೆ, ಮತ್ತು ಯಾವಾಗಲೂ ತನ್ನ ಲೆಕ್ಕವನ್ನು ತೋರಿಸುತ್ತದೆ.</string>
+    <string name="onboarding_welcome_pledge_title">ನಮ್ಮ ಗೌಪ್ಯತೆಯ ವಚನ</string>
+    <string name="onboarding_welcome_pledge">ಎಲ್ಲವೂ ಈ ಸಾಧನದಲ್ಲೇ ಎನ್‌ಕ್ರಿಪ್ಟ್ ಆಗಿ ಉಳಿಯುತ್ತದೆ. ನೀವೇ ಒಂದು ಸೌಲಭ್ಯವನ್ನು ಆನ್ ಮಾಡದ ಹೊರತು ನಿಮ್ಮ ಹಣದ ಯಾವ ಮಾಹಿತಿಯೂ ಎಲ್ಲಿಗೂ ಹೋಗುವುದಿಲ್ಲ, ಮತ್ತು ಅದನ್ನು ಯಾವಾಗ ಬೇಕಾದರೂ ಆಫ್ ಮಾಡಬಹುದು. ಆ್ಯಪ್ ಸಂಪೂರ್ಣವಾಗಿ ಆಫ್‌ಲೈನ್‌ನಲ್ಲಿ ಕೆಲಸ ಮಾಡುತ್ತದೆ.</string>
+    <string name="onboarding_demo_title">ಮೊದಲು ಸುಮ್ಮನೆ ನೋಡಬೇಕೆ?</string>
+    <string name="onboarding_demo_body">ಒಂದು ಮಾದರಿ ಕುಟುಂಬದ ಹಣಕಾಸಿನ ಮೇಲೆ ಇಡೀ ಆ್ಯಪ್ ಅನ್ನು ನೋಡಿ — ಯಾವ ಸೆಟಪ್ ಇಲ್ಲ, ನಿಮ್ಮದೇನೂ ನಮೂದಿಸುವುದೂ ಇಲ್ಲ. ನೋಡುವಾಗ ಮಾದರಿ ಮಾಹಿತಿ ಸ್ಪಷ್ಟವಾಗಿ ಗುರುತಿಸಲ್ಪಟ್ಟಿರುತ್ತದೆ, ಮತ್ತು ಡೆಮೊದಿಂದ ಹೊರಬಂದರೆ ಅದರ ಪ್ರತಿಯೊಂದೂ ಅಳಿಸಿಹೋಗುತ್ತದೆ.</string>
+    <string name="onboarding_demo_action">ಮಾದರಿ ಮಾಹಿತಿಯೊಂದಿಗೆ ನೋಡಿ</string>
+    <string name="onboarding_consent_title">ಬ್ಯಾಂಕ್ ಸಂದೇಶಗಳನ್ನು ಓದಬೇಕೆ?</string>
+    <string name="onboarding_consent_body">ಇದನ್ನು ಆನ್ ಮಾಡಿದರೆ, ಬ್ಯಾಂಕ್ ಮತ್ತು UPI ಆ್ಯಪ್‌ಗಳ ವಹಿವಾಟು ಎಚ್ಚರಿಕೆಗಳನ್ನು ಓದಿ ಆ್ಯಪ್ ನಿಮ್ಮ ಖರ್ಚನ್ನು ತಾನಾಗಿ ತುಂಬುತ್ತದೆ.</string>
+    <string name="onboarding_consent_what_is_read">ಏನನ್ನು ಓದುತ್ತದೆ: ಮೊತ್ತ, ಅಂಗಡಿ, ದಿನಾಂಕ ಮತ್ತು ಖಾತೆ — ಬ್ಯಾಂಕ್ ಹಾಗೂ ಪಾವತಿ ಆ್ಯಪ್‌ಗಳು ಕಳುಹಿಸಿದ ಸಂದೇಶಗಳಿಂದ ಮಾತ್ರ. ವೈಯಕ್ತಿಕ ಸಂದೇಶಗಳನ್ನು ಅದು ಎಂದಿಗೂ ಓದುವುದಿಲ್ಲ.</string>
+    <string name="onboarding_consent_on_device">ಇದೆಲ್ಲವೂ ಈ ಸಾಧನದಲ್ಲೇ ನಡೆಯುತ್ತದೆ. ಯಾವ ಸಂದೇಶವೂ ನಿಮ್ಮ ಫೋನಿನಿಂದ ಹೊರಹೋಗುವುದಿಲ್ಲ.</string>
+    <string name="onboarding_consent_toggle">ವಹಿವಾಟು ಸಂದೇಶಗಳನ್ನು ಓದಿ</string>
+    <string name="onboarding_consent_optional">ಇದು ಐಚ್ಛಿಕ, ಮತ್ತು ನೀವು ಆನ್ ಮಾಡುವವರೆಗೆ ಏನನ್ನೂ ಓದುವುದಿಲ್ಲ. ಈಗಲೇ ಆರಿಸಿ — ಇದನ್ನು ಆಮೇಲೆ ಬದಲಿಸಲು ಈ ಬಿಲ್ಡ್‌ನಲ್ಲಿ ಸೆಟ್ಟಿಂಗ್ಸ್ ಪರದೆ ಇಲ್ಲ.</string>
+    <string name="onboarding_profile_title">ನಿಮ್ಮ ಬಗ್ಗೆ</string>
+    <string name="onboarding_profile_body">ಈ ಸಾಧನದಲ್ಲಿ ಮಾತ್ರ ಇಡಲಾಗುತ್ತದೆ.</string>
+    <string name="onboarding_profile_name_label">ನಿಮ್ಮನ್ನು ಏನೆಂದು ಕರೆಯೋಣ?</string>
+    <string name="onboarding_profile_currency_label">ಕರೆನ್ಸಿ</string>
+    <string name="onboarding_profile_time_zone_label">ಸಮಯ ವಲಯ</string>
+    <string name="onboarding_profile_time_zone_help">ನಿಮ್ಮ ದಿನ ಮತ್ತು ತಿಂಗಳು ಯಾವಾಗ ಬದಲಾಗುತ್ತದೆ ಎಂಬುದನ್ನು ಇದು ನಿರ್ಧರಿಸುತ್ತದೆ, ಆಗ ಬಜೆಟ್ ಮತ್ತು ಗಡುವುಗಳು ನಿಮ್ಮ ಫೋನಿಗಲ್ಲ, ನಿಮ್ಮ ಜೀವನಕ್ಕೆ ಹೊಂದುತ್ತವೆ.</string>
+    <string name="onboarding_profile_selected">ಆಯ್ಕೆಯಾಗಿದೆ</string>
+    <string name="onboarding_quick_setup_title">ಸ್ವಲ್ಪ ಮುನ್ನಡೆ (ಐಚ್ಛಿಕ)</string>
+    <string name="onboarding_quick_setup_body">ಮೂರು ಸ್ಥೂಲ ಅಂಕಿಗಳಿಂದ ಆ್ಯಪ್ ಕೂಡಲೇ ಬಜೆಟ್ ಮತ್ತು ತುರ್ತು ನಿಧಿಯ ಗುರಿಯನ್ನು ಸೂಚಿಸಬಲ್ಲದು. ಅಂದಾಜೂ ಸಾಕು, ಮತ್ತು ಇದನ್ನು ಪೂರ್ತಿ ಬಿಟ್ಟುಬಿಡಲೂಬಹುದು.</string>
+    <string name="onboarding_quick_setup_income_label">ಮಾಸಿಕ ಆದಾಯ</string>
+    <string name="onboarding_quick_setup_rent_label">ಪ್ರತಿ ತಿಂಗಳ ಬಾಡಿಗೆ ಅಥವಾ EMI</string>
+    <string name="onboarding_quick_setup_savings_label">ಪ್ರತಿ ತಿಂಗಳ ಸಾಮಾನ್ಯ ಉಳಿತಾಯ</string>
+    <string name="onboarding_account_title">ನಿಮ್ಮ ಮೊದಲ ಖಾತೆ</string>
+    <string name="onboarding_account_body">ನೀವು ಹೆಚ್ಚು ಬಳಸುವ ಖಾತೆಯನ್ನು ಸೇರಿಸಿ. ಉಳಿದವನ್ನು ಆಮೇಲೆ ಸೇರಿಸಬಹುದು, ಮತ್ತು ಹೆಸರನ್ನು ಖಾಲಿ ಬಿಟ್ಟು ಇದನ್ನು ಪೂರ್ತಿ ಬಿಟ್ಟುಬಿಡಲೂಬಹುದು.</string>
+    <string name="onboarding_account_name_label">ಖಾತೆಯ ಹೆಸರು</string>
+    <string name="onboarding_account_balance_label">ಆರಂಭಿಕ ಬಾಕಿ (ಐಚ್ಛಿಕ)</string>
+    <string name="onboarding_account_balance_help">ಈಗ ಅದರಲ್ಲಿ ಎಷ್ಟಿದೆ. ಕ್ರೆಡಿಟ್ ಕಾರ್ಡ್‌ಗೆ, ನೀವು ಕೊಡಬೇಕಾದದ್ದನ್ನು ಋಣಾತ್ಮಕ ಮೊತ್ತವಾಗಿ ನಮೂದಿಸಿ.</string>
+    <string name="onboarding_account_type_bank">ಬ್ಯಾಂಕ್ ಖಾತೆ</string>
+    <string name="onboarding_account_type_cash">ನಗದು</string>
+    <string name="onboarding_account_type_credit_card">ಕ್ರೆಡಿಟ್ ಕಾರ್ಡ್</string>
+    <string name="onboarding_account_type_investment">ಹೂಡಿಕೆ</string>
+    <string name="onboarding_quick_setup_amount_hint">₹</string>
+    <string name="onboarding_quick_setup_summary_title">ನಾವು ಏನನ್ನು ಹೊಂದಿಸುತ್ತೇವೆ</string>
+    <string name="onboarding_quick_setup_summary_needs">ಅಗತ್ಯಗಳು</string>
+    <string name="onboarding_quick_setup_summary_wants">ಬಯಕೆಗಳು</string>
+    <string name="onboarding_quick_setup_summary_savings">ಉಳಿತಾಯ</string>
+    <string name="onboarding_quick_setup_summary_emergency">ತುರ್ತು ನಿಧಿಯ ಗುರಿ</string>
+    <string name="onboarding_quick_setup_summary_emergency_help">ನಿಮ್ಮ ಅಗತ್ಯಗಳ ಬಜೆಟ್‌ನ %1$d ತಿಂಗಳು.</string>
+    <string name="onboarding_quick_setup_summary_obligations">ಬಾಡಿಗೆ ಮತ್ತು EMI ನಿಮ್ಮ ಆದಾಯದ %1$s ತೆಗೆದುಕೊಳ್ಳುತ್ತವೆ.</string>
+    <string name="onboarding_quick_setup_summary_obligations_within">ಅದು ಮಾರ್ಗಸೂಚಿಯೊಳಗಿದೆ.</string>
+    <string name="onboarding_quick_setup_summary_obligations_above">ಅದು ಸಾಮಾನ್ಯ ಮಾರ್ಗಸೂಚಿಯಾದ 40% ಕ್ಕಿಂತ ಹೆಚ್ಚು.</string>
+    <string name="onboarding_quick_setup_summary_obligations_fail">ಅದು ಎಷ್ಟು ಹೆಚ್ಚೆಂದರೆ ಹೆಚ್ಚಿನ ಸಾಲದಾತರು ಮತ್ತಷ್ಟು ಸಾಲ ನೀಡಲು ನಿರಾಕರಿಸುತ್ತಾರೆ.</string>
+    <string name="onboarding_quick_setup_summary_short">ನಿಮ್ಮ ಬಾಡಿಗೆ ಈ ಬಜೆಟ್ ಭರಿಸುವುದಕ್ಕಿಂತ ಹೆಚ್ಚು. ಕಾಗದದ ಮೇಲೆ ಲೆಕ್ಕ ಸರಿದೂಗಿಸುವ ಬದಲು ನಿಮ್ಮ ಉಳಿತಾಯವನ್ನು ಹಾಗೆಯೇ ಇಟ್ಟಿದ್ದೇವೆ.</string>
+    <string name="onboarding_quick_setup_summary_rules">%1$s ಆಧಾರದಲ್ಲಿ</string>
+    <string name="onboarding_quick_setup_summary_editable">ಇದರಲ್ಲಿ ಯಾವುದನ್ನೂ ನೀವು ಆಮೇಲೆ ಬದಲಿಸಬಹುದು.</string>
+    <string name="onboarding_security_title">ಆ್ಯಪ್ ಅನ್ನು ಲಾಕ್ ಮಾಡಿ</string>
+    <string name="onboarding_security_body">ನಿಮ್ಮ ಫೋನ್ ಕೈಗೆತ್ತಿಕೊಂಡವರು ನಿಮ್ಮ ಹಣಕಾಸನ್ನು ತೆರೆಯದಂತೆ ಒಂದು ಲಾಕ್ ಸೇರಿಸಿ.</string>
+    <string name="onboarding_security_explainer">ನಿಮ್ಮ PIN ಈ ಸಾಧನದಿಂದ ಎಂದಿಗೂ ಹೊರಹೋಗುವುದಿಲ್ಲ ಮತ್ತು ನೀವು ಬರೆದಂತೆಯೇ ಎಂದಿಗೂ ಸಂಗ್ರಹವಾಗುವುದಿಲ್ಲ. ನಿಮ್ಮ ಫೋನ್ ಬೆರಳಚ್ಚು ಅಥವಾ ಮುಖದಿಂದ ತೆರೆಯುವುದಾದರೆ, ಅದನ್ನೂ ಬಳಸಬಹುದು.</string>
+    <string name="onboarding_security_toggle">ಆ್ಯಪ್ ತೆರೆಯಲು PIN ಕಡ್ಡಾಯ</string>
+    <string name="onboarding_security_pin_label">ಒಂದು PIN ಆರಿಸಿ</string>
+    <string name="onboarding_security_pin_confirm_label">ಅದನ್ನು ಮತ್ತೊಮ್ಮೆ ಬರೆಯಿರಿ</string>
+    <string name="onboarding_security_pin_help">4 ರಿಂದ 6 ಅಂಕಿ. ಅದನ್ನು ಮರಳಿ ಪಡೆಯಲು ದಾರಿ ಇಲ್ಲ, ಹಾಗಾಗಿ ನೆನಪಿರುವುದನ್ನೇ ಆರಿಸಿ.</string>
+    <string name="onboarding_security_optional">ಈಗಲೇ ಆರಿಸಿ — ಇದನ್ನು ಆಮೇಲೆ ಆನ್ ಮಾಡಲು ಈ ಬಿಲ್ಡ್‌ನಲ್ಲಿ ಸೆಟ್ಟಿಂಗ್ಸ್ ಪರದೆ ಇಲ್ಲ.</string>
+    <string name="onboarding_security_error_pin_short">PIN ನಲ್ಲಿ 4 ರಿಂದ 6 ಅಂಕಿ ಇರಬೇಕು.</string>
+    <string name="onboarding_security_error_pin_mismatch">ಆ ಎರಡು PIN ಗಳು ಬೇರೆಬೇರೆ.</string>
+</resources>
