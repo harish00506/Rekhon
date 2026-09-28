@@ -26,6 +26,7 @@
     2026-09-27 — Issue 10.7 (AI-MKT opportunity score) merged to dev; schema 29.
     2026-09-28 — Issue 10.8 (Hindi, Kannada and Tamil) merged to dev; schema 29 unchanged.
     2026-09-28 — Issue 11.1 (StrongBox + a rotation that re-keys the file) merged to dev; schema 29 unchanged.
+    2026-09-28 — Issue 11.2 (FLAG_SECURE always on) merged to dev; no schema change.
 -->
 
 # AI Personal CFO — Project Memory
@@ -37,7 +38,7 @@
 
 ## Current state
 
-- **Version:** `0.10.8` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v29** (10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
+- **Version:** `0.10.9` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v29** (10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
   forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
   feed), 9.6 (the notification policy) and 9.7 (the numeric guardrail) shipped — **Epic 9 is
@@ -47,9 +48,10 @@
   Tamil) shipped — **Epic 10 is complete**. The app now ships in four languages; the three
   translations are machine-authored and **await a native review** (ADR-0056).
   **Epic 11 is open**: 11.1 (the database key — StrongBox, and a rotation that re-keys the file)
-  shipped; **11.2 (the screen-capture guard) is next**. The key can be rotated but nothing in the
-  app offers it yet — that button belongs with 11.3/11.4 (ADR-0057).
-- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7, 10.1–10.8 and 11.1 are merged to `dev`**
+  and 11.2 (the screen-capture guard) shipped; **11.3 (the consents dashboard) is next**. Two
+  things are deliberately unfinished: the key can be rotated but nothing in the app offers it yet,
+  and `FLAG_SECURE` does not reach the home-screen widget — both recorded in ADR-0057/0058.
+- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7, 10.1–10.8, 11.1 and 11.2 are merged to `dev`**
   ([8.1 tracker](issues/8.1-e2ee-backup-argon2id-aes-256-gcm-tracker.md), ADR-0039;
   [8.2 tracker](issues/8.2-restore-on-fresh-device-tracker.md), ADR-0040;
   [8.3 tracker](issues/8.3-backup-restore-drill-tracker.md), ADR-0041;

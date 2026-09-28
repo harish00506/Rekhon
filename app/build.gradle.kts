@@ -14,7 +14,7 @@ android {
 
     defaultConfig {
         applicationId = "com.aicfo.personalcfo"
-        versionCode = 52
+        versionCode = 53
         versionName = rootProject.file("VERSION").readText().trim()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -67,6 +67,8 @@ tasks.withType<Test>()
         exclude("**/AddTransactionFabTest.class")
         // Issue 10.8: same reason — it renders a composition inside a ComponentActivity.
         exclude("**/AppLanguageTest.class")
+        // Issue 11.2: it launches a ComponentActivity to read the window's flags back.
+        exclude("**/SecureWindowTest.class")
     }
 
 dependencies {

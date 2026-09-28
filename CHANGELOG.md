@@ -11,6 +11,24 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The Purchase Advisor, buy list, what-if simulators, vehicle prediction, on-device chat + guardrail
 > eval, market signals, and localisation.
 
+### [0.10.9] — Issue 11.2: screenshots of this app are blank  (2026-09-28)
+
+- **Implemented:** the screen-capture guard §23 asks for (**ADR-0058**).
+  - **A screenshot, a screen recording, a cast or a shared call shows nothing** — every screen, from
+    the lock screen onwards, with no list of exceptions to keep up to date.
+  - **The app switcher shows a blank card** instead of your dashboard.
+  - **It is on by default and cannot be switched off.** It was not before: the guard used to be
+    armed only while the privacy blur was on, and the blur is off unless you turn it on — so the
+    protection existed only for people who had already asked for a different one.
+  - **The privacy blur still does its own job** — masking amounts on screen for whoever is standing
+    behind you. It simply no longer has anything to do with screenshots.
+- **Said plainly in ADR-0058, because they are easy to assume otherwise:** this does nothing about a
+  camera pointed at your screen, and it does not reach the home-screen widget, which the launcher
+  draws — the widget's amounts are still masked by the blur and that remains its only cover.
+- **Tests:** 4 policy tests with 2 mutations, 1 instrumented test on the real launched activity with
+  a mutation watched go red on the device, and a manual capture check: the screen renders normally
+  while `adb screencap` comes back solid black.
+
 ### [0.10.8] — Issue 11.1: the database key, hardened and rotatable  (2026-09-28)
 
 - **Implemented:** the key lifecycle §23 asks for (**ADR-0057**).

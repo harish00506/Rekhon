@@ -71,6 +71,9 @@ class MainActivity : FragmentActivity() {
      */
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
+        // Issue 11.2: before anything is composed. The first frame of this app is the lock screen,
+        // and a flag applied from inside a composition would miss it (§23, FR-PRIV-*).
+        SecureWindow.applyTo(this)
         super.onCreate(savedInstanceState)
         setContent {
             // Issue 10.8: the language wraps everything, the lock screen included — a PIN prompt in
@@ -140,12 +143,9 @@ private fun AppContent(
     val isBlurred by viewModel.isPrivacyBlurred.collectAsStateWithLifecycle()
     val currentEntry by navController.currentBackStackEntryAsState()
 
-    // Issue 5.3: the capture half of the requirement. A mask stops someone reading the screen; only
-    // FLAG_SECURE stops a screenshot, a screen recording or a shared call from carrying the figures
-    // off the device. Driven by the same flag as the mask, so the two can never disagree — and
-    // cleared on dispose, or a blurred session would leave every later screen uncapturable.
-    // Issue 11.2 still owns the always-on policy and the recents-thumbnail guard.
-    PrivacyCaptureGuard(secure = isBlurred)
+    // The capture guard is not here any more. Issue 5.3 tied FLAG_SECURE to this toggle, which
+    // meant the window was capturable whenever the blur was off — the default. Issue 11.2 made the
+    // policy always-on and moved it to `onCreate` (`SecureWindow`); the blur still masks the text.
 
     Column(modifier = Modifier.fillMaxSize()) {
         if (isDemoActive) {
