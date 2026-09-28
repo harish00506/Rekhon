@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  हिन्दी (hi) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <string name="onboarding_step_of">चरण %2$d में से %1$d</string>
+    <string name="onboarding_back">पीछे</string>
+    <string name="onboarding_next">आगे</string>
+    <string name="onboarding_finish">पूरा करें</string>
+    <string name="onboarding_skip">अभी छोड़ें</string>
+    <string name="onboarding_saving">आपका सेटअप सहेजा जा रहा है…</string>
+    <string name="onboarding_error">हम आपका सेटअप सहेज नहीं पाए। कृपया फिर कोशिश करें।</string>
+    <string name="onboarding_error_dismiss">बंद करें</string>
+    <string name="onboarding_welcome_title">आपका पैसा, आपके फ़ोन पर</string>
+    <string name="onboarding_welcome_body">आपके पैसों के लिए एक पूरा-वक़्त का CFO — यह हिसाब रखता है, अनुमान लगाता है, सलाह देता है, और हमेशा अपना हिसाब दिखाता है।</string>
+    <string name="onboarding_welcome_pledge_title">हमारा निजता का वादा</string>
+    <string name="onboarding_welcome_pledge">सब कुछ इसी डिवाइस पर एन्क्रिप्टेड रहता है। जब तक आप खुद कोई सुविधा चालू न करें, आपके पैसे की कोई बात कहीं नहीं भेजी जाती, और आप उसे कभी भी बंद कर सकते हैं। ऐप पूरी तरह ऑफ़लाइन चलता है।</string>
+    <string name="onboarding_demo_title">पहले बस देखना चाहते हैं?</string>
+    <string name="onboarding_demo_body">एक नमूना परिवार के हिसाब पर पूरा ऐप घूम कर देखें — कोई सेटअप नहीं, और आपका कुछ भी दर्ज नहीं। देखते समय नमूना डेटा साफ़-साफ़ चिह्नित रहता है, और डेमो से बाहर निकलते ही उसका एक-एक हिस्सा मिट जाता है।</string>
+    <string name="onboarding_demo_action">नमूना डेटा के साथ देखें</string>
+    <string name="onboarding_consent_title">बैंक के संदेश पढ़ें?</string>
+    <string name="onboarding_consent_body">यह चालू करने पर ऐप बैंकों और UPI ऐप्स के लेन-देन अलर्ट पढ़कर आपका खर्च अपने आप भर देता है।</string>
+    <string name="onboarding_consent_what_is_read">यह क्या पढ़ता है: राशि, दुकान, तारीख और खाता — सिर्फ़ उन्हीं संदेशों से जो बैंक और भुगतान ऐप भेजते हैं। निजी संदेश यह कभी नहीं पढ़ता।</string>
+    <string name="onboarding_consent_on_device">यह सब इसी डिवाइस पर होता है। कोई संदेश आपके फ़ोन से बाहर नहीं जाता।</string>
+    <string name="onboarding_consent_toggle">लेन-देन के संदेश पढ़ें</string>
+    <string name="onboarding_consent_optional">यह वैकल्पिक है, और जब तक आप चालू न करें कुछ नहीं पढ़ा जाता। अभी चुन लें — इस बिल्ड में इसे बाद में बदलने के लिए सेटिंग्स स्क्रीन नहीं है।</string>
+    <string name="onboarding_profile_title">आपके बारे में</string>
+    <string name="onboarding_profile_body">सिर्फ़ इसी डिवाइस पर रखा जाता है।</string>
+    <string name="onboarding_profile_name_label">हम आपको क्या कहकर बुलाएँ?</string>
+    <string name="onboarding_profile_currency_label">मुद्रा</string>
+    <string name="onboarding_profile_time_zone_label">समय क्षेत्र</string>
+    <string name="onboarding_profile_time_zone_help">इससे तय होता है कि आपका दिन और महीना कब बदलता है, ताकि बजट और देय तारीखें आपके फ़ोन के नहीं, आपके जीवन के हिसाब से चलें।</string>
+    <string name="onboarding_profile_selected">चुना गया</string>
+    <string name="onboarding_quick_setup_title">थोड़ी शुरुआती बढ़त (वैकल्पिक)</string>
+    <string name="onboarding_quick_setup_body">तीन मोटे आँकड़ों से ऐप तुरंत बजट और आपातकालीन कोष का लक्ष्य सुझा सकता है। अंदाज़ा भी चलेगा, और आप इसे पूरी तरह छोड़ भी सकते हैं।</string>
+    <string name="onboarding_quick_setup_income_label">मासिक आमदनी</string>
+    <string name="onboarding_quick_setup_rent_label">हर महीने किराया या EMI</string>
+    <string name="onboarding_quick_setup_savings_label">हर महीने आम तौर पर बचत</string>
+    <string name="onboarding_account_title">आपका पहला खाता</string>
+    <string name="onboarding_account_body">जो खाता आप सबसे ज़्यादा इस्तेमाल करते हैं उसे जोड़ें। बाकी बाद में जोड़ सकते हैं, और नाम खाली छोड़कर इसे पूरी तरह छोड़ भी सकते हैं।</string>
+    <string name="onboarding_account_name_label">खाते का नाम</string>
+    <string name="onboarding_account_balance_label">शुरुआती बैलेंस (वैकल्पिक)</string>
+    <string name="onboarding_account_balance_help">इसमें अभी कितना है। क्रेडिट कार्ड के लिए, जितना बकाया है उसे ऋणात्मक राशि के रूप में लिखें।</string>
+    <string name="onboarding_account_type_bank">बैंक खाता</string>
+    <string name="onboarding_account_type_cash">नकद</string>
+    <string name="onboarding_account_type_credit_card">क्रेडिट कार्ड</string>
+    <string name="onboarding_account_type_investment">निवेश</string>
+    <string name="onboarding_quick_setup_amount_hint">₹</string>
+    <string name="onboarding_quick_setup_summary_title">हम क्या सेट करेंगे</string>
+    <string name="onboarding_quick_setup_summary_needs">ज़रूरतें</string>
+    <string name="onboarding_quick_setup_summary_wants">शौक</string>
+    <string name="onboarding_quick_setup_summary_savings">बचत</string>
+    <string name="onboarding_quick_setup_summary_emergency">आपातकालीन कोष का लक्ष्य</string>
+    <string name="onboarding_quick_setup_summary_emergency_help">आपके ज़रूरतों के बजट के %1$d महीने।</string>
+    <string name="onboarding_quick_setup_summary_obligations">किराया और EMI आपकी आमदनी का %1$s ले लेते हैं।</string>
+    <string name="onboarding_quick_setup_summary_obligations_within">यह तय सीमा के भीतर है।</string>
+    <string name="onboarding_quick_setup_summary_obligations_above">यह आम तौर पर मानी जाने वाली 40% की सीमा से ऊपर है।</string>
+    <string name="onboarding_quick_setup_summary_obligations_fail">यह इतना ज़्यादा है कि ज़्यादातर बैंक और कर्ज़दाता आगे उधार देने से मना कर देंगे।</string>
+    <string name="onboarding_quick_setup_summary_short">आपका किराया इस बजट से ज़्यादा है। कागज़ पर हिसाब बराबर करने के बजाय हमने आपकी बचत को छेड़ा नहीं है।</string>
+    <string name="onboarding_quick_setup_summary_rules">%1$s के आधार पर</string>
+    <string name="onboarding_quick_setup_summary_editable">इसमें से कुछ भी आप बाद में बदल सकते हैं।</string>
+    <string name="onboarding_security_title">ऐप को लॉक करें</string>
+    <string name="onboarding_security_body">एक लॉक लगाएँ ताकि आपका फ़ोन उठाने वाला कोई भी आपका हिसाब न खोल सके।</string>
+    <string name="onboarding_security_explainer">आपका PIN इस डिवाइस से बाहर कभी नहीं जाता और जैसा आपने लिखा वैसा कभी सहेजा नहीं जाता। अगर आपका फ़ोन उंगली या चेहरे से खुलता है, तो वह भी इस्तेमाल कर सकते हैं।</string>
+    <string name="onboarding_security_toggle">ऐप खोलने के लिए PIN ज़रूरी हो</string>
+    <string name="onboarding_security_pin_label">एक PIN चुनें</string>
+    <string name="onboarding_security_pin_confirm_label">इसे दोबारा लिखें</string>
+    <string name="onboarding_security_pin_help">4 से 6 अंक। इसे वापस पाने का कोई तरीका नहीं है, इसलिए ऐसा चुनें जो याद रहे।</string>
+    <string name="onboarding_security_optional">अभी चुन लें — इस बिल्ड में इसे बाद में चालू करने के लिए सेटिंग्स स्क्रीन नहीं है।</string>
+    <string name="onboarding_security_error_pin_short">PIN में 4 से 6 अंक होने चाहिए।</string>
+    <string name="onboarding_security_error_pin_mismatch">दोनों PIN अलग हैं।</string>
+</resources>

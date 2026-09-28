@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ಕನ್ನಡ (kn) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <string name="market_title">ಇಂದು ಹೂಡಿಕೆಗೆ ಒಳ್ಳೆಯ ದಿನವೇ?</string>
+    <string name="market_intro">ನಿಜವಾಗಿ ಅಳೆಯಲು ಸಾಧ್ಯವಾದುದರಲ್ಲಿ ಒಂದು ಅಂಕ — ಈ ಆ್ಯಪ್ ಈಗಾಗಲೇ ಉಳಿಸಿಕೊಂಡ ಬೆಲೆಗಳಿಂದಲೇ. ಇದೇ ತೀರ್ಪಿನ ನಂತರ ಎಷ್ಟು ಬಾರಿ ಬೆಲೆ ಏರಿತು ಎಂಬುದರೊಂದಿಗೆ ತೋರಿಸಲಾಗಿದೆ — ಮತ್ತು ಇದು ಏನನ್ನೂ ಖರೀದಿಸುವುದಿಲ್ಲ.</string>
+    <string name="market_empty">ಅಂಕ ನೀಡಲು ಇನ್ನೂ ಏನೂ ಇಲ್ಲ. ಬೆಲೆ-ಕೀಲಿ ಇರುವ ಹೂಡಿಕೆಯೊಂದನ್ನು ಸೇರಿಸಿ; ಬೆಲೆಗಳು ಬರುತ್ತಿದ್ದಂತೆ ಇತಿಹಾಸ ಬೆಳೆಯುತ್ತದೆ.</string>
+    <string name="market_verdict_strong">ಇಂದು ಹೂಡಿಕೆಗೆ ಬಲವಾದ ದಿನದಂತೆ ಕಾಣುತ್ತದೆ.</string>
+    <string name="market_verdict_good">ಇಂದು ಸಾಮಾನ್ಯಕ್ಕಿಂತ ಉತ್ತಮವಾಗಿದೆ.</string>
+    <string name="market_verdict_neutral">ಇಂದು ಸಾಧಾರಣ ದಿನದಂತಿದೆ.</string>
+    <string name="market_verdict_no_edge">ಇಂದು ವಿಶೇಷ ಲಾಭದ ಸೂಚನೆ ಇಲ್ಲ.</string>
+    <string name="market_verdict_young">ಇದಕ್ಕೆ ಅಂಕ ನೀಡುವಷ್ಟು ಬೆಲೆಯ ಇತಿಹಾಸ ಇನ್ನೂ ಇಲ್ಲ.</string>
+    <string name="market_verdict_stale">ಇಲ್ಲಿನ ಕೊನೆಯ ಬೆಲೆ ತುಂಬಾ ಹಳೆಯದು; ಅದರಿಂದ ಇಂದನ್ನು ಅಳೆಯಲಾಗದು.</string>
+    <plurals name="market_score">
+        <item quantity="one">ಸಾಧ್ಯವಿರುವ %2$d ರಲ್ಲಿ %1$d ಅಂಕ.</item>
+        <item quantity="other">ಸಾಧ್ಯವಿರುವ %2$d ರಲ್ಲಿ %1$d ಅಂಕಗಳು.</item>
+    </plurals>
+    <string name="market_hit_rate">ಈ ಮನೆಯ ಸ್ವಂತ ಇತಿಹಾಸದಲ್ಲಿ, ಈ ತೀರ್ಪಿನ ನಂತರ %1$d%% ಬಾರಿ ಬೆಲೆ ಏರಿದೆ.</string>
+    <plurals name="market_hit_samples">
+        <item quantity="one">%d ಹೋಲಿಸಬಹುದಾದ ದಿನದ ಮೇಲೆ ಅಳೆಯಲಾಗಿದೆ.</item>
+        <item quantity="other">%d ಹೋಲಿಸಬಹುದಾದ ದಿನಗಳ ಮೇಲೆ ಅಳೆಯಲಾಗಿದೆ.</item>
+    </plurals>
+    <string name="market_hit_rate_unknown">ಈ ತೀರ್ಪು ಹೇಗೆ ನಡೆದಿದೆ ಎಂದು ಹೇಳುವಷ್ಟು ಹೋಲಿಸಬಹುದಾದ ದಿನಗಳು ಇನ್ನೂ ಇಲ್ಲ.</string>
+    <string name="market_signal_points">%1$s — %3$d ರಲ್ಲಿ %2$d</string>
+    <string name="market_signal_unavailable">%1$s — ಅಳೆಯಲಾಗಿಲ್ಲ, ಹಾಗಾಗಿ ಯಾವ ಕಡೆಗೂ ಇದರ ಪರಿಣಾಮವಿಲ್ಲ</string>
+    <string name="market_signal_pct">%1$s%%</string>
+    <string name="market_signal_valuation">ಮಾರುಕಟ್ಟೆ ಎಷ್ಟು ಅಗ್ಗವಾಗಿದೆ</string>
+    <string name="market_signal_drawdown">52-ವಾರದ ಗರಿಷ್ಠದಿಂದ ಎಷ್ಟು ಕೆಳಗೆ</string>
+    <string name="market_signal_vix">ಮಾರುಕಟ್ಟೆ ಎಷ್ಟು ಹೆದರಿದೆ</string>
+    <string name="market_signal_ma200">200-ದಿನಗಳ ಸರಾಸರಿಯಿಂದ ಎಷ್ಟು ಕೆಳಗೆ</string>
+    <string name="market_signal_rsi">ಎಷ್ಟು ಓವರ್‌ಸೋಲ್ಡ್ ಆಗಿದೆ (RSI)</string>
+    <string name="market_signal_rarity">ಈ ವರ್ಷ ಈ ಬೆಲೆ ಎಷ್ಟು ಅಪರೂಪ</string>
+    <string name="market_signal_streak">ಸತತವಾಗಿ ಎಷ್ಟು ದಿನ ಇಳಿದಿದೆ</string>
+    <plurals name="market_tranches">
+        <item quantity="one">ಹೂಡಿಕೆ ಮಾಡುವುದೇ ಆದರೆ, %d ಕಂತಿನ ಗಾತ್ರವನ್ನು ಪರಿಗಣಿಸಬಹುದು.</item>
+        <item quantity="other">ಹೂಡಿಕೆ ಮಾಡುವುದೇ ಆದರೆ, %d ಕಂತುಗಳ ಗಾತ್ರವನ್ನು ಪರಿಗಣಿಸಬಹುದು.</item>
+    </plurals>
+    <string name="market_tranches_none">ಸದ್ಯಕ್ಕೆ ಹೂಡಿಕೆಯ ಸಲಹೆ ಇಲ್ಲ.</string>
+    <string name="market_gate_idle_cash">ಹೂಡಲು ನಿಮ್ಮ ಬಳಿ ಹೆಚ್ಚುವರಿ ಏನೂ ಇಲ್ಲ.</string>
+    <string name="market_gate_runway">ನಿಮ್ಮ ತುರ್ತು ನಿಧಿ ಇನ್ನೂ ಗುರಿ ತಲುಪಿಲ್ಲ.</string>
+    <string name="market_gate_forecast">ಮುಂದಿನ 90 ದಿನಗಳಲ್ಲಿ ಒಂದು ಬಿಗಿಯಾದ ದಿನವಿದೆ.</string>
+    <plurals name="market_as_of">
+        <item quantity="one">%d ದಿನದ ಹಿಂದಿನ ಬೆಲೆ.</item>
+        <item quantity="other">%d ದಿನಗಳ ಹಿಂದಿನ ಬೆಲೆ.</item>
+    </plurals>
+    <string name="market_as_of_today">ಇಂದಿನ ಬೆಲೆ.</string>
+    <string name="market_evidence">%1$s v%2$s ಇಂದ · %3$s</string>
+    <string name="market_nothing_bought">ಈ ಪರದೆ ಏನನ್ನೂ ಖರೀದಿಸುವುದಿಲ್ಲ. ಅದು ಅಂಕ ನೀಡುತ್ತದೆ, ತನ್ನ ಲೆಕ್ಕ ತೋರಿಸುತ್ತದೆ, ನಿರ್ಧಾರ ನಿಮ್ಮದು.</string>
+    <string name="market_back">ಹಿಂದೆ</string>
+</resources>

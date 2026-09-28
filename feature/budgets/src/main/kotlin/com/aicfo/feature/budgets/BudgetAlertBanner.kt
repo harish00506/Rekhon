@@ -88,19 +88,34 @@ internal fun BudgetAlertBanner(uiState: BudgetsUiState) {
  * colour-blind user, a greyscale screenshot and a high-contrast theme.
  *
  * The label is short enough to be ambiguous on its own, so the spoken description says what the
- * "80%" is 80% *of* — a screen-reader user hears the card's category name and then a full sentence
- * rather than a bare fraction.
+ * percentage is a percentage *of* — a screen-reader user hears the card's category name and then a
+ * full sentence rather than a bare fraction.
+ *
+ * **The percentage is the engine's, not the sentence's** (issue 10.8, P-03). It read "80% used"
+ * until the translations went in, and 80 was a number no engine had produced on this screen: it was
+ * the rulebook's `RULE-BUD-ALERT.warn_pct` written into a string, which would have gone on saying
+ * 80 after someone moved the band. The chip now states what this category has actually used.
  */
 @Composable
-internal fun BudgetBandChip(band: BudgetAlertBand?) {
+internal fun BudgetBandChip(
+    band: BudgetAlertBand?,
+    usedPct: Int,
+) {
     if (band == null) return
     val exceeded = band == BudgetAlertBand.EXCEEDED
     val description =
-        stringResource(
-            if (exceeded) R.string.budgets_band_exceeded_description else R.string.budgets_band_warn_description,
-        )
+        if (exceeded) {
+            stringResource(R.string.budgets_band_exceeded_description)
+        } else {
+            stringResource(R.string.budgets_band_warn_description, usedPct)
+        }
     Text(
-        text = stringResource(if (exceeded) R.string.budgets_band_exceeded else R.string.budgets_band_warn),
+        text =
+            if (exceeded) {
+                stringResource(R.string.budgets_band_exceeded)
+            } else {
+                stringResource(R.string.budgets_band_warn, usedPct)
+            },
         style = MaterialTheme.typography.labelMedium,
         color = if (exceeded) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary,
         modifier = Modifier.semantics { contentDescription = description },

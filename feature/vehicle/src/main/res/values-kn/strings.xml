@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ಕನ್ನಡ (kn) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <string name="vehicles_title">ನಿಮ್ಮ ವಾಹನಗಳು</string>
+    <string name="vehicles_intro">ಆಗಾಗ ಓಡೋಮೀಟರ್ ದಾಖಲಿಸಿ, ಮತ್ತು ಪ್ರತಿ ಸರ್ವಿಸ್‌ಗೆ ಎಷ್ಟು ಖರ್ಚಾಯಿತು ಎಂಬುದನ್ನೂ. ಮುಂದಿನದು ಯಾವಾಗ ಮತ್ತು ಸರಿಸುಮಾರು ಎಷ್ಟು ಎಂದು ಆ್ಯಪ್ ಲೆಕ್ಕ ಹಾಕಿ ನಿಮ್ಮ 90-ದಿನಗಳ ನೋಟದಲ್ಲಿ ಇರಿಸುತ್ತದೆ.</string>
+    <string name="vehicles_empty">ಇನ್ನೂ ವಾಹನವಿಲ್ಲ. ಒಂದನ್ನು ಸೇರಿಸಿ; ಮೊದಲ ಓದಿನಿಂದಲೇ ಆ್ಯಪ್ ಊಹಿಸಲು ಆರಂಭಿಸುತ್ತದೆ.</string>
+    <string name="vehicles_add_label">ಇದನ್ನು ಏನೆಂದು ಕರೆಯುತ್ತೀರಿ?</string>
+    <string name="vehicles_add_class">ಇದು ಯಾವ ಬಗೆಯದು?</string>
+    <string name="vehicles_add_action">ವಾಹನ ಸೇರಿಸಿ</string>
+    <string name="vehicles_class_two_wheeler">ದ್ವಿಚಕ್ರ ವಾಹನ</string>
+    <string name="vehicles_class_hatchback">ಹ್ಯಾಚ್‌ಬ್ಯಾಕ್</string>
+    <string name="vehicles_class_sedan">ಸೆಡಾನ್</string>
+    <string name="vehicles_class_suv">ಎಸ್‌ಯುವಿ</string>
+    <string name="vehicles_class_electric">ಎಲೆಕ್ಟ್ರಿಕ್</string>
+    <string name="vehicles_due_distance">ಮುಂದಿನ ಸರ್ವಿಸ್ ಸುಮಾರು %1$s ರಂದು, ಸುಮಾರು %2$s ಕಿಮೀಗೆ — ನೀವು ಅಷ್ಟು ಓಡಿಸುತ್ತಿದ್ದೀರಿ.</string>
+    <string name="vehicles_due_time">ಮುಂದಿನ ಸರ್ವಿಸ್ ಸುಮಾರು %1$s ರಂದು — ಓಡೋಮೀಟರ್‌ಗಿಂತ ಮೊದಲು ಕ್ಯಾಲೆಂಡರ್ ಪ್ರಕಾರ ಬರುತ್ತಿದೆ.</string>
+    <string name="vehicles_due_odometer_unknown">ಮುಂದಿನ ಸರ್ವಿಸ್ ಸುಮಾರು %1$s ರಂದು.</string>
+    <string name="vehicles_expect">%1$s ರಿಂದ %2$s ವರೆಗೆ ನಿರೀಕ್ಷಿಸಿ.</string>
+    <string name="vehicles_expect_personal">ನೀವು ಈ ಹಿಂದೆ ಪಾವತಿಸಿದ್ದರ ಆಧಾರದಲ್ಲಿ %1$s ರಿಂದ %2$s ವರೆಗೆ ನಿರೀಕ್ಷಿಸಿ.</string>
+    <string name="vehicles_rate">ನಿಮ್ಮ ಓದುಗಳ ಪ್ರಕಾರ ತಿಂಗಳಿಗೆ ಸುಮಾರು %1$s ಕಿಮೀ.</string>
+    <string name="vehicles_rate_unknown">ತಿಂಗಳಿಗೆ ಎಷ್ಟು ಓಡುತ್ತದೆ ಎಂದು ಹೇಳುವಷ್ಟು ಓದುಗಳು ಇನ್ನೂ ಇಲ್ಲ.</string>
+    <string name="vehicles_alert_service_due">ಸರ್ವಿಸ್ %1$s ನಲ್ಲಿ ಆಗಬೇಕು.</string>
+    <string name="vehicles_alert_service_overdue">ಸರ್ವಿಸ್ %1$s ರಿಂದ ಬಾಕಿ ಇದೆ.</string>
+    <string name="vehicles_alert_renewal_due">ನವೀಕರಣ %1$s ನಲ್ಲಿ ಆಗಬೇಕು.</string>
+    <string name="vehicles_alert_renewal_expired">ನವೀಕರಣ %1$s ಹಿಂದೆಯೇ ಮುಗಿದಿದೆ.</string>
+    <plurals name="vehicles_days">
+        <item quantity="one">%d ದಿನ</item>
+        <item quantity="other">%d ದಿನಗಳು</item>
+    </plurals>
+    <string name="vehicles_log_action">ಏನನ್ನಾದರೂ ದಾಖಲಿಸಿ</string>
+    <string name="vehicles_log_hide">ಮರೆಮಾಡಿ</string>
+    <string name="vehicles_odometer_km">ಈಗಿನ ಓಡೋಮೀಟರ್ (ಕಿಮೀ)</string>
+    <string name="vehicles_odometer_date">ಯಾವ ದಿನ ಓದಿದ್ದು (YYYY-MM-DD)</string>
+    <string name="vehicles_odometer_action">ಓದನ್ನು ಉಳಿಸಿ</string>
+    <string name="vehicles_service_cost">ಸರ್ವಿಸ್‌ಗೆ ಆದ ಖರ್ಚು (₹)</string>
+    <string name="vehicles_service_km">ಸರ್ವಿಸ್ ವೇಳೆಯ ಓಡೋಮೀಟರ್ (ಕಿಮೀ)</string>
+    <string name="vehicles_service_date">ಸರ್ವಿಸ್ ಮಾಡಿಸಿದ ದಿನ (YYYY-MM-DD)</string>
+    <string name="vehicles_service_action">ಸರ್ವಿಸ್ ಉಳಿಸಿ</string>
+    <string name="vehicles_insurance_action">ವಿಮೆ ಇಂದು ನವೀಕರಿಸಲಾಗಿದೆ</string>
+    <string name="vehicles_puc_action">ಪಿಯುಸಿ ಇಂದು ಮಾಡಿಸಲಾಗಿದೆ</string>
+    <string name="vehicles_remove">ತೆಗೆದುಹಾಕಿ</string>
+    <string name="vehicles_history">%1$s ದಾಖಲಾಗಿವೆ.</string>
+    <plurals name="vehicles_readings">
+        <item quantity="one">%d ಓದು</item>
+        <item quantity="other">%d ಓದುಗಳು</item>
+    </plurals>
+    <plurals name="vehicles_services">
+        <item quantity="one">%d ಸರ್ವಿಸ್</item>
+        <item quantity="other">%d ಸರ್ವಿಸ್‌ಗಳು</item>
+    </plurals>
+    <string name="vehicles_evidence">%1$s v%2$s ಇಂದ · %3$s</string>
+    <string name="vehicles_nothing_booked">ಏನನ್ನೂ ಬುಕ್ ಮಾಡಿಲ್ಲ, ಪಾವತಿಸಿಯೂ ಇಲ್ಲ — ಇವು ಊಹೆಗಳು.</string>
+    <string name="vehicles_back">ಹಿಂದೆ</string>
+    <string name="vehicles_error">ಅದು ಉಳಿಯಲಿಲ್ಲ. ನೀವು ಬರೆದದ್ದನ್ನು ಪರಿಶೀಲಿಸಿ.</string>
+</resources>

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ಕನ್ನಡ (kn) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <string name="categories_title">ವರ್ಗಗಳು</string>
+    <string name="categories_add">ವರ್ಗ ಸೇರಿಸಿ</string>
+    <string name="categories_edit">ಬದಲಿಸಿ</string>
+    <string name="categories_delete">ಅಳಿಸಿ</string>
+    <string name="categories_default_label">ಪೂರ್ವನಿಯೋಜಿತ</string>
+    <string name="categories_empty_title">ಇನ್ನೂ ಯಾವ ವರ್ಗವೂ ಇಲ್ಲ</string>
+    <string name="categories_empty_body">ಪಾವತಿ ಯಾವುದಕ್ಕಾಗಿ ಎಂಬುದು ಆ್ಯಪ್‌ಗೆ ತಿಳಿಯುವುದು ವರ್ಗಗಳಿಂದಲೇ. ಒಂದನ್ನು ಸೇರಿಸಿ, ವಹಿವಾಟು ದಾಖಲಿಸುವಾಗ ಅದು ಆಯ್ಕೆಯಾಗಿ ಕಾಣಿಸುತ್ತದೆ.</string>
+    <string name="category_editor_title_add">ಹೊಸ ವರ್ಗ</string>
+    <string name="category_editor_title_edit">ವರ್ಗ ಬದಲಿಸಿ</string>
+    <string name="category_editor_name">ಹೆಸರು</string>
+    <string name="category_editor_nature">ಈ ಹಣ ಏನಾಗುತ್ತದೆ</string>
+    <string name="category_editor_parent">ಯಾವುದರ ಅಡಿಯಲ್ಲಿ ಸೇರಿಸಬೇಕು</string>
+    <string name="category_editor_parent_none">ಯಾವುದರ ಅಡಿಯೂ ಅಲ್ಲ — ಮೇಲಿನ ಹಂತದಲ್ಲೇ ಇರಲಿ</string>
+    <string name="category_editor_save">ಉಳಿಸಿ</string>
+    <string name="category_editor_cancel">ರದ್ದುಗೊಳಿಸಿ</string>
+    <string name="category_nature_need">ಅಗತ್ಯ</string>
+    <string name="category_nature_want">ಬಯಕೆ</string>
+    <string name="category_nature_invest">ಹೂಡಿಕೆ</string>
+    <string name="category_nature_asset">ಆಸ್ತಿ</string>
+    <string name="category_nature_liability">ಸಾಲ ಮರುಪಾವತಿ</string>
+    <string name="categories_delete_title">“%1$s” ಅಳಿಸಬೇಕೆ?</string>
+    <string name="categories_delete_counting">ಈ ವರ್ಗವನ್ನು ಯಾವುದು ಬಳಸುತ್ತಿದೆ ಎಂದು ನೋಡಲಾಗುತ್ತಿದೆ…</string>
+    <string name="categories_delete_unknown_usage">ಈ ವರ್ಗವನ್ನು ಯಾವುದು ಬಳಸುತ್ತಿದೆ ಎಂದು ಪರಿಶೀಲಿಸಲಾಗಲಿಲ್ಲ. ಅದನ್ನು ಅಳಿಸಲಾಗುತ್ತದೆ, ಮತ್ತು ಅದನ್ನು ಬಳಸುತ್ತಿದ್ದವು ವರ್ಗೀಕರಿಸದವು ಎಂದು ಕಾಣಿಸುತ್ತವೆ.</string>
+    <plurals name="categories_delete_usage">
+        <item quantity="one">%1$d ವಹಿವಾಟು ಈ ವರ್ಗವನ್ನು ಬಳಸುತ್ತದೆ ಮತ್ತು ವರ್ಗೀಕರಿಸದ್ದು ಎಂದು ಕಾಣಿಸುತ್ತದೆ. ಏನನ್ನೂ ಅಳಿಸಲಾಗುವುದಿಲ್ಲ, ಯಾವ ಮೊತ್ತವೂ ಬದಲಾಗುವುದಿಲ್ಲ.</item>
+        <item quantity="other">%1$d ವಹಿವಾಟುಗಳು ಈ ವರ್ಗವನ್ನು ಬಳಸುತ್ತವೆ ಮತ್ತು ವರ್ಗೀಕರಿಸದವು ಎಂದು ಕಾಣಿಸುತ್ತವೆ. ಏನನ್ನೂ ಅಳಿಸಲಾಗುವುದಿಲ್ಲ, ಯಾವ ಮೊತ್ತವೂ ಬದಲಾಗುವುದಿಲ್ಲ.</item>
+    </plurals>
+    <string name="categories_delete_unused">ಈ ವರ್ಗವನ್ನು ಇನ್ನೂ ಯಾವುದೂ ಬಳಸುತ್ತಿಲ್ಲ.</string>
+    <string name="categories_delete_confirm">ಅಳಿಸಿ</string>
+    <string name="categories_delete_cancel">ಇರಲಿ</string>
+    <string name="categories_error_dismiss">ಮುಚ್ಚಿ</string>
+    <string name="categories_error_duplicate_name">ನೀವು ಈವರೆಗೆ ಬಳಸದ ಹೆಸರನ್ನು ಕೊಡಿ.</string>
+    <string name="categories_error_bad_parent">ಇದನ್ನು ಸೇರಿಸಲು ಮೇಲಿನ ಹಂತದ ವರ್ಗವನ್ನು ಆರಿಸಿ. ವರ್ಗಗಳು ಎರಡು ಹಂತಗಳವರೆಗೆ ಮಾತ್ರ, ಅದಕ್ಕಿಂತ ಆಳಕ್ಕೆ ಅಲ್ಲ.</string>
+    <string name="categories_error_has_children">ಮೊದಲು ಇದರ ಒಳಗಿನ ವರ್ಗಗಳನ್ನು ಅಳಿಸಿ.</string>
+    <string name="categories_error_storage">ನಿಮ್ಮ ಉಳಿಸಿದ ವರ್ಗಗಳನ್ನು ತಲುಪಲಾಗಲಿಲ್ಲ. ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.</string>
+    <string name="categories_error_not_found">ಆ ವರ್ಗ ಈಗ ಇಲ್ಲ.</string>
+    <string name="categories_error_generic">ಏನೋ ತಪ್ಪಾಯಿತು. ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.</string>
+</resources>

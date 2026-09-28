@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  हिन्दी (hi) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <string name="widget_title">Rekhon</string>
+    <string name="widget_description">आपका खर्च-योग्य पैसा और कुल संपत्ति, एक नज़र में।</string>
+    <string name="widget_safe_to_spend_label">खर्च के लिए सुरक्षित</string>
+    <string name="widget_net_worth_label">कुल संपत्ति</string>
+    <string name="widget_pending">अभी हिसाब नहीं लगा</string>
+</resources>

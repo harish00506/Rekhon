@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  தமிழ் (ta) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <string name="budgets_title">பட்ஜெட்டுகள்</string>
+    <string name="budgets_set">பட்ஜெட்டை அமை</string>
+    <string name="budgets_edit">மாற்று</string>
+    <string name="budgets_delete">அகற்று</string>
+    <string name="budgets_section_planned">இந்த மாதத் திட்டம்</string>
+    <string name="budgets_section_unplanned">பட்ஜெட் இல்லாத செலவு</string>
+    <string name="budgets_section_suggested">உங்களுக்கான பரிந்துரை</string>
+    <string name="budgets_empty_title">இன்னும் எந்தத் திட்டமும் இல்லை</string>
+    <string name="budgets_empty_body">பட்ஜெட் என்பது ஒரு வகைக்கு நீங்கள் தேர்வு செய்யும் எண்; அதற்கு எதிராக மாதம் எப்படிச் செல்கிறது என ஆப் சொல்லும். சில பரிவர்த்தனைகளைப் பதிந்தால், நீங்கள் உண்மையில் செலவழிப்பதிலிருந்தே அது ஒன்றைப் பரிந்துரைக்கும்.</string>
+    <string name="budgets_planned_supporting">இந்த மாதம் செலவானது</string>
+    <string name="budgets_planned_with_rollover">இந்த மாதம் செலவானது · %1$s முந்தைய மாதத்திலிருந்து</string>
+    <string name="budgets_remaining">%2$s இல் %1$s மீதம்</string>
+    <string name="budgets_pace_within">வேகம் சரியாக உள்ளது — சமமாகச் செலவழித்திருந்தால் இன்றுவரை %1$s ஆகியிருக்கும்</string>
+    <string name="budgets_pace_ahead">வேகத்தைவிட முன்னே — சமமாகச் செலவழித்திருந்தால் இன்றுவரை %1$s ஆகியிருக்கும்</string>
+    <string name="budgets_projection_within">இந்த வேகத்தில் மாதம் சுமார் %1$s இல் முடியும்</string>
+    <string name="budgets_projection_over">இந்த வேகத்தில் மாதம் சுமார் %1$s இல் முடியும் — பட்ஜெட்டைத் தாண்டி</string>
+    <string name="budgets_projection_pending">முடிவைக் கணிக்க மாதம் இன்னும் மிக ஆரம்பத்தில் உள்ளது</string>
+    <string name="budgets_unplanned_supporting">இந்த மாதம் செலவானது, எந்தத் திட்டமும் இல்லாமல்</string>
+    <string name="budgets_spent_description">இந்த மாதம் செலவானது</string>
+    <string name="budgets_suggested_intro">நீங்கள் உண்மையில் செலவழித்ததை அடிப்படையாகக் கொண்டது. நீங்கள் ஒன்றை ஏற்கும் வரை எதுவும் மாறாது.</string>
+    <string name="budgets_suggestion_accept">இந்தப் பட்ஜெட்டைப் பயன்படுத்து</string>
+    <string name="budgets_suggested_description">பரிந்துரைக்கப்பட்ட பட்ஜெட்</string>
+    <string name="budgets_reason_median">இங்கே நீங்கள் வழக்கமாக மாதம் சுமார் %1$s செலவழிக்கிறீர்கள்.</string>
+    <string name="budgets_reason_seasonal">இங்கே நீங்கள் வழக்கமாக மாதம் சுமார் %1$s செலவழிக்கிறீர்கள், மேலும் %3$s காலத்துக்கு %2$d%% கூடுதலாக.</string>
+    <string name="budgets_reason_seasonal_generic">இங்கே நீங்கள் வழக்கமாக மாதம் சுமார் %1$s செலவழிக்கிறீர்கள், மேலும் பருவத்துக்கு %2$d%% கூடுதலாக.</string>
+    <string name="budgets_reason_rule">விதி %1$s v%2$s</string>
+    <string name="budgets_season_diwali">தீபாவளி</string>
+    <string name="budgets_season_dussehra_navratri">தசரா மற்றும் நவராத்திரி</string>
+    <string name="budgets_season_wedding">திருமணப் பருவம்</string>
+    <string name="budgets_season_tax_saving">வரி சேமிப்புப் பருவம்</string>
+    <string name="budgets_season_school_admission">பள்ளிச் சேர்க்கை</string>
+    <string name="budgets_season_monsoon">பருவமழை</string>
+    <string name="budgets_season_summer">கோடை</string>
+    <string name="budgets_season_onam_pongal">ஓணமும் பொங்கலும்</string>
+    <string name="budgets_season_akshaya_tritiya">அட்சய திருதியை</string>
+    <string name="budget_editor_title">%1$s க்கான பட்ஜெட்</string>
+    <string name="budget_editor_amount">இந்த மாதத்துக்கான தொகை</string>
+    <string name="budget_editor_rollover">மீதியை அடுத்த மாதத்துக்கு எடுத்துச் செல்</string>
+    <string name="budget_editor_rollover_help">செலவழிக்கப்படாத பணம் அடுத்த மாதத்தில் சேர்க்கப்படும். அதிகமாகச் செலவழித்தது முன்னெடுத்துச் செல்லப்படாது.</string>
+    <string name="budget_editor_save">சேமி</string>
+    <string name="budget_editor_cancel">ரத்து செய்</string>
+    <string name="budgets_band_warn">%1$d%% பயன்படுத்தப்பட்டது</string>
+    <string name="budgets_band_exceeded">பட்ஜெட்டைத் தாண்டியது</string>
+    <string name="budgets_band_warn_description">இந்த வகை தன் பட்ஜெட்டில் %1$d%% ஐப் பயன்படுத்தியுள்ளது</string>
+    <string name="budgets_band_exceeded_description">இந்த வகை தன் பட்ஜெட்டைத் தாண்டிவிட்டது</string>
+    <plurals name="budgets_alert_banner_exceeded">
+        <item quantity="one">இந்த மாதம் %1$d வகை பட்ஜெட்டைத் தாண்டியுள்ளது</item>
+        <item quantity="other">இந்த மாதம் %1$d வகைகள் பட்ஜெட்டைத் தாண்டியுள்ளன</item>
+    </plurals>
+    <plurals name="budgets_alert_banner_warned">
+        <item quantity="one">%1$d வகை தன் பட்ஜெட்டில் 80%% அல்லது அதற்கு மேல் பயன்படுத்தியுள்ளது</item>
+        <item quantity="other">%1$d வகைகள் தங்கள் பட்ஜெட்டில் 80%% அல்லது அதற்கு மேல் பயன்படுத்தியுள்ளன</item>
+    </plurals>
+    <string name="budgets_review_title">கடந்த மாத மதிப்பாய்வு</string>
+    <string name="budgets_review_summary">நீங்கள் %1$s திட்டமிட்டு மொத்தம் %2$s செலவழித்தீர்கள்.</string>
+    <string name="budgets_review_over">திட்டம் %2$s, செலவு %1$s — %3$d%% அதிகம்</string>
+    <string name="budgets_review_under">திட்டம் %2$s, செலவு %1$s — %3$d%% குறைவு</string>
+    <string name="budgets_review_proposal">இந்த மாதத்துக்குப் பரிந்துரை: %1$s</string>
+    <string name="budgets_review_no_history">புதிய தொகையைப் பரிந்துரைக்கும் அளவுக்கு வரலாறு இன்னும் இல்லை.</string>
+    <string name="budgets_review_dismiss">புரிந்தது</string>
+    <string name="budgets_error_dismiss">மூடு</string>
+    <string name="budgets_error_bad_amount">பூஜ்ஜியம் அல்லது அதற்கு மேல் தொகையை உள்ளிடுங்கள்.</string>
+    <string name="budgets_error_no_category">அந்த வகை இப்போது இல்லை.</string>
+    <string name="budgets_error_storage">உங்கள் சேமித்த பட்ஜெட்டுகளை அணுக முடியவில்லை. மீண்டும் முயலுங்கள்.</string>
+    <string name="budgets_error_not_found">அந்தப் பட்ஜெட் இப்போது இல்லை.</string>
+    <string name="budgets_error_generic">ஏதோ தவறு நடந்தது. மீண்டும் முயலுங்கள்.</string>
+</resources>

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  தமிழ் (ta) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <plurals name="llm_spend">
+        <item quantity="one">அந்தக் காலத்தில் %2$d பரிவர்த்தனையில் %1$s செலவழித்தீர்கள்.</item>
+        <item quantity="other">அந்தக் காலத்தில் %2$d பரிவர்த்தனைகளில் %1$s செலவழித்தீர்கள்.</item>
+    </plurals>
+    <string name="llm_balance">இப்போது உங்களிடம் %1$s இருக்கிறது.</string>
+    <plurals name="llm_forecast">
+        <item quantity="one">அடுத்த %1$d நாளில் உங்கள் மிகக் குறைந்த நிலை %2$s, %3$s அன்று.</item>
+        <item quantity="other">அடுத்த %1$d நாட்களில் உங்கள் மிகக் குறைந்த நிலை %2$s, %3$s அன்று.</item>
+    </plurals>
+    <string name="llm_budget">இந்த மாதம் இதுவரை உங்கள் பட்ஜெட்டில் %1$s செலவாகியுள்ளது.</string>
+    <string name="llm_goals">உங்கள் இலக்குகளுக்கு மொத்தமாக மாதம் %1$s தேவை.</string>
+    <string name="llm_afford">அதற்குப் பிறகு உங்களிடம் %1$s மிஞ்சும்.</string>
+    <string name="llm_health">உங்கள் நிதி ஆரோக்கிய மதிப்பெண் %1$d / %2$d.</string>
+    <string name="llm_debt">அதிக வட்டியுள்ள கடனை முதலில் அடைத்தால் வட்டியில் %1$s மிச்சமாகும்.</string>
+    <plurals name="llm_buylist">
+        <item quantity="one">உங்கள் வாங்கும் பட்டியலில் %1$d பொருள் உள்ளது.</item>
+        <item quantity="other">உங்கள் வாங்கும் பட்டியலில் %1$d பொருட்கள் உள்ளன.</item>
+    </plurals>
+    <string name="llm_vehicle">அடுத்த சர்வீஸ் வரை உங்கள் வாகனச் செலவு %1$s, அது %2$s அன்று வர உள்ளது.</string>
+    <string name="llm_nothing">அதற்குப் பதில் சொல்ல என்னிடம் இன்னும் எதுவும் இல்லை.</string>
+</resources>

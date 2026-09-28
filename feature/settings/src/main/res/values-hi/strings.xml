@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  हिन्दी (hi) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <string name="settings_title">सेटिंग्स</string>
+    <string name="settings_done">हो गया</string>
+    <string name="settings_error">कुछ सहेजा नहीं गया। कुछ भी नहीं बदला।</string>
+    <string name="settings_dismiss">बंद करें</string>
+    <string name="settings_money_title">आपका मासिक पैसा</string>
+    <string name="settings_money_body">हम इसे ज़रूरतों, शौक और बचत में बाँटते हैं, और इसी से निकालते हैं कि खर्च करने के लिए कितना सुरक्षित है। जब भी यह बदले, आप इसे बदल सकते हैं।</string>
+    <string name="settings_monthly_income">मासिक आमदनी</string>
+    <string name="settings_rent_or_emi">किराया या EMI (वैकल्पिक)</string>
+    <string name="settings_typical_savings">आप आम तौर पर कितना बचाते हैं (वैकल्पिक)</string>
+    <string name="settings_money_save">मासिक पैसा सहेजें</string>
+    <string name="settings_money_saved">सहेज लिया। आपका डैशबोर्ड अपडेट हो गया है।</string>
+    <string name="settings_income_required">अपनी मासिक आमदनी अंकों में लिखें, जैसे 95000।</string>
+    <string name="settings_consents_title">ऐप क्या-क्या इस्तेमाल कर सकता है</string>
+    <string name="settings_consents_body">इनमें से हर एक तब तक बंद है जब तक आप चालू न करें, और किसी को भी आप यहीं से कभी भी बंद कर सकते हैं। जब तक इनमें से कोई चालू न हो, आपके पैसे की कोई बात इस डिवाइस से बाहर नहीं जाती।</string>
+    <string name="consent_sms_parsing">इस फ़ोन के बैंक संदेश पढ़ें</string>
+    <string name="consent_market_data">सोना, क्रिप्टो और फंड के भाव लाएँ</string>
+    <string name="consent_cloud_llm">क्लाउड सहायक से पूछें</string>
+    <string name="consent_cloud_backup">एन्क्रिप्टेड बैकअप इस डिवाइस से बाहर सहेजें</string>
+    <string name="settings_lock_title">ऐप को लॉक करें</string>
+    <string name="settings_lock_body">ऐप खुलते समय PIN या आपकी उंगली का निशान माँगें।</string>
+    <string name="settings_lock_toggle">ऐप खोलने के लिए PIN ज़रूरी हो</string>
+    <string name="settings_pin">नया PIN (कम से कम 4 अंक)</string>
+    <string name="settings_pin_required">लॉक चालू करने से पहले कम से कम 4 अंक लिखें।</string>
+    <string name="settings_backup_title">एन्क्रिप्टेड बैकअप</string>
+    <string name="settings_backup_body">ऐप की हर चीज़ की एक कॉपी, ऐसे पासफ़्रेज़ से बंद जो सिर्फ़ आप जानते हैं। इसे कहीं भी सहेजें — मेमोरी कार्ड, कंप्यूटर, क्लाउड ड्राइव। पासफ़्रेज़ के बिना इसे कोई नहीं पढ़ सकता।</string>
+    <string name="settings_backup_passphrase">बैकअप पासफ़्रेज़ (कम से कम 12 अक्षर)</string>
+    <string name="settings_backup_confirmation">पासफ़्रेज़ दोबारा लिखें</string>
+    <string name="settings_backup_irrecoverable">मैं समझता हूँ कि अगर मैं यह पासफ़्रेज़ भूल गया, तो यह बैकअप कभी नहीं खुलेगा — न मुझसे, न ऐप से। इसे रीसेट करने का कोई तरीका नहीं है।</string>
+    <string name="settings_backup_create">एन्क्रिप्टेड बैकअप बनाएँ</string>
+    <string name="settings_backup_needs_consent">पहले ऊपर \"एन्क्रिप्टेड बैकअप इस डिवाइस से बाहर सहेजें\" चालू करें।</string>
+    <string name="settings_backup_too_short">कम से कम 12 अक्षर रखें — एक छोटा वाक्य अच्छा रहता है।</string>
+    <string name="settings_backup_mismatch">दोनों पासफ़्रेज़ मेल नहीं खाते।</string>
+    <string name="settings_backup_needs_acknowledgement">ऊपर का बॉक्स चुनकर पुष्टि करें कि आप समझ गए हैं।</string>
+    <string name="settings_backup_sealing">आपका बैकअप बंद किया जा रहा है। इसमें कुछ सेकंड लगते हैं।</string>
+    <string name="settings_backup_written">बैकअप सहेज लिया गया। पासफ़्रेज़ कहीं सुरक्षित रखें — ऐप उसकी कोई कॉपी नहीं रखता।</string>
+    <string name="settings_backup_write_failed">उस फ़ाइल में बैकअप लिखा नहीं जा सका। कुछ भी सहेजा नहीं गया।</string>
+    <string name="settings_backup_failed">बैकअप नहीं बन पाया। कुछ भी सहेजा नहीं गया।</string>
+    <string name="settings_restore_title">बैकअप से वापस लाएँ</string>
+    <string name="settings_restore_body">नया फ़ोन ले रहे हैं, या फिर से शुरू कर रहे हैं? इसी ऐप से सहेजा हुआ बैकअप चुनें और उसका पासफ़्रेज़ लिखें।</string>
+    <string name="settings_restore_pick">बैकअप फ़ाइल चुनें</string>
+    <string name="settings_restore_warning">वापस लाने पर इस डिवाइस की हर चीज़ की जगह बैकअप वाली चीज़ें आ जाएँगी। बैकअप बनने के बाद जो कुछ जोड़ा गया, वह चला जाएगा।</string>
+    <string name="settings_restore_passphrase">बैकअप का पासफ़्रेज़</string>
+    <string name="settings_restore_confirm">सब कुछ इस बैकअप से बदल दें</string>
+    <string name="settings_restore_cancel">रद्द करें</string>
+    <string name="settings_restore_working">आपका बैकअप खोला और जाँचा जा रहा है। इसमें कुछ सेकंड लगते हैं।</string>
+    <plurals name="settings_restore_done">
+        <item quantity="one">%1$d चीज़ वापस आ गई। आपका डैशबोर्ड अब बैकअप दिखा रहा है।</item>
+        <item quantity="other">%1$d चीज़ें वापस आ गईं। आपका डैशबोर्ड अब बैकअप दिखा रहा है।</item>
+    </plurals>
+    <string name="settings_restore_wrong_passphrase">यह पासफ़्रेज़ इस बैकअप को नहीं खोलता, या फ़ाइल खराब हो चुकी है। कुछ भी नहीं बदला।</string>
+    <string name="settings_restore_not_a_backup">यह फ़ाइल इस ऐप का बैकअप नहीं है। कुछ भी नहीं बदला।</string>
+    <string name="settings_restore_wrong_version">यह बैकअप ऐप के किसी दूसरे संस्करण का है। ऐप अपडेट करके फिर कोशिश करें। कुछ भी नहीं बदला।</string>
+    <string name="settings_restore_wrong_profile">यह बैकअप नमूना डेटा देखते समय बनाया गया था, इसलिए इसमें आपका अपना कुछ नहीं है। कुछ भी नहीं बदला।</string>
+    <string name="settings_restore_failed">बैकअप वापस नहीं लाया जा सका। कुछ भी नहीं बदला।</string>
+    <string name="settings_language_title">भाषा</string>
+    <string name="settings_language_body">यह ऐप किस भाषा में बात करे। जब तक आप कोई और न चुनें, आपके फ़ोन की भाषा ही इस्तेमाल होती है।</string>
+    <string name="settings_language_system">मेरे फ़ोन की भाषा इस्तेमाल करें</string>
+    <string name="settings_language_english">English</string>
+    <string name="settings_language_hindi">हिन्दी</string>
+    <string name="settings_language_kannada">ಕನ್ನಡ</string>
+    <string name="settings_language_tamil">தமிழ்</string>
+</resources>

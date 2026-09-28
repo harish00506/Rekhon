@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  தமிழ் (ta) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <string name="widget_title">Rekhon</string>
+    <string name="widget_description">உங்கள் செலவழிக்கக்கூடிய தொகையும் நிகர சொத்து மதிப்பும், ஒரே பார்வையில்.</string>
+    <string name="widget_safe_to_spend_label">செலவழிக்கப் பாதுகாப்பானது</string>
+    <string name="widget_net_worth_label">நிகர சொத்து மதிப்பு</string>
+    <string name="widget_pending">இன்னும் கணக்கிடப்படவில்லை</string>
+</resources>

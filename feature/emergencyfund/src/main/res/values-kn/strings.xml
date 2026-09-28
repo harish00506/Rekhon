@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ಕನ್ನಡ (kn) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <string name="emf_title">ತುರ್ತು ನಿಧಿ</string>
+    <string name="emf_error">ನಿಮ್ಮ ತುರ್ತು ನಿಧಿಯನ್ನು ಓದುವಾಗ ಏನೋ ತಪ್ಪಾಯಿತು.</string>
+    <string name="emf_dismiss_error">ಮುಚ್ಚಿ</string>
+    <string name="emf_back">ಹಿಂದೆ</string>
+    <string name="emf_runway">%1$s ತಿಂಗಳ ಖರ್ಚಿಗೆ ಸಾಕು</string>
+    <string name="emf_runway_unknown">ನಿಮ್ಮ ರಕ್ಷಣೆ ಎಷ್ಟೆಂದು ಇನ್ನೂ ಲೆಕ್ಕ ಹಾಕಲಾಗುತ್ತಿಲ್ಲ</string>
+    <string name="emf_target">ಗುರಿ %1$s</string>
+    <string name="emf_saved_of_target">%2$s ರಲ್ಲಿ %1$s ಪಕ್ಕಕ್ಕಿಡಲಾಗಿದೆ</string>
+    <string name="emf_shortfall">ಇನ್ನೂ %1$s ಹೊಂದಿಸಬೇಕು</string>
+    <string name="emf_top_up">ತಿಂಗಳಿಗೆ %1$s ಇಟ್ಟರೆ %2$d ತಿಂಗಳಲ್ಲಿ ಪೂರ್ಣವಾಗುತ್ತದೆ</string>
+    <string name="emf_fully_funded">ಇನ್ನು ಪಕ್ಕಕ್ಕಿಡುವ ಅಗತ್ಯವಿಲ್ಲ</string>
+    <string name="emf_status_surplus">ಬೇಕಾದದ್ದಕ್ಕಿಂತ ಹೆಚ್ಚು</string>
+    <string name="emf_status_funded">ಪೂರ್ಣವಾಗಿ ತುಂಬಿದೆ</string>
+    <string name="emf_status_building">ಬೆಳೆಯುತ್ತಿದೆ</string>
+    <string name="emf_status_unknown">ಹೇಳುವಷ್ಟು ಮಾಹಿತಿ ಇನ್ನೂ ಇಲ್ಲ</string>
+    <string name="emf_status_urgent">ಒಂದು ತಿಂಗಳಿಗಿಂತ ಕಡಿಮೆ ರಕ್ಷಣೆ</string>
+    <string name="emf_coach_surplus">ನೀವು ಗುರಿಯನ್ನು ಚೆನ್ನಾಗಿ ದಾಟಿದ್ದೀರಿ. ಹೆಚ್ಚುವರಿ ಹಣವನ್ನು ಯಾವುದಾದರೂ ಗುರಿಗೆ ತೊಡಗಿಸುವುದನ್ನು ಪರಿಗಣಿಸಬಹುದು — ಇಲ್ಲಿ ಅದು ಸುಮ್ಮನೆ ಬಿದ್ದಿದೆ.</string>
+    <string name="emf_coach_funded">ನಿಮ್ಮ ತುರ್ತು ನಿಧಿ ಗುರಿಯನ್ನು ತಲುಪಿದೆ. ಇದಕ್ಕಿಂತ ಹೆಚ್ಚಿನ ಉಳಿತಾಯ ನಿಮ್ಮ ಗುರಿಗಳತ್ತ ಹೋಗಬಹುದು.</string>
+    <string name="emf_coach_building">ನಿಮಗೆ ನಿಜವಾದ ಆಸರೆ ಇದೆ, ಆದರೆ ಅದು ಇನ್ನೂ ತುಂಬಿಲ್ಲ. ಪ್ರತಿ ತಿಂಗಳು ಉಳಿಯುವುದರಿಂದಲೇ ಅದನ್ನು ಬೆಳೆಸುವುದು ಸಾಮಾನ್ಯವಾಗಿ ಮುಂದಿನ ಹೆಜ್ಜೆ.</string>
+    <string name="emf_coach_unknown">ಕೆಲವು ತಿಂಗಳ ಖರ್ಚನ್ನು ದಾಖಲಿಸಿ, ಅಥವಾ ಸೆಟಪ್‌ನಲ್ಲಿ ನಿಮ್ಮ ಮಾಸಿಕ ಅಗತ್ಯಗಳನ್ನು ನಮೂದಿಸಿ; ಆಗ ಆ್ಯಪ್ ಇದರ ಗಾತ್ರವನ್ನು ಲೆಕ್ಕ ಹಾಕಬಲ್ಲದು.</string>
+    <string name="emf_coach_urgent">ಅಗತ್ಯ ಖರ್ಚುಗಳ ಒಂದು ತಿಂಗಳೂ ಪೂರೈಕೆಯಾಗಿಲ್ಲ. ಇದಕ್ಕೆ ಸ್ವಲ್ಪ ಆಳ ಬರುವವರೆಗೆ ಅನಗತ್ಯ ಗುರಿಗಳನ್ನು ನಿಲ್ಲಿಸುವುದು ಸಾಮಾನ್ಯವಾಗಿ ಒಳ್ಳೆಯದು.</string>
+    <string name="emf_evidence_show">ಲೆಕ್ಕ ತೋರಿಸಿ</string>
+    <string name="emf_evidence_hide">ಲೆಕ್ಕ ಮರೆಮಾಡಿ</string>
+    <string name="emf_evidence_essentials">ಒಂದು ತಿಂಗಳ ಅಗತ್ಯ ಖರ್ಚು: %1$s</string>
+    <string name="emf_basis_observed">ಅಗತ್ಯಗಳಿಗೆ ನೀವು ನಿಜವಾಗಿ ಖರ್ಚು ಮಾಡಿದ ತಿಂಗಳುಗಳ ಮಧ್ಯದ ತಿಂಗಳು</string>
+    <string name="emf_basis_declared">ಸೆಟಪ್‌ನಲ್ಲಿ ನೀವು ನಮೂದಿಸಿದ ಮಾಸಿಕ ಅಗತ್ಯಗಳು</string>
+    <string name="emf_basis_none">ಇನ್ನೂ ಗೊತ್ತಿಲ್ಲ</string>
+    <string name="emf_evidence_multiplier">%1$d ತಿಂಗಳಿಗೆ ಇಡಲಾಗಿದೆ: ಆರಂಭ 6 ರಿಂದ, %2$s</string>
+    <string name="emf_multiplier_steady">ಮತ್ತು ಏನನ್ನೂ ಸೇರಿಸಿಲ್ಲ — ನಿಮ್ಮ ಆದಾಯ ಸ್ಥಿರವಾಗಿದೆ</string>
+    <string name="emf_multiplier_bumped">ಜೊತೆಗೆ %1$d ಹೆಚ್ಚು, ಏಕೆಂದರೆ ನಿಮ್ಮ ಆದಾಯ ತಿಂಗಳಿಂದ ತಿಂಗಳಿಗೆ ಏರಿಳಿಯುತ್ತದೆ</string>
+    <string name="emf_multiplier_unmeasured">ಮತ್ತು ಏನನ್ನೂ ಸೇರಿಸಿಲ್ಲ — ಹೇಳಲು ಬೇಕಾದಷ್ಟು ಆದಾಯದ ಇತಿಹಾಸ ಇನ್ನೂ ಇಲ್ಲ</string>
+    <string name="emf_multiplier_clamped">ನಂತರ ಮಿತಿಗೊಳಿಸಲಾಗಿದೆ, ಏಕೆಂದರೆ ನಿಯಮ ಇದನ್ನು 3 ರಿಂದ 12 ತಿಂಗಳ ನಡುವೆ ಇಡುತ್ತದೆ</string>
+    <string name="emf_evidence_categories">ಅಗತ್ಯ ಎಂದು ಎಣಿಸಲಾಗಿದೆ: %1$s</string>
+    <string name="emf_essential_nature_need">ನೀವು ಅಗತ್ಯ ಎಂದು ವರ್ಗೀಕರಿಸಿದ ಎಲ್ಲವೂ</string>
+    <string name="emf_evidence_liquid">ಇಂದು ಖರ್ಚು ಮಾಡಬಹುದಾದದ್ದು ಎಂದು ಎಣಿಸಲಾಗಿದೆ: %1$s</string>
+    <string name="emf_evidence_liquid_none">ಇನ್ನೂ ಉಳಿತಾಯ ಅಥವಾ ನಗದು ಖಾತೆ ಇಲ್ಲ</string>
+    <string name="emf_evidence_liquid_note">ಸದ್ಯಕ್ಕೆ ಉಳಿತಾಯ ಮತ್ತು ನಗದು ಮಾತ್ರ ಎಣಿಕೆಗೆ ಬರುತ್ತವೆ. ಠೇವಣಿ ಮತ್ತು ಹೂಡಿಕೆಗಳು ಸೇರಿಲ್ಲ, ಹಾಗಾಗಿ ನಿಮ್ಮ ನಿಜವಾದ ರಕ್ಷಣೆ ಇದಕ್ಕಿಂತ ಹೆಚ್ಚು ಇರಬಹುದು.</string>
+    <string name="emf_rule">ನಿಯಮಗಳು RULE-EMF-MULT v1.0, RULE-EMF-COACH v1.0</string>
+    <string name="emf_disclaimer">ಈ ಅಂಕಿಗಳು ನೀವು ದಾಖಲಿಸಿದ್ದರಿಂದಲೇ ಲೆಕ್ಕ ಹಾಕಲಾಗಿವೆ — ಅಗತ್ಯಗಳಿಗೆ ಎಷ್ಟು ಖರ್ಚಾಗುತ್ತದೆ ಮತ್ತು ಉಳಿತಾಯ ಹಾಗೂ ನಗದಿನಲ್ಲಿ ಎಷ್ಟಿದೆ ಎಂಬುದರಿಂದ. ಇವು ಮಾರ್ಗದರ್ಶನ, ಯಾವುದೇ ನಿರ್ದಿಷ್ಟ ಉತ್ಪನ್ನದ ಸಲಹೆ ಅಲ್ಲ.</string>
+</resources>

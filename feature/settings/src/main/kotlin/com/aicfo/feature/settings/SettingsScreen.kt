@@ -102,6 +102,7 @@ internal fun SettingsContent(
             }
         }
 
+        LanguageSection(uiState = uiState, onEvent = onEvent)
         MoneySection(uiState = uiState, onEvent = onEvent)
         ConsentSection(uiState = uiState, onEvent = onEvent)
         AppLockSection(uiState = uiState, onEvent = onEvent)

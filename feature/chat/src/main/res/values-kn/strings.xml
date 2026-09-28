@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ಕನ್ನಡ (kn) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <string name="chat_title">ನಿಮ್ಮ CFO ಅವರನ್ನು ಕೇಳಿ</string>
+    <string name="chat_intro">ನಿಮ್ಮದೇ ಹಣದ ಬಗ್ಗೆ ಕೇಳಿ. ಪ್ರತಿ ಅಂಕಿಯೂ ಈ ಆ್ಯಪ್‌ನ ಒಂದು ಎಂಜಿನ್‌ನಿಂದ ಬರುತ್ತದೆ — ಸಹಾಯಕ ಅದನ್ನು ಮಾತಿಗೆ ಇಳಿಸುತ್ತದೆ ಅಷ್ಟೆ, ಮತ್ತು ಆಧಾರವಿಲ್ಲದ್ದನ್ನು ತೋರಿಸುವುದೇ ಇಲ್ಲ.</string>
+    <string name="chat_input_label">ಏನಾದರೂ ಕೇಳಿ</string>
+    <string name="chat_send">ಕೇಳಿ</string>
+    <string name="chat_clear">ಈ ಸಂಭಾಷಣೆಯನ್ನು ಮರೆತುಬಿಡಿ</string>
+    <string name="chat_empty">ಇನ್ನೂ ಏನನ್ನೂ ಕೇಳಿಲ್ಲ. ಇವುಗಳಲ್ಲಿ ಒಂದನ್ನು ಪ್ರಯತ್ನಿಸಿ.</string>
+    <string name="chat_you">ನೀವು ಕೇಳಿದ್ದು</string>
+    <string name="chat_refusal_out_of_scope">ಅದರಲ್ಲಿ ನಾನು ಸಹಾಯ ಮಾಡಲಾರೆ — ಷೇರು ಸಲಹೆ, ತೆರಿಗೆ ಸಲ್ಲಿಕೆ ಅಥವಾ ಕಾನೂನು ಸಲಹೆ ಇಲ್ಲ. ನಾನು ಮಾಡಬಲ್ಲದ್ದು ಇಲ್ಲಿದೆ.</string>
+    <string name="chat_refusal_not_understood">ನನಗೆ ಅರ್ಥವಾಗಲಿಲ್ಲ. ಇವುಗಳಲ್ಲಿ ಒಂದನ್ನು ಪ್ರಯತ್ನಿಸಿ.</string>
+    <string name="chat_refusal_no_data">ಪ್ರಾಮಾಣಿಕವಾಗಿ ಉತ್ತರಿಸುವಷ್ಟು ಮಾಹಿತಿ ಇನ್ನೂ ದಾಖಲಾಗಿಲ್ಲ.</string>
+    <string name="chat_refusal_no_model">ಸಹಾಯಕ ಸದ್ಯಕ್ಕೆ ಲಭ್ಯವಿಲ್ಲ, ಹಾಗಾಗಿ ಊಹಿಸುವುದಕ್ಕಿಂತ ಸುಮ್ಮನಿರುವುದೇ ಒಳಿತು.</string>
+    <string name="chat_refusal_guardrail">ಉತ್ತರ ಸಿದ್ಧವಾಗಿತ್ತು, ಆದರೆ ಅದರಲ್ಲಿ ಯಾವ ಎಂಜಿನ್‌ಗೂ ಜೋಡಿಸಲಾಗದ ಒಂದು ಅಂಕಿ ಇತ್ತು — ಹಾಗಾಗಿ ಅದನ್ನು ತೋರಿಸಲಿಲ್ಲ.</string>
+    <string name="chat_chip_spend">ನನ್ನ ಹಣ ಎಲ್ಲಿ ಹೋಯಿತು?</string>
+    <string name="chat_chip_balance">ನನ್ನ ಬಾಕಿ ಎಷ್ಟು?</string>
+    <string name="chat_chip_forecast">90 ದಿನಗಳಲ್ಲಿ ಹಣ ಖಾಲಿಯಾಗುತ್ತದೆಯೇ?</string>
+    <string name="chat_chip_budget">ನಾನು ಬಜೆಟ್‌ನಲ್ಲಿ ಇದ್ದೇನೆಯೇ?</string>
+    <string name="chat_chip_goals">ನಾನು ಯಾವುದಕ್ಕಾಗಿ ಉಳಿತಾಯ ಮಾಡುತ್ತಿದ್ದೇನೆ?</string>
+    <string name="chat_chip_afford">ಇದನ್ನು ನಾನು ಕೊಳ್ಳಬಹುದೇ?</string>
+    <string name="chat_chip_health">ನಾನು ಹೇಗಿದ್ದೇನೆ?</string>
+    <string name="chat_chip_debt">ಸಾಲ ತೀರಿಸಲೇ ಅಥವಾ ಹೂಡಿಕೆ ಮಾಡಲೇ?</string>
+    <string name="chat_chip_buylist">ನನ್ನ ಖರೀದಿ ಪಟ್ಟಿಯಲ್ಲಿ ಏನಿದೆ?</string>
+    <string name="chat_chip_vehicle">ಸರ್ವಿಸ್ ಯಾವಾಗ ಮಾಡಿಸಬೇಕು?</string>
+    <string name="chat_evidence">%1$s ಇಂದ · %2$s</string>
+    <string name="chat_evidence_checked">%1$s ವಿರುದ್ಧ ಪರಿಶೀಲಿಸಲಾಗಿದೆ</string>
+    <plurals name="chat_figures">
+        <item quantity="one">%d ಎಂಜಿನ್ ಅಂಕಿ</item>
+        <item quantity="other">%d ಎಂಜಿನ್ ಅಂಕಿಗಳು</item>
+    </plurals>
+    <string name="chat_nothing_moved">ಸಹಾಯಕ ಓದುತ್ತದೆ ಮತ್ತು ವಿವರಿಸುತ್ತದೆ. ಅದು ಎಂದಿಗೂ ಹಣವನ್ನು ವರ್ಗಾಯಿಸುವುದಿಲ್ಲ.</string>
+    <string name="chat_back">ಹಿಂದೆ</string>
+</resources>

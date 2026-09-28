@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  हिन्दी (hi) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <string name="market_title">क्या आज निवेश के लिए अच्छा दिन है?</string>
+    <string name="market_intro">जो वाकई मापा जा सका, उसमें से एक स्कोर — उन्हीं भावों से जो यह ऐप पहले ही सहेज चुका है। साथ में यह भी कि इसी नतीजे के बाद कितनी बार भाव ऊपर गया — और यह कुछ खरीदता नहीं है।</string>
+    <string name="market_empty">अभी स्कोर देने लायक कुछ नहीं है। भाव-कुंजी वाला कोई निवेश जोड़ें, और भाव आते-आते इतिहास बनता जाएगा।</string>
+    <string name="market_verdict_strong">आज लगाने के लिए मज़बूत दिन लग रहा है।</string>
+    <string name="market_verdict_good">आज सामान्य से बेहतर दिखता है।</string>
+    <string name="market_verdict_neutral">आज आम दिन जैसा है।</string>
+    <string name="market_verdict_no_edge">आज कोई खास बढ़त नहीं दिखती।</string>
+    <string name="market_verdict_young">इसे स्कोर देने लायक भावों का इतिहास अभी नहीं है।</string>
+    <string name="market_verdict_stale">यहाँ का आखिरी भाव इतना पुराना है कि उससे आज को आँकना ठीक नहीं।</string>
+    <plurals name="market_score">
+        <item quantity="one">संभावित %2$d में से %1$d अंक।</item>
+        <item quantity="other">संभावित %2$d में से %1$d अंक।</item>
+    </plurals>
+    <string name="market_hit_rate">इसी घर के अपने इतिहास में, इस नतीजे के बाद %1$d%% बार भाव ऊपर गया।</string>
+    <plurals name="market_hit_samples">
+        <item quantity="one">%d तुलनीय दिन पर मापा गया।</item>
+        <item quantity="other">%d तुलनीय दिनों पर मापा गया।</item>
+    </plurals>
+    <string name="market_hit_rate_unknown">यह नतीजा कैसा रहा, यह बताने लायक तुलनीय दिन अभी नहीं हैं।</string>
+    <string name="market_signal_points">%1$s — %3$d में से %2$d</string>
+    <string name="market_signal_unavailable">%1$s — मापा नहीं गया, इसलिए इसका किसी भी तरफ़ कोई असर नहीं</string>
+    <string name="market_signal_pct">%1$s%%</string>
+    <string name="market_signal_valuation">बाज़ार कितना सस्ता है</string>
+    <string name="market_signal_drawdown">52-हफ़्ते के उच्चतम से कितना नीचे</string>
+    <string name="market_signal_vix">बाज़ार कितना डरा हुआ है</string>
+    <string name="market_signal_ma200">200-दिन के औसत से कितना नीचे</string>
+    <string name="market_signal_rsi">कितना ओवरसोल्ड है (RSI)</string>
+    <string name="market_signal_rarity">इस साल यह भाव कितना दुर्लभ है</string>
+    <string name="market_signal_streak">लगातार कितने दिन गिरा</string>
+    <plurals name="market_tranches">
+        <item quantity="one">अगर निवेश करना ही हो, तो %d किस्त का आकार सोचने लायक है।</item>
+        <item quantity="other">अगर निवेश करना ही हो, तो %d किस्तों का आकार सोचने लायक है।</item>
+    </plurals>
+    <string name="market_tranches_none">अभी कुछ लगाने का सुझाव नहीं है।</string>
+    <string name="market_gate_idle_cash">लगाने के लिए आपके पास कुछ बचा हुआ नहीं है।</string>
+    <string name="market_gate_runway">आपका आपातकालीन कोष अभी अपने लक्ष्य तक नहीं पहुँचा है।</string>
+    <string name="market_gate_forecast">आपके अगले 90 दिनों में एक तंग दिन है।</string>
+    <plurals name="market_as_of">
+        <item quantity="one">%d दिन पुराना भाव।</item>
+        <item quantity="other">%d दिन पुराना भाव।</item>
+    </plurals>
+    <string name="market_as_of_today">आज का भाव।</string>
+    <string name="market_evidence">%1$s v%2$s से · %3$s</string>
+    <string name="market_nothing_bought">यह स्क्रीन कुछ नहीं खरीदती। यह स्कोर देती है, अपना हिसाब दिखाती है, और फ़ैसला आपका होता है।</string>
+    <string name="market_back">वापस</string>
+</resources>

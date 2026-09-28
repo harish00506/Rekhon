@@ -3,6 +3,7 @@ package com.aicfo.app
 import com.aicfo.core.common.AppError
 import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
+import com.aicfo.core.datastore.LanguageSetting
 import com.aicfo.core.datastore.OnboardingProfile
 import com.aicfo.core.datastore.QuickSetupSeeds
 import com.aicfo.core.datastore.SettingsSnapshot
@@ -56,6 +57,8 @@ internal class FakeAppSettingsStore(
     override suspend fun setCurrencyCode(currencyCode: String): Result<Unit, AppError> = Ok(Unit)
 
     override suspend fun setTheme(theme: ThemeSetting): Result<Unit, AppError> = Ok(Unit)
+
+    override suspend fun setLanguage(language: LanguageSetting): Result<Unit, AppError> = Ok(Unit)
 
     /**
      * The FR-SET-001 setter. Result: records the seeds so a reader sees what the screen wrote.

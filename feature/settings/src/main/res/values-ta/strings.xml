@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  தமிழ் (ta) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <string name="settings_title">அமைப்புகள்</string>
+    <string name="settings_done">முடிந்தது</string>
+    <string name="settings_error">ஏதோ சேமிக்கப்படவில்லை. எதுவும் மாறவில்லை.</string>
+    <string name="settings_dismiss">மூடு</string>
+    <string name="settings_money_title">உங்கள் மாதப் பணம்</string>
+    <string name="settings_money_body">இதைத் தேவைகள், விருப்பங்கள், சேமிப்பு எனப் பிரிக்கிறோம்; செலவழிக்கப் பாதுகாப்பானது எவ்வளவு என்பதையும் இதிலிருந்தே கணக்கிடுகிறோம். மாறும்போதெல்லாம் நீங்கள் இதை மாற்றலாம்.</string>
+    <string name="settings_monthly_income">மாத வருமானம்</string>
+    <string name="settings_rent_or_emi">வாடகை அல்லது EMI (விருப்பத்தேர்வு)</string>
+    <string name="settings_typical_savings">வழக்கமாக எவ்வளவு சேமிக்கிறீர்கள் (விருப்பத்தேர்வு)</string>
+    <string name="settings_money_save">மாதப் பணத்தைச் சேமி</string>
+    <string name="settings_money_saved">சேமிக்கப்பட்டது. உங்கள் டாஷ்போர்டு புதுப்பிக்கப்பட்டது.</string>
+    <string name="settings_income_required">உங்கள் மாத வருமானத்தை எண்ணாக எழுதுங்கள், எடுத்துக்காட்டாக 95000.</string>
+    <string name="settings_consents_title">ஆப் எதைப் பயன்படுத்தலாம்</string>
+    <string name="settings_consents_body">இவை ஒவ்வொன்றும் நீங்கள் இயக்கும் வரை அணைந்தே இருக்கும், எதையும் இங்கிருந்தே எப்போது வேண்டுமானாலும் அணைக்கலாம். இவற்றில் ஒன்றும் இயக்கப்படாதவரை உங்கள் பணம் பற்றிய எதுவும் இந்தச் சாதனத்தை விட்டு வெளியே செல்லாது.</string>
+    <string name="consent_sms_parsing">இந்தச் சாதனத்தின் வங்கிச் செய்திகளைப் படி</string>
+    <string name="consent_market_data">தங்கம், கிரிப்டோ, நிதி விலைகளைப் பெறு</string>
+    <string name="consent_cloud_llm">கிளவுட் உதவியாளரிடம் கேள்</string>
+    <string name="consent_cloud_backup">மறைகுறியாக்கப்பட்ட காப்புப்பிரதிகளை இந்தச் சாதனத்துக்கு வெளியே சேமி</string>
+    <string name="settings_lock_title">ஆப்பைப் பூட்டு</string>
+    <string name="settings_lock_body">ஆப் திறக்கும்போது PIN அல்லது கைரேகையைக் கேட்கட்டும்.</string>
+    <string name="settings_lock_toggle">ஆப்பைத் திறக்க PIN கட்டாயம்</string>
+    <string name="settings_pin">புதிய PIN (குறைந்தது 4 இலக்கம்)</string>
+    <string name="settings_pin_required">பூட்டை இயக்கும் முன் குறைந்தது 4 இலக்கங்களை எழுதுங்கள்.</string>
+    <string name="settings_backup_title">மறைகுறியாக்கப்பட்ட காப்புப்பிரதி</string>
+    <string name="settings_backup_body">ஆப்பில் உள்ள அனைத்தின் நகல், உங்களுக்கு மட்டுமே தெரிந்த கடவுச்சொற்றொடரால் பூட்டப்பட்டது. எங்கு வேண்டுமானாலும் சேமியுங்கள் — நினைவட்டை, கணினி, கிளவுட் டிரைவ். கடவுச்சொற்றொடர் இல்லாமல் அதை யாராலும் படிக்க முடியாது.</string>
+    <string name="settings_backup_passphrase">காப்புப்பிரதி கடவுச்சொற்றொடர் (குறைந்தது 12 எழுத்து)</string>
+    <string name="settings_backup_confirmation">கடவுச்சொற்றொடரை மீண்டும் எழுதுங்கள்</string>
+    <string name="settings_backup_irrecoverable">இந்தக் கடவுச்சொற்றொடரை மறந்தால் இந்தக் காப்புப்பிரதி ஒருபோதும் திறக்காது — என்னாலும் அல்ல, ஆப்பாலும் அல்ல என்பதை நான் புரிந்துகொள்கிறேன். மீட்டமைக்க வழியில்லை.</string>
+    <string name="settings_backup_create">மறைகுறியாக்கப்பட்ட காப்புப்பிரதியை உருவாக்கு</string>
+    <string name="settings_backup_needs_consent">முதலில் மேலே உள்ள \"மறைகுறியாக்கப்பட்ட காப்புப்பிரதிகளை இந்தச் சாதனத்துக்கு வெளியே சேமி\" என்பதை இயக்குங்கள்.</string>
+    <string name="settings_backup_too_short">குறைந்தது 12 எழுத்துகளைப் பயன்படுத்துங்கள் — ஒரு சிறு வாக்கியம் நன்றாக இருக்கும்.</string>
+    <string name="settings_backup_mismatch">இரு கடவுச்சொற்றொடர்களும் பொருந்தவில்லை.</string>
+    <string name="settings_backup_needs_acknowledgement">நீங்கள் புரிந்துகொண்டதை உறுதிப்படுத்த மேலே உள்ள பெட்டியைத் தேர்வு செய்யுங்கள்.</string>
+    <string name="settings_backup_sealing">உங்கள் காப்புப்பிரதி பூட்டப்படுகிறது. இதற்குச் சில நொடிகள் ஆகும்.</string>
+    <string name="settings_backup_written">காப்புப்பிரதி சேமிக்கப்பட்டது. கடவுச்சொற்றொடரைப் பாதுகாப்பான இடத்தில் வையுங்கள் — ஆப் அதன் நகலை வைத்திருப்பதில்லை.</string>
+    <string name="settings_backup_write_failed">அந்தக் கோப்பில் காப்புப்பிரதியை எழுத முடியவில்லை. எதுவும் சேமிக்கப்படவில்லை.</string>
+    <string name="settings_backup_failed">காப்புப்பிரதியை உருவாக்க முடியவில்லை. எதுவும் சேமிக்கப்படவில்லை.</string>
+    <string name="settings_restore_title">காப்புப்பிரதியிலிருந்து மீட்டெடு</string>
+    <string name="settings_restore_body">புதிய ஃபோனை அமைக்கிறீர்களா, அல்லது மீண்டும் தொடங்குகிறீர்களா? இந்த ஆப்பிலிருந்து சேமித்த காப்புப்பிரதியைத் தேர்ந்தெடுத்து அதன் கடவுச்சொற்றொடரை எழுதுங்கள்.</string>
+    <string name="settings_restore_pick">காப்புப்பிரதிக் கோப்பைத் தேர்ந்தெடு</string>
+    <string name="settings_restore_warning">மீட்டெடுப்பு இந்தச் சாதனத்தில் உள்ள அனைத்தையும் காப்புப்பிரதியில் உள்ளதால் மாற்றிவிடும். காப்புப்பிரதி எடுத்த பிறகு சேர்த்தவை அனைத்தும் போய்விடும்.</string>
+    <string name="settings_restore_passphrase">காப்புப்பிரதியின் கடவுச்சொற்றொடர்</string>
+    <string name="settings_restore_confirm">அனைத்தையும் இந்தக் காப்புப்பிரதியால் மாற்று</string>
+    <string name="settings_restore_cancel">ரத்து செய்</string>
+    <string name="settings_restore_working">உங்கள் காப்புப்பிரதி திறக்கப்பட்டு சரிபார்க்கப்படுகிறது. இதற்குச் சில நொடிகள் ஆகும்.</string>
+    <plurals name="settings_restore_done">
+        <item quantity="one">%1$d உருப்படி மீட்டெடுக்கப்பட்டது. உங்கள் டாஷ்போர்டு இப்போது காப்புப்பிரதியைக் காட்டுகிறது.</item>
+        <item quantity="other">%1$d உருப்படிகள் மீட்டெடுக்கப்பட்டன. உங்கள் டாஷ்போர்டு இப்போது காப்புப்பிரதியைக் காட்டுகிறது.</item>
+    </plurals>
+    <string name="settings_restore_wrong_passphrase">அந்தக் கடவுச்சொற்றொடர் இந்தக் காப்புப்பிரதியைத் திறக்கவில்லை, அல்லது கோப்பு சேதமடைந்துள்ளது. எதுவும் மாறவில்லை.</string>
+    <string name="settings_restore_not_a_backup">அந்தக் கோப்பு இந்த ஆப்பின் காப்புப்பிரதி அல்ல. எதுவும் மாறவில்லை.</string>
+    <string name="settings_restore_wrong_version">இந்தக் காப்புப்பிரதி ஆப்பின் வேறு பதிப்பிலிருந்து வந்தது. ஆப்பைப் புதுப்பித்து மீண்டும் முயலுங்கள். எதுவும் மாறவில்லை.</string>
+    <string name="settings_restore_wrong_profile">இந்தக் காப்புப்பிரதி மாதிரித் தரவைப் பார்க்கும்போது எடுக்கப்பட்டது, எனவே இதில் உங்களுடையது எதுவும் இல்லை. எதுவும் மாறவில்லை.</string>
+    <string name="settings_restore_failed">காப்புப்பிரதியை மீட்டெடுக்க முடியவில்லை. எதுவும் மாறவில்லை.</string>
+    <string name="settings_language_title">மொழி</string>
+    <string name="settings_language_body">இந்த ஆப் எந்த மொழியில் பேச வேண்டும். நீங்கள் வேறொன்றைத் தேர்ந்தெடுக்கும் வரை உங்கள் ஃபோனின் மொழியே பயன்படும்.</string>
+    <string name="settings_language_system">என் ஃபோனின் மொழியையே பயன்படுத்து</string>
+    <string name="settings_language_english">English</string>
+    <string name="settings_language_hindi">हिन्दी</string>
+    <string name="settings_language_kannada">ಕನ್ನಡ</string>
+    <string name="settings_language_tamil">தமிழ்</string>
+</resources>

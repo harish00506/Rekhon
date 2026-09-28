@@ -58,6 +58,11 @@ class BudgetsFlowTest {
      * Changelog: 2026-08-13 — Issue 4.5: split the no-argument case out; the band labels are the
      *            first strings here that contain a percent sign and take no arguments.
      */
+    private companion object {
+        /** The fixture's default: `RULE-BUD-ALERT.warn_pct` in whole percent. */
+        const val WARN_PCT = 80
+    }
+
     private fun text(
         id: Int,
         vararg args: Any,
@@ -295,7 +300,31 @@ class BudgetsFlowTest {
             ),
         )
 
-        compose.onNodeWithText(text(R.string.budgets_band_warn)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.budgets_band_warn, WARN_PCT)).performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun `the chip states what this category has used, not the rule's threshold`() {
+        // Issue 10.8: it read "80% used" for every warned category, whatever they had spent — the
+        // rulebook's warn_pct written into a sentence. The figure is the engine's now.
+        setContent(
+            BudgetsUiState(
+                isLoading = false,
+                budgets = listOf(budgetRow(name = "Groceries", budgeted = Money(1_000_000L), spent = Money(870_000L))),
+                alerts =
+                    listOf(
+                        alertRow(
+                            name = "Groceries",
+                            band = BudgetAlertBand.WARN,
+                            usedBps = 8_700,
+                            spent = Money(870_000L),
+                        ),
+                    ),
+            ),
+        )
+
+        compose.onNodeWithText(text(R.string.budgets_band_warn, 87)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.budgets_band_warn, WARN_PCT)).assertDoesNotExist()
     }
 
     @Test
@@ -344,7 +373,7 @@ class BudgetsFlowTest {
             ),
         )
 
-        compose.onNodeWithText(text(R.string.budgets_band_warn)).assertDoesNotExist()
+        compose.onNodeWithText(text(R.string.budgets_band_warn, WARN_PCT)).assertDoesNotExist()
         compose.onNodeWithText(text(R.string.budgets_band_exceeded)).assertDoesNotExist()
     }
 

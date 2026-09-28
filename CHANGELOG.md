@@ -11,6 +11,32 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The Purchase Advisor, buy list, what-if simulators, vehicle prediction, on-device chat + guardrail
 > eval, market signals, and localisation.
 
+### [0.10.7] — Issue 10.8: the app speaks Hindi, Kannada and Tamil  (2026-09-28)
+
+- **Implemented:** §3.5's three languages, end to end — 1,159 strings and plurals across 17 modules,
+  in **Hindi, Kannada and Tamil** (**ADR-0056**).
+  - **You can choose the language in the app**, not only on the phone: Settings lists each language
+    in its own script, and the choice survives the app being killed. On Android 13 and later it also
+    becomes the app's language in system settings.
+  - **The lock screen is in your language too** — it is the first thing you see, so it is inside the
+    language, not outside it.
+  - **Amounts do not change.** ₹1,23,456.78 stays Indian-grouped with the same digits in every
+    language; a date does change, because that is the part that should.
+  - **The translations are machine-authored and have not been reviewed by a native speaker.**
+    Everything mechanical is checked by the build; the wording is not. ADR-0056 says so plainly, and
+    a native review is the outstanding work before a public release.
+- **The build now refuses an untranslated screen:** a new test reads every `strings.xml` in the
+  repository and fails on a missing key, a stray key, a **dropped format argument** (the one that
+  crashes on a user's device rather than merely embarrassing), a missing plural category, or a
+  sentence left in English. `MissingTranslation` and `ExtraTranslation` are lint errors.
+- **Fixed, found by the translations:** the budget chip said "80% used" for every warned category
+  whatever it had spent — the rulebook's threshold written into a sentence. It states the category's
+  own figure now. Two lint tests were also found silently failing behind Gradle's up-to-date check.
+- **Not yet** (ADR-0056): a native review; §3.5's international number-format toggle; RTL seen in
+  practice; a rulebook in three languages; per-locale screenshots beyond the dashboard.
+- **Tests:** 9 translation-coverage checks over all 51 modules, 4 locale-formatting tests, 3 settings
+  tests, 3 language-mechanism tests, 1 lint-scope test, and 3 new per-locale dashboard screenshots.
+
 ### [0.10.6] — Issue 10.7: Is today a good day to invest? (AI-MKT)  (2026-09-27)
 
 - **Implemented:** `:domain:engines:marketsignal` (**AI-MKT** 1.0) and the Opportunity screen over

@@ -58,6 +58,16 @@ data class BudgetsUiState(
         get() = alerts.associate { it.category.id to it.alert.band }
 
     /**
+     * How much of each budget has actually been used, in whole percent (issue 10.8).
+     * Why:    so the band chip can state a measured figure rather than repeating the rulebook's
+     *         threshold as a constant in a sentence (P-03). Basis points are the engine's unit
+     *         (MNY-002); whole percent is what a chip has room for.
+     * Result: category id → percent used. Input: none. Output: `Map<String, Int>`.
+     */
+    val usedPctByCategoryId: Map<String, Int>
+        get() = alerts.associate { it.category.id to it.alert.usedBps / BPS_PER_PERCENT }
+
+    /**
      * Every category that has gone past its budget, worst kind first.
      *
      * Why: the banner summarises rather than repeats — a user with four warnings does not want four
@@ -116,6 +126,11 @@ data class BudgetsUiState(
         get() =
             !isLoading && errorCode == null && planned.isEmpty() && unplanned.isEmpty() &&
                 suggestions.isEmpty() && review == null
+
+    private companion object {
+        /** A basis point is a hundredth of a percent (MNY-002). */
+        const val BPS_PER_PERCENT = 100
+    }
 }
 
 /**

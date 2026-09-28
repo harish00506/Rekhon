@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  தமிழ் (ta) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <string name="goals_title">உங்கள் இலக்குகள்</string>
+    <string name="goals_add">இலக்கைச் சேர்</string>
+    <string name="goals_empty">இங்கே இன்னும் எதுவும் இல்லை. நீங்கள் எதற்காகச் சேமிக்கிறீர்களோ அதைச் சேருங்கள்; மாதம் எவ்வளவு தேவை என ஆப் கணக்கிடும் — உங்கள் திட்டம் அங்கு சேருமா எனவும் சொல்லும்.</string>
+    <string name="goals_error">உங்கள் இலக்குகளைப் படிக்கும்போது ஏதோ தவறு நடந்தது.</string>
+    <string name="goals_dismiss_error">மூடு</string>
+    <string name="goals_required_monthly">மாதம் %1$s</string>
+    <string name="goals_shortfall">உங்கள் சொந்த மாதத் திட்டத்தைவிட மாதம் %1$s அதிகம்</string>
+    <string name="goals_saved_of_target">%2$s இல் %1$s சேமிக்கப்பட்டுள்ளது</string>
+    <string name="goals_target_date">%1$s க்குள் தேவை</string>
+    <string name="goals_eta">மாதம் %1$s போட்டால் %2$s இல் சேர்ந்துவிடுவீர்கள்</string>
+    <string name="goals_eta_never">மாதத் திட்டம் இல்லை, எனவே இன்னும் தேதி இல்லை</string>
+    <string name="goals_eta_reached">ஏற்கெனவே முழுமையடைந்தது</string>
+    <string name="goals_rule">விதி RULE-HORIZON v1.0</string>
+    <string name="goals_status_on_track">சரியான பாதையில்</string>
+    <string name="goals_status_behind">பின்தங்கியுள்ளது</string>
+    <string name="goals_status_past_due">தேதி கடந்துவிட்டது</string>
+    <string name="goals_status_over_funded">முழுமையடைந்தது</string>
+    <string name="goals_status_no_target">இன்னும் இலக்கு நிர்ணயிக்கப்படவில்லை</string>
+    <string name="goals_horizon_short">3 ஆண்டுகளுக்குக் கீழ் — சேமிப்பு, FD, அல்லது கடனை அடைப்பது</string>
+    <string name="goals_horizon_hybrid">3 முதல் 5 ஆண்டுகள் — கலப்புத் தேர்வு</string>
+    <string name="goals_horizon_long">5 ஆண்டுகளுக்கு மேல் — பங்குச் சந்தையும் பொருந்தும்</string>
+    <string name="goals_editor_name">நீங்கள் எதற்காகச் சேமிக்கிறீர்கள்?</string>
+    <string name="goals_editor_target">இலக்குத் தொகை</string>
+    <string name="goals_editor_target_date">எப்போது தேவை (YYYY-MM-DD)</string>
+    <string name="goals_editor_saved">இதுவரை சேமித்தது</string>
+    <string name="goals_editor_saved_help">நீங்கள் எந்த உண்மையான பரிவர்த்தனையுடனும் இணைக்காத பகுதி மட்டும். மீதியை இலக்கின் சொந்தத் திரையிலிருந்து இணையுங்கள்.</string>
+    <string name="goals_editor_planned">மாதம் எவ்வளவு ஒதுக்க நினைக்கிறீர்கள்</string>
+    <string name="goals_editor_planned_help">முடிவு செய்யவில்லை எனில் காலியாக விடுங்கள். எவ்வளவு தேவை என ஆப் அப்போதும் சொல்லும்.</string>
+    <string name="goals_edit">திருத்து</string>
+    <string name="goals_editor_save">சேமி</string>
+    <string name="goals_editor_cancel">ரத்து செய்</string>
+    <string name="goals_editor_delete">நீக்கு</string>
+    <string name="goals_editor_error">பெயர், தொகைகள், தேதியைச் சரிபாருங்கள்.</string>
+    <string name="goals_plan_title">இந்த மாதத் திட்டம்</string>
+    <string name="goals_plan_feasible">உங்கள் இலக்குகள் உங்களிடம் மிஞ்சுவதற்குள் பொருந்துகின்றன.</string>
+    <string name="goals_plan_infeasible">உங்கள் இலக்குகளுக்கு மிஞ்சுவதைவிட மாதம் %1$s அதிகம் தேவை.</string>
+    <string name="goals_plan_unknown">உங்கள் இலக்குகள் பொருந்துமா எனச் சொல்லும் அளவுக்கு வரலாறு இன்னும் இல்லை. சில மாதங்கள் பதிவு செய்தால் இது நிரம்பும்.</string>
+    <string name="goals_plan_basis_observed">மாதம் %1$s மிஞ்சுகிறது — உங்கள் கடந்த 6 முழு மாதங்களின் நடுத்தர எண்</string>
+    <string name="goals_plan_basis_declared">மாதம் %1$s மிஞ்சுகிறது — அமைப்பின்போது நீங்கள் சொன்னது</string>
+    <string name="goals_plan_claimed_first">அதில் %1$s முதலில் உங்கள் தொடக்க இருப்பு, அதிக வட்டிக் கடன், அவசரகால நிதிக்குச் செல்கிறது; இலக்குகளுக்கு %2$s மிஞ்சுகிறது.</string>
+    <string name="goals_plan_emergency_first">%1$s முதலில் உங்கள் அவசரகால நிதிக்குச் செல்கிறது. அது 3 மாதங்களை ஈடுகட்டும் வரை உங்கள் மற்ற இலக்குகள் காத்திருக்கும் — அடுத்த எதிர்பாராத செலவு கார்டு கடனாக மாறாமல் தடுப்பது அந்த இருப்பே.</string>
+    <string name="goals_plan_leftover">மாதம் %1$s இன்னும் எதற்கும் ஒதுக்கப்படவில்லை.</string>
+    <string name="goals_plan_rule">விதி RULE-EMERG-FIRST v1.0</string>
+    <string name="goals_allocated">இந்தத் திட்டத்திலிருந்து மாதம் %1$s</string>
+    <string name="goals_allocated_full">இந்தத் திட்டத்தால் முழுமையாக ஈடுசெய்யப்பட்டது</string>
+    <string name="goals_blocked">உங்கள் அவசரகால நிதிக்காகக் காத்திருக்கிறது</string>
+    <string name="goals_levers_title">இடைவெளியை மூட மூன்று வழிகள்</string>
+    <plurals name="goals_lever_extend">
+        <item quantity="one">தேதியை %1$d மாதம் தள்ளிப்போடுங்கள்</item>
+        <item quantity="other">தேதியை %1$d மாதங்கள் தள்ளிப்போடுங்கள்</item>
+    </plurals>
+    <string name="goals_lever_reduce">அதற்குப் பதிலாக %1$s ஐ இலக்காக வையுங்கள்</string>
+    <string name="goals_lever_increase">மாதம் %1$s கூடுதலாகத் திரட்டுங்கள்</string>
+    <string name="goals_reorder_hint">இழுக்க அழுத்திப் பிடியுங்கள், அல்லது இந்த இலக்கை நகர்த்தச் செயல்களைப் பயன்படுத்துங்கள்.</string>
+    <string name="goals_move_up">மேலே நகர்த்து</string>
+    <string name="goals_move_down">கீழே நகர்த்து</string>
+    <string name="goals_disclaimer">இந்த எண்கள் நீங்கள் உள்ளிட்டவற்றிலிருந்தே கணிக்கப்பட்டவை — இலக்கு, தேதி, சேமித்தது. இவை ஒரு திட்டம், எந்தக் குறிப்பிட்ட முதலீடு பற்றிய ஆலோசனையும் அல்ல.</string>
+    <string name="goals_open_detail">இந்த எண்ணுக்குப் பின்னால் என்ன</string>
+    <string name="goals_ghost_note">இதில் %1$s உங்கள் சொந்தக் கூற்று; அதற்குப் பின்னால் எதுவும் இணைக்கப்படவில்லை.</string>
+    <string name="goal_detail_title">இலக்கு</string>
+    <string name="goal_detail_missing">இந்த இலக்கு இப்போது இல்லை. நீக்கப்பட்டிருக்கலாம்.</string>
+    <string name="goal_detail_back">பின்செல்</string>
+    <string name="goal_detail_evidenced">அதில் %1$s உங்கள் கணக்குகளில் நடந்த உண்மையான பரிவர்த்தனைகளால் உறுதிப்படுத்தப்பட்டுள்ளது.</string>
+    <string name="goal_detail_ghost">%1$s நீங்கள் எழுதிய எண். உங்கள் கணக்குகளில் அதற்கு இன்னும் ஆதாரம் இல்லை.</string>
+    <string name="goal_detail_clear_ghost">எழுதிய எண்ணை அழி</string>
+    <string name="goal_detail_contributions">இணைக்கப்பட்ட பரிவர்த்தனைகள்</string>
+    <string name="goal_detail_no_evidence">இந்த இலக்குடன் இன்னும் எதுவும் இணைக்கப்படவில்லை, எனவே அதன் முன்னேற்றம் முழுவதும் நீங்கள் எழுதிய எண்ணே.</string>
+    <string name="goal_detail_contribution_row">%1$s — %3$s அன்று %2$s</string>
+    <string name="goal_detail_unlink">இணைப்பை நீக்கு</string>
+    <string name="goal_detail_link">ஒரு பரிவர்த்தனையை இணை</string>
+    <string name="goal_detail_picker_title">ஒரு பரிவர்த்தனையைத் தேர்ந்தெடு</string>
+    <string name="goal_detail_picker_empty">இணைக்க சமீபத்தில் எதுவும் மீதமில்லை.</string>
+    <string name="goal_detail_picker_row">%1$s — %3$s அன்று %2$s</string>
+    <string name="goal_detail_picker_close">மூடு</string>
+    <string name="goal_detail_funding">இந்த இலக்குக்குப் பணம் தரும் கணக்குகள்</string>
+    <string name="goal_detail_funding_row">%1$s, %2$s இலிருந்து கணக்கிட்டு</string>
+    <string name="goal_detail_funding_row_all">%1$s, அதில் உள்ள அனைத்தையும் கணக்கிட்டு</string>
+    <string name="goal_detail_funding_empty">ஒவ்வொரு கணக்கும் ஏற்கெனவே இந்த இலக்குக்குப் பணம் தருகிறது.</string>
+    <string name="goal_detail_funding_from_today">%1$s, இன்றிலிருந்து</string>
+    <string name="goal_detail_funding_all_history">%1$s, அதில் உள்ள அனைத்தையும் கணக்கிட்டு</string>
+    <string name="goal_detail_dedicate">ஒரு கணக்கிலிருந்து இந்த இலக்குக்குப் பணம் தா</string>
+    <string name="goal_detail_release">இந்தக் கணக்கைக் கணக்கிடுவதை நிறுத்து</string>
+    <string name="goal_detail_pay_first">உங்கள் வருமானம் மாதத்தின் %1$d ஆம் நாள் வருகிறது. மாத இறுதியில் அல்லாமல் அப்போதே போடுங்கள்.</string>
+    <string name="goal_detail_pay_first_rule">RULE-PAY-FIRST v1.0</string>
+</resources>

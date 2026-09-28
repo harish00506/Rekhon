@@ -14,7 +14,7 @@ android {
 
     defaultConfig {
         applicationId = "com.aicfo.personalcfo"
-        versionCode = 50
+        versionCode = 51
         versionName = rootProject.file("VERSION").readText().trim()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -26,6 +26,16 @@ android {
         }
     }
 
+    // Issue 10.8: every language ships in the install. The app has its own language picker, and
+    // with language splits on, Play delivers only the device's own language — a user choosing
+    // Kannada on an English phone would get English strings and no way to tell why. Lint's
+    // `AppBundleLocaleChanges` is what asks for this, and it is asking for the right thing.
+    bundle {
+        language {
+            enableSplit = false
+        }
+    }
+
     testOptions {
         // Issue 3.1: Robolectric renders this module's strings.xml and theme for the FAB test;
         // without the real resources the content description would come back blank.
@@ -33,12 +43,31 @@ android {
     }
 }
 
+// `TranslationCoverageTest` reads every module's `strings.xml`, so they are declared test inputs:
+// editing a translation alone must re-run the gate rather than leave it UP-TO-DATE. Issue 10.4's
+// lesson — an undeclared input is how a check passes without ever running (ADR-0017).
+tasks.withType<Test>().configureEach {
+    inputs.files(
+        rootProject.fileTree(rootProject.projectDir) {
+            include("**/src/main/res/values/strings.xml")
+            include("**/src/main/res/values-*/strings.xml")
+            include("app/src/main/res/xml/locales_config.xml")
+            exclude("**/build/**")
+        },
+    ).withPropertyName("stringResources")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+}
+
 // The Compose UI test launches a ComponentActivity, which only exists in the merged manifest of the
 // debug variant — `androidx.compose.ui:ui-test-manifest` is a `debugImplementation` dependency by
 // design. The same exclusion :feature:accounts and :feature:transactions carry.
 tasks.withType<Test>()
     .matching { it.name.contains("Release") }
-    .configureEach { exclude("**/AddTransactionFabTest.class") }
+    .configureEach {
+        exclude("**/AddTransactionFabTest.class")
+        // Issue 10.8: same reason — it renders a composition inside a ComponentActivity.
+        exclude("**/AppLanguageTest.class")
+    }
 
 dependencies {
     implementation(project(":core:designsystem"))

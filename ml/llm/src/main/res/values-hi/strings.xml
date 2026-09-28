@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  हिन्दी (hi) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <plurals name="llm_spend">
+        <item quantity="one">उस अवधि में आपने %2$d लेन-देन में %1$s खर्च किए।</item>
+        <item quantity="other">उस अवधि में आपने %2$d लेन-देन में %1$s खर्च किए।</item>
+    </plurals>
+    <string name="llm_balance">आपके पास अभी %1$s उपलब्ध हैं।</string>
+    <plurals name="llm_forecast">
+        <item quantity="one">अगले %1$d दिन में आपका सबसे निचला स्तर %2$s है, %3$s को।</item>
+        <item quantity="other">अगले %1$d दिनों में आपका सबसे निचला स्तर %2$s है, %3$s को।</item>
+    </plurals>
+    <string name="llm_budget">इस महीने अब तक आपने अपने बजट में से %1$s खर्च किए हैं।</string>
+    <string name="llm_goals">आपके लक्ष्यों को मिलाकर हर महीने %1$s चाहिए।</string>
+    <string name="llm_afford">उसके बाद आपके पास %1$s बचेंगे।</string>
+    <string name="llm_health">आपका वित्तीय सेहत स्कोर %1$d / %2$d है।</string>
+    <string name="llm_debt">सबसे महंगा कर्ज़ पहले चुकाने से ब्याज में %1$s की बचत होती है।</string>
+    <plurals name="llm_buylist">
+        <item quantity="one">आपकी खरीद सूची में %1$d चीज़ है।</item>
+        <item quantity="other">आपकी खरीद सूची में %1$d चीज़ें हैं।</item>
+    </plurals>
+    <string name="llm_vehicle">अगली सर्विस तक आपके वाहन का खर्च %1$s है, जो %2$s को होनी है।</string>
+    <string name="llm_nothing">इसका जवाब देने लायक अभी मुझे कुछ नहीं मिला।</string>
+</resources>

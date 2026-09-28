@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  हिन्दी (hi) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <string name="categories_title">श्रेणियाँ</string>
+    <string name="categories_add">श्रेणी जोड़ें</string>
+    <string name="categories_edit">बदलें</string>
+    <string name="categories_delete">हटाएँ</string>
+    <string name="categories_default_label">डिफ़ॉल्ट</string>
+    <string name="categories_empty_title">अभी कोई श्रेणी नहीं</string>
+    <string name="categories_empty_body">श्रेणियों से ही ऐप को पता चलता है कि भुगतान किस लिए था। एक जोड़ें और लेन-देन दर्ज करते समय वह एक विकल्प बन जाएगी।</string>
+    <string name="category_editor_title_add">नई श्रेणी</string>
+    <string name="category_editor_title_edit">श्रेणी बदलें</string>
+    <string name="category_editor_name">नाम</string>
+    <string name="category_editor_nature">यह पैसा क्या बनता है</string>
+    <string name="category_editor_parent">किसके अंतर्गत रखें</string>
+    <string name="category_editor_parent_none">किसी के नहीं — इसे ऊपरी स्तर पर रखें</string>
+    <string name="category_editor_save">सहेजें</string>
+    <string name="category_editor_cancel">रद्द करें</string>
+    <string name="category_nature_need">ज़रूरत</string>
+    <string name="category_nature_want">शौक</string>
+    <string name="category_nature_invest">निवेश</string>
+    <string name="category_nature_asset">संपत्ति</string>
+    <string name="category_nature_liability">कर्ज़ की अदायगी</string>
+    <string name="categories_delete_title">“%1$s” हटाएँ?</string>
+    <string name="categories_delete_counting">देख रहे हैं कि यह श्रेणी कहाँ-कहाँ इस्तेमाल हुई है…</string>
+    <string name="categories_delete_unknown_usage">हम जाँच नहीं पाए कि यह श्रेणी कहाँ इस्तेमाल हुई है। इसे फिर भी हटाया जाएगा, और इसका इस्तेमाल करने वाली हर चीज़ अवर्गीकृत के रूप में दिखेगी।</string>
+    <plurals name="categories_delete_usage">
+        <item quantity="one">%1$d लेन-देन इस श्रेणी का इस्तेमाल करता है और अवर्गीकृत के रूप में दिखेगा। कुछ भी हटाया नहीं जाता और कोई राशि नहीं बदलती।</item>
+        <item quantity="other">%1$d लेन-देन इस श्रेणी का इस्तेमाल करते हैं और अवर्गीकृत के रूप में दिखेंगे। कुछ भी हटाया नहीं जाता और कोई राशि नहीं बदलती।</item>
+    </plurals>
+    <string name="categories_delete_unused">इस श्रेणी का अभी कहीं इस्तेमाल नहीं है।</string>
+    <string name="categories_delete_confirm">हटा दें</string>
+    <string name="categories_delete_cancel">रहने दें</string>
+    <string name="categories_error_dismiss">बंद करें</string>
+    <string name="categories_error_duplicate_name">ऐसा नाम दें जो आपने पहले इस्तेमाल न किया हो।</string>
+    <string name="categories_error_bad_parent">इसे जिसके अंतर्गत रखना है, वह ऊपरी स्तर की श्रेणी चुनें। श्रेणियाँ दो स्तर तक ही जाती हैं, उससे आगे नहीं।</string>
+    <string name="categories_error_has_children">पहले इसके अंदर की श्रेणियाँ हटाएँ।</string>
+    <string name="categories_error_storage">हम आपकी सहेजी हुई श्रेणियों तक नहीं पहुँच पाए। फिर से कोशिश करें।</string>
+    <string name="categories_error_not_found">वह श्रेणी अब मौजूद नहीं है।</string>
+    <string name="categories_error_generic">कुछ गड़बड़ हो गई। फिर से कोशिश करें।</string>
+</resources>

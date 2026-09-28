@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  हिन्दी (hi) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <string name="goals_title">आपके लक्ष्य</string>
+    <string name="goals_add">लक्ष्य जोड़ें</string>
+    <string name="goals_empty">अभी यहाँ कुछ नहीं है। आप जिसके लिए बचत कर रहे हैं उसे जोड़ें; ऐप निकाल देगा कि हर महीने कितना लगेगा — और बताएगा कि आपकी योजना वहाँ पहुँचती है या नहीं।</string>
+    <string name="goals_error">आपके लक्ष्य पढ़ने में कुछ गड़बड़ हो गई।</string>
+    <string name="goals_dismiss_error">बंद करें</string>
+    <string name="goals_required_monthly">%1$s हर महीने</string>
+    <string name="goals_shortfall">आपकी अपनी मासिक योजना से %1$s हर महीने ज़्यादा</string>
+    <string name="goals_saved_of_target">%2$s में से %1$s जमा</string>
+    <string name="goals_target_date">%1$s तक चाहिए</string>
+    <string name="goals_eta">हर महीने %1$s से आप %2$s तक पहुँच जाएँगे</string>
+    <string name="goals_eta_never">कोई मासिक योजना तय नहीं है, इसलिए अभी कोई तारीख नहीं</string>
+    <string name="goals_eta_reached">पहले ही पूरा हो चुका</string>
+    <string name="goals_rule">नियम RULE-HORIZON v1.0</string>
+    <string name="goals_status_on_track">सही रास्ते पर</string>
+    <string name="goals_status_behind">पीछे</string>
+    <string name="goals_status_past_due">तारीख निकल चुकी</string>
+    <string name="goals_status_over_funded">पूरा हो चुका</string>
+    <string name="goals_status_no_target">अभी कोई लक्ष्य तय नहीं</string>
+    <string name="goals_horizon_short">3 साल से कम — बचत, FD, या कर्ज़ चुकाना</string>
+    <string name="goals_horizon_hybrid">3 से 5 साल — मिला-जुला विकल्प</string>
+    <string name="goals_horizon_long">5 साल से ज़्यादा — इक्विटी भी चल सकती है</string>
+    <string name="goals_editor_name">आप किसके लिए बचत कर रहे हैं?</string>
+    <string name="goals_editor_target">लक्ष्य राशि</string>
+    <string name="goals_editor_target_date">कब तक चाहिए (YYYY-MM-DD)</string>
+    <string name="goals_editor_saved">अब तक जमा</string>
+    <string name="goals_editor_saved_help">सिर्फ़ वह हिस्सा जिसे आपने किसी असली लेन-देन से नहीं जोड़ा। बाकी को लक्ष्य की अपनी स्क्रीन से जोड़ें।</string>
+    <string name="goals_editor_planned">आप हर महीने कितना अलग रखने की सोचते हैं</string>
+    <string name="goals_editor_planned_help">तय न किया हो तो खाली छोड़ दें। ऐप फिर भी बताएगा कि कितना लगेगा।</string>
+    <string name="goals_edit">बदलें</string>
+    <string name="goals_editor_save">सहेजें</string>
+    <string name="goals_editor_cancel">रद्द करें</string>
+    <string name="goals_editor_delete">हटाएँ</string>
+    <string name="goals_editor_error">नाम, राशियाँ और तारीख जाँच लें।</string>
+    <string name="goals_plan_title">इस महीने की योजना</string>
+    <string name="goals_plan_feasible">आपके लक्ष्य उतने में समा जाते हैं जितना आपके पास बचता है।</string>
+    <string name="goals_plan_infeasible">आपके लक्ष्यों को आपके बचे हुए से %1$s हर महीने ज़्यादा चाहिए।</string>
+    <string name="goals_plan_unknown">यह कहने लायक इतिहास अभी नहीं है कि आपके लक्ष्य समाते हैं या नहीं। कुछ महीने दर्ज करते रहें, यह अपने आप भर जाएगा।</string>
+    <string name="goals_plan_basis_observed">हर महीने %1$s बचता है — आपके पिछले 6 पूरे महीनों का बीच का आँकड़ा</string>
+    <string name="goals_plan_basis_declared">हर महीने %1$s बचता है — सेटअप में आपका बताया हुआ</string>
+    <string name="goals_plan_claimed_first">उसमें से %1$s पहले आपके शुरुआती बफ़र, महंगे कर्ज़ और आपातकालीन कोष में जाता है, और लक्ष्यों के लिए %2$s बचता है।</string>
+    <string name="goals_plan_emergency_first">%1$s पहले आपके आपातकालीन कोष में जाता है। जब तक वह 3 महीने का खर्च न ढक ले, बाकी लक्ष्य इंतज़ार करते हैं — वही बफ़र अगली अनहोनी को कार्ड के कर्ज़ में बदलने से रोकता है।</string>
+    <string name="goals_plan_leftover">हर महीने %1$s अब भी बिना किसी काम के पड़ा है।</string>
+    <string name="goals_plan_rule">नियम RULE-EMERG-FIRST v1.0</string>
+    <string name="goals_allocated">इस योजना से हर महीने %1$s</string>
+    <string name="goals_allocated_full">इस योजना से पूरा ढक जाता है</string>
+    <string name="goals_blocked">आपके आपातकालीन कोष का इंतज़ार</string>
+    <string name="goals_levers_title">यह फ़ासला पाटने के तीन तरीके</string>
+    <plurals name="goals_lever_extend">
+        <item quantity="one">तारीख को %1$d महीना आगे खिसकाएँ</item>
+        <item quantity="other">तारीख को %1$d महीने आगे खिसकाएँ</item>
+    </plurals>
+    <string name="goals_lever_reduce">इसके बजाय %1$s का लक्ष्य रखें</string>
+    <string name="goals_lever_increase">हर महीने %1$s और जुटाएँ</string>
+    <string name="goals_reorder_hint">खींचने के लिए दबाकर रखें, या इस लक्ष्य को खिसकाने के लिए दिए गए विकल्प इस्तेमाल करें।</string>
+    <string name="goals_move_up">ऊपर ले जाएँ</string>
+    <string name="goals_move_down">नीचे ले जाएँ</string>
+    <string name="goals_disclaimer">ये आँकड़े आपके भरे हुए से निकाले गए हैं — लक्ष्य, तारीख और अब तक की बचत। ये एक योजना हैं, किसी खास निवेश की सलाह नहीं।</string>
+    <string name="goals_open_detail">इस आँकड़े के पीछे क्या है</string>
+    <string name="goals_ghost_note">इसमें से %1$s सिर्फ़ आपका बताया हुआ है, जिसके पीछे कुछ जुड़ा नहीं है।</string>
+    <string name="goal_detail_title">लक्ष्य</string>
+    <string name="goal_detail_missing">यह लक्ष्य अब यहाँ नहीं है। शायद इसे हटा दिया गया हो।</string>
+    <string name="goal_detail_back">वापस</string>
+    <string name="goal_detail_evidenced">उसमें से %1$s आपके खातों के असली लेन-देन से जुड़ा है।</string>
+    <string name="goal_detail_ghost">%1$s वह आँकड़ा है जो आपने खुद लिखा। आपके खातों में अभी उसके पीछे कुछ नहीं है।</string>
+    <string name="goal_detail_clear_ghost">लिखा हुआ आँकड़ा हटाएँ</string>
+    <string name="goal_detail_contributions">जुड़े हुए लेन-देन</string>
+    <string name="goal_detail_no_evidence">इस लक्ष्य से अभी कुछ नहीं जुड़ा है, इसलिए इसकी सारी प्रगति आपका लिखा हुआ आँकड़ा है।</string>
+    <string name="goal_detail_contribution_row">%1$s — %3$s को %2$s</string>
+    <string name="goal_detail_unlink">अलग करें</string>
+    <string name="goal_detail_link">कोई लेन-देन जोड़ें</string>
+    <string name="goal_detail_picker_title">कोई लेन-देन चुनें</string>
+    <string name="goal_detail_picker_empty">जोड़ने के लिए हाल का कुछ नहीं बचा।</string>
+    <string name="goal_detail_picker_row">%1$s — %3$s को %2$s</string>
+    <string name="goal_detail_picker_close">बंद करें</string>
+    <string name="goal_detail_funding">इस लक्ष्य में पैसा देने वाले खाते</string>
+    <string name="goal_detail_funding_row">%1$s, %2$s से गिनते हुए</string>
+    <string name="goal_detail_funding_row_all">%1$s, इसमें जो कुछ है सब गिनते हुए</string>
+    <string name="goal_detail_funding_empty">हर खाता पहले से ही इस लक्ष्य में पैसा दे रहा है।</string>
+    <string name="goal_detail_funding_from_today">%1$s, आज से</string>
+    <string name="goal_detail_funding_all_history">%1$s, इसमें जो कुछ है सब गिनते हुए</string>
+    <string name="goal_detail_dedicate">किसी खाते से इस लक्ष्य में पैसा दें</string>
+    <string name="goal_detail_release">इस खाते को गिनना बंद करें</string>
+    <string name="goal_detail_pay_first">आपकी आमदनी महीने की %1$d तारीख को आती है। महीने के अंत के बजाय तभी डालें।</string>
+    <string name="goal_detail_pay_first_rule">RULE-PAY-FIRST v1.0</string>
+</resources>

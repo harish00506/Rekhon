@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  தமிழ் (ta) — issue 10.8 (SRS §3.5, NFR-011). Translated from values/strings.xml;
+  the keys, format arguments and plural categories are held to the English by
+  TranslationCoverageTest. Provenance and review status: ADR-0056.
+-->
+<resources>
+    <string name="emf_title">அவசரகால நிதி</string>
+    <string name="emf_error">உங்கள் அவசரகால நிதியைப் படிக்கும்போது ஏதோ தவறு நடந்தது.</string>
+    <string name="emf_dismiss_error">மூடு</string>
+    <string name="emf_back">பின்செல்</string>
+    <string name="emf_runway">%1$s மாதச் செலவுக்குப் போதும்</string>
+    <string name="emf_runway_unknown">உங்கள் பாதுகாப்பு எவ்வளவு எனக் கணிக்க இன்னும் முடியவில்லை</string>
+    <string name="emf_target">இலக்கு %1$s</string>
+    <string name="emf_saved_of_target">%2$s இல் %1$s ஒதுக்கப்பட்டுள்ளது</string>
+    <string name="emf_shortfall">இன்னும் %1$s சேர்க்க வேண்டும்</string>
+    <string name="emf_top_up">மாதம் %1$s போட்டால் %2$d மாதங்களில் நிறைவடையும்</string>
+    <string name="emf_fully_funded">இனி ஒதுக்க வேண்டியதில்லை</string>
+    <string name="emf_status_surplus">தேவைக்கு மேல்</string>
+    <string name="emf_status_funded">முழுமையாக நிரம்பியது</string>
+    <string name="emf_status_building">கட்டமைந்து வருகிறது</string>
+    <string name="emf_status_unknown">சொல்லும் அளவுக்குத் தகவல் இல்லை</string>
+    <string name="emf_status_urgent">ஒரு மாதத்துக்கும் குறைவான பாதுகாப்பு</string>
+    <string name="emf_coach_surplus">உங்கள் இலக்கை நன்கு தாண்டிவிட்டீர்கள். மிகுதியான பணத்தை ஏதேனும் இலக்குக்குப் பயன்படுத்தலாம் — இங்கே அது சும்மா கிடக்கிறது.</string>
+    <string name="emf_coach_funded">உங்கள் அவசரகால நிதி இலக்கை எட்டிவிட்டது. இதற்கு மேல் சேமிப்பது உங்கள் இலக்குகளுக்குச் செல்லலாம்.</string>
+    <string name="emf_coach_building">உங்களுக்கு உண்மையான தாங்குதல் உள்ளது, ஆனால் இன்னும் நிரம்பவில்லை. மாதம் மிஞ்சுவதிலிருந்து அதைக் கட்டுவதே வழக்கமாக அடுத்த படி.</string>
+    <string name="emf_coach_unknown">சில மாதச் செலவுகளைப் பதியுங்கள், அல்லது அமைப்பின்போது உங்கள் மாதத் தேவைகளைச் சொல்லுங்கள்; அப்போது ஆப் இதன் அளவைக் கணிக்கும்.</string>
+    <string name="emf_coach_urgent">அத்தியாவசியச் செலவுகளுக்கு ஒரு மாதம்கூட பாதுகாப்பு இல்லை. இதில் சற்று ஆழம் வரும்வரை அவசியமற்ற இலக்குகளை நிறுத்தி வைப்பதே வழக்கமாக நல்லது.</string>
+    <string name="emf_evidence_show">கணக்கைக் காட்டு</string>
+    <string name="emf_evidence_hide">கணக்கை மறை</string>
+    <string name="emf_evidence_essentials">ஒரு மாத அத்தியாவசியச் செலவு: %1$s</string>
+    <string name="emf_basis_observed">தேவைகளுக்கு நீங்கள் உண்மையில் செலவழித்த மாதங்களின் நடுத்தர மாதம்</string>
+    <string name="emf_basis_declared">அமைப்பின்போது நீங்கள் சொன்ன மாதத் தேவைகள்</string>
+    <string name="emf_basis_none">இன்னும் தெரியவில்லை</string>
+    <string name="emf_evidence_multiplier">%1$d மாதங்களுக்கு வைக்கப்பட்டது: 6 இல் தொடங்கி, %2$s</string>
+    <string name="emf_multiplier_steady">மேலும் எதுவும் சேர்க்கப்படவில்லை — உங்கள் வருமானம் நிலையாக உள்ளது</string>
+    <string name="emf_multiplier_bumped">மேலும் %1$d சேர்க்கப்பட்டது, ஏனெனில் உங்கள் வருமானம் மாதந்தோறும் ஏறியிறங்குகிறது</string>
+    <string name="emf_multiplier_unmeasured">மேலும் எதுவும் சேர்க்கப்படவில்லை — சொல்லும் அளவுக்கு வருமான வரலாறு இன்னும் இல்லை</string>
+    <string name="emf_multiplier_clamped">பிறகு வரம்பிடப்பட்டது, ஏனெனில் விதி இதை 3 முதல் 12 மாதங்களுக்குள் வைக்கிறது</string>
+    <string name="emf_evidence_categories">அத்தியாவசியம் எனக் கணக்கிடப்பட்டவை: %1$s</string>
+    <string name="emf_essential_nature_need">நீங்கள் தேவை எனப் பிரித்து வைத்த அனைத்தும்</string>
+    <string name="emf_evidence_liquid">இன்று செலவழிக்கக் கூடியது எனக் கணக்கிடப்பட்டது: %1$s</string>
+    <string name="emf_evidence_liquid_none">இன்னும் சேமிப்பு அல்லது ரொக்கக் கணக்கு இல்லை</string>
+    <string name="emf_evidence_liquid_note">இப்போதைக்கு சேமிப்பும் ரொக்கமும் மட்டுமே கணக்கில் வருகின்றன. வைப்புகளும் முதலீடுகளும் சேர்க்கப்படவில்லை, எனவே உங்கள் உண்மையான பாதுகாப்பு இதைவிட நீளமாக இருக்கலாம்.</string>
+    <string name="emf_rule">விதிகள் RULE-EMF-MULT v1.0, RULE-EMF-COACH v1.0</string>
+    <string name="emf_disclaimer">இந்த எண்கள் நீங்கள் பதிந்தவற்றிலிருந்தே கணிக்கப்பட்டவை — அத்தியாவசியங்களுக்கு எவ்வளவு செலவழிக்கிறீர்கள், சேமிப்பிலும் ரொக்கத்திலும் எவ்வளவு உள்ளது என்பதிலிருந்து. இவை வழிகாட்டுதல், எந்தக் குறிப்பிட்ட தயாரிப்பு பற்றிய ஆலோசனையும் அல்ல.</string>
+</resources>

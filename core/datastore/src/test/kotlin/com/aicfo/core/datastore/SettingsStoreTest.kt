@@ -91,12 +91,58 @@ class SettingsStoreTest {
             assertWritten(store.setCurrencyCode("INR"))
             assertWritten(store.setPrivacyBlurEnabled(true))
             assertWritten(store.setTheme(ThemeSetting.DARK))
+            assertWritten(store.setLanguage(LanguageSetting.KANNADA))
 
             val settings = store.observe().first().getOrNull()!!
             assertEquals("Asia/Kolkata", settings.profileTimeZoneId)
             assertEquals("INR", settings.currencyCode)
             assertTrue(settings.privacyBlurEnabled)
             assertEquals(ThemeSetting.DARK, settings.theme)
+            assertEquals(LanguageSetting.KANNADA, settings.language)
+        }
+
+    /**
+     * Input:  a store nobody has told which language to speak (issue 10.8).
+     * Output: asserts it follows the phone — the default that matters most in a country where the
+     *         phone is usually already in the language its owner reads.
+     */
+    @Test
+    fun `a new install follows the phone's own language`() =
+        scope.runTest {
+            open()
+
+            assertEquals(LanguageSetting.SYSTEM, store.observe().first().getOrNull()!!.language)
+        }
+
+    /**
+     * Input:  a stored tag this build has no strings for — a language a later build dropped, or a
+     *         newer build's choice read by an older one (issue 10.8).
+     * Output: asserts it reads back as "follow the phone" rather than throwing or stranding the
+     *         user in a language the app cannot render.
+     */
+    @Test
+    fun `a language this build does not ship reads as the phone's own`() =
+        scope.runTest {
+            open()
+            dataStore.updateData { it.toBuilder().setLanguageTag("mr").build() }
+
+            assertEquals(LanguageSetting.SYSTEM, store.observe().first().getOrNull()!!.language)
+        }
+
+    /**
+     * Input:  choosing a language and then choosing to follow the phone again (issue 10.8).
+     * Output: asserts "follow the phone" is storable, not just the absence of a choice — a user who
+     *         picks Tamil and changes their mind must be able to get back.
+     */
+    @Test
+    fun `following the phone again is a choice that sticks`() =
+        scope.runTest {
+            open()
+            assertWritten(store.setLanguage(LanguageSetting.TAMIL))
+
+            assertWritten(store.setLanguage(LanguageSetting.SYSTEM))
+
+            assertEquals(LanguageSetting.SYSTEM, store.observe().first().getOrNull()!!.language)
         }
 
     /**

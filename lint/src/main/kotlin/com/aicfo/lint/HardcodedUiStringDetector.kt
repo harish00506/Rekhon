@@ -82,16 +82,25 @@ class HardcodedUiStringDetector :
          * silently outside this rule while it was a placeholder, and would have stayed outside it
          * the moment it grew real text. Its Glance `Text(...)` matches [TEXT_CALLS] by name already,
          * so covering the module was two entries. Nothing else needed to change.
+         *
+         * **`:app` joined at issue 10.8**, and its own `strings.xml` had been saying so since 1.5:
+         * "the lint rule only scans `:feature:*`, so this module's compliance is on us". For a
+         * localisation issue that is the gap that matters — a literal here is a sentence no
+         * translation can ever reach. It holds the lock screen, the demo banner and the FAB's
+         * content description, all of which a user reads. It is matched by **package only**: lint's
+         * own test harness builds its fixtures under a directory called `app`, so a path token
+         * would flag every fixture in this repository.
          */
         private val UI_PATHS = listOf("/feature/", "/designsystem/", "/widget/")
-        private val UI_PACKAGES = listOf("com.aicfo.feature", "com.aicfo.core.designsystem", "com.aicfo.widget")
+        private val UI_PACKAGES =
+            listOf("com.aicfo.feature", "com.aicfo.core.designsystem", "com.aicfo.widget", "com.aicfo.app")
 
         /**
          * Whether the file belongs to a feature module.
          * Why:    checks the path **or** the package, for the same reason as
          *         [DomainClockDetector.isDomainScope] — path alone stops matching the moment a
          *         source root moves or a test harness relocates the file.
-         * Result: true under `:feature:*` or `:core:designsystem`.
+         * Result: true under `:feature:*`, `:core:designsystem`, `:widget` or `:app`.
          * Input:  [path] — the file's path; [packageName] — its declared package. Output: [Boolean].
          */
         internal fun isFeatureScope(

@@ -43,6 +43,11 @@ internal fun Project.configureKotlinAndroid(
             abortOnError = true
             warningsAsErrors = false
             checkDependencies = true
+            // Issue 10.8: the two translation checks the platform already knows how to make, as
+            // errors rather than warnings. `TranslationCoverageTest` says the same thing earlier
+            // and in more detail; this is the build's own backstop, and it is what catches a
+            // translated resource that never reaches the resource compiler at all.
+            error += listOf("MissingTranslation", "ExtraTranslation")
         }
         packaging {
             resources {

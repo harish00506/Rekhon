@@ -24,6 +24,7 @@
     2026-09-27 — Issue 10.5 (AI-CHAT assistant + tool registry) merged to dev; schema 28.
     2026-09-27 — Issue 10.6 (the frozen guardrail eval) merged to dev; no schema change.
     2026-09-27 — Issue 10.7 (AI-MKT opportunity score) merged to dev; schema 29.
+    2026-09-28 — Issue 10.8 (Hindi, Kannada and Tamil) merged to dev; schema 29 unchanged.
 -->
 
 # AI Personal CFO — Project Memory
@@ -35,15 +36,16 @@
 
 ## Current state
 
-- **Version:** `0.10.6` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v29** (10.7's `market_close`).
+- **Version:** `0.10.7` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v29** (10.7's `market_close`; 10.8 stores a language tag in settings, not the database).
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
   forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
   feed), 9.6 (the notification policy) and 9.7 (the numeric guardrail) shipped — **Epic 9 is
   complete**. **Epic 10 is open**: 10.1 (the Purchase Advisor), 10.2 (the buy list),
   10.3 (the what-if simulators), 10.4 (vehicle maintenance), 10.5 (the chat assistant),
-  10.6 (the frozen guardrail eval) and 10.7 (the opportunity score) shipped; **10.8 (Hindi
-  localisation) is the last of Epic 10**.
-- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7 and 10.1–10.7 are merged to `dev`**
+  10.6 (the frozen guardrail eval), 10.7 (the opportunity score) and 10.8 (Hindi, Kannada and
+  Tamil) shipped — **Epic 10 is complete**. The app now ships in four languages; the three
+  translations are machine-authored and **await a native review** (ADR-0056).
+- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7 and 10.1–10.8 are merged to `dev`**
   ([8.1 tracker](issues/8.1-e2ee-backup-argon2id-aes-256-gcm-tracker.md), ADR-0039;
   [8.2 tracker](issues/8.2-restore-on-fresh-device-tracker.md), ADR-0040;
   [8.3 tracker](issues/8.3-backup-restore-drill-tracker.md), ADR-0041;

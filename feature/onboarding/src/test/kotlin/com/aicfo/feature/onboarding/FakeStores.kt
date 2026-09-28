@@ -10,6 +10,7 @@ import com.aicfo.core.datastore.AppLockStore
 import com.aicfo.core.datastore.ConsentFeature
 import com.aicfo.core.datastore.ConsentState
 import com.aicfo.core.datastore.ConsentStore
+import com.aicfo.core.datastore.LanguageSetting
 import com.aicfo.core.datastore.OnboardingProfile
 import com.aicfo.core.datastore.QuickSetupSeeds
 import com.aicfo.core.datastore.SettingsSnapshot
@@ -73,6 +74,8 @@ internal class FakeSettingsStore(
     override suspend fun setPrivacyBlurEnabled(enabled: Boolean): Result<Unit, AppError> = write { }
 
     override suspend fun setTheme(theme: ThemeSetting): Result<Unit, AppError> = write { }
+
+    override suspend fun setLanguage(language: LanguageSetting): Result<Unit, AppError> = write { }
 
     /**
      * Records a demo-flag write (issue 2.4).
