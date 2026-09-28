@@ -206,9 +206,8 @@ MainViewModel.isPrivacyBlurred : StateFlow<Boolean>
     │    boundary. The boundary is AppLockGate/SessionLock, which fails CLOSED.)
     ⇣
 MainActivity.AppContent
-├─ PrivacyCaptureGuard(secure = isBlurred)    DisposableEffect on the Activity window
-│   └─ FLAG_SECURE add / clear                → screenshot, screen-record, share = blank
-│       (cleared onDispose, or a blurred session leaves every later screen uncapturable)
+├─ (the capture guard used to hang here, armed only while the blur was on — issue 11.2 made it
+│   always-on and moved it to onCreate; see §2.21. The blur now masks text and nothing else.)
 ├─ CfoPrivacyBlurToggle(blurred, onToggle)    app chrome, top-end — one tap from ANY screen
 │   ⇡  onToggle → MainViewModel.setPrivacyBlur(enabled)
 │       └─ SettingsStore.setPrivacyBlurEnabled()   persists, then re-emits above
@@ -642,6 +641,22 @@ DashboardScreen → "Good day to invest?" → OpportunityScreen
     how often this verdict has been followed by a higher price · what blocked the suggestion ·
     how old the price is · and that the screen never buys anything
 ```
+
+### 2.21 · Why a screenshot of this app is blank (issue 11.2)
+
+**One line, before anything is composed.** The first frame is the lock screen, and a flag applied
+from inside a composition would miss it.
+
+```
+MainActivity.onCreate
+└─ SecureWindow.applyTo(activity)             before super.onCreate and setContent
+   ├─ window.addFlags(FLAG_SECURE)            screenshot · screen record · cast · share = blank
+   └─ API 33+ setRecentsScreenshotEnabled(false)   the app-switcher takes no thumbnail at all
+      ⇣ never cleared: every screen in this app is financial, so there is no allowlist to forget
+```
+
+The privacy blur (§2.9) is a separate control and stays one: it masks the text on screen for the
+person standing behind you. It no longer touches `FLAG_SECURE`, because the flag is now always on.
 
 ### 2.20 · The key that opens the database (issue 11.1)
 
