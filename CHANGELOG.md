@@ -11,6 +11,33 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The Purchase Advisor, buy list, what-if simulators, vehicle prediction, on-device chat + guardrail
 > eval, market signals, and localisation.
 
+### [0.10.8] — Issue 11.1: the database key, hardened and rotatable  (2026-09-28)
+
+- **Implemented:** the key lifecycle §23 asks for (**ADR-0057**).
+  - **The key that protects everything else now lives in the strongest place the phone has.** On a
+    phone with a dedicated security chip, a fresh install puts it there; everywhere else it stays
+    in the same hardware-backed store it was in. **An existing key is never replaced** — doing so
+    would make an existing database unopenable, on an update rather than a new install.
+  - **The key can now be changed, and the database is re-encrypted with it.** It could not be
+    before: the old code would have swapped the key and left the database locked behind the one it
+    threw away. Nothing had ever called it.
+  - **A power cut in the middle of that is survivable.** The new key is written down before the
+    database is re-encrypted and only adopted afterwards, so both keys exist throughout and the
+    next start simply tries them in turn.
+  - **A key the app has finished with is wiped from memory**, and a failed change leaves the old
+    one exactly where it was — the database still needs it.
+- **Security review** (mandatory for crypto changes, SEC-003): no vulnerabilities found; two
+  defence-in-depth findings fixed; one library assumption verified in the artifact rather than
+  assumed. Recorded in ADR-0057 and the issue tracker.
+- **Corrected:** a note from issue 1.6 claiming that asking for StrongBox would count as
+  hand-rolled crypto. It does not — the platform generates the key either way.
+- **Not yet** (ADR-0057): a button that rotates the key (it belongs beside erase-all and the
+  consents dashboard, 11.3/11.4); a rotation schedule; and StrongBox proven on real hardware —
+  the emulator has no such chip, so what ran was the fallback.
+- **Tests:** 5 policy tests, 8 rotation-protocol tests with 6 mutations, 3 new key tests in the
+  existing passphrase suite, and 5 instrumented tests on a device — including a rotation that
+  keeps every row and leaves the old key unable to open the file.
+
 ### [0.10.7] — Issue 10.8: the app speaks Hindi, Kannada and Tamil  (2026-09-28)
 
 - **Implemented:** §3.5's three languages, end to end — 1,159 strings and plurals across 17 modules,
