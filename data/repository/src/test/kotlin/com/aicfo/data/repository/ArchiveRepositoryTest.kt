@@ -26,8 +26,12 @@ import com.aicfo.core.database.entity.TagEntity
 import com.aicfo.core.database.entity.TransactionEntity
 import com.aicfo.core.database.entity.TransactionSplitEntity
 import com.aicfo.core.database.entity.TransactionTagEntity
+import com.aicfo.core.datastore.ConsentFeature
+import com.aicfo.core.datastore.ConsentState
+import com.aicfo.core.datastore.ConsentStore
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -78,7 +82,15 @@ class ArchiveRepositoryTest {
                 CfoDatabase::class.java,
             ).allowMainThreadQueries().build()
         archive =
-            RepositoryFactory.archive(database, clock, TestDispatchers(dispatcher), activeProfileId)
+            RepositoryFactory.archive(
+                database,
+                clock,
+                TestDispatchers(dispatcher),
+                activeProfileId,
+                // Issue 11.5: this suite is about the rows, so the ledger is empty — the state a
+                // fresh install has. `ArchiveConsentRecordTest` is where the record is asserted.
+                EmptyConsentLedger,
+            )
     }
 
     /** Input: none. Output: closes the database between tests. */
@@ -722,3 +734,20 @@ private fun <T> Result<T, AppError>.expectOk(): T =
         is Ok -> value
         else -> throw AssertionError("expected Ok, got $this")
     }
+
+/**
+ * A consent ledger with nothing recorded (issue 11.5).
+ * Why:    the archive now reads the ledger on export, and this suite is about the Room rows. An
+ *         empty ledger is what a fresh install has, so it is also the honest default here.
+ * Result: every feature reads as `NOT_GRANTED`. Input: none. Output: the stub.
+ * Changelog: 2026-10-01 — Created for issue 11.5.
+ */
+private object EmptyConsentLedger : ConsentStore {
+    override fun observe(feature: ConsentFeature) = flowOf(Ok(ConsentState.NOT_GRANTED))
+
+    override fun observeAll() = flowOf(Ok(emptyMap<ConsentFeature, ConsentState>()))
+
+    override suspend fun grant(feature: ConsentFeature) = Ok(Unit)
+
+    override suspend fun revoke(feature: ConsentFeature) = Ok(Unit)
+}

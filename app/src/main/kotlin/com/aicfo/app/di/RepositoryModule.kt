@@ -518,9 +518,11 @@ object RepositoryModule {
      *         user's financial data at once, so it is the last thing that should be readable before
      *         an unlock. Follows the demo (ADR-0006), so exporting inside the demo writes the sample
      *         data and importing there cannot reach the real profile.
-     * Result: an [ArchiveRepository]. Input: [database], [clock], [dispatchers], [demoMode].
-     *         Output: the repository.
+     * Result: an [ArchiveRepository]. Input: [database], [clock], [dispatchers], [demoMode],
+     *         [consents] — the ledger the export records (issue 11.5). Output: the repository.
      * Changelog: 2026-08-16 — Created for issue 5.4.
+     *            2026-10-01 — Issue 11.5: the consent ledger, so an export is a complete account of
+     *            what the app was allowed to do and not only of what it holds (DPDP, ADR-0061).
      */
     @Provides
     @Singleton
@@ -529,7 +531,8 @@ object RepositoryModule {
         clock: Clock,
         dispatchers: DispatcherProvider,
         demoMode: DemoModeRepository,
-    ): ArchiveRepository = RepositoryFactory.archive(database, clock, dispatchers, demoMode.activeProfileId)
+        consents: ConsentStore,
+    ): ArchiveRepository = RepositoryFactory.archive(database, clock, dispatchers, demoMode.activeProfileId, consents)
 
     /**
      * AI-CLS Stage 2 (issue 9.1; §8.2).

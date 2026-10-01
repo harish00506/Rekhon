@@ -20,8 +20,8 @@ import com.aicfo.core.model.AuditEvent
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -73,7 +73,7 @@ class BackupRestoreTest {
         audit = RepositoryFactory.auditLog(database, clock, dispatchers)
         backups =
             RepositoryFactory.backup(
-                archive = RepositoryFactory.archive(database, clock, dispatchers, activeProfileId),
+                archive = RepositoryFactory.archive(database, clock, dispatchers, activeProfileId, consents),
                 cipher = cipher,
                 consents = consents,
                 audit = audit,
@@ -314,7 +314,11 @@ class BackupRestoreTest {
         override fun observe(feature: ConsentFeature): Flow<Result<ConsentState, AppError>> =
             granted.map { Ok(ConsentState(granted = it)) }
 
-        override fun observeAll(): Flow<Result<Map<ConsentFeature, ConsentState>, AppError>> = emptyFlow()
+        // Issue 11.5: emits, because the real store always does. It returned `emptyFlow()` while
+        // nothing read it, and the export's `.first()` then threw rather than reading a ledger —
+        // a fake that never emits is not a stand-in for a store, it is a hang waiting for a caller.
+        override fun observeAll(): Flow<Result<Map<ConsentFeature, ConsentState>, AppError>> =
+            flowOf(Ok(ConsentFeature.entries.associateWith { ConsentState(granted = true) }))
 
         override suspend fun grant(feature: ConsentFeature): Result<Unit, AppError> = Ok(Unit)
 

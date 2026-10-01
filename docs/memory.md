@@ -39,7 +39,7 @@
 
 ## Current state
 
-- **Version:** `0.10.11` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v29** (10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
+- **Version:** `0.10.12` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v29** (10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
   forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
   feed), 9.6 (the notification policy) and 9.7 (the numeric guardrail) shipped — **Epic 9 is
@@ -49,12 +49,15 @@
   Tamil) shipped — **Epic 10 is complete**. The app now ships in four languages; the three
   translations are machine-authored and **await a native review** (ADR-0056).
   **Epic 11 is open**: 11.1 (the database key — StrongBox, and a rotation that re-keys the file),
-  11.2 (the screen-capture guard), 11.3 (the consents dashboard) and 11.4 (the crypto-shredding
-  erase) shipped; **11.5 (DPDP alignment) is next**. Four things are deliberately unfinished: the key
-  can be rotated but nothing in the app offers it yet, `FLAG_SECURE` does not reach the home-screen
-  widget, the consent history cannot be exported, and the erase cannot reach a backup the user
-  exported — it says so rather than pretending otherwise — ADR-0057/0058/0059/0060.
-- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7, 10.1–10.8 and 11.1–11.4 are merged to `dev`**
+  11.2 (the screen-capture guard), 11.3 (the consents dashboard), 11.4 (the crypto-shredding erase)
+  and 11.5 (DPDP alignment) shipped; **11.6 (dependency scanning) is next**. Deliberately
+  unfinished: the key can be rotated but nothing offers it yet, `FLAG_SECURE` does not reach the
+  home-screen widget, the erase cannot reach a backup the user exported (it says so), the consent
+  record is the latest grant/withdraw pair rather than an append-only history, and **four DPDP
+  obligations are the publisher's, not the code's** — grievance contact, nomination, breach notice
+  and children's data, all listed as open in `docs/compliance/dpdp-2023.md` —
+  ADR-0057/0058/0059/0060/0061.
+- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7, 10.1–10.8 and 11.1–11.5 are merged to `dev`**
   ([8.1 tracker](issues/8.1-e2ee-backup-argon2id-aes-256-gcm-tracker.md), ADR-0039;
   [8.2 tracker](issues/8.2-restore-on-fresh-device-tracker.md), ADR-0040;
   [8.3 tracker](issues/8.3-backup-restore-drill-tracker.md), ADR-0041;
@@ -578,6 +581,23 @@
   source set on every issue, device or no device.
 
 ## Completed
+
+- **Epic 11 — issue 11.5 (v0.10.12, 2026-10-01):** DPDP Act 2023 alignment (§23, §32). The export now
+  carries the **consent record** — one row per declared consent, including the ones never answered,
+  with both timestamps — because the right of access covers what the app was *allowed* to do and not
+  only what it holds. **It is never imported:** a file is not a person, so restoring would re-grant a
+  withdrawn consent and a hand-edited archive would become a consent mechanism
+  ([ADR-0061](adr/0061-dpdp-alignment-is-a-checked-document-and-the-consent-record-is-export-only.md)).
+  An unreadable ledger fails the export rather than writing a file that reads as "granted nothing".
+  `docs/compliance/dpdp-2023.md` maps each obligation to its code and test, and
+  `DpdpComplianceDriftTest` keeps it honest — a consent without a declared purpose, or a renamed
+  class the matrix cites, fails the build. Four obligations are listed as **open**, being the
+  publisher's rather than the code's. **The real find:** writing that gate exposed that **29 drift
+  tests across the project could not fail** — a file read at runtime is not a declared task input, so
+  Gradle skipped each one on exactly the edit it existed to catch. Issue 7.2 had found this and fixed
+  it for a single file, leaving nine others and every Android-library module exposed;
+  `configureCheckedDataAsTestInput` now declares the `ai/` and `docs/compliance/` directories from
+  both convention plugins.
 
 - **Epic 11 — issue 11.4 (v0.10.11, 2026-10-01):** erase-all by crypto-shredding (§23, §34,
   SEC-003). **Keys before files**, because the order decides what survives an interruption: keys

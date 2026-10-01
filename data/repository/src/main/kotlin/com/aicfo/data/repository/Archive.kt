@@ -130,6 +130,16 @@ data class CfoArchive(
     val vehicleRenewals: List<VehicleRenewalEntity> = emptyList(),
     /** Issue 10.7: the cached closes — AI-MKT's whole input, and months to rebuild if lost. */
     val marketCloses: List<MarketCloseEntity> = emptyList(),
+    /**
+     * Issue 11.5: what the app was allowed to do, and since when (DPDP's right of access).
+     *
+     * **The one list here that is not a Room table, and the one that is never imported.** It comes
+     * from the Proto DataStore consent ledger rather than the database, because that is where
+     * issue 1.9 put it; and a restore ignores it, because a file is not a person — importing it
+     * would re-grant a consent the user has since withdrawn, and a hand-edited archive would become
+     * a way to grant consents nobody ever gave. See [ConsentRecord] and ADR-0061.
+     */
+    val consents: List<ConsentRecord> = emptyList(),
 ) {
     companion object {
         /**
@@ -159,4 +169,38 @@ data class CfoArchive(
 data class ImportSummary(
     val rowsImported: Int,
     val exportedAtUtcMillis: Long,
+)
+
+/**
+ * One consent, as the export records it (issue 11.5; §23, §32, DPDP).
+ *
+ * Why:  DPDP's right of access is not satisfied by handing a user their *data* while keeping the
+ *       record of what they agreed to. "What has this app been allowed to do, and since when?" is a
+ *       question the data principal is entitled to an answer to **in a form they can keep** — and
+ *       the ledger has held that answer since issue 1.9 without it ever reaching a file. Issue 11.3
+ *       put it on a screen and left the portable form here.
+ * What: the feature's stable id, whether the permission is in force, and both timestamps.
+ * Result: an export that is a complete account of the app's permissions, not just its contents.
+ * Changelog: 2026-10-01 — Created for issue 11.5.
+ *
+ * **Three states, not two**, for the reason ADR-0059 gives: "never given" (both dates null) and
+ * "withdrawn on the 4th" are different facts about a person, and the one document meant to be
+ * authoritative must not collapse them.
+ *
+ * **[featureId], not the enum.** The archive is a contract with files already on users' phones, so
+ * it stores the stable string `ConsentFeature.id` — a Kotlin enum rename would otherwise change the
+ * file format, and a consent *removed* from the enum must still decode in an archive that has it.
+ *
+ * Input:  [featureId] — `ConsentFeature.id`; [granted] — in force at export time;
+ *         [grantedAtUtcMillis] / [revokedAtUtcMillis] — UTC epoch millis (TIM-001), `null` when it
+ *         never happened. UTC rather than the profile's day because this is a machine-readable
+ *         record; the screen is where a date is rendered in the user's own zone.
+ * Output: an immutable value, serialisable to JSON.
+ */
+@Serializable
+data class ConsentRecord(
+    val featureId: String,
+    val granted: Boolean,
+    val grantedAtUtcMillis: Long? = null,
+    val revokedAtUtcMillis: Long? = null,
 )

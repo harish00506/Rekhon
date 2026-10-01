@@ -18,6 +18,8 @@ import org.gradle.kotlin.dsl.dependencies
  * Changelog: 2026-07-19 — Created for issue 1.1.
  *            2026-07-25 — Issue 1.2: added configureCoverage() so koverVerify has real rules
  *            (governance audit G-01 — it previously passed at 0% coverage).
+ *            2026-10-01 — Issue 11.5: configureCheckedDataAsTestInput() replaces 7.2's
+ *            rulebook-only input, which left nine other data files able to be skipped.
  *            2026-09-02 — Issue 7.2: added configureRulebookAsTestInput(), because a rulebook
  *            edit could leave every RulebookDriftTest UP-TO-DATE and the build green.
  */
@@ -47,7 +49,7 @@ class CfoKotlinLibraryConventionPlugin : Plugin<Project> {
             configureQuality()
             configureCoverage()
             configureCustomLint()
-            configureRulebookAsTestInput()
+            configureCheckedDataAsTestInput()
             extensions.configure<Lint> {
                 abortOnError = true
                 checkDependencies = true
