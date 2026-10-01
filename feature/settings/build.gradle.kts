@@ -24,7 +24,11 @@ android {
 // debug variant, exactly as :feature:budgets records. The release variant still runs every other test.
 tasks.withType<Test>()
     .matching { it.name.contains("Release") }
-    .configureEach { exclude("**/SettingsScreenTest.class") }
+    .configureEach {
+        exclude("**/SettingsScreenTest.class")
+        // Issue 11.3: the consents dashboard's rendered test, for the same reason.
+        exclude("**/ConsentsScreenTest.class")
+    }
 
 dependencies {
     // Money and MoneyFormatter — the amounts the user types, parsed and rendered (MNY-001).

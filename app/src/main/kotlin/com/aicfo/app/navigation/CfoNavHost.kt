@@ -26,6 +26,7 @@ import com.aicfo.feature.goals.GoalDetailScreen
 import com.aicfo.feature.goals.GoalsScreen
 import com.aicfo.feature.market.OpportunityScreen
 import com.aicfo.feature.onboarding.OnboardingScreen
+import com.aicfo.feature.settings.ConsentsScreen
 import com.aicfo.feature.settings.SettingsScreen
 import com.aicfo.feature.transactions.AddTransactionScreen
 import com.aicfo.feature.transactions.ReceiptReviewScreen
@@ -196,7 +197,13 @@ private fun NavGraphBuilder.accountsDestinations(navController: NavHostControlle
     }
     composable<CfoRoute.Settings> {
         // popBackStack for the reason every pushed screen here gives: settings went on top.
-        SettingsScreen(onDone = { navController.popBackStack() })
+        SettingsScreen(
+            onDone = { navController.popBackStack() },
+            onNavigateToConsents = { navController.navigate(CfoRoute.Consents) },
+        )
+    }
+    composable<CfoRoute.Consents> {
+        ConsentsScreen(onDone = { navController.popBackStack() })
     }
     composable<CfoRoute.Allocation> {
         // popBackStack for the reason holdings gives: allocation was pushed on top of the list.

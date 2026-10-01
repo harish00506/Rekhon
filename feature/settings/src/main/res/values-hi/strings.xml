@@ -66,4 +66,25 @@
     <string name="settings_language_hindi">हिन्दी</string>
     <string name="settings_language_kannada">ಕನ್ನಡ</string>
     <string name="settings_language_tamil">தமிழ்</string>
+
+    <string name="consents_title">यह ऐप क्या-क्या इस्तेमाल कर सकता है</string>
+    <string name="consents_intro">इनमें से हर एक तब तक बंद है जब तक आप चालू न करें, और किसी को भी आप यहीं से वापस ले सकते हैं। वापस लेना तुरंत लागू होता है — टैप करते ही वह सुविधा रुक जाती है, अगली बार ऐप खोलने पर नहीं।</string>
+    <string name="consents_nothing_leaves">जब तक इनमें से कोई चालू न हो, आपके पैसे की कोई बात इस डिवाइस से बाहर नहीं जाती।</string>
+    <string name="consents_in_use_since">%1$s से इस्तेमाल में</string>
+    <string name="consents_never_given">कभी नहीं दी गई</string>
+    <string name="consents_withdrawn_on">%1$s को वापस ली · आपने %2$s को दी थी</string>
+    <string name="consents_withdraw">वापस लें</string>
+    <string name="consents_allow">अनुमति दें</string>
+    <string name="consents_error">यह सहेजा नहीं गया, इसलिए कुछ नहीं बदला। अनुमति जैसी थी वैसी ही है।</string>
+    <string name="consents_dismiss">बंद करें</string>
+    <string name="consents_done">हो गया</string>
+    <string name="consents_open">ऐप क्या इस्तेमाल कर सकता है, वह देखें</string>
+    <string name="consent_sms_parsing_purpose">बैंकों और UPI ऐप्स के लेन-देन अलर्ट पढ़कर आपका खर्च भरता है। यह इसी फ़ोन पर होता है; कोई संदेश कहीं नहीं भेजा जाता।</string>
+    <string name="consent_sms_parsing_withdrawn">फिर कोई संदेश नहीं पढ़ा जाएगा, और आपके संदेशों से अब तक पढ़ा हुआ सब मिटा दिया जाता है।</string>
+    <string name="consent_market_data_purpose">सोना, क्रिप्टो और फंड के भाव लाता है ताकि आपकी होल्डिंग की कीमत निकाली जा सके। सिर्फ़ भाव-कुंजी भेजी जाती है — कोई राशि नहीं, और यह भी नहीं कि आपके पास क्या है।</string>
+    <string name="consent_market_data_withdrawn">फिर कोई भाव नहीं लाया जाएगा। पहले से सहेजे भाव बने रहते हैं, इस लेबल के साथ कि वे कितने पुराने हैं।</string>
+    <string name="consent_cloud_llm_purpose">जब फ़ोन का अपना सहायक जवाब न दे पाए तो क्लाउड मॉडल से पूछने देता। यह अभी बना ही नहीं है, इसलिए यह चालू हो तब भी आज कुछ नहीं भेजा जाता।</string>
+    <string name="consent_cloud_llm_withdrawn">आज कुछ नहीं बदलता, क्योंकि अभी इसका कोई इस्तेमाल ही नहीं है।</string>
+    <string name="consent_cloud_backup_purpose">आपको इस फ़ोन से बाहर एन्क्रिप्टेड बैकअप सहेजने देता है। फ़ाइल बाहर जाने से पहले आपके पासफ़्रेज़ से बंद कर दी जाती है।</string>
+    <string name="consent_cloud_backup_withdrawn">इस डिवाइस से बाहर कोई बैकअप नहीं लिखा जा सकता, और सहेजे जाने की राह देखता बैकअप छोड़ दिया जाता है।</string>
 </resources>

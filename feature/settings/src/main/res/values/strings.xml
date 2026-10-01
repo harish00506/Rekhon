@@ -110,4 +110,31 @@
     <string name="settings_language_hindi">हिन्दी</string>
     <string name="settings_language_kannada">ಕನ್ನಡ</string>
     <string name="settings_language_tamil">தமிழ்</string>
+
+    <!--
+      The consents dashboard (issue 11.3; §23, P-01, DPDP). Every row says three things: what the
+      consent is for, what stops if it is withdrawn, and when it was given — the last of which the
+      ledger has recorded since issue 1.9 and nothing showed until this screen.
+    -->
+    <string name="consents_title">What this app may use</string>
+    <string name="consents_intro">Each of these is off until you turn it on, and you can take any of them back here. A withdrawal takes effect at once — the feature stops the moment you tap it, not at the next restart.</string>
+    <string name="consents_nothing_leaves">Nothing about your money leaves this device unless one of these is on.</string>
+    <string name="consents_in_use_since">In use since %1$s</string>
+    <string name="consents_never_given">Never given</string>
+    <string name="consents_withdrawn_on">Withdrawn on %1$s · you gave it on %2$s</string>
+    <string name="consents_withdraw">Withdraw</string>
+    <string name="consents_allow">Allow</string>
+    <string name="consents_error">That did not save, so nothing has changed. The consent is still as it was.</string>
+    <string name="consents_dismiss">Dismiss</string>
+    <string name="consents_done">Done</string>
+    <string name="consents_open">Manage what the app may use</string>
+
+    <string name="consent_sms_parsing_purpose">Reads transaction alerts from banks and UPI apps to fill in your spending. It happens on this phone; no message is sent anywhere.</string>
+    <string name="consent_sms_parsing_withdrawn">No message is read again, and everything already read from your messages is deleted.</string>
+    <string name="consent_market_data_purpose">Fetches gold, crypto and fund prices so your holdings can be valued. Only the price key is sent — never an amount, and never what you own.</string>
+    <string name="consent_market_data_withdrawn">No price is fetched again. The prices already saved stay, labelled with how old they are.</string>
+    <string name="consent_cloud_llm_purpose">Would let the assistant ask a cloud model when the on-device one cannot answer. It is not built yet, so nothing is sent today whatever this says.</string>
+    <string name="consent_cloud_llm_withdrawn">Nothing changes today, because nothing uses it yet.</string>
+    <string name="consent_cloud_backup_purpose">Lets you save an encrypted backup somewhere other than this phone. The file is locked with your passphrase before it leaves.</string>
+    <string name="consent_cloud_backup_withdrawn">No backup can be written off this device, and a backup waiting to be saved is dropped.</string>
 </resources>

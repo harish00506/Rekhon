@@ -11,6 +11,27 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The Purchase Advisor, buy list, what-if simulators, vehicle prediction, on-device chat + guardrail
 > eval, market signals, and localisation.
 
+### [0.10.10] — Issue 11.3: what this app may use, and since when  (2026-10-01)
+
+- **Implemented:** the consents dashboard §23 and P-01 ask for (**ADR-0059**).
+  - **Every permission the app can hold, in one place**, each with what it is for, **what stops if
+    you take it back**, and **the date you gave it**.
+  - **One tap to withdraw**, and the screen says plainly that it takes effect at once — the feature
+    stops when you tap, not at the next restart.
+  - **"Never given" and "withdrawn" are shown as different things**, because they are: one is a
+    choice you made, the other is a choice you have not been asked to make yet.
+  - **The dates are your dates.** They are shown in your own time zone, so a consent given late at
+    night is not reported as the day before.
+  - The cloud-assistant row says what is true of it today: **it is not built, so nothing is sent**
+    whatever the switch says.
+- **The app had been recording those dates since its first release and had never shown them** —
+  the settings screen kept the switches and dropped the timestamps. They are on screen now.
+- **Not yet** (ADR-0059): a portable export of your consent history, which belongs with the DPDP
+  work in 11.5, and a full history of every change rather than the latest pair.
+- **Tests:** 7 state tests with 5 mutations — one of which found a test that could not fail — 8
+  rendered tests, and a device run that walked a consent from "never given" through "in use since"
+  to "withdrawn on, you gave it on".
+
 ### [0.10.9] — Issue 11.2: screenshots of this app are blank  (2026-09-28)
 
 - **Implemented:** the screen-capture guard §23 asks for (**ADR-0058**).

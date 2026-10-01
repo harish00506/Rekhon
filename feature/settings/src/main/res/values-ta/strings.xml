@@ -66,4 +66,25 @@
     <string name="settings_language_hindi">हिन्दी</string>
     <string name="settings_language_kannada">ಕನ್ನಡ</string>
     <string name="settings_language_tamil">தமிழ்</string>
+
+    <string name="consents_title">இந்த ஆப் எதைப் பயன்படுத்தலாம்</string>
+    <string name="consents_intro">இவை ஒவ்வொன்றும் நீங்கள் இயக்கும் வரை அணைந்தே இருக்கும், எதையும் இங்கிருந்தே திரும்பப் பெறலாம். திரும்பப் பெறுவது உடனே நடைமுறைக்கு வரும் — தட்டிய நொடியே அந்த வசதி நின்றுவிடும், அடுத்த முறை திறக்கும்போது அல்ல.</string>
+    <string name="consents_nothing_leaves">இவற்றில் ஒன்றும் இயக்கப்படாதவரை உங்கள் பணம் பற்றிய எதுவும் இந்தச் சாதனத்தை விட்டு வெளியே செல்லாது.</string>
+    <string name="consents_in_use_since">%1$s முதல் பயன்பாட்டில்</string>
+    <string name="consents_never_given">ஒருபோதும் தரப்படவில்லை</string>
+    <string name="consents_withdrawn_on">%1$s அன்று திரும்பப் பெறப்பட்டது · நீங்கள் %2$s அன்று தந்தீர்கள்</string>
+    <string name="consents_withdraw">திரும்பப் பெறு</string>
+    <string name="consents_allow">அனுமதி</string>
+    <string name="consents_error">அது சேமிக்கப்படவில்லை, எனவே எதுவும் மாறவில்லை. அனுமதி இருந்தபடியே உள்ளது.</string>
+    <string name="consents_dismiss">மூடு</string>
+    <string name="consents_done">முடிந்தது</string>
+    <string name="consents_open">ஆப் எதைப் பயன்படுத்தலாம் எனப் பார்</string>
+    <string name="consent_sms_parsing_purpose">வங்கிகள், UPI ஆப்களின் பரிவர்த்தனை அறிவிப்புகளைப் படித்து உங்கள் செலவை நிரப்புகிறது. இது இந்த ஃபோனிலேயே நடக்கிறது; எந்தச் செய்தியும் எங்கும் அனுப்பப்படுவதில்லை.</string>
+    <string name="consent_sms_parsing_withdrawn">இனி எந்தச் செய்தியும் படிக்கப்படாது, உங்கள் செய்திகளிலிருந்து இதுவரை படித்த அனைத்தும் நீக்கப்படும்.</string>
+    <string name="consent_market_data_purpose">உங்கள் முதலீடுகளின் மதிப்பைக் கணிக்க தங்கம், கிரிப்டோ, நிதி விலைகளைப் பெறுகிறது. விலைக் குறியீடு மட்டுமே அனுப்பப்படுகிறது — எந்தத் தொகையும் அல்ல, உங்களிடம் என்ன உள்ளது என்பதும் அல்ல.</string>
+    <string name="consent_market_data_withdrawn">இனி எந்த விலையும் பெறப்படாது. ஏற்கெனவே சேமித்த விலைகள், எவ்வளவு பழையவை என்ற குறிப்புடன் இருக்கும்.</string>
+    <string name="consent_cloud_llm_purpose">ஃபோனின் உதவியாளரால் பதிலளிக்க முடியாதபோது கிளவுட் மாதிரியிடம் கேட்க அனுமதிக்கும். அது இன்னும் உருவாக்கப்படவில்லை, எனவே இது இயக்கப்பட்டாலும் இன்று எதுவும் அனுப்பப்படுவதில்லை.</string>
+    <string name="consent_cloud_llm_withdrawn">இன்று எதுவும் மாறாது, ஏனெனில் இதை இன்னும் எதுவும் பயன்படுத்தவில்லை.</string>
+    <string name="consent_cloud_backup_purpose">இந்த ஃபோனுக்கு வெளியே மறைகுறியாக்கப்பட்ட காப்புப்பிரதியைச் சேமிக்க அனுமதிக்கிறது. கோப்பு வெளியே செல்வதற்கு முன் உங்கள் கடவுச்சொற்றொடரால் பூட்டப்படுகிறது.</string>
+    <string name="consent_cloud_backup_withdrawn">இந்தச் சாதனத்துக்கு வெளியே எந்தக் காப்புப்பிரதியையும் எழுத முடியாது, சேமிக்கக் காத்திருந்த காப்புப்பிரதி கைவிடப்படும்.</string>
 </resources>

@@ -115,6 +115,17 @@ sealed interface CfoRoute {
     data object Settings : CfoRoute
 
     /**
+     * The consents dashboard (issue 11.3; §23, P-01, DPDP).
+     *
+     * **Its own destination rather than a section**, because what it holds is a record and not a
+     * control panel: what each consent is for, what stops without it, and when it was given. The
+     * settings switches remain the shortcut; this is the page a user — or a DPDP request — reads.
+     * Reached from Settings.
+     */
+    @Serializable
+    data object Consents : CfoRoute
+
+    /**
      * The category taxonomy editor (issue 4.1; FR-SET-001).
      *
      * **No arguments, and it is reached from the transaction list rather than from Settings.**

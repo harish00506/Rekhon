@@ -55,12 +55,19 @@ import com.aicfo.core.designsystem.theme.CfoDimens
 @Composable
 fun SettingsScreen(
     onDone: () -> Unit,
+    onNavigateToConsents: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     BackupFileHost(status = uiState.backup.status, onEvent = viewModel::onEvent) { onPickBackup ->
-        SettingsContent(uiState = uiState, onEvent = viewModel::onEvent, onDone = onDone, onPickBackup = onPickBackup)
+        SettingsContent(
+            uiState = uiState,
+            onEvent = viewModel::onEvent,
+            onDone = onDone,
+            onPickBackup = onPickBackup,
+            onNavigateToConsents = onNavigateToConsents,
+        )
     }
 }
 
@@ -78,6 +85,7 @@ internal fun SettingsContent(
     onEvent: (SettingsEvent) -> Unit,
     onDone: () -> Unit,
     onPickBackup: () -> Unit = {},
+    onNavigateToConsents: () -> Unit = {},
 ) {
     Column(
         // imePadding before verticalScroll, for the reason AddTransactionScreen records: the app is
@@ -104,7 +112,7 @@ internal fun SettingsContent(
 
         LanguageSection(uiState = uiState, onEvent = onEvent)
         MoneySection(uiState = uiState, onEvent = onEvent)
-        ConsentSection(uiState = uiState, onEvent = onEvent)
+        ConsentSection(uiState = uiState, onEvent = onEvent, onNavigateToConsents = onNavigateToConsents)
         AppLockSection(uiState = uiState, onEvent = onEvent)
         BackupSection(uiState = uiState, onEvent = onEvent)
         RestoreSection(state = uiState.restore, onEvent = onEvent, onPickBackup = onPickBackup)
@@ -196,6 +204,7 @@ private fun MoneyFields(
 private fun ConsentSection(
     uiState: SettingsUiState,
     onEvent: (SettingsEvent) -> Unit,
+    onNavigateToConsents: () -> Unit,
 ) {
     CfoCard {
         Column(verticalArrangement = Arrangement.spacedBy(CfoDimens.spaceSm)) {
@@ -212,6 +221,10 @@ private fun ConsentSection(
                     onCheckedChange = { onEvent(SettingsEvent.ConsentToggled(feature, it)) },
                 )
             }
+            // Issue 11.3: the switches stay — they are the shortcut for the common case — and the
+            // dashboard is where the record lives: what each consent is for, what stops without it,
+            // and when it was given. Both write through the same store, so they cannot disagree.
+            CfoSecondaryButton(text = stringResource(R.string.consents_open), onClick = onNavigateToConsents)
         }
     }
 }
@@ -313,7 +326,7 @@ private fun AmountField(
  * Result: the label's resource id. Input: the receiver. Output: the id.
  * Changelog: 2026-08-29 — Created for FR-SET-001.
  */
-private fun ConsentFeature.label(): Int =
+internal fun ConsentFeature.label(): Int =
     when (this) {
         ConsentFeature.SMS_PARSING -> R.string.consent_sms_parsing
         ConsentFeature.MARKET_DATA -> R.string.consent_market_data
