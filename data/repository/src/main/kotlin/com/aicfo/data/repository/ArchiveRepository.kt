@@ -7,9 +7,13 @@ import com.aicfo.core.common.DispatcherProvider
 import com.aicfo.core.common.Err
 import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
+import com.aicfo.core.common.flatMap
 import com.aicfo.core.common.runCatchingToResult
 import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.database.dao.ArchiveDao
+import com.aicfo.core.datastore.ConsentFeature
+import com.aicfo.core.datastore.ConsentState
+import com.aicfo.core.datastore.ConsentStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -79,52 +83,83 @@ interface ArchiveRepository {
  * Input:  [database] — taken whole, because the archive spans every table and the import's
  *         atomicity rests on `withTransaction`, which is a method on the database; [clock] — stamps
  *         the archive (TIM-001); [dispatchers]; [activeProfileId] — which profile is exported and
- *         replaced, so the demo can be exported without ever touching the real one (ADR-0006).
+ *         replaced, so the demo can be exported without ever touching the real one (ADR-0006);
+ *         [consents] — the Proto DataStore consent ledger (issue 11.5), read on **export only**.
  * Output: a working repository.
+ *
+ * The ledger is injected rather than reached through the database because that is not where it
+ * lives: issue 1.9 put the consent record in Proto DataStore, and an export covering every Room
+ * table while omitting it would hand a user their data and keep the record of what they had agreed
+ * to — the half of DPDP's right of access that is easiest to miss (ADR-0061).
  */
 internal class RoomArchiveRepository(
     private val database: CfoDatabase,
     private val clock: Clock,
     private val dispatchers: DispatcherProvider,
     private val activeProfileId: Flow<String>,
+    private val consents: ConsentStore,
 ) : ArchiveRepository {
     override suspend fun export(): Result<String, AppError> =
         withContext(dispatchers.io) {
-            runCatchingToResult {
-                val profileId = activeProfileId.first()
-                val dao = database.archiveDao()
-                JSON.encodeToString(
-                    CfoArchive(
-                        archiveVersion = CfoArchive.VERSION,
-                        schemaVersion = CfoDatabase.VERSION,
-                        exportedAtUtcMillis = clock.nowUtcMillis(),
-                        profiles = dao.profiles(profileId),
-                        accounts = dao.accounts(profileId),
-                        categories = dao.categories(profileId),
-                        transactions = dao.transactions(profileId),
-                        transactionSplits = dao.transactionSplits(profileId),
-                        tags = dao.tags(profileId),
-                        transactionTags = dao.transactionTags(profileId),
-                        budgets = dao.budgets(profileId),
-                        budgetAlerts = dao.budgetAlerts(profileId),
-                        budgetReviews = dao.budgetReviews(profileId),
-                        recurringRules = dao.recurringRules(profileId),
-                        netWorthSnapshots = dao.netWorthSnapshots(profileId),
-                        attachments = dao.attachments(profileId),
-                        smsDrafts = dao.smsDrafts(profileId),
-                        creditCards = dao.creditCards(profileId),
-                        cardAlerts = dao.cardAlerts(profileId),
-                        loans = dao.loans(profileId),
-                        investmentHoldings = dao.investmentHoldings(profileId),
-                        investmentLots = dao.investmentLots(profileId),
-                        goals = dao.goals(profileId),
-                        goalContributions = dao.goalContributions(profileId),
-                        goalFundingAccounts = dao.goalFundingAccounts(profileId),
-                        insights = dao.insights(profileId),
-                        notificationLog = dao.notificationLog(profileId),
-                    ).withAdvisor(dao, profileId),
-                )
+            // Read before the tables, and `flatMap` because it may fail the export (`consentRecord`).
+            consentRecord().flatMap { record ->
+                runCatchingToResult {
+                    val profileId = activeProfileId.first()
+                    val dao = database.archiveDao()
+                    JSON.encodeToString(
+                        CfoArchive(
+                            archiveVersion = CfoArchive.VERSION,
+                            schemaVersion = CfoDatabase.VERSION,
+                            exportedAtUtcMillis = clock.nowUtcMillis(),
+                            profiles = dao.profiles(profileId),
+                            accounts = dao.accounts(profileId),
+                            categories = dao.categories(profileId),
+                            transactions = dao.transactions(profileId),
+                            transactionSplits = dao.transactionSplits(profileId),
+                            tags = dao.tags(profileId),
+                            transactionTags = dao.transactionTags(profileId),
+                            budgets = dao.budgets(profileId),
+                            budgetAlerts = dao.budgetAlerts(profileId),
+                            budgetReviews = dao.budgetReviews(profileId),
+                            recurringRules = dao.recurringRules(profileId),
+                            netWorthSnapshots = dao.netWorthSnapshots(profileId),
+                            attachments = dao.attachments(profileId),
+                            smsDrafts = dao.smsDrafts(profileId),
+                            creditCards = dao.creditCards(profileId),
+                            cardAlerts = dao.cardAlerts(profileId),
+                            loans = dao.loans(profileId),
+                            investmentHoldings = dao.investmentHoldings(profileId),
+                            investmentLots = dao.investmentLots(profileId),
+                            goals = dao.goals(profileId),
+                            goalContributions = dao.goalContributions(profileId),
+                            goalFundingAccounts = dao.goalFundingAccounts(profileId),
+                            insights = dao.insights(profileId),
+                            notificationLog = dao.notificationLog(profileId),
+                        ).withAdvisor(dao, profileId).withConsentRecord(record),
+                    )
+                }
             }
+        }
+
+    /**
+     * Reads the consent ledger for the export (issue 11.5; §32, DPDP).
+     *
+     * Why:    its own function for two reasons. `export` was at detekt's length limit, and this is
+     *         not a table read like the forty around it — it is the one input that comes from
+     *         outside the database and the one whose failure stops the export.
+     *
+     *         **Allowed to fail the whole export**, deliberately. An archive written with an empty
+     *         consent list would read as "this app was granted nothing", and a document whose
+     *         purpose is to be an authoritative account of the app's permissions must fail loudly
+     *         rather than quietly understate what the app was permitted to do.
+     * Result: `Ok` with one row per declared consent, or `Err` carrying the ledger's own failure.
+     * Input:  none. Output: `Result<List<ConsentRecord>, AppError>`.
+     * Changelog: 2026-10-01 — Created for issue 11.5.
+     */
+    private suspend fun consentRecord(): Result<List<ConsentRecord>, AppError> =
+        when (val ledger = consents.observeAll().first()) {
+            is Ok -> Ok(ledger.value.toConsentRecords())
+            is Err -> ledger
         }
 
     /**
@@ -149,6 +184,18 @@ internal class RoomArchiveRepository(
             vehicleRenewals = dao.vehicleRenewals(profileId),
             marketCloses = dao.marketCloses(profileId),
         )
+
+    /**
+     * Attaches the consent record to an archive (issue 11.5; §32, DPDP).
+     * Why:    chained rather than passed into the constructor, for the reason [withAdvisor] gives —
+     *         `export` sits at detekt's length limit — and because this genuinely is not a table
+     *         read: it is the one list in the archive that does not come from a DAO, and the one a
+     *         restore deliberately ignores (ADR-0061).
+     * Result: the archive with its permissions recorded.
+     * Input:  the receiver; [record] — one row per declared consent. Output: [CfoArchive].
+     * Changelog: 2026-10-01 — Created for issue 11.5.
+     */
+    private fun CfoArchive.withConsentRecord(record: List<ConsentRecord>): CfoArchive = copy(consents = record)
 
     override suspend fun import(json: String): Result<ImportSummary, AppError> =
         withContext(dispatchers.io) {
@@ -352,3 +399,28 @@ internal fun CfoArchive.rowCount(): Int =
         insights.size + notificationLog.size + purchaseTraces.size + purchaseTraceGates.size +
         wishlistItems.size + interviewAnswers.size + vehicles.size + vehicleOdometer.size +
         vehicleServices.size + vehicleRenewals.size + marketCloses.size
+
+/**
+ * Turns the consent ledger into the export's rows (issue 11.5; §32, DPDP).
+ *
+ * Why:  the ledger holds a row only for a feature somebody has answered for, and the export must
+ *       list **every** feature regardless — "never asked" is a fact about the user's choices, and a
+ *       record showing only the answered ones would read as a shorter list of permissions than the
+ *       app actually has. That is the exact shape of the vacuous test issue 11.3 was caught on, so
+ *       this iterates `ConsentFeature.entries` rather than the map.
+ * What: one row per declared feature, filling absences with `NOT_GRANTED` and inventing no dates.
+ * Result: a complete, ordered account of the app's permissions.
+ * Input:  the receiver — what the ledger has recorded, which is empty on a fresh install.
+ * Output: one [ConsentRecord] per [ConsentFeature], in the enum's own order.
+ * Changelog: 2026-10-01 — Created for issue 11.5.
+ */
+private fun Map<ConsentFeature, ConsentState>.toConsentRecords(): List<ConsentRecord> =
+    ConsentFeature.entries.map { feature ->
+        val state = this[feature] ?: ConsentState.NOT_GRANTED
+        ConsentRecord(
+            featureId = feature.id,
+            granted = state.granted,
+            grantedAtUtcMillis = state.grantedAtUtcMillis,
+            revokedAtUtcMillis = state.revokedAtUtcMillis,
+        )
+    }

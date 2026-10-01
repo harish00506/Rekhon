@@ -663,7 +663,8 @@ object RepositoryFactory {
         clock: Clock,
         dispatchers: DispatcherProvider,
         activeProfileId: Flow<String>,
-    ): ArchiveRepository = RoomArchiveRepository(database, clock, dispatchers, activeProfileId)
+        consents: ConsentStore,
+    ): ArchiveRepository = RoomArchiveRepository(database, clock, dispatchers, activeProfileId, consents)
 
     /**
      * Builds the encrypted-backup store (issue 8.1; SEC-005, §23.3, P-01).

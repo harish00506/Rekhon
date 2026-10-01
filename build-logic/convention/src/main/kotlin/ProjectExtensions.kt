@@ -102,34 +102,54 @@ internal fun Project.configureCoverage() {
 }
 
 /**
- * Declares the rulebook as an input to every test task in the module (CLAUDE.md §6, ADR-0005).
+ * Declares the repository's checked data as an input to every test task (CLAUDE.md §6, ADR-0005).
  *
- * Why:  five engines mirror `ai/rules/rules-kb.json` as typed Kotlin constants, and a
- *       `RulebookDriftTest` in each is the only thing stopping the copy diverging from the row it
- *       claims to come from. **That gate could be skipped.** The rulebook is read at runtime from
- *       the repository root, so it was not part of any task's declared inputs — edit a threshold
- *       and Gradle would call the drift tests UP-TO-DATE and the build would stay green. Found in
- *       issue 7.2 by bumping `_meta.version` and watching four of five modules go red while
- *       `:domain:engines:goals:test` was skipped; `--rerun-tasks` then failed it, which is how we
- *       know the assertion itself was fine and only its scheduling was wrong.
- * What: names the file as an input so a rulebook edit invalidates the test task.
- * Result: a rulebook change now always re-runs every drift test. Modules that do not read the
- *         rulebook re-run their tests too, which costs one file's worth of up-to-date checking and
- *         is the cheaper mistake than a silent skip.
+ * Why:  twenty-nine drift tests read a file from the repository root at runtime — the rulebooks and
+ *       knowledge bases under `ai/`, and the DPDP matrix under `docs/compliance/` — and each is the
+ *       only thing stopping a typed Kotlin mirror diverging from the row it claims to come from.
+ *       **Those gates can be skipped.** A file read at runtime is not a declared task input, so
+ *       Gradle calls the test task UP-TO-DATE and the build stays green on exactly the edit the test
+ *       was written to catch.
+ *
+ *       Issue 7.2 found this and fixed it — **for one file.** `ai/rules/rules-kb.json` was declared
+ *       and the other nine data files were not, and the call was wired into the pure-Kotlin
+ *       convention plugin only, so no Android-library module got it at all. Issue 11.5 found the
+ *       remainder the same way: deleting `docs/compliance/dpdp-2023.md` left
+ *       `:core:datastore:testDebugUnitTest` UP-TO-DATE and the suite passing, and `--rerun-tasks`
+ *       then failed all four assertions — the gate was right and only its scheduling was wrong.
+ *       Declaring the **directories** rather than a list of files is what stops this recurring a
+ *       third time: a knowledge base added next year is covered without anyone remembering.
+ * What: names `ai/` and `docs/compliance/` as inputs, so a change to either invalidates the task.
+ * Result: an edit to any checked data file always re-runs every drift test. Modules that read none
+ *         of it re-run their tests too, which costs one directory's worth of up-to-date checking
+ *         and is the cheaper mistake than a silent skip.
  * Input:  the receiver — the module being configured. Output: none (configures the tasks).
- * Changelog: 2026-09-02 — Created for issue 7.2.
+ * Changelog: 2026-09-02 — Created for issue 7.2, declaring `ai/rules/rules-kb.json`.
+ *            2026-10-01 — Issue 11.5: widened to the whole of `ai/` plus `docs/compliance/`, after
+ *            finding that the nine other data files and every Android-library module were still
+ *            exposed to the very skip 7.2 fixed.
  */
-internal fun Project.configureRulebookAsTestInput() {
-    val rulebook = rootProject.layout.projectDirectory.file(RULEBOOK_PATH)
+internal fun Project.configureCheckedDataAsTestInput() {
+    val directories = CHECKED_DATA_PATHS.map { rootProject.layout.projectDirectory.dir(it) }
     tasks.withType(Test::class.java).configureEach {
-        inputs.file(rulebook)
-            .withPropertyName("rulesKb")
-            .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.NONE)
+        directories.forEachIndexed { index, directory ->
+            inputs
+                .dir(directory)
+                .withPropertyName("cfoCheckedData$index")
+                .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
+        }
     }
 }
 
-/** The one rulebook every typed mirror is checked against (CLAUDE.md §6). */
-private const val RULEBOOK_PATH = "ai/rules/rules-kb.json"
+/**
+ * The directories whose contents a drift test may read.
+ *
+ * `ai/` is the AI subsystem's runtime data — rulebooks, knowledge bases, the tool registry, the
+ * guardrail and its eval set — every one of which has a typed mirror in Kotlin and a test pinning
+ * the two together. `docs/compliance/` holds the DPDP matrix, whose claims
+ * `DpdpComplianceDriftTest` checks against the code (issue 11.5).
+ */
+private val CHECKED_DATA_PATHS = listOf("ai", "docs/compliance")
 
 /** Engine/domain floor from CLAUDE.md §4. */
 private const val MIN_MODULE_COVERAGE = 85

@@ -11,6 +11,33 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The Purchase Advisor, buy list, what-if simulators, vehicle prediction, on-device chat + guardrail
 > eval, market signals, and localisation.
 
+### [0.10.12] — Issue 11.5: what you were allowed to do, in a file you keep  (2026-10-01)
+
+- **Implemented:** DPDP Act 2023 alignment (**ADR-0061**).
+  - **Your export now says what the app was allowed to do**, not just what it holds: every
+    permission, whether it is on, and the dates you gave or withdrew it — including the ones you
+    were never asked about, because that is a fact about your choices too.
+  - **Importing a file can never grant a permission.** A backup is not you: restoring one would
+    switch back on something you had since turned off, and an edited file would become a way to
+    grant things you never agreed to. Permissions are given on the phone, by you, and nowhere else.
+  - If the permission record cannot be read, **the export fails** instead of writing a file that
+    reads as "this app was granted nothing".
+  - **A compliance document that cannot quietly go stale.** `docs/compliance/dpdp-2023.md` maps each
+    DPDP obligation to the code and the test that proves it, and a test checks the document: add a
+    permission without writing down what it is for, or rename a class the document cites, and the
+    build fails.
+  - **And it says what it does not do.** Four obligations — grievance contact, nomination, breach
+    notification and children's data — need a person and a process, not code. They are listed as
+    open, with what each would take, rather than being implied away.
+- **Found while writing it:** **29 tests in this project could not fail.** Each guards a data file
+  against the Kotlin that mirrors it — and because those files are read at runtime rather than
+  declared to the build, Gradle skipped every one of them on exactly the edit they exist to catch.
+  Issue 7.2 found this and fixed it for a single file; the other nine, and every Android module,
+  were still exposed. All 29 now run.
+- **Tests:** 7 on the consent record and its one-way direction (7 mutations) · 5 on the compliance
+  document (5 mutations, three of which only failed after the scheduling fix).
+- **Requirements:** §23, §32, DPDP, P-01 · ADR-0061.
+
 ### [0.10.11] — Issue 11.4: erase everything, and mean it  (2026-10-01)
 
 - **Implemented:** the erase-all §34 and SEC-003 ask for (**ADR-0060**).

@@ -642,6 +642,38 @@ DashboardScreen → "Good day to invest?" → OpportunityScreen
     how old the price is · and that the screen never buys anything
 ```
 
+### 2.24 · What you were allowed to do, in a file you keep (issue 11.5)
+
+**One list in the archive comes from outside the database, and one direction is deliberately
+missing.** DPDP's right of access covers what the app was *allowed* to do, not only what it holds.
+
+```
+DashboardScreen → "Export a copy" → ArchiveRepository.export()
+├─ consentRecord()                          ConsentStore.observeAll() — NOT a DAO read
+│  ├─ Err ⇒ the whole export fails          a file reading "granted nothing" would be the quiet lie
+│  └─ toConsentRecords()                    one row per ConsentFeature, including never-answered
+├─ dao.<40 tables>(profileId)
+└─ withAdvisor(...).withConsentRecord(record)
+   ⇣ JSON the user owns: every row, plus what was permitted and since when
+
+ArchiveRepository.import(json)
+├─ decode → schema gate → withTransaction → replace every table
+└─ archive.consents                         **read and ignored, on purpose**
+   ⇣ a file is not a person: restoring would re-grant a withdrawn consent, and a hand-edited
+     archive would become a way to grant consents nobody ever gave (ADR-0061)
+```
+
+**The matrix that documents this is itself checked.** `docs/compliance/dpdp-2023.md` maps each DPDP
+obligation to its implementation, and `DpdpComplianceDriftTest` fails the build when a cited class
+disappears, when a `ConsentFeature` has no row, or when the four open obligations stop being listed
+as open. That test could not fail until this issue also fixed how it is scheduled — see below.
+
+**`ai/` and `docs/compliance/` are declared test inputs** (`configureCheckedDataAsTestInput`, in both
+convention plugins). Before issue 11.5, a file read at runtime was not a task input, so Gradle held
+every drift test UP-TO-DATE on exactly the edit it existed to catch — 29 of them. Issue 7.2 fixed
+this for `ai/rules/rules-kb.json` alone; directories are declared now so a new knowledge base is
+covered without anyone remembering.
+
 ### 2.23 · The end (issue 11.4)
 
 **The one irreversible path in the app, and the only one whose order is a safety property.** The data
