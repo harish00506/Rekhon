@@ -66,4 +66,25 @@
     <string name="settings_language_hindi">हिन्दी</string>
     <string name="settings_language_kannada">ಕನ್ನಡ</string>
     <string name="settings_language_tamil">தமிழ்</string>
+
+    <string name="consents_title">ಈ ಆ್ಯಪ್ ಏನನ್ನು ಬಳಸಬಹುದು</string>
+    <string name="consents_intro">ಇವುಗಳಲ್ಲಿ ಪ್ರತಿಯೊಂದೂ ನೀವು ಆನ್ ಮಾಡುವವರೆಗೆ ಆಫ್ ಇರುತ್ತದೆ, ಮತ್ತು ಯಾವುದನ್ನಾದರೂ ಇಲ್ಲಿಂದಲೇ ಹಿಂಪಡೆಯಬಹುದು. ಹಿಂಪಡೆಯುವುದು ಕೂಡಲೇ ಜಾರಿಗೆ ಬರುತ್ತದೆ — ಒತ್ತಿದ ಕ್ಷಣವೇ ಆ ಸೌಲಭ್ಯ ನಿಲ್ಲುತ್ತದೆ, ಮುಂದಿನ ಬಾರಿ ತೆರೆದಾಗ ಅಲ್ಲ.</string>
+    <string name="consents_nothing_leaves">ಇವುಗಳಲ್ಲಿ ಒಂದೂ ಆನ್ ಆಗಿಲ್ಲದಿದ್ದರೆ ನಿಮ್ಮ ಹಣದ ಯಾವ ಮಾಹಿತಿಯೂ ಈ ಸಾಧನದಿಂದ ಹೊರಹೋಗುವುದಿಲ್ಲ.</string>
+    <string name="consents_in_use_since">%1$s ರಿಂದ ಬಳಕೆಯಲ್ಲಿದೆ</string>
+    <string name="consents_never_given">ಎಂದಿಗೂ ನೀಡಿಲ್ಲ</string>
+    <string name="consents_withdrawn_on">%1$s ರಂದು ಹಿಂಪಡೆಯಲಾಗಿದೆ · ನೀವು %2$s ರಂದು ನೀಡಿದ್ದಿರಿ</string>
+    <string name="consents_withdraw">ಹಿಂಪಡೆಯಿರಿ</string>
+    <string name="consents_allow">ಅನುಮತಿಸಿ</string>
+    <string name="consents_error">ಅದು ಉಳಿಯಲಿಲ್ಲ, ಹಾಗಾಗಿ ಏನೂ ಬದಲಾಗಿಲ್ಲ. ಅನುಮತಿ ಹಿಂದಿನಂತೆಯೇ ಇದೆ.</string>
+    <string name="consents_dismiss">ಮುಚ್ಚಿ</string>
+    <string name="consents_done">ಮುಗಿಯಿತು</string>
+    <string name="consents_open">ಆ್ಯಪ್ ಏನನ್ನು ಬಳಸಬಹುದು ಎಂಬುದನ್ನು ನೋಡಿ</string>
+    <string name="consent_sms_parsing_purpose">ಬ್ಯಾಂಕ್ ಮತ್ತು UPI ಆ್ಯಪ್‌ಗಳ ವಹಿವಾಟು ಎಚ್ಚರಿಕೆಗಳನ್ನು ಓದಿ ನಿಮ್ಮ ಖರ್ಚನ್ನು ತುಂಬುತ್ತದೆ. ಇದು ಈ ಫೋನಿನಲ್ಲೇ ನಡೆಯುತ್ತದೆ; ಯಾವ ಸಂದೇಶವೂ ಎಲ್ಲಿಗೂ ಹೋಗುವುದಿಲ್ಲ.</string>
+    <string name="consent_sms_parsing_withdrawn">ಮತ್ತೆ ಯಾವ ಸಂದೇಶವೂ ಓದಲ್ಪಡುವುದಿಲ್ಲ, ಮತ್ತು ನಿಮ್ಮ ಸಂದೇಶಗಳಿಂದ ಈವರೆಗೆ ಓದಿದ್ದೆಲ್ಲವನ್ನೂ ಅಳಿಸಲಾಗುತ್ತದೆ.</string>
+    <string name="consent_market_data_purpose">ನಿಮ್ಮ ಹೂಡಿಕೆಗಳ ಮೌಲ್ಯ ಕಟ್ಟಲು ಚಿನ್ನ, ಕ್ರಿಪ್ಟೊ ಮತ್ತು ಫಂಡ್ ಬೆಲೆಗಳನ್ನು ತರುತ್ತದೆ. ಬೆಲೆ-ಕೀಲಿ ಮಾತ್ರ ಕಳುಹಿಸಲಾಗುತ್ತದೆ — ಯಾವ ಮೊತ್ತವೂ ಅಲ್ಲ, ನಿಮ್ಮ ಬಳಿ ಏನಿದೆ ಎಂಬುದೂ ಅಲ್ಲ.</string>
+    <string name="consent_market_data_withdrawn">ಮತ್ತೆ ಯಾವ ಬೆಲೆಯೂ ತರಲಾಗುವುದಿಲ್ಲ. ಈಗಾಗಲೇ ಉಳಿಸಿದ ಬೆಲೆಗಳು ಎಷ್ಟು ಹಳೆಯವು ಎಂಬ ಗುರುತಿನೊಂದಿಗೆ ಉಳಿಯುತ್ತವೆ.</string>
+    <string name="consent_cloud_llm_purpose">ಫೋನಿನ ಸಹಾಯಕ ಉತ್ತರಿಸಲಾಗದಾಗ ಕ್ಲೌಡ್ ಮಾದರಿಯನ್ನು ಕೇಳಲು ಅನುವು ಮಾಡಿಕೊಡುತ್ತಿತ್ತು. ಅದು ಇನ್ನೂ ನಿರ್ಮಾಣವಾಗಿಲ್ಲ, ಹಾಗಾಗಿ ಇದು ಆನ್ ಆಗಿದ್ದರೂ ಇಂದು ಏನೂ ಕಳುಹಿಸಲಾಗುವುದಿಲ್ಲ.</string>
+    <string name="consent_cloud_llm_withdrawn">ಇಂದು ಏನೂ ಬದಲಾಗುವುದಿಲ್ಲ, ಏಕೆಂದರೆ ಇದನ್ನು ಇನ್ನೂ ಯಾವುದೂ ಬಳಸುತ್ತಿಲ್ಲ.</string>
+    <string name="consent_cloud_backup_purpose">ಈ ಫೋನಿನ ಹೊರಗೆ ಎನ್‌ಕ್ರಿಪ್ಟ್ ಮಾಡಿದ ಬ್ಯಾಕಪ್ ಉಳಿಸಲು ಅನುವು ಮಾಡಿಕೊಡುತ್ತದೆ. ಕಡತ ಹೊರಹೋಗುವ ಮೊದಲು ನಿಮ್ಮ ಪಾಸ್‌ಫ್ರೇಸ್‌ನಿಂದ ಬಂಧಿಸಲಾಗುತ್ತದೆ.</string>
+    <string name="consent_cloud_backup_withdrawn">ಈ ಸಾಧನದ ಹೊರಗೆ ಯಾವ ಬ್ಯಾಕಪ್ ಅನ್ನೂ ಬರೆಯಲಾಗದು, ಮತ್ತು ಉಳಿಸಲು ಕಾಯುತ್ತಿದ್ದ ಬ್ಯಾಕಪ್ ಅನ್ನು ಕೈಬಿಡಲಾಗುತ್ತದೆ.</string>
 </resources>

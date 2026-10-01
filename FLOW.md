@@ -642,6 +642,27 @@ DashboardScreen → "Good day to invest?" → OpportunityScreen
     how old the price is · and that the screen never buys anything
 ```
 
+### 2.22 · What the app may use, and since when (issue 11.3)
+
+**A record, not a control panel.** The ledger has held both timestamps since issue 1.9; this is the
+path that finally reads them out.
+
+```
+SettingsScreen → "Manage what the app may use" → ConsentsScreen
+└─ ConsentsViewModel
+   ├─ ConsentStore.observeAll()                every ConsentFeature, absent ones as NOT_GRANTED
+   ├─ Clock.toProfileDate(grantedAt/revokedAt) the profile's day, never UTC's (TIM-001)
+   └─ onEvent → ConsentStore.revoke / grant
+      ⇣ the rows are **not** touched here: they re-arrive from the store's own flow, so a failed
+        write leaves the screen showing what is still true
+
+Enforcement lives where the data path lives, and is unchanged by this screen:
+  SMS_PARSING   → SmsRepository + SmsConsentWatcher   (drafts erased, cursor reset)
+  MARKET_DATA   → MarketPriceRepository               (no fetch; cached prices keep their staleness)
+  CLOUD_BACKUP  → BackupRepository + settings         (no write off device; a sealed backup dropped)
+  CLOUD_LLM     → nothing — there is no transport yet
+```
+
 ### 2.21 · Why a screenshot of this app is blank (issue 11.2)
 
 **One line, before anything is composed.** The first frame is the lock screen, and a flag applied
