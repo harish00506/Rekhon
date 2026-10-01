@@ -49,13 +49,14 @@ import com.aicfo.core.designsystem.theme.CfoDimens
  * and a privacy blur over an input you are typing into would make it unusable. The screen shows
  * only what the user themselves just entered.
  *
- * Input:  [onDone] — pops back; [viewModel] — supplied by Hilt.
+ * Input:  [onDone] — pops back; [actions] — where this screen can send the user (issue 11.4);
+ *         [viewModel] — supplied by Hilt.
  * Output: the composition.
  */
 @Composable
 fun SettingsScreen(
     onDone: () -> Unit,
-    onNavigateToConsents: () -> Unit = {},
+    actions: SettingsActions = SettingsActions(),
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -65,27 +66,26 @@ fun SettingsScreen(
             uiState = uiState,
             onEvent = viewModel::onEvent,
             onDone = onDone,
-            onPickBackup = onPickBackup,
-            onNavigateToConsents = onNavigateToConsents,
+            actions = actions.copy(onPickBackup = onPickBackup),
         )
     }
 }
 
 /**
  * The screen, separated from Hilt so a test can drive it from a literal state.
- * Result: the composition. Input: [uiState]; [onEvent]; [onDone]; [onPickBackup] — opens the
- * restore picker (issue 8.2), a no-op by default so a test or preview needs no Activity.
- * Output: none.
+ * Result: the composition. Input: [uiState]; [onEvent]; [onDone]; [actions] — where the screen can
+ * send the user, all no-ops by default so a test or preview needs no Activity. Output: none.
  * Changelog: 2026-08-29 — Created for FR-SET-001.
- *   2026-09-18 — Issue 8.2 added [onPickBackup] and the restore card.
+ *   2026-09-18 — Issue 8.2 added the restore card and its file picker.
+ *   2026-10-01 — Issue 11.4: the three navigation lambdas became [SettingsActions], because the
+ *   erase page made this a seven-parameter function.
  */
 @Composable
 internal fun SettingsContent(
     uiState: SettingsUiState,
     onEvent: (SettingsEvent) -> Unit,
     onDone: () -> Unit,
-    onPickBackup: () -> Unit = {},
-    onNavigateToConsents: () -> Unit = {},
+    actions: SettingsActions = SettingsActions(),
 ) {
     Column(
         // imePadding before verticalScroll, for the reason AddTransactionScreen records: the app is
@@ -112,10 +112,11 @@ internal fun SettingsContent(
 
         LanguageSection(uiState = uiState, onEvent = onEvent)
         MoneySection(uiState = uiState, onEvent = onEvent)
-        ConsentSection(uiState = uiState, onEvent = onEvent, onNavigateToConsents = onNavigateToConsents)
+        ConsentSection(uiState = uiState, onEvent = onEvent, onNavigateToConsents = actions.onNavigateToConsents)
+        EraseSection(onNavigateToErase = actions.onNavigateToErase)
         AppLockSection(uiState = uiState, onEvent = onEvent)
         BackupSection(uiState = uiState, onEvent = onEvent)
-        RestoreSection(state = uiState.restore, onEvent = onEvent, onPickBackup = onPickBackup)
+        RestoreSection(state = uiState.restore, onEvent = onEvent, onPickBackup = actions.onPickBackup)
 
         CfoSecondaryButton(text = stringResource(R.string.settings_done), onClick = onDone)
     }
@@ -339,3 +340,28 @@ private const val INCOME_FIELD = "monthlyIncome"
 
 /** The field name the ViewModel reports when the PIN is too short to enable the lock. */
 private const val PIN_FIELD = "pin"
+
+/**
+ * The way out of this app, for a user who wants to leave nothing behind (issue 11.4; §34).
+ * Why:    §34's right to erasure needs a door, and the door belongs in settings next to the
+ *         consents — the same part of the app that answers "what do you hold about me?" should
+ *         answer "stop holding it". It is one line of warning and a secondary button, never the
+ *         erase itself: the gates live on their own destination, where there is room to say what
+ *         cannot be undone.
+ * Result: the composition. Input: [onNavigateToErase]. Output: none.
+ * Changelog: 2026-10-01 — Created for issue 11.4.
+ */
+@Composable
+private fun EraseSection(onNavigateToErase: () -> Unit) {
+    CfoCard {
+        Column(verticalArrangement = Arrangement.spacedBy(CfoDimens.spaceSm)) {
+            Text(text = stringResource(R.string.erase_title), style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = stringResource(R.string.settings_erase_body),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            CfoSecondaryButton(text = stringResource(R.string.erase_open), onClick = onNavigateToErase)
+        }
+    }
+}

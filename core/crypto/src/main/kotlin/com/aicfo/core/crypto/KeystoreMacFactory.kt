@@ -34,17 +34,13 @@ import java.security.SecureRandom
  * provider, StrongBox where the platform chooses it. Revisit if Tink adds a first-class option.
  */
 object KeystoreMacFactory {
-    /** Keyset name inside the preferences file; changing it orphans the existing key. */
-    private const val KEYSET_NAME = "cfo_pin_keyset"
-
-    /** The preferences file holding the *encrypted* keyset. Never holds a usable key. */
-    private const val KEYSET_PREF_FILE = "cfo_pin_keyset_prefs"
-
-    /** The Keystore alias of the master key that encrypts the keyset. Never exported. */
-    private const val MASTER_KEY_URI = "android-keystore://cfo_pin_master_key"
-
-    /** Where the salt-and-tag credential lives, inside app-private storage. */
-    private const val CREDENTIAL_FILE = "cfo-pin.bin"
+    /**
+     * The alias from [CryptoSecrets.PIN_MASTER_KEY_ALIAS], in the form Tink's KMS client expects.
+     *
+     * Issue 11.4 moved the four names this factory used to declare into [CryptoSecrets], so the
+     * erase can destroy them without a second copy of any name existing to drift from this one.
+     */
+    private const val MASTER_KEY_URI = "android-keystore://${CryptoSecrets.PIN_MASTER_KEY_ALIAS}"
 
     /**
      * Creates (or loads) the Keystore-backed MAC.
@@ -63,7 +59,11 @@ object KeystoreMacFactory {
         MacConfig.register()
         return AndroidKeysetManager
             .Builder()
-            .withSharedPref(context.applicationContext, KEYSET_NAME, KEYSET_PREF_FILE)
+            .withSharedPref(
+                context.applicationContext,
+                CryptoSecrets.PIN_KEYSET_NAME,
+                CryptoSecrets.PIN_KEYSET_PREF_FILE,
+            )
             .withKeyTemplate(KeyTemplates.get("HMAC_SHA256_256BITTAG"))
             .withMasterKeyUri(MASTER_KEY_URI)
             .build()
@@ -85,7 +85,7 @@ object KeystoreMacFactory {
     fun createVerifier(context: Context): PinVerifier {
         val application = context.applicationContext
         return TinkPinVerifier(
-            store = FilePinCredentialStore(File(application.filesDir, CREDENTIAL_FILE)),
+            store = FilePinCredentialStore(File(application.filesDir, CryptoSecrets.PIN_CREDENTIAL_FILE)),
             mac = createMac(application),
             random = SecureRandom(),
         )

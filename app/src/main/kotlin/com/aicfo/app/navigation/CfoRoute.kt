@@ -126,6 +126,17 @@ sealed interface CfoRoute {
     data object Consents : CfoRoute
 
     /**
+     * Erase everything (issue 11.4; §34, SEC-003).
+     *
+     * **Its own destination, deliberately pushed rather than shown as a dialog.** A dialog can be
+     * dismissed by a tap outside it and can appear over whatever screen was below; the one
+     * irreversible action in this app gets a page the user navigated to on purpose, with room for
+     * the paragraph explaining what cannot be undone. Reached from Settings.
+     */
+    @Serializable
+    data object Erase : CfoRoute
+
+    /**
      * The category taxonomy editor (issue 4.1; FR-SET-001).
      *
      * **No arguments, and it is reached from the transaction list rather than from Settings.**

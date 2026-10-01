@@ -39,7 +39,7 @@
 
 ## Current state
 
-- **Version:** `0.10.10` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v29** (10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
+- **Version:** `0.10.11` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v29** (10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
   forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
   feed), 9.6 (the notification policy) and 9.7 (the numeric guardrail) shipped — **Epic 9 is
@@ -48,12 +48,13 @@
   10.6 (the frozen guardrail eval), 10.7 (the opportunity score) and 10.8 (Hindi, Kannada and
   Tamil) shipped — **Epic 10 is complete**. The app now ships in four languages; the three
   translations are machine-authored and **await a native review** (ADR-0056).
-  **Epic 11 is open**: 11.1 (the database key — StrongBox, and a rotation that re-keys the file)
-  11.2 (the screen-capture guard) and 11.3 (the consents dashboard) shipped; **11.4 (crypto-shredding
-  erase) is next**. Three things are deliberately unfinished: the key can be rotated but nothing in
-  the app offers it yet, `FLAG_SECURE` does not reach the home-screen widget, and the consent history
-  cannot be exported — ADR-0057/0058/0059.
-- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7, 10.1–10.8 and 11.1–11.3 are merged to `dev`**
+  **Epic 11 is open**: 11.1 (the database key — StrongBox, and a rotation that re-keys the file),
+  11.2 (the screen-capture guard), 11.3 (the consents dashboard) and 11.4 (the crypto-shredding
+  erase) shipped; **11.5 (DPDP alignment) is next**. Four things are deliberately unfinished: the key
+  can be rotated but nothing in the app offers it yet, `FLAG_SECURE` does not reach the home-screen
+  widget, the consent history cannot be exported, and the erase cannot reach a backup the user
+  exported — it says so rather than pretending otherwise — ADR-0057/0058/0059/0060.
+- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7, 10.1–10.8 and 11.1–11.4 are merged to `dev`**
   ([8.1 tracker](issues/8.1-e2ee-backup-argon2id-aes-256-gcm-tracker.md), ADR-0039;
   [8.2 tracker](issues/8.2-restore-on-fresh-device-tracker.md), ADR-0040;
   [8.3 tracker](issues/8.3-backup-restore-drill-tracker.md), ADR-0041;
@@ -577,6 +578,21 @@
   source set on every issue, device or no device.
 
 ## Completed
+
+- **Epic 11 — issue 11.4 (v0.10.11, 2026-10-01):** erase-all by crypto-shredding (§23, §34,
+  SEC-003). **Keys before files**, because the order decides what survives an interruption: keys
+  first leaves ciphertext nobody can read, files first leaves a live key beside a half-deleted
+  database. A failed shred deletes **nothing**; a failed file delete is tolerated; the deletion is
+  **verified** rather than assumed, because `KeyStore.deleteEntry` can return without removing the
+  key ([ADR-0060](adr/0060-an-erase-destroys-keys-first-and-says-what-it-cannot-reach.md)). Every
+  secret is declared by the module that owns it (`SecretInventory`, and the factories rewired to read
+  the same constants), so no alias has a second copy to drift from. Two gates: a word typed in the
+  user's own language, then the PIN — absent on a device that has none, *required* when the
+  credential cannot be read. The screen says plainly that it cannot reach a backup the user exported.
+  An instrumented **canary** test writes a unique string into a real encrypted database, a real
+  receipt and the settings file, erases, then reads every byte the app still owns looking for it. A
+  mutation caught the one real gap: both confirmation strings start empty, so `"" == ""` would have
+  let an untouched screen erase.
 
 - **Epic 7 — issue 7.4 (v0.7.4, 2026-09-06):** linked contributions (§15, FR-GOAL-002,
   FR-GOAL-004). Goal progress split into an **evidenced** half derived from the user's own ledger and

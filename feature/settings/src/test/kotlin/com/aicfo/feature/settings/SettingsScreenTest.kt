@@ -233,7 +233,12 @@ class SettingsScreenTest {
     ) {
         compose.setContent {
             CfoTheme {
-                SettingsContent(uiState = state, onEvent = { events += it }, onDone = {}, onPickBackup = onPickBackup)
+                SettingsContent(
+                    uiState = state,
+                    onEvent = { events += it },
+                    onDone = {},
+                    actions = SettingsActions(onPickBackup = onPickBackup),
+                )
             }
         }
     }

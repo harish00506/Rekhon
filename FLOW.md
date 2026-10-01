@@ -642,6 +642,52 @@ DashboardScreen → "Good day to invest?" → OpportunityScreen
     how old the price is · and that the screen never buys anything
 ```
 
+### 2.23 · The end (issue 11.4)
+
+**The one irreversible path in the app, and the only one whose order is a safety property.** The data
+is encrypted at rest, so the erase is a key destruction; the deletion that follows is tidying.
+
+```
+SettingsScreen → "Erase everything" → EraseScreen
+└─ EraseViewModel
+   ├─ PinVerifier.isPinSet()                   Err ⇒ a PIN *is* required: a storage error is not a way in
+   ├─ onEvent(ConfirmationTyped / PinTyped)    the word compared is the **translated** one
+   └─ onEvent(Confirmed) → canErase re-checked here, not trusted from the button
+      ├─ PinVerifier.verify(pin)               refused ⇒ "erase.pin", nothing destroyed
+      └─ EraseRepository.eraseEverything()
+         └─ DefaultEraseRepository                      ← the order is the whole design
+            ├─ SecureEraser.destroyKeys()               Err ⇒ **nothing is deleted**
+            │  ├─ KeyStore.deleteEntry × 3              cfo_db / cfo_pin / cfo_receipt master keys
+            │  ├─ contains(alias) × 3                   a survivor ⇒ Err("erase.key_survived")
+            │  └─ deleteSharedPreferences × 3           the wrapped Tink keysets
+            ├─ SecureEraser.deleteDataFiles()           a failure here is **tolerated**: no key exists
+            │  ├─ filesDir: passphrase(+.pending) · cfo-pin.bin · receipts/ · cfo_settings.pb(+.tmp)
+            │  │             · datastore/ — the widget's **plaintext** cached figures (WidgetSecrets)
+            │  ├─ cfo.db + -wal + -shm + -journal
+            │  └─ cacheDir · codeCacheDir · externalCacheDir, whole
+            └─ AuditLogRepository.record(DATA_ERASED)   last, and with no method and no detail
+      └─ WorkManager.cancelAllWork()                on success only (P-01, see below)
+   ⇣ isErased → "Close the app" → finishAndRemoveTask + exitProcess(0)
+```
+
+The erase repository is **wrapped in `:app`** by `WorkCancellingEraseRepository`. Nine periodic
+workers live in WorkManager's own database, outside everything the inventory covers, and a device run
+showed them surviving: minutes later `MarketPriceWorker` fetches prices, `SmsScanWorker` reads the
+inbox and `WidgetRefreshWorker` repopulates the widget — the app collecting data again about someone
+who just asked it to stop. The cancel runs only after a *successful* erase, and can never turn one
+into a reported failure.
+
+The work list is not written here. Each module declares what it keeps —
+`DatabaseSecrets.inventory` + `CryptoSecrets.inventory` + `DataStoreSecrets.inventory` — and the
+factories read those same constants, so an alias and its shred cannot drift apart. An **empty**
+composed inventory is an error, not a no-op. `:widget`'s inventory is added by **`:app`** through
+`RepositoryFactory.erase(alsoErase = …)`, because `:data:repository` depending on `:widget` would
+point the wrong way through the architecture (ARC-001).
+
+**What this path cannot reach, and says so on screen:** a backup the user exported is sealed with
+their own Argon2id passphrase (§2.17) and the bytes went straight to the file picker's URI, never
+into app storage. No key this app holds opens it (ADR-0060).
+
 ### 2.22 · What the app may use, and since when (issue 11.3)
 
 **A record, not a control panel.** The ledger has held both timestamps since issue 1.9; this is the

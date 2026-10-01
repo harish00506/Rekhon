@@ -27,6 +27,8 @@ import com.aicfo.feature.goals.GoalsScreen
 import com.aicfo.feature.market.OpportunityScreen
 import com.aicfo.feature.onboarding.OnboardingScreen
 import com.aicfo.feature.settings.ConsentsScreen
+import com.aicfo.feature.settings.EraseScreen
+import com.aicfo.feature.settings.SettingsActions
 import com.aicfo.feature.settings.SettingsScreen
 import com.aicfo.feature.transactions.AddTransactionScreen
 import com.aicfo.feature.transactions.ReceiptReviewScreen
@@ -54,7 +56,13 @@ import com.aicfo.feature.vehicle.VehiclesScreen
  *            2026-08-11 — Issue 4.4: the budgets destination, reached from the dashboard.
  *
  * Input:  [startDestination] — decided by `MainViewModel` from the stored onboarding flag;
- *         [modifier]; [navController] — hoisted so a test or a preview can supply its own.
+ *         [modifier]; [navController] — hoisted so a test or a preview can supply its own;
+ *         [onEraseComplete] — what to do once an erase has destroyed this installation's keys
+ *         (issue 11.4). It is a parameter rather than a call into the platform from here because
+ *         ending a process is the host's business, and because a test must be able to observe that
+ *         it was asked for without the test process exiting. The default does nothing, which is the
+ *         right default for a preview and wrong for the real app — `MainActivity` supplies the one
+ *         that matters.
  * Output: the navigation host.
  */
 @Composable
@@ -62,6 +70,7 @@ fun CfoNavHost(
     startDestination: CfoRoute,
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
+    onEraseComplete: () -> Unit = {},
 ) {
     NavHost(
         navController = navController,
@@ -97,6 +106,7 @@ fun CfoNavHost(
         adviceDestinations(navController)
         captureDestinations(navController)
         accountsDestinations(navController)
+        settingsDestinations(navController, onEraseComplete)
     }
 }
 
@@ -194,16 +204,6 @@ private fun NavGraphBuilder.accountsDestinations(navController: NavHostControlle
                     onOpenAllocation = { navController.navigate(CfoRoute.Allocation) },
                 ),
         )
-    }
-    composable<CfoRoute.Settings> {
-        // popBackStack for the reason every pushed screen here gives: settings went on top.
-        SettingsScreen(
-            onDone = { navController.popBackStack() },
-            onNavigateToConsents = { navController.navigate(CfoRoute.Consents) },
-        )
-    }
-    composable<CfoRoute.Consents> {
-        ConsentsScreen(onDone = { navController.popBackStack() })
     }
     composable<CfoRoute.Allocation> {
         // popBackStack for the reason holdings gives: allocation was pushed on top of the list.
@@ -308,5 +308,49 @@ private fun NavGraphBuilder.onboardingDestination(navController: NavHostControll
 private fun NavGraphBuilder.adviceDestinations(navController: NavHostController) {
     composable<CfoRoute.Opportunity> {
         OpportunityScreen(onDone = { navController.popBackStack() })
+    }
+}
+
+/**
+ * Settings and the two pages reached from it (issues 11.3, 11.4; ARC-001).
+ *
+ * Why:    settings, the consents dashboard and the erase page used to sit inside
+ *         `accountsDestinations`, which was never where they belonged — they were there because
+ *         settings was once one screen and the group had room. Issue 11.4 added the third and pushed
+ *         that function past detekt's length limit, which is the honest moment to split by subject
+ *         rather than trim a line.
+ * What:   the three privacy-and-preferences destinations.
+ * Result: a group whose name says what is in it.
+ * Input:  [navController]; [onEraseComplete] — issue 11.4, see [CfoNavHost]. Output: none
+ *         (registers destinations).
+ * Changelog: 2026-10-01 — Created for issue 11.4.
+ */
+private fun NavGraphBuilder.settingsDestinations(
+    navController: NavHostController,
+    onEraseComplete: () -> Unit,
+) {
+    composable<CfoRoute.Settings> {
+        // popBackStack for the reason every pushed screen here gives: settings went on top.
+        SettingsScreen(
+            onDone = { navController.popBackStack() },
+            actions =
+                SettingsActions(
+                    onNavigateToConsents = { navController.navigate(CfoRoute.Consents) },
+                    onNavigateToErase = { navController.navigate(CfoRoute.Erase) },
+                ),
+        )
+    }
+    composable<CfoRoute.Consents> {
+        ConsentsScreen(onDone = { navController.popBackStack() })
+    }
+    composable<CfoRoute.Erase> {
+        // Issue 11.4: `onErased` ends the process rather than navigating. Every handle this process
+        // holds points at a database whose key no longer exists, so going back to a dashboard would
+        // be a sequence of crashes dressed up as navigation. The app starts clean next launch, which
+        // is exactly what the user asked for.
+        EraseScreen(
+            onDone = { navController.popBackStack() },
+            onErased = onEraseComplete,
+        )
     }
 }

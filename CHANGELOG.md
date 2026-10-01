@@ -11,6 +11,42 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The Purchase Advisor, buy list, what-if simulators, vehicle prediction, on-device chat + guardrail
 > eval, market signals, and localisation.
 
+### [0.10.11] — Issue 11.4: erase everything, and mean it  (2026-10-01)
+
+- **Implemented:** the erase-all §34 and SEC-003 ask for (**ADR-0060**).
+  - **One button that leaves nothing.** Every account, transaction, budget, goal, loan, receipt and
+    conversation on the phone, along with the PIN and the settings.
+  - **It destroys the key, not just the files.** Your data is locked with a key held in your phone's
+    security chip; the erase destroys that key. What is left on the disk is random noise to
+    everyone — you, us, and anyone who ends up holding the phone.
+  - **And it checks.** The app asks the phone whether the key is really gone, and if the phone kept
+    it you are told the erase failed rather than being told your data is unrecoverable when it is
+    not.
+  - **Two deliberate steps, never one tap.** You type a word — in your own language — and then enter
+    your PIN. Neither alone is enough.
+  - **It says what it cannot reach.** A backup you saved somewhere else is locked with the
+    passphrase *you* chose, and the app never had that key. The screen tells you to delete those
+    files yourself instead of claiming everything is gone.
+  - **The app closes when it is done**, because there is nothing left for it to open. The next time
+    you start it, it is a new install.
+  - One line goes in the security log: an erase happened. Not what was erased, not how much there
+    was, not whose it was.
+- **Tests:** 5 repository tests on the ordering and both failure paths · 9 on the real platform
+  eraser, including a key that survives the delete and a module dropped from the inventory · 11 on
+  the two gates · 11 on what the screen says · an **instrumented canary test** that writes a string
+  nowhere else in the app into a real encrypted database, a real receipt and the settings file,
+  erases, and then reads every byte the app still owns looking for it.
+- **Found by mutation:** both confirmation strings start empty, so `"" == ""` would have let an
+  untouched screen erase before it had read its own resources. Also a vacuous ordering assertion
+  that concatenated two lists and so put "audit" last whatever the code did.
+- **Found by running it on a device, with every test already green:** the home-screen widget keeps
+  your safe-to-spend and net worth in a **plain, unencrypted file** so it can draw without opening
+  the database — destroying the key did nothing to it, and it is now erased too. And the app's nine
+  background jobs outlived the erase: minutes later they would have fetched prices, read your
+  messages and refilled the widget — the app quietly starting to collect again about someone who had
+  just asked it to stop. They are now cancelled with the data.
+- **Requirements:** §23, §34, SEC-003, SEC-002, P-01, P-07 · ADR-0060.
+
 ### [0.10.10] — Issue 11.3: what this app may use, and since when  (2026-10-01)
 
 - **Implemented:** the consents dashboard §23 and P-01 ask for (**ADR-0059**).

@@ -137,4 +137,24 @@
     <string name="consent_cloud_llm_withdrawn">Nothing changes today, because nothing uses it yet.</string>
     <string name="consent_cloud_backup_purpose">Lets you save an encrypted backup somewhere other than this phone. The file is locked with your passphrase before it leaves.</string>
     <string name="consent_cloud_backup_withdrawn">No backup can be written off this device, and a backup waiting to be saved is dropped.</string>
+
+    <!-- Issue 11.4: erase everything. §34's right to erasure, behind two deliberate gates. -->
+    <string name="erase_open">Erase everything</string>
+    <string name="erase_title">Erase everything</string>
+    <string name="erase_what_goes">This deletes every account, transaction, budget, goal, loan, receipt and conversation on this phone, along with your PIN and your settings.</string>
+    <string name="erase_irreversible">This cannot be undone. The key your data is locked with is destroyed, so no one — not you, not us, not anyone holding this phone — can read what is left.</string>
+    <string name="erase_backups_not_reached">A backup file you saved elsewhere is locked with the passphrase you chose, not with this phone\'s key. We cannot reach it. Delete those files yourself if you want them gone.</string>
+    <string name="erase_confirmation_word">ERASE</string>
+    <string name="erase_type_to_confirm">Type %1$s below to confirm.</string>
+    <string name="erase_confirmation_label">Confirmation</string>
+    <string name="erase_pin_label">Your PIN</string>
+    <string name="erase_action">Erase everything now</string>
+    <string name="erase_cancel">Keep my data</string>
+    <string name="erase_dismiss">Dismiss</string>
+    <string name="erase_error_pin">That PIN is not right. Nothing has been erased.</string>
+    <string name="erase_error_failed">The erase did not finish, and your data is still here. Try again, and if it keeps failing your phone may be refusing to delete its own keys.</string>
+    <string name="erase_done">Everything has been erased</string>
+    <string name="erase_done_detail">Your data is gone and cannot be recovered. Close the app now; it will start fresh the next time you open it.</string>
+    <string name="erase_close_app">Close the app</string>
+    <string name="settings_erase_body">Delete every bit of data this app holds about you, on this phone, for good.</string>
 </resources>

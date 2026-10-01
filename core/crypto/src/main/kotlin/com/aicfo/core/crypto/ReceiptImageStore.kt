@@ -113,17 +113,13 @@ data class StoredImage(
  * via the standard Keystore provider. Revisit if Tink adds a first-class option.
  */
 object ReceiptImageStoreFactory {
-    /** Keyset name inside the preferences file; changing it orphans every stored receipt. */
-    private const val KEYSET_NAME = "cfo_receipt_keyset"
-
-    /** The preferences file holding the *encrypted* keyset. Never holds a usable key. */
-    private const val KEYSET_PREF_FILE = "cfo_receipt_keyset_prefs"
-
-    /** The Keystore alias of the master key that encrypts the keyset. Never exported. */
-    private const val MASTER_KEY_URI = "android-keystore://cfo_receipt_master_key"
-
-    /** The app-private directory the ciphertext blobs live in. */
-    private const val DIRECTORY = "receipts"
+    /**
+     * The alias from [CryptoSecrets.RECEIPT_MASTER_KEY_ALIAS], in Tink's KMS client form.
+     *
+     * Issue 11.4 moved the four names this factory used to declare into [CryptoSecrets], so the
+     * erase can destroy them without a second copy of any name existing to drift from this one.
+     */
+    private const val MASTER_KEY_URI = "android-keystore://${CryptoSecrets.RECEIPT_MASTER_KEY_ALIAS}"
 
     /**
      * Creates (or loads) the store.
@@ -142,13 +138,17 @@ object ReceiptImageStoreFactory {
         val aead =
             AndroidKeysetManager
                 .Builder()
-                .withSharedPref(application, KEYSET_NAME, KEYSET_PREF_FILE)
+                .withSharedPref(
+                    application,
+                    CryptoSecrets.RECEIPT_KEYSET_NAME,
+                    CryptoSecrets.RECEIPT_KEYSET_PREF_FILE,
+                )
                 .withKeyTemplate(KeyTemplates.get("AES256_GCM"))
                 .withMasterKeyUri(MASTER_KEY_URI)
                 .build()
                 .keysetHandle
                 .getPrimitive(RegistryConfiguration.get(), Aead::class.java)
-        return TinkReceiptImageStore(aead, File(application.filesDir, DIRECTORY))
+        return TinkReceiptImageStore(aead, File(application.filesDir, CryptoSecrets.RECEIPT_DIRECTORY))
     }
 
     /**

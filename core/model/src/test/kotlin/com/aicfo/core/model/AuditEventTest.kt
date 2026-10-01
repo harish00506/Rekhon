@@ -36,6 +36,9 @@ class AuditEventTest {
                 "APP_LOCK_DISABLED",
                 "BACKUP_CREATED",
                 "BACKUP_RESTORED",
+                // Issue 11.4. Confirmed a code and not a description: it says an erase happened and
+                // nothing about what was erased, how much there was, or who it belonged to.
+                "DATA_ERASED",
             ),
             AuditEvent.entries.map { it.name },
         )
