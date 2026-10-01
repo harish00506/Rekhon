@@ -87,4 +87,24 @@
     <string name="consent_cloud_llm_withdrawn">இன்று எதுவும் மாறாது, ஏனெனில் இதை இன்னும் எதுவும் பயன்படுத்தவில்லை.</string>
     <string name="consent_cloud_backup_purpose">இந்த ஃபோனுக்கு வெளியே மறைகுறியாக்கப்பட்ட காப்புப்பிரதியைச் சேமிக்க அனுமதிக்கிறது. கோப்பு வெளியே செல்வதற்கு முன் உங்கள் கடவுச்சொற்றொடரால் பூட்டப்படுகிறது.</string>
     <string name="consent_cloud_backup_withdrawn">இந்தச் சாதனத்துக்கு வெளியே எந்தக் காப்புப்பிரதியையும் எழுத முடியாது, சேமிக்கக் காத்திருந்த காப்புப்பிரதி கைவிடப்படும்.</string>
+
+    <!-- Issue 11.4: erase everything (Tamil). -->
+    <string name="erase_open">எல்லாவற்றையும் அழி</string>
+    <string name="erase_title">எல்லாவற்றையும் அழி</string>
+    <string name="erase_what_goes">இது இந்த ஃபோனில் உள்ள ஒவ்வொரு கணக்கு, பரிவர்த்தனை, பட்ஜெட், இலக்கு, கடன், ரசீது மற்றும் உரையாடலையும், உங்கள் பின் மற்றும் அமைப்புகளையும் அழிக்கிறது.</string>
+    <string name="erase_irreversible">இதை மீட்க முடியாது. உங்கள் தரவைப் பூட்டியிருக்கும் சாவியே அழிக்கப்படுகிறது, எனவே மிஞ்சுவதை யாரும் படிக்க முடியாது — நீங்களும் இல்லை, நாங்களும் இல்லை, இந்த ஃபோனை வைத்திருப்பவரும் இல்லை.</string>
+    <string name="erase_backups_not_reached">வேறு இடத்தில் சேமித்த காப்புப் பிரதி, நீங்கள் தேர்ந்தெடுத்த கடவுச்சொற்றொடரால் பூட்டப்பட்டுள்ளது, இந்த ஃபோனின் சாவியால் அல்ல. அதை நாங்கள் அடைய முடியாது. அவை போக வேண்டுமெனில் நீங்களே அழியுங்கள்.</string>
+    <string name="erase_confirmation_word">அழி</string>
+    <string name="erase_type_to_confirm">உறுதிப்படுத்த கீழே %1$s என தட்டச்சு செய்யுங்கள்.</string>
+    <string name="erase_confirmation_label">உறுதிப்படுத்தல்</string>
+    <string name="erase_pin_label">உங்கள் பின்</string>
+    <string name="erase_action">இப்போதே எல்லாவற்றையும் அழி</string>
+    <string name="erase_cancel">என் தரவு இருக்கட்டும்</string>
+    <string name="erase_dismiss">மூடு</string>
+    <string name="erase_error_pin">அந்தப் பின் சரியில்லை. எதுவும் அழிக்கப்படவில்லை.</string>
+    <string name="erase_error_failed">அழிப்பு முடியவில்லை, உங்கள் தரவு இன்னும் இங்கேயே உள்ளது. மீண்டும் முயலுங்கள்; தொடர்ந்து தோல்வியுற்றால் உங்கள் ஃபோன் அதன் சொந்த சாவிகளை அழிக்க மறுக்கிறது என்று பொருள்.</string>
+    <string name="erase_done">எல்லாம் அழிக்கப்பட்டது</string>
+    <string name="erase_done_detail">உங்கள் தரவு போய்விட்டது, மீட்க முடியாது. இப்போது ஆப்பை மூடுங்கள்; அடுத்த முறை திறக்கும்போது அது புதிதாகத் தொடங்கும்.</string>
+    <string name="erase_close_app">ஆப்பை மூடு</string>
+    <string name="settings_erase_body">இந்த ஆப் உங்களைப் பற்றி இந்த ஃபோனில் வைத்திருக்கும் எல்லா தரவையும் நிரந்தரமாக அழியுங்கள்.</string>
 </resources>

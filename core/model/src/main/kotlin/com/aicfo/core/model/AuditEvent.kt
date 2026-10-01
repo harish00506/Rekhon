@@ -14,12 +14,12 @@ package com.aicfo.core.model
  *       stored to answer it.
  * Changelog: 2026-07-26 — Created for issue 2.2 (SEC-002).
  *   2026-09-18 — Issue 8.1 added [BACKUP_CREATED]; issue 8.2 added [BACKUP_RESTORED].
+ *   2026-10-01 — Issue 11.4 added [DATA_ERASED].
  *
  * Pure Kotlin so `:data:repository`, `:app` and any later feature can all name the same event
  * without importing a Room type (ARC-005).
  *
- * Later issues extend this — 11.3 (consent revoked), 11.4 (erase-all), 8.1 (backup). Adding a
- * constant is additive and needs no migration: the column stores [name].
+ * Adding a constant is additive and needs no migration: the column stores [name].
  */
 enum class AuditEvent {
     /** The user unlocked the app. The method is recorded separately as [AuditMethod]. */
@@ -58,6 +58,15 @@ enum class AuditEvent {
      * operation, besides erase-all, that removes everything the user had on the device.
      */
     BACKUP_RESTORED,
+
+    /**
+     * The user erased everything (issue 11.4; SEC-003). The row says only that it happened — not
+     * what was erased, not how much there was, and not what the data was about. It survives the
+     * erase because `audit_log` is re-created empty behind a new key, so in practice this is the
+     * first row of the app's next life: a user who later asks "did I actually wipe this phone?"
+     * has an answer, and an attacker who steals the device learns nothing from it.
+     */
+    DATA_ERASED,
 }
 
 /**

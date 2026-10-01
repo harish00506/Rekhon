@@ -1,6 +1,8 @@
 package com.aicfo.app.di
 
 import android.content.Context
+import androidx.work.WorkManager
+import com.aicfo.app.work.WorkCancellingEraseRepository
 import com.aicfo.core.common.Clock
 import com.aicfo.core.common.DispatcherProvider
 import com.aicfo.core.crypto.KeystoreMacFactory
@@ -10,7 +12,9 @@ import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.datastore.AppLockStore
 import com.aicfo.core.datastore.CfoDataStores
 import com.aicfo.data.repository.AuditLogRepository
+import com.aicfo.data.repository.EraseRepository
 import com.aicfo.data.repository.RepositoryFactory
+import com.aicfo.widget.WidgetSecrets
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -78,4 +82,38 @@ object LockModule {
         clock: Clock,
         dispatchers: DispatcherProvider,
     ): AuditLogRepository = RepositoryFactory.auditLog(database, clock, dispatchers)
+
+    /**
+     * Erase everything (issue 11.4; SEC-003, §34).
+     * Why:    provided here, beside the audit log, because the two are used together and for the
+     *         same reason: this is the one operation that destroys the key the database is opened
+     *         with, so it cannot take a `CfoDatabase` — a handle to a database it is about to make
+     *         unopenable would be worse than useless. It takes the context and the ungated audit
+     *         log, which is the only log that still exists on the other side of the erase.
+     * Result: the [EraseRepository]. Irreversible by design — see its own documentation.
+     * Input:  [context] — the application context; [auditLog]; [dispatchers]. Output: the
+     *         repository.
+     * Changelog: 2026-10-01 — Created for issue 11.4.
+     */
+    @Provides
+    @Singleton
+    fun provideEraseRepository(
+        @ApplicationContext context: Context,
+        auditLog: AuditLogRepository,
+        dispatchers: DispatcherProvider,
+    ): EraseRepository =
+        WorkCancellingEraseRepository(
+            delegate =
+                RepositoryFactory.erase(
+                    context = context,
+                    auditLog = auditLog,
+                    dispatchers = dispatchers,
+                    // `:widget` caches the user's safe-to-spend and net worth in a plaintext Glance
+                    // file, and `:data:repository` cannot see `:widget` without inverting ARC-001.
+                    // `:app` depends on both, so `:app` is where the two inventories meet.
+                    alsoErase = WidgetSecrets.inventory,
+                ),
+            // Scheduled work outlives the data otherwise, and starts collecting again (P-01).
+            cancelAllWork = { WorkManager.getInstance(context).cancelAllWork() },
+        )
 }

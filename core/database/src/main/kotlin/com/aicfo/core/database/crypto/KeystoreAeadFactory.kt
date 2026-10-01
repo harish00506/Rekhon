@@ -31,17 +31,13 @@ import com.google.crypto.tink.integration.android.AndroidKeysetManager
  * as it was.
  */
 object KeystoreAeadFactory {
-    /** Keyset name inside the preferences file; changing it orphans the existing key. */
-    private const val KEYSET_NAME = "cfo_db_keyset"
-
-    /** The preferences file holding the *encrypted* keyset. Never holds a usable key. */
-    private const val KEYSET_PREF_FILE = "cfo_db_keyset_prefs"
-
-    /** The Keystore alias of the master key that encrypts the keyset. Never exported. */
-    private const val MASTER_KEY_ALIAS = "cfo_db_master_key"
-
-    /** The same alias, in the form Tink's KMS client expects. */
-    private const val MASTER_KEY_URI = "android-keystore://$MASTER_KEY_ALIAS"
+    /**
+     * The same alias as [DatabaseSecrets.MASTER_KEY_ALIAS], in the form Tink's KMS client expects.
+     *
+     * Issue 11.4 moved the three names this factory used to declare into [DatabaseSecrets], so the
+     * erase can destroy them without a second copy of any name existing to drift from this one.
+     */
+    private const val MASTER_KEY_URI = "android-keystore://${DatabaseSecrets.MASTER_KEY_ALIAS}"
 
     /**
      * Creates (or loads) the Keystore-backed AEAD.
@@ -61,10 +57,14 @@ object KeystoreAeadFactory {
         // Issue 11.1: before Tink looks for the master key, make sure the strongest one this
         // device can hold is already there. On an installation that already has a key this is a
         // single `containsAlias` and nothing else — see MasterKeyPolicy for why that matters.
-        KeystoreMasterKey.ensure(context.applicationContext, MASTER_KEY_ALIAS)
+        KeystoreMasterKey.ensure(context.applicationContext, DatabaseSecrets.MASTER_KEY_ALIAS)
         return AndroidKeysetManager
             .Builder()
-            .withSharedPref(context.applicationContext, KEYSET_NAME, KEYSET_PREF_FILE)
+            .withSharedPref(
+                context.applicationContext,
+                DatabaseSecrets.KEYSET_NAME,
+                DatabaseSecrets.KEYSET_PREF_FILE,
+            )
             .withKeyTemplate(KeyTemplates.get("AES256_GCM"))
             .withMasterKeyUri(MASTER_KEY_URI)
             .build()

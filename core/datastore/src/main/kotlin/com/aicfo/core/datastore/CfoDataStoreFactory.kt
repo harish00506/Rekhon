@@ -28,9 +28,6 @@ import java.io.File
  * Output: [CfoDataStores] holding both interfaces.
  */
 object CfoDataStoreFactory {
-    /** The settings file inside app-private storage. */
-    private const val FILE_NAME = "cfo_settings.pb"
-
     /**
      * Creates the stores.
      * Result: both interfaces over one atomic file.
@@ -44,7 +41,7 @@ object CfoDataStoreFactory {
     ): CfoDataStores {
         val dataStore =
             CfoSettingsStorage.create(
-                path = File(context.applicationContext.filesDir, FILE_NAME).absolutePath,
+                path = File(context.applicationContext.filesDir, DataStoreSecrets.FILE_NAME).absolutePath,
                 scope = scope,
             )
         return CfoDataStores(

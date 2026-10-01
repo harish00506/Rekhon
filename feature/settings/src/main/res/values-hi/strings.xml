@@ -87,4 +87,24 @@
     <string name="consent_cloud_llm_withdrawn">आज कुछ नहीं बदलता, क्योंकि अभी इसका कोई इस्तेमाल ही नहीं है।</string>
     <string name="consent_cloud_backup_purpose">आपको इस फ़ोन से बाहर एन्क्रिप्टेड बैकअप सहेजने देता है। फ़ाइल बाहर जाने से पहले आपके पासफ़्रेज़ से बंद कर दी जाती है।</string>
     <string name="consent_cloud_backup_withdrawn">इस डिवाइस से बाहर कोई बैकअप नहीं लिखा जा सकता, और सहेजे जाने की राह देखता बैकअप छोड़ दिया जाता है।</string>
+
+    <!-- Issue 11.4: erase everything (Hindi). -->
+    <string name="erase_open">सब कुछ मिटाएँ</string>
+    <string name="erase_title">सब कुछ मिटाएँ</string>
+    <string name="erase_what_goes">यह इस फ़ोन पर मौजूद हर खाता, लेन-देन, बजट, लक्ष्य, क़र्ज़, रसीद और बातचीत मिटा देता है, साथ ही आपका पिन और आपकी सेटिंग भी।</string>
+    <string name="erase_irreversible">यह पलटा नहीं जा सकता। जिस चाबी से आपका डेटा बंद है वह नष्ट कर दी जाती है, इसलिए जो बचेगा उसे कोई नहीं पढ़ सकता — न आप, न हम, न इस फ़ोन को रखने वाला कोई और।</string>
+    <string name="erase_backups_not_reached">कहीं और सहेजी गई बैकअप फ़ाइल आपके चुने पासफ़्रेज़ से बंद है, इस फ़ोन की चाबी से नहीं। हम उस तक नहीं पहुँच सकते। उन्हें हटाना हो तो आप खुद हटाएँ।</string>
+    <string name="erase_confirmation_word">मिटाएँ</string>
+    <string name="erase_type_to_confirm">पुष्टि के लिए नीचे %1$s लिखें।</string>
+    <string name="erase_confirmation_label">पुष्टि</string>
+    <string name="erase_pin_label">आपका पिन</string>
+    <string name="erase_action">अब सब कुछ मिटाएँ</string>
+    <string name="erase_cancel">मेरा डेटा रहने दें</string>
+    <string name="erase_dismiss">हटाएँ</string>
+    <string name="erase_error_pin">यह पिन सही नहीं है। कुछ नहीं मिटाया गया।</string>
+    <string name="erase_error_failed">मिटाना पूरा नहीं हुआ, और आपका डेटा अभी भी यहीं है। फिर कोशिश करें; बार-बार यही हो तो आपका फ़ोन अपनी ही चाबियाँ हटाने से इनकार कर रहा हो सकता है।</string>
+    <string name="erase_done">सब कुछ मिटा दिया गया</string>
+    <string name="erase_done_detail">आपका डेटा जा चुका है और वापस नहीं लाया जा सकता। अब ऐप बंद करें; अगली बार खोलेंगे तो यह नए सिरे से शुरू होगा।</string>
+    <string name="erase_close_app">ऐप बंद करें</string>
+    <string name="settings_erase_body">इस ऐप के पास आपके बारे में इस फ़ोन पर जो भी डेटा है, उसे हमेशा के लिए मिटा दें।</string>
 </resources>

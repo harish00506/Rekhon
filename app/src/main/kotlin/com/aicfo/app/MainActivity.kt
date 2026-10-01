@@ -1,5 +1,8 @@
 package com.aicfo.app
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -25,6 +28,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination.Companion.hasRoute
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.aicfo.app.lock.AppLockGate
@@ -36,6 +40,7 @@ import com.aicfo.core.designsystem.component.LocalPrivacyBlur
 import com.aicfo.core.designsystem.theme.CfoDimens
 import com.aicfo.core.designsystem.theme.CfoTheme
 import dagger.hilt.android.AndroidEntryPoint
+import kotlin.system.exitProcess
 
 /**
  * The single host Activity (ARC-001, ARC-004).
@@ -139,6 +144,10 @@ private fun AppContent(
     viewModel: MainViewModel,
 ) {
     val navController = rememberNavController()
+    // Walked back from the context rather than taken from `LocalActivity`, which this project's
+    // Compose version does not have. Issue 10.8 established the walk: `LocalContext` here may be a
+    // wrapper rather than the Activity itself.
+    val activity = LocalContext.current.findActivity()
     val isDemoActive by viewModel.isDemoActive.collectAsStateWithLifecycle()
     val isBlurred by viewModel.isPrivacyBlurred.collectAsStateWithLifecycle()
     val currentEntry by navController.currentBackStackEntryAsState()
@@ -148,21 +157,7 @@ private fun AppContent(
     // policy always-on and moved it to `onCreate` (`SecureWindow`); the blur still masks the text.
 
     Column(modifier = Modifier.fillMaxSize()) {
-        if (isDemoActive) {
-            CfoDemoBanner(
-                message = stringResource(R.string.demo_banner_message),
-                actionText = stringResource(R.string.demo_banner_exit),
-                onExit = {
-                    viewModel.exitDemo()
-                    // inclusive, so the dashboard the demo filled cannot be reached with Back. The
-                    // user is returning to a flow they never completed, and the app must look to
-                    // them exactly as it did before they tapped into the demo.
-                    navController.navigate(CfoRoute.Onboarding) {
-                        popUpTo<CfoRoute.Dashboard> { inclusive = true }
-                    }
-                },
-            )
-        }
+        if (isDemoActive) DemoBanner(viewModel, navController)
         // A Box rather than a second Scaffold: MainActivity's already owns the window insets, and
         // nesting one inside it would apply them twice and push the FAB above the gesture bar.
         Box(modifier = Modifier.weight(1f)) {
@@ -170,7 +165,11 @@ private fun AppContent(
             // demo banner above makes, for the same reason. No destination, existing or added
             // later, can render an amount outside this provider.
             CompositionLocalProvider(LocalPrivacyBlur provides isBlurred) {
-                CfoNavHost(startDestination = startDestination, navController = navController)
+                CfoNavHost(
+                    startDestination = startDestination,
+                    navController = navController,
+                    onEraseComplete = { endProcessAfterErase(activity) },
+                )
             }
             CfoPrivacyBlurToggle(
                 blurred = isBlurred,
@@ -235,3 +234,67 @@ internal fun CfoAddTransactionFab(
         Icon(imageVector = Icons.Filled.Add, contentDescription = stringResource(R.string.add_transaction))
     }
 }
+
+/**
+ * The label that says the figures on screen are invented (issue 2.4; FR-ONB-004, P-02).
+ * Why:    lifted out of [AppContent] by issue 11.4, which pushed that function past detekt's length
+ *         limit. It is one unit of behaviour — the banner and the only thing it does — so it reads
+ *         better named than inline.
+ * Result: the banner, and on exit a return to onboarding with the demo's dashboard unreachable by
+ *         Back: the user is going back to a flow they never completed, and the app must look to them
+ *         exactly as it did before they tapped into the demo.
+ * Input:  [viewModel] — clears the demo; [navController] — navigates. Output: the composition.
+ * Changelog: 2026-10-01 — Extracted from [AppContent] for issue 11.4.
+ */
+@Composable
+private fun DemoBanner(
+    viewModel: MainViewModel,
+    navController: NavHostController,
+) {
+    CfoDemoBanner(
+        message = stringResource(R.string.demo_banner_message),
+        actionText = stringResource(R.string.demo_banner_exit),
+        onExit = {
+            viewModel.exitDemo()
+            navController.navigate(CfoRoute.Onboarding) {
+                popUpTo<CfoRoute.Dashboard> { inclusive = true }
+            }
+        },
+    )
+}
+
+/**
+ * Closes the app once an erase has destroyed this installation's keys (issue 11.4).
+ * Why:    `finishAndRemoveTask` clears the task so the recents entry cannot reopen into a dead
+ *         graph, and the process is ended because every handle it holds — the Room database, the
+ *         Tink primitives, the DataStore — points at a key that no longer exists. Navigating back
+ *         to onboarding instead would mean each of those failing one at a time in front of a user
+ *         who has just been told the operation succeeded. The next launch is a fresh install, which
+ *         is what they asked for.
+ * Result: the task is gone and the process exits; this function does not return.
+ * Input:  [activity] — the host, or `null` if it could not be resolved, in which case the process
+ *         still ends: that is the half that matters.
+ * Output: none.
+ * Changelog: 2026-10-01 — Created for issue 11.4.
+ */
+private fun endProcessAfterErase(activity: Activity?) {
+    activity?.finishAndRemoveTask()
+    exitProcess(0)
+}
+
+/**
+ * Walks a context chain back to the Activity that owns it (issue 11.4).
+ * Why:    `LocalContext` is not necessarily the Activity — issue 10.8 wrapped it in a
+ *         `ContextWrapper` so the app could change language without recreating, and a `as?` cast
+ *         against that wrapper returns null. The erase needs the real Activity to clear its task.
+ * Result: the Activity, or `null` if this context has none — in which case the erase still ends
+ *         the process, which is the part that matters.
+ * Input:  the receiver. Output: [Activity]`?`.
+ * Changelog: 2026-10-01 — Created for issue 11.4.
+ */
+private tailrec fun Context.findActivity(): Activity? =
+    when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }

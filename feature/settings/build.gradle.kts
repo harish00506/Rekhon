@@ -28,6 +28,8 @@ tasks.withType<Test>()
         exclude("**/SettingsScreenTest.class")
         // Issue 11.3: the consents dashboard's rendered test, for the same reason.
         exclude("**/ConsentsScreenTest.class")
+        // Issue 11.4: the erase screen's rendered test, for the same reason.
+        exclude("**/EraseScreenTest.class")
     }
 
 dependencies {

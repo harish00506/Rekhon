@@ -30,6 +30,10 @@ dependencies {
     // :core:designsystem precisely so the widget would not have to depend on Material3.
     implementation(project(":core:model"))
 
+    // Issue 11.4: `SecretInventory`, so this module declares the Glance state file the erase has to
+    // delete. Pure Kotlin, no Android — it is a bag of names.
+    api(project(":core:common"))
+
     implementation(libs.glance.appwidget)
     implementation(libs.glance.material3)
 

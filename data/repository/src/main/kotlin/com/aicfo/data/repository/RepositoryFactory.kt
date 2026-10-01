@@ -1,8 +1,10 @@
 package com.aicfo.data.repository
 
+import android.content.Context
 import com.aicfo.core.common.Clock
 import com.aicfo.core.common.DispatcherProvider
 import com.aicfo.core.common.IdGenerator
+import com.aicfo.core.common.SecretInventory
 import com.aicfo.core.common.getOrNull
 import com.aicfo.core.crypto.BackupCipher
 import com.aicfo.core.crypto.ReceiptImageStore
@@ -80,6 +82,41 @@ object RepositoryFactory {
         clock: Clock,
         dispatchers: DispatcherProvider,
     ): AuditLogRepository = RoomAuditLogRepository(database.auditLogDao(), clock, dispatchers)
+
+    /**
+     * Builds the erase-everything repository (issue 11.4; SEC-003, §34).
+     * Why:    takes a [Context] rather than the database, because an erase is not a database
+     *         operation — it destroys the key the database is opened with, and the database handle
+     *         it would have been given is one of the things it makes unusable. The inventory of
+     *         secrets is composed here from the owning modules (see `androidEraseInventory`).
+     * Result: an [EraseRepository] over the real Keystore and app-private storage. Irreversible.
+     * Input:  [context] — any context; the application context is used; [auditLog] — where the
+     *         event is recorded; [dispatchers] — ARC-006; [alsoErase] — secrets declared by modules
+     *         this one cannot see. `:widget` is the reason it exists: it caches the user's
+     *         safe-to-spend and net worth in a plaintext Glance file, and a dependency from
+     *         `:data:repository` on `:widget` would point the wrong way through the architecture
+     *         (ARC-001). `:app` depends on both, so `:app` adds it.
+     * Output: [EraseRepository].
+     * Changelog: 2026-10-01 — Created for issue 11.4.
+     *            2026-10-01 — Issue 11.4: [alsoErase], after a device run found the widget's cached
+     *            figures surviving the erase.
+     */
+    fun erase(
+        context: Context,
+        auditLog: AuditLogRepository,
+        dispatchers: DispatcherProvider,
+        alsoErase: SecretInventory = SecretInventory(),
+    ): EraseRepository =
+        DefaultEraseRepository(
+            eraser =
+                AndroidSecureEraser(
+                    context = context,
+                    inventory = androidEraseInventory() + alsoErase,
+                    keyStore = AndroidKeyStoreGateway(),
+                ),
+            auditLog = auditLog,
+            dispatchers = dispatchers,
+        )
 
     /**
      * Builds the quick-setup store (issue 2.3, FR-ONB-002).

@@ -87,4 +87,24 @@
     <string name="consent_cloud_llm_withdrawn">ಇಂದು ಏನೂ ಬದಲಾಗುವುದಿಲ್ಲ, ಏಕೆಂದರೆ ಇದನ್ನು ಇನ್ನೂ ಯಾವುದೂ ಬಳಸುತ್ತಿಲ್ಲ.</string>
     <string name="consent_cloud_backup_purpose">ಈ ಫೋನಿನ ಹೊರಗೆ ಎನ್‌ಕ್ರಿಪ್ಟ್ ಮಾಡಿದ ಬ್ಯಾಕಪ್ ಉಳಿಸಲು ಅನುವು ಮಾಡಿಕೊಡುತ್ತದೆ. ಕಡತ ಹೊರಹೋಗುವ ಮೊದಲು ನಿಮ್ಮ ಪಾಸ್‌ಫ್ರೇಸ್‌ನಿಂದ ಬಂಧಿಸಲಾಗುತ್ತದೆ.</string>
     <string name="consent_cloud_backup_withdrawn">ಈ ಸಾಧನದ ಹೊರಗೆ ಯಾವ ಬ್ಯಾಕಪ್ ಅನ್ನೂ ಬರೆಯಲಾಗದು, ಮತ್ತು ಉಳಿಸಲು ಕಾಯುತ್ತಿದ್ದ ಬ್ಯಾಕಪ್ ಅನ್ನು ಕೈಬಿಡಲಾಗುತ್ತದೆ.</string>
+
+    <!-- Issue 11.4: erase everything (Kannada). -->
+    <string name="erase_open">ಎಲ್ಲವನ್ನೂ ಅಳಿಸಿ</string>
+    <string name="erase_title">ಎಲ್ಲವನ್ನೂ ಅಳಿಸಿ</string>
+    <string name="erase_what_goes">ಇದು ಈ ಫೋನಿನಲ್ಲಿರುವ ಪ್ರತಿಯೊಂದು ಖಾತೆ, ವಹಿವಾಟು, ಬಜೆಟ್, ಗುರಿ, ಸಾಲ, ರಸೀದಿ ಮತ್ತು ಸಂಭಾಷಣೆಯನ್ನು, ಜೊತೆಗೆ ನಿಮ್ಮ ಪಿನ್ ಮತ್ತು ಸೆಟ್ಟಿಂಗ್‌ಗಳನ್ನೂ ಅಳಿಸುತ್ತದೆ.</string>
+    <string name="erase_irreversible">ಇದನ್ನು ಹಿಂತಿರುಗಿಸಲು ಸಾಧ್ಯವಿಲ್ಲ. ನಿಮ್ಮ ಡೇಟಾವನ್ನು ಬೀಗ ಹಾಕಿರುವ ಕೀಲಿಯೇ ನಾಶವಾಗುತ್ತದೆ, ಆದ್ದರಿಂದ ಉಳಿದದ್ದನ್ನು ಯಾರೂ ಓದಲಾರರು — ನೀವೂ ಅಲ್ಲ, ನಾವೂ ಅಲ್ಲ, ಈ ಫೋನ್ ಹಿಡಿದವರೂ ಅಲ್ಲ.</string>
+    <string name="erase_backups_not_reached">ಬೇರೆಲ್ಲೋ ಉಳಿಸಿದ ಬ್ಯಾಕಪ್ ಫೈಲ್ ನೀವು ಆಯ್ಕೆ ಮಾಡಿದ ಪಾಸ್‌ಫ್ರೇಸ್‌ನಿಂದ ಬೀಗ ಹಾಕಿದೆ, ಈ ಫೋನಿನ ಕೀಲಿಯಿಂದ ಅಲ್ಲ. ಅದನ್ನು ನಾವು ತಲುಪಲಾರೆವು. ಅವು ಹೋಗಬೇಕೆಂದರೆ ನೀವೇ ಅಳಿಸಿ.</string>
+    <string name="erase_confirmation_word">ಅಳಿಸಿ</string>
+    <string name="erase_type_to_confirm">ದೃಢಪಡಿಸಲು ಕೆಳಗೆ %1$s ಎಂದು ಟೈಪ್ ಮಾಡಿ.</string>
+    <string name="erase_confirmation_label">ದೃಢೀಕರಣ</string>
+    <string name="erase_pin_label">ನಿಮ್ಮ ಪಿನ್</string>
+    <string name="erase_action">ಈಗ ಎಲ್ಲವನ್ನೂ ಅಳಿಸಿ</string>
+    <string name="erase_cancel">ನನ್ನ ಡೇಟಾ ಇರಲಿ</string>
+    <string name="erase_dismiss">ಮುಚ್ಚಿ</string>
+    <string name="erase_error_pin">ಈ ಪಿನ್ ಸರಿಯಿಲ್ಲ. ಏನನ್ನೂ ಅಳಿಸಲಾಗಿಲ್ಲ.</string>
+    <string name="erase_error_failed">ಅಳಿಸುವುದು ಪೂರ್ಣವಾಗಲಿಲ್ಲ, ನಿಮ್ಮ ಡೇಟಾ ಇನ್ನೂ ಇಲ್ಲಿಯೇ ಇದೆ. ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ; ಪದೇ ಪದೇ ವಿಫಲವಾದರೆ ನಿಮ್ಮ ಫೋನ್ ತನ್ನದೇ ಕೀಲಿಗಳನ್ನು ಅಳಿಸಲು ನಿರಾಕರಿಸುತ್ತಿರಬಹುದು.</string>
+    <string name="erase_done">ಎಲ್ಲವನ್ನೂ ಅಳಿಸಲಾಗಿದೆ</string>
+    <string name="erase_done_detail">ನಿಮ್ಮ ಡೇಟಾ ಹೋಗಿದೆ, ಅದನ್ನು ಮರಳಿ ಪಡೆಯಲಾಗದು. ಈಗ ಆ್ಯಪ್ ಮುಚ್ಚಿ; ಮುಂದಿನ ಬಾರಿ ತೆರೆದಾಗ ಅದು ಹೊಸದಾಗಿ ಶುರುವಾಗುತ್ತದೆ.</string>
+    <string name="erase_close_app">ಆ್ಯಪ್ ಮುಚ್ಚಿ</string>
+    <string name="settings_erase_body">ಈ ಆ್ಯಪ್ ನಿಮ್ಮ ಬಗ್ಗೆ ಈ ಫೋನಿನಲ್ಲಿ ಇಟ್ಟುಕೊಂಡಿರುವ ಎಲ್ಲಾ ಡೇಟಾವನ್ನೂ ಶಾಶ್ವತವಾಗಿ ಅಳಿಸಿ.</string>
 </resources>

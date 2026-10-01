@@ -10,6 +10,7 @@ import com.aicfo.core.common.Result
 import com.aicfo.core.common.flatMap
 import com.aicfo.core.common.map
 import com.aicfo.core.database.crypto.DatabaseRekeyer
+import com.aicfo.core.database.crypto.DatabaseSecrets
 import com.aicfo.core.database.crypto.FileWrappedPassphraseStore
 import com.aicfo.core.database.crypto.KeystoreAeadFactory
 import com.aicfo.core.database.crypto.PassphraseCandidates
@@ -37,9 +38,6 @@ import java.security.SecureRandom
  * round-trips identically in airplane mode. There is no path that could behave otherwise.
  */
 object CfoDatabaseFactory {
-    /** Where the wrapped passphrase lives, inside app-private storage. */
-    private const val PASSPHRASE_FILE = "cfo-db-passphrase.bin"
-
     /**
      * Opens (creating on first run) the encrypted database.
      * Why:    every caller needs the same passphrase resolution and the same Room configuration;
@@ -103,7 +101,7 @@ object CfoDatabaseFactory {
      */
     private fun manager(application: Context): SqlCipherPassphraseManager =
         SqlCipherPassphraseManager(
-            store = FileWrappedPassphraseStore(File(application.filesDir, PASSPHRASE_FILE)),
+            store = FileWrappedPassphraseStore(File(application.filesDir, DatabaseSecrets.PASSPHRASE_FILE)),
             aead = KeystoreAeadFactory.create(application),
             random = SecureRandom(),
         )
