@@ -39,7 +39,7 @@
 
 ## Current state
 
-- **Version:** `0.10.12` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v29** (10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
+- **Version:** `0.10.13` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v29** (10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
   forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
   feed), 9.6 (the notification policy) and 9.7 (the numeric guardrail) shipped — **Epic 9 is
@@ -50,14 +50,16 @@
   translations are machine-authored and **await a native review** (ADR-0056).
   **Epic 11 is open**: 11.1 (the database key — StrongBox, and a rotation that re-keys the file),
   11.2 (the screen-capture guard), 11.3 (the consents dashboard), 11.4 (the crypto-shredding erase)
-  and 11.5 (DPDP alignment) shipped; **11.6 (dependency scanning) is next**. Deliberately
+  11.5 (DPDP alignment) and 11.6 (R8 + OSV scanning) shipped; **11.7 (the no-hand-rolled-crypto
+  audit) is next**. Deliberately
   unfinished: the key can be rotated but nothing offers it yet, `FLAG_SECURE` does not reach the
   home-screen widget, the erase cannot reach a backup the user exported (it says so), the consent
   record is the latest grant/withdraw pair rather than an append-only history, and **four DPDP
   obligations are the publisher's, not the code's** — grievance contact, nomination, breach notice
   and children's data, all listed as open in `docs/compliance/dpdp-2023.md` —
-  ADR-0057/0058/0059/0060/0061.
-- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7, 10.1–10.8 and 11.1–11.5 are merged to `dev`**
+  ADR-0057/0058/0059/0060/0061/0062. One more, from 11.6: a release stack trace now needs
+  `mapping.txt` and nothing archives it yet.
+- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7, 10.1–10.8 and 11.1–11.6 are merged to `dev`**
   ([8.1 tracker](issues/8.1-e2ee-backup-argon2id-aes-256-gcm-tracker.md), ADR-0039;
   [8.2 tracker](issues/8.2-restore-on-fresh-device-tracker.md), ADR-0040;
   [8.3 tracker](issues/8.3-backup-restore-drill-tracker.md), ADR-0041;
@@ -581,6 +583,21 @@
   source set on every issue, device or no device.
 
 ## Completed
+
+- **Epic 11 — issue 11.6 (v0.10.13, 2026-10-02):** release hardening and supply-chain scanning
+  (§21.3, §21.6, SEC-007). R8 minification plus resource shrinking (84.5 → 66.6 MB), with
+  `Log.v/d/i/w`, `isLoggable` and `println` stripped — and **the strip verified by parsing the
+  shipped DEX** rather than asserted, because a rule file is not evidence about a binary
+  ([ADR-0062](adr/0062-the-release-is-minified-and-the-log-strip-is-read-out-of-the-shipped-dex.md)).
+  `Log.e`/`wtf` are deliberately kept. OSV scanning over the **resolved** release-runtime classpath
+  (278 coordinates) blocks on HIGH and above, with an allowlist whose entries **expire** — and
+  "could not reach OSV" exits non-zero rather than passing, so the gate cannot be green by being
+  blind. **No new third-party dependency.** **The find:** a clean install of the minified release
+  opened on the lock screen with no PIN set — a total lockout — because protobuf-javalite resolves
+  its generated classes reflectively, R8 renamed them, the settings read failed, and the app lock's
+  fail-secure default did exactly what it promises. No crash, nothing in logcat, and nothing in
+  5,100 JVM tests could see it: they all run on unminified code. **The release APK is installed on a
+  device every time now, and that is why.**
 
 - **Epic 11 — issue 11.5 (v0.10.12, 2026-10-01):** DPDP Act 2023 alignment (§23, §32). The export now
   carries the **consent record** — one row per declared consent, including the ones never answered,

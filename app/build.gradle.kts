@@ -14,15 +14,26 @@ android {
 
     defaultConfig {
         applicationId = "com.aicfo.personalcfo"
-        versionCode = 56
+        versionCode = 57
         versionName = rootProject.file("VERSION").readText().trim()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         release {
-            // R8 minify + resource shrink are wired in issue 11.6 (proguard-r8-release).
-            isMinifyEnabled = false
+            // Issue 11.6 (§21.3, §21.6, SEC-007). Minify is on for two reasons and the smaller one
+            // is size: `proguard-rules.pro` strips every `Log.v/d/i/w` call from the release build,
+            // so §21.6's "no PII or amounts in logs" holds by there being no release log surface at
+            // all. Resource shrinking follows minification — it is a no-op without it.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                // `-optimize` rather than the plain file: this app ships no code that depends on
+                // method inlining being disabled, and the optimising variant is what makes the
+                // `assumenosideeffects` log strip actually remove the argument construction too.
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 

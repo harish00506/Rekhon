@@ -1,0 +1,19 @@
+{
+  "_comment": [
+    "Accepted OSV findings (issue 11.6, SEC-007).",
+    "",
+    "Why this file exists: some findings cannot be fixed today — a transitive dependency with no",
+    "patched release, or an advisory that does not apply to how this app uses the library. Those",
+    "need a way to be accepted, and the acceptance needs a reason somebody can argue with.",
+    "",
+    "Why every entry has a review_by: an allowlist entry without an expiry is how a known",
+    "vulnerability quietly becomes policy. `scripts/osv_scan.py` FAILS on an entry past its review",
+    "date, so an acceptance has to be renewed deliberately rather than inherited.",
+    "",
+    "Fields: id (the OSV/GHSA id) · package · reason (why it does not apply, or why it cannot be",
+    "fixed yet) · accepted_on · review_by (ISO date).",
+    "",
+    "Empty on purpose: as of issue 11.6 the scan reports nothing at or above HIGH."
+  ],
+  "accepted": []
+}

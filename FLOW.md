@@ -642,6 +642,44 @@ DashboardScreen → "Good day to invest?" → OpportunityScreen
     how old the price is · and that the screen never buys anything
 ```
 
+### 2.25 · How a release is hardened, and how that is checked (issue 11.6)
+
+**Not a runtime path — a build one.** It is here because §10 asks for call paths and this one decides
+what is in the shipped binary, which no runtime diagram would show.
+
+```
+./gradlew :app:assembleRelease
+└─ minifyReleaseWithR8                     proguard-android-optimize.txt + app/proguard-rules.pro
+   ├─ assumenosideeffects Log.v/d/i/w/isLoggable  → the call AND its argument construction removed
+   ├─ assumenosideeffects PrintStream.println
+   ├─ keep com.aicfo.core.datastore.proto.**      ← without this, a clean install opens LOCKED
+   ├─ keep com.aicfo.** serializer()              the archive's field names are a file-format contract
+   └─ shrinkResources                             84.5 MB → 66.6 MB
+
+./gradlew verifyReleaseLogStripping
+└─ scripts/verify_release_log_stripping.py <apk>
+   ├─ parses every classes*.dex method_id table    standard library only, no build-tools path
+   └─ fails on any reference to a stripped method  Log.e / Log.wtf are allowed by design
+      ⇣ proven non-vacuous: run against the DEBUG apk it finds all six and exits 1
+
+./gradlew scanDependencies
+├─ writeDependencyCoordinates               every module's RESOLVED releaseRuntimeClasspath (278)
+└─ scripts/osv_scan.py <coords> <allowlist>
+   ├─ OSV querybatch → full record per id → worst CVSS band
+   ├─ HIGH/CRITICAL and not allowlisted      ⇒ exit 1
+   ├─ an allowlist entry past review_by      ⇒ exit 1, even with no findings
+   └─ cannot reach OSV                       ⇒ exit 2, which is NOT a pass
+```
+
+Both run in CI (`.github/workflows/ci.yml`), neither with `|| true`. `scanDependencies` is
+deliberately **not** in `unitTests`: it needs the network and is expected to fail locally.
+
+**The standing warning.** R8 can break this app in ways the 5,100 JVM tests cannot see, because they
+all run against unminified code. A clean install of the minified release once opened on the lock
+screen with no PIN set — no crash, nothing in logcat, just a reflective proto read failing and the
+app lock correctly refusing to open over data it could not trust (ADR-0062). The release APK gets
+installed on a device, every time.
+
 ### 2.24 · What you were allowed to do, in a file you keep (issue 11.5)
 
 **One list in the archive comes from outside the database, and one direction is deliberately

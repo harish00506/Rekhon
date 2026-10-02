@@ -11,6 +11,30 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The Purchase Advisor, buy list, what-if simulators, vehicle prediction, on-device chat + guardrail
 > eval, market signals, and localisation.
 
+### [0.10.13] — Issue 11.6: a smaller, quieter release, and a scan that can say no  (2026-10-02)
+
+- **Implemented:** release hardening and supply-chain scanning (**ADR-0062**).
+  - **The release build is 21% smaller** — 66.6 MB against the debug build's 84.5 MB — with unused
+    code and resources removed.
+  - **A release build keeps no chatty log.** Every debug-level log call is deleted outright, along
+    with the text it would have built, so there is no release log surface for a balance to leak into.
+    Error logs stay, because an app nobody can diagnose is worse.
+  - **And that is checked by reading the app that ships**, not by trusting the setting that asked
+    for it: the build fails if a single stripped log call is still referenced in the installed code.
+  - **Every dependency is scanned for known vulnerabilities** on each CI run. A new high or critical
+    advisory in anything that ships fails the build. So does an exception that nobody has reviewed
+    since its due date — an acceptance that never expires is how a known hole becomes policy.
+  - If the scanner cannot reach the advisory database it **fails** rather than reporting all clear.
+  - **No new third-party dependency was added** to do any of this.
+- **Found by installing the release build on a phone, with all 5,100 tests green:** a clean install
+  opened on the lock screen with **no PIN set** — no way into the app at all. Shrinking had renamed
+  the classes that hold your settings, the app could not read whether the lock was even on, and the
+  lock did the safe thing and stayed shut. No crash, nothing in the logs. Fixed, and the release is
+  now installed on a device every time precisely because no test can see this class of problem.
+- **Tests:** 22 on the scan's policy — the severity floor, the allowlist and its expiry (8 mutations,
+  all killed) — plus the log-strip checker proven against an unminified APK, where it correctly fails.
+- **Requirements:** §21.3, §21.6, SEC-007 · ADR-0062.
+
 ### [0.10.12] — Issue 11.5: what you were allowed to do, in a file you keep  (2026-10-01)
 
 - **Implemented:** DPDP Act 2023 alignment (**ADR-0061**).
