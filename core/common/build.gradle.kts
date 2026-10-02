@@ -17,4 +17,8 @@ dependencies {
     testFixturesApi(libs.kotlinx.coroutines.core)
 
     testImplementation(libs.kotlinx.coroutines.test)
+
+    // Issue 12.1: the harness lives in testFixtures (so every engine can use it) and is itself
+    // tested here. A source set does not see its own project's testFixtures automatically.
+    testImplementation(testFixtures(project(":core:common")))
 }

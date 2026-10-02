@@ -1,0 +1,18 @@
+A sample fixture for the harness's own tests (issue 12.1).
+
+The prose before the first `===` is ignored, which is deliberate: a golden file is read by people
+more often than it is read by code, and the format has to leave room for the paragraph explaining
+what the numbers mean. Everything after a `===` line is a record.
+
+=== a plain record
+# label=plain
+# amount_minor=123456
+# count=3
+# flag=true
+# cites=RULE-A v1.0, RULE-B v2.0
+
+=== a record with an absent field
+# label=sparse
+# amount_minor=0
+# count=0
+# flag=false

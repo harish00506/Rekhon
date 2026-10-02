@@ -642,6 +642,40 @@ DashboardScreen → "Good day to invest?" → OpportunityScreen
     how old the price is · and that the screen never buys anything
 ```
 
+### 2.27 · How an engine's frozen expectations are read (issue 12.1)
+
+**A test path, not a runtime one.** It is here because twenty-four engines depend on it and because the
+interesting decisions are all about refusing to do something.
+
+```
+any engine's :test
+└─ testImplementation(testFixtures(project(":core:common")))     test-only, so ARC-002 is untouched
+   ├─ GoldenFixture.load(this, "/golden/x.txt")
+   │  ├─ resource missing            ⇒ ERROR   (an empty list would pass vacuously)
+   │  ├─ no `===` records            ⇒ ERROR
+   │  ├─ a line that is not # k=v    ⇒ ERROR   (a dropped expectation, not a skip)
+   │  └─ GoldenRecord
+   │     ├─ required(k) absent       ⇒ ERROR, naming the key AND the record
+   │     ├─ longOrNull(k) absent     ⇒ null, NEVER 0        (zero is a real amount)
+   │     └─ boolean(k) not true/false ⇒ ERROR               (`toBoolean()` maps `ture` to false)
+   ├─ SeededCases(seed, count).forEach { random -> … }
+   │  ├─ each case gets its OWN Random          ⇒ count = index + 1 reproduces a failure
+   │  ├─ failure message carries the seed       ⇒ a property failure is re-runnable
+   │  └─ count == 0                             ⇒ ERROR
+   ├─ assertDeterministic(seed) { … }            runs the subject TWICE and compares (P-08)
+   └─ GoldenSnapshot.propose(…)
+      ├─ writes the candidate under build/
+      ├─ FAILS the test with a `cp` command
+      └─ never touches src/test/resources        ⇣ a switch that did would make every golden
+                                                   test in the project self-approve for ever
+```
+
+The record marker is a **line** beginning `===`, not the substring: the harness's own sample fixture
+mentions `===` in its prose, and a substring split turned two paragraphs into records.
+
+`:domain:engines:card` is the reference adoption. The other twenty-three engines keep their own readers
+deliberately — see ADR-0064.
+
 ### 2.26 · What stops cryptography being invented here (issue 11.7)
 
 **A build-time path, like §2.25.** It has no runtime call chain at all, which is the point: the only

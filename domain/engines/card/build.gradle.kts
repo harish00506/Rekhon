@@ -16,6 +16,11 @@ dependencies {
     // The golden gate reads `src/test/resources/golden/card.txt`. A pure-Kotlin module has no
     // serialisation dependency (ARC-002), so the fixture is parsed by the test itself.
     testImplementation(libs.truth)
+
+    // Issue 12.1: the shared golden-file + seeded-determinism harness, so this module no longer
+    // carries its own fixture reader. Test-only, so ARC-002 is untouched — the engine itself still
+    // has no dependency beyond :core:model and :core:common.
+    testImplementation(testFixtures(project(":core:common")))
 }
 
 // The rulebook is an input to this module's tests, because `RulebookDriftTest` reads it. Without

@@ -39,7 +39,7 @@
 
 ## Current state
 
-- **Version:** `0.10.14` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v29** (10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
+- **Version:** `0.12.1` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v29** (10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
   forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
   feed), 9.6 (the notification policy) and 9.7 (the numeric guardrail) shipped — **Epic 9 is
@@ -51,7 +51,10 @@
   **Epic 11 is open**: 11.1 (the database key — StrongBox, and a rotation that re-keys the file),
   11.2 (the screen-capture guard), 11.3 (the consents dashboard), 11.4 (the crypto-shredding erase)
   11.5 (DPDP alignment), 11.6 (R8 + OSV scanning) and 11.7 (the no-hand-rolled-crypto audit)
-  shipped — **Epic 11 is complete**. Deliberately
+  shipped — **Epic 11 is complete**. **Epic 12 is open**: 12.1 (the golden-file/property harness)
+  shipped; **12.2 (frozen AI-eval datasets) is next**. Note `0.11.x` is deliberately unused — Epic 11
+  shipped as `0.10.8`–`0.10.14` by drift, recorded in `CHANGELOG.md` rather than renumbered.
+  Deliberately
   unfinished: the key can be rotated but nothing offers it yet, `FLAG_SECURE` does not reach the
   home-screen widget, the erase cannot reach a backup the user exported (it says so), the consent
   record is the latest grant/withdraw pair rather than an append-only history, and **four DPDP
@@ -60,7 +63,7 @@
   ADR-0057/0058/0059/0060/0061/0062/0063. Two more: a release stack trace now needs `mapping.txt`
   and nothing archives it yet (11.6), and Argon2id stays BouncyCastle's until Tink ships a
   password-based KDF (ADR-0039, re-read by 11.7's audit).
-- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7, 10.1–10.8 and 11.1–11.7 are merged to `dev`**
+- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7, 10.1–10.8, 11.1–11.7 and 12.1 are merged to `dev`**
   ([8.1 tracker](issues/8.1-e2ee-backup-argon2id-aes-256-gcm-tracker.md), ADR-0039;
   [8.2 tracker](issues/8.2-restore-on-fresh-device-tracker.md), ADR-0040;
   [8.3 tracker](issues/8.3-backup-restore-drill-tracker.md), ADR-0041;
@@ -584,6 +587,23 @@
   source set on every issue, device or no device.
 
 ## Completed
+
+- **Epic 12 — issue 12.1 (v0.12.1, 2026-10-02):** the shared engine test harness (§21.5, P-08), in
+  `:core:common`'s test fixtures — no new module, no new dependency, test-only so ARC-002 is untouched
+  ([ADR-0064](adr/0064-the-golden-harness-refuses-to-be-vacuous-and-never-rewrites-its-own-fixture.md)).
+  Twenty-four engines had each written their own golden-file reader, which is twenty-four chances to get
+  wrong the one thing a test cannot check about itself: that the fixture was read at all. The harness is
+  biased one way throughout — **a missing resource, an empty fixture, an unparseable line and an absent
+  `required` key are each an error, never an empty result** — and two accessor decisions are deliberate:
+  `longOrNull` on an absent key is `null` *never* `0`, and `boolean` refuses anything but `true`/`false`
+  because `toBoolean()` maps `ture` to false. `SeededCases` gives each case its own `Random` so
+  `count = index + 1` reproduces a failure, and names the seed; `assertDeterministic` runs the subject
+  **twice**. **`GoldenSnapshot.propose` never writes the fixture** — a flag that rewrote expectations in
+  place could be left on in CI and would make every golden test self-approve for ever. Found while
+  writing it: splitting on the `===` substring broke on the harness's own sample fixture, whose prose
+  mentions the marker. `:domain:engines:card` adopts it (41 lines of reader deleted, 15 records still
+  asserted); the other 23 are **deliberately not** migrated in bulk — their formats differ and a sweep
+  would risk 23 working gates for no gain.
 
 - **Epic 11 — issue 11.7 (v0.10.14, 2026-10-02):** the no-hand-rolled-crypto audit (SEC-003), and
   **Epic 11 closes with it**. The audit read every cryptographic call site in production code and

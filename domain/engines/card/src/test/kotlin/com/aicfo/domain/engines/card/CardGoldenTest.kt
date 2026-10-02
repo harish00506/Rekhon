@@ -1,5 +1,7 @@
 package com.aicfo.domain.engines.card
 
+import com.aicfo.core.common.GoldenFixture
+import com.aicfo.core.common.GoldenRecord
 import com.aicfo.core.common.Ok
 import com.aicfo.core.model.CreditCard
 import com.aicfo.core.model.Money
@@ -91,55 +93,43 @@ class CardGoldenTest {
             }
     }
 
-    // --- fixture parsing --------------------------------------------------------------------
-
-    /** One `# key=value` record. Result: a map. Input: the record's text. */
-    private class Record(private val values: Map<String, String>) {
-        fun required(key: String): String =
-            values[key] ?: error("golden record is missing '$key': ${values["label"] ?: values}")
-
-        fun optional(key: String): String? = values[key]
-
-        fun int(key: String): Int = required(key).toInt()
-
-        fun long(key: String): Long = required(key).toLong()
-
-        fun longOrNull(key: String): Long? = values[key]?.toLong()
-
-        /** `none` means the figure is absent, which is not the same as zero (P-03). */
-        fun bpsOrNull(key: String): Int? = required(key).takeIf { it != "none" }?.toInt()
-
-        fun alerts(): List<String> = required("expect_alerts").takeIf { it != "none" }?.split(",") ?: emptyList()
-    }
+    // --- the two accessors the shared harness does not have -------------------------------------
 
     /**
-     * Reads the fixture into records.
-     * Result: one [Record] per `===`-separated block. Input: none. Output: the records; fails
-     *         loudly if the resource is missing rather than passing against nothing.
+     * Result: a basis-point figure, or `null` when the fixture says `none`. Input: [key].
+     * Output: `Int?`.
+     * Why:    `none` means the figure is **absent**, which is not the same as zero (P-03) — a card
+     *         with no statement has no utilisation, and reporting 0% would be a claim. The shared
+     *         harness has no opinion on this module's sentinel, so the sentinel stays here.
+     * Changelog: 2026-10-02 — Issue 12.1: kept while the generic accessors moved to `GoldenRecord`.
      */
-    private fun records(): List<Record> {
-        val text =
-            checkNotNull(javaClass.getResourceAsStream(FIXTURE)) {
-                "golden fixture $FIXTURE is missing — this gate would otherwise pass vacuously"
-            }.bufferedReader().readText()
+    private fun GoldenRecord.bpsOrNull(key: String): Int? = required(key).takeIf { it != NONE }?.toInt()
 
-        return text.split("\n===")
-            .drop(1)
-            .map { block ->
-                Record(
-                    block.lineSequence()
-                        .map { it.trim() }
-                        .filter { it.startsWith("# ") && "=" in it }
-                        .associate { line ->
-                            val body = line.removePrefix("# ")
-                            body.substringBefore('=') to body.substringAfter('=')
-                        },
-                )
-            }
-    }
+    /**
+     * Result: the expected alert codes, empty when the fixture says `none`. Input: the receiver.
+     * Output: a list of codes.
+     * Why:    same reason as [bpsOrNull] — `none` is this fixture's way of writing "no alerts", and
+     *         `GoldenRecord.list` would read it as the single entry "none".
+     * Changelog: 2026-10-02 — Issue 12.1.
+     */
+    private fun GoldenRecord.alerts(): List<String> =
+        required("expect_alerts").takeIf { it != NONE }?.split(",")?.map { it.trim() } ?: emptyList()
+
+    /**
+     * Result: the fixture's records. Input: none. Output: the records.
+     * Why:    issue 12.1 replaced this module's own reader with the shared harness. `GoldenFixture`
+     *         carries the guards that matter — a missing resource, an empty fixture and an
+     *         unparseable line are each an error rather than an empty list — so they are inherited
+     *         here instead of re-derived, which is what twenty-four engines had each done.
+     * Changelog: 2026-10-02 — Issue 12.1: was a hand-written parser; now `GoldenFixture.load`.
+     */
+    private fun records(): List<GoldenRecord> = GoldenFixture.load(this, FIXTURE)
 
     private companion object {
         const val FIXTURE = "/golden/card.txt"
+
+        /** This fixture's sentinel for "absent", which is not zero (P-03). */
+        const val NONE = "none"
 
         /** Bump deliberately when a record is added, so a deletion cannot pass unnoticed. */
         const val EXPECTED_RECORDS = 15
