@@ -5,7 +5,8 @@
 #       lint-clean, and enforce the architecture invariants — the SRS pins GitHub
 #       Actions for exactly this. This is the automated gate that /pre-merge mirrors.
 # What: convention/ARC-002 tests · build · unit + coverage · ktlint/detekt/android-lint ·
-#       assemble. Runs offline-safe (P-04): no step depends on the app's backend.
+#       OSV scan · assemble · release log-strip check. No step depends on the app's backend
+#       (P-04); the OSV scan needs the public advisory API, which is tooling, not the app.
 # Result: A red pipeline blocks the merge; a green one means the branch stayed releasable.
 # Changelog:
 #   2026-07-17 — Created from SRS v1.7 §21.3, §21.5, §21.6, SEC-007.
@@ -15,6 +16,8 @@
 #   2026-07-25 — Issue 1.8: Paparazzi screenshot diff enabled (JVM, no emulator required).
 #   2026-09-19 — Issue 8.3: the `restore-drill` job — the backup restore drill on an emulator,
 #                required for every promotion into `stage` or `main` (§21.5, DRL-001).
+#   2026-10-02 — Issue 11.6: the OSV dependency scan and the release log-strip verification, both
+#                able to fail the build. The scan replaces a placeholder that suggested `|| true`.
 # =============================================================================
 name: CI
 
@@ -95,11 +98,23 @@ jobs:
         # Wired by issue 1.8. Renders on the JVM, so no emulator is needed — which is the only
         # reason this project has any visual coverage at all.
         run: ./gradlew verifyPaparazziDebug --stacktrace
-      # - name: Dependency vulnerability scan     # wired by issue 11.6 (OSV, SEC-007)
-      #   run: ./gradlew dependencyCheckAnalyze --stacktrace || true
+      - name: Dependency vulnerability scan (OSV, SEC-007)
+        # Issue 11.6. Deliberately **not** `|| true`, which the placeholder this replaced suggested:
+        # a scan that cannot fail is the vacuous gate this repository keeps finding. The script exits
+        # 1 on a HIGH/CRITICAL finding that is not allowlisted, 1 on an allowlist entry past its
+        # review date, and 2 when it cannot reach OSV — none of which is a pass.
+        run: ./gradlew scanDependencies --stacktrace
 
       - name: Assemble debug APK
         run: ./gradlew assembleDebug --stacktrace
+
+      - name: Release hardening — R8 + the log strip (§21.6, SEC-007)
+        # Issue 11.6. Assembles the minified release and then reads the shipped DEX: §21.6's "no PII
+        # or amounts in logs" is enforced in release by removing `Log.v/d/i/w`, `isLoggable` and
+        # `println` outright, and that is a claim about a binary. The rule file can be edited and
+        # `isMinifyEnabled` can be flipped back with every other check here staying green, so the
+        # APK itself is inspected. Proven non-vacuous: the same checker fails on the debug APK.
+        run: ./gradlew verifyReleaseLogStripping --stacktrace
 
       - name: Upload reports
         if: always()

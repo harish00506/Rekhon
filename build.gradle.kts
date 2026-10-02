@@ -63,7 +63,7 @@ tasks.register("unitTests") {
     group = "verification"
     description =
         "Runs every module's unit tests — Android variants, pure-Kotlin modules, :lint, " +
-            "and the Paparazzi baselines."
+            "the Paparazzi baselines, and the Python tooling's own tests."
     dependsOn(
         subprojects.mapNotNull { module ->
             module.tasks.matching {
@@ -71,6 +71,10 @@ tasks.register("unitTests") {
             }
         },
     )
+    // Issue 11.6: `scripts/osv_scan.py` decides whether a build is blocked, so its policy has tests
+    // — and they are wired in here rather than left to be remembered, because a test nothing runs is
+    // this project's recurring defect. No network: these are pure functions over fixture data.
+    dependsOn("scriptTests")
 }
 
 /**
@@ -117,4 +121,133 @@ tasks.register("restoreDrill") {
     group = "verification"
     description = "Backup → destroy → restore on a device; every table must match (release gate, DRL-001)."
     dependsOn(":data:repository:connectedDebugAndroidTest")
+}
+
+/**
+ * `verifyReleaseLogStripping` — proves the release APK has no chatty log surface (issue 11.6).
+ *
+ * Why:  §21.6 bans PII and amounts from logs, and `app/proguard-rules.pro` strips `Log.v/d/i/w`,
+ *       `Log.isLoggable` and `println` from the release build so there is nothing to get wrong. That
+ *       is a claim about a **binary**, and this project has twice shipped a gate that never ran:
+ *       the rule file can be edited, `isMinifyEnabled` can be flipped back, and every test here
+ *       would stay green while the APK shipped the thing §21.6 forbids. So the shipped DEX is read.
+ * What: assembles the release APK, then parses every `classes*.dex` and fails on any reference to a
+ *       stripped method. `Log.e` and `Log.wtf` are deliberately allowed — an error path that cannot
+ *       speak is a release nobody can diagnose, and `CfoPiiInLogs` already blocks PII in their
+ *       arguments at compile time.
+ * Result: green only when the strip actually held. Verified non-vacuous by running the same checker
+ *         against the **unminified debug** APK, where it finds all six methods and fails.
+ * Changelog: 2026-10-02 — Created for issue 11.6.
+ *
+ * Standard-library Python only, and a DEX parser rather than `dexdump` — which lives under a
+ * versioned `build-tools` path that differs per machine and would have to be pinned in CI. The
+ * parser was cross-checked against `dexdump -d` on this app's own release APK: both agree that
+ * `v`, `d`, `i`, `w` and `isLoggable` are gone and that `e` and `wtf` remain.
+ */
+tasks.register<Exec>("verifyReleaseLogStripping") {
+    group = "verification"
+    description = "Fails if the release APK still references a stripped log method (§21.6, SEC-007)."
+    dependsOn(":app:assembleRelease")
+    commandLine(
+        "python3",
+        rootProject.file("scripts/verify_release_log_stripping.py").absolutePath,
+        rootProject.file("app/build/outputs/apk/release/app-release-unsigned.apk").absolutePath,
+    )
+}
+
+/**
+ * `writeDependencyCoordinates` — the input the vulnerability scan reads (issue 11.6; SEC-007).
+ *
+ * Why:  OSV is queried by coordinate, so something has to produce the list. Parsing
+ *       `./gradlew :app:dependencies` output would be fragile and, worse, **wrong**: it prints the
+ *       requested versions alongside the resolved ones, and a scan that checked what was asked for
+ *       rather than what is on the classpath would miss a transitive upgrade. This resolves the
+ *       release runtime classpath and reports what actually ships.
+ * What: writes `group:artifact:version`, one per line, sorted and de-duplicated.
+ * Result: `build/reports/dependencies/release-runtime.txt`, the scan's only input.
+ * Changelog: 2026-10-02 — Created for issue 11.6.
+ *
+ * Every module's release runtime classpath, not just `:app`'s — a library pulled in only by, say,
+ * `:core:crypto` ships in the APK exactly the same way.
+ */
+tasks.register("writeDependencyCoordinates") {
+    group = "verification"
+    description = "Writes every resolved release-runtime dependency coordinate, for the OSV scan."
+    val output = layout.buildDirectory.file("reports/dependencies/release-runtime.txt")
+    outputs.file(output)
+    val coordinates = provider {
+        subprojects
+            .flatMap { module ->
+                module.configurations
+                    .filter { it.isCanBeResolved && // The configuration whose resolution is what actually ships in a release APK.
+                    it.name == "releaseRuntimeClasspath" }
+                    .flatMap { configuration ->
+                        runCatching {
+                            configuration.incoming.resolutionResult.allComponents.mapNotNull { component ->
+                                (component.id as? org.gradle.api.artifacts.component.ModuleComponentIdentifier)
+                                    ?.let { "${it.group}:${it.module}:${it.version}" }
+                            }
+                        }.getOrDefault(emptyList())
+                    }
+            }.distinct()
+            .sorted()
+    }
+    doLast {
+        val file = output.get().asFile
+        file.parentFile.mkdirs()
+        val lines = coordinates.get()
+        // An empty list means the resolution silently failed, which would make the scan pass by
+        // having nothing to scan — the vacuous-gate shape this project keeps finding.
+        require(lines.isNotEmpty()) { "resolved no dependency coordinates; the scan would check nothing" }
+        file.writeText(lines.joinToString("\n", postfix = "\n"))
+        logger.lifecycle("Wrote ${lines.size} dependency coordinates to $file")
+    }
+}
+
+/**
+ * `scanDependencies` — the OSV supply-chain scan (issue 11.6; SEC-007).
+ *
+ * Why:  SEC-007 asks for dependency scanning, and this app's threat model makes it matter more than
+ *       usual rather than less: it is offline-first and holds a complete picture of someone's
+ *       finances, so a compromised dependency is the *only* realistic route to that data leaving the
+ *       device. There is no server to breach, which concentrates the risk here.
+ * What: resolves every release-runtime coordinate, queries OSV, and fails on anything at or above
+ *       HIGH that is not allowlisted with a reason and a review date.
+ * Result: red on a new high-severity advisory in anything that ships.
+ * Changelog: 2026-10-02 — Created for issue 11.6.
+ *
+ * **Needs the network, and exits 2 rather than 0 when it cannot reach OSV.** A scanner that passes
+ * when it cannot scan is the vacuous gate this project keeps finding — it would be green on every
+ * offline machine forever. So this is **not** part of `unitTests`: it runs in CI, and locally it is
+ * expected to fail with "could not reach OSV". P-04 is a promise about the app, not about tooling.
+ */
+tasks.register<Exec>("scanDependencies") {
+    group = "verification"
+    description = "Scans every shipped dependency against OSV; new HIGH/CRITICAL findings fail (SEC-007)."
+    dependsOn("writeDependencyCoordinates")
+    commandLine(
+        "python3",
+        rootProject.file("scripts/osv_scan.py").absolutePath,
+        layout.buildDirectory.file("reports/dependencies/release-runtime.txt").get().asFile.absolutePath,
+        rootProject.file("config/osv/allowlist.json").absolutePath,
+    )
+}
+
+/**
+ * `scriptTests` — the unit tests for the repository's Python tooling (issue 11.6).
+ *
+ * Why:  `scripts/osv_scan.py` decides whether a build is blocked, and that decision has branches
+ *       worth testing: the severity floor, the allowlist, and the expiry that stops an acceptance
+ *       becoming permanent. Those tests are useless if nothing runs them, and this project has twice
+ *       shipped a gate that never ran — so they are wired into `unitTests` rather than left to be
+ *       remembered.
+ * What: `python3 -m unittest discover` over `scripts/`, standard library only.
+ * Result: a policy change that breaks a documented decision fails the normal local gate.
+ * Changelog: 2026-10-02 — Created for issue 11.6.
+ */
+tasks.register<Exec>("scriptTests") {
+    group = "verification"
+    description = "Unit tests for scripts/ (the OSV scan policy). Standard-library unittest."
+    workingDir = rootProject.projectDir
+    commandLine("python3", "-m", "unittest", "discover", "-s", "scripts", "-p", "test_*.py", "-v")
 }
