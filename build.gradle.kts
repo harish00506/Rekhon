@@ -280,3 +280,30 @@ tasks.register("aiEval") {
         ":domain:engines:chat:test",
     )
 }
+
+/**
+ * `offlineSmoke` — the end-to-end offline gate (issue 12.4; §21.5, P-04).
+ *
+ * Why:  P-04 says every core feature works in airplane mode, and until issue 12.4 **nothing in the
+ *       repository had ever turned airplane mode on.** The claim lived in three source comments and
+ *       in every tracker's verification log, where it was checked by a human toggling a setting and
+ *       remembering to. One name makes it a step CI can run and a developer can reach without the
+ *       rest of the instrumented suite.
+ * What: `:app:connectedDebugAndroidTest` (the offline E2E and the smoke) plus
+ *       `:data:repository:connectedDebugAndroidTest` (the archive round trip, the backup drill and
+ *       the erase). Needs a device or emulator.
+ * Result: a release path where "works offline" is verified rather than asserted.
+ * Changelog: 2026-10-02 — Created for issue 12.4.
+ *
+ * Overlaps `restoreDrill` on `:data:repository` deliberately: that task names the backup drill as a
+ * release gate in its own right (DRL-001, issue 8.3), and one task shadowing another's purpose is
+ * worse than running a module's instrumented tests twice in a pipeline that already has an emulator up.
+ */
+tasks.register("offlineSmoke") {
+    group = "verification"
+    description = "End-to-end on a device, including an airplane-mode leg and the archive round trip (P-04)."
+    dependsOn(
+        ":app:connectedDebugAndroidTest",
+        ":data:repository:connectedDebugAndroidTest",
+    )
+}

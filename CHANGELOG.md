@@ -18,6 +18,30 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > renumbering them would make this file disagree with the history it documents. Epic 12 starts the
 > series it should.
 
+### [0.12.4] — Issue 12.4: the offline promise is now actually tested  (2026-10-02)
+
+- **Implemented:** the end-to-end offline check this app's central promise deserves (**ADR-0067**).
+  - **The app is now started on a phone with the radio genuinely switched off**, and driven through
+    the core flow: launch, load a household, read the figures, open the transaction list. Until now
+    "works offline" was written in the code's comments and checked by a person remembering to flip a
+    setting — **nothing in the build had ever turned airplane mode on.**
+  - The setting is **always put back**, even when the test fails, so a bad run cannot leave the next
+    one offline for no reason.
+  - **Your exported file is now proven to restore on a real encrypted database.** Save, delete
+    everything including the key, start fresh, import — every row returns with amounts exact to the
+    last paisa. And the failure that matters more: a file the app cannot safely read is **refused
+    without touching what you already have**, rather than wiping first and failing after.
+  - These now run automatically before any release, on a real emulator.
+- **A check was built, measured, and thrown away.** To make the offline test stronger it also tried
+  to confirm the network was truly unreachable, not merely switched off in settings. Measuring showed
+  that check could never fail on the test machine — which has no internet route either way — so it
+  was removed. A check that always passes is worse than none, because it looks stronger than it is.
+- **Also found:** walking the app's screens alone passes whether the radio is on or off, because that
+  path never reaches for the network. What makes this a real offline test is switching the radio off
+  and asserting it stayed off — confirmed by breaking the switch on purpose and watching the test
+  fail.
+- **Requirements:** §21.5, P-04 · ADR-0067.
+
 ### [0.12.3] — Issue 12.3: seeing the screens that matter most  (2026-10-02)
 
 - **Implemented:** screenshot coverage for the three flows that matter most — adding a transaction,
