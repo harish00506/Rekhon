@@ -17,6 +17,10 @@ dependencies {
     // serialisation dependency (ARC-002), so the fixture is parsed by the test itself — see
     // SmsEvalTest — and this is only here for the assertions.
     testImplementation(libs.truth)
+
+    // Issue 12.2: EvalDataset + EvalReport — the shared dataset-version reader and accuracy
+    // reporter. Test-only, so ARC-002 is untouched.
+    testImplementation(testFixtures(project(":core:common")))
 }
 
 // The rulebook is an input to this module's tests, because `RulebookDriftTest` reads it (ADR-0005).

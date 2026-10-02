@@ -20,6 +20,13 @@
 # it scores perfectly measures the curation, not the engine.
 # =============================================================================
 
+# dataset-version: 1.0
+#
+# Issue 12.2 (§21.5). Bump this whenever a case is added, removed or relabelled — every
+# accuracy figure in a CI log is reported against it, so a number from today can be compared
+# with one from last month. Relabelling a case to make a gate pass is the edit this exists to
+# make visible; see docs/testing/ai-evaluation-datasets.md.
+
 ===
 # merchant=SWIGGY*ORDER 7781
 # expect=Dining

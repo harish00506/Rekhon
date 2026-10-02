@@ -18,6 +18,33 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > renumbering them would make this file disagree with the history it documents. Epic 12 starts the
 > series it should.
 
+### [0.12.2] — Issue 12.2: the accuracy gates now say what they measured  (2026-10-02)
+
+- **Implemented:** versioning and reporting for the five frozen AI-evaluation sets (**ADR-0065**, guide
+  in `docs/testing/ai-evaluation-datasets.md`).
+  - **Every test set now carries a revision number**, and every accuracy figure is reported against it.
+    Without that, "94% correct" cannot be compared with last month's number, because the set itself
+    might have changed in between.
+  - **Every run prints what it measured, against what it required.** These checks have always failed
+    the build when accuracy dropped below the required level; what they never did was say how close
+    they were. A score one case above the line looks identical to a comfortable one until it breaks.
+  - **It found something immediately:** the spending-forecast check was passing with **0.27% of
+    margin**. Nobody knew, because nothing printed the number.
+  - **One named command** (`./gradlew aiEval`) runs all five, so a drop reads as "the receipt reader
+    regressed" rather than as one failure among five thousand.
+  - **Extending a set is now written down**, including the three things not to do: relabel an awkward
+    case to make a check pass, lower a required level without recording why, or regenerate the forecast
+    data until the numbers suit.
+- **What the survey corrected:** I first reported that the sets could be quietly shrunk to a few easy
+  cases to lift a score. That was wrong — all five already guard their size, which gutting one and
+  watching it fail confirmed. Three of the four things this issue asked for were already true; the real
+  gaps were the revision numbers, the reporting and the named gate.
+- **Also removed:** a helper in each checker that reported an **empty** set as 100% correct. It was
+  unreachable behind the size guard, and is now gone rather than left as a trap.
+- **Tests:** 14 for the new reporting and version reading, with 10 mutations, all killed. No new
+  dependency. No accuracy threshold was changed.
+- **Requirements:** §21.5, §8, §18.1 · ADR-0065.
+
 ### [0.12.1] — Issue 12.1: a test harness that refuses to pass for nothing  (2026-10-02)
 
 - **Implemented:** the shared engine test harness §21.5 asks for (**ADR-0064**, guide in

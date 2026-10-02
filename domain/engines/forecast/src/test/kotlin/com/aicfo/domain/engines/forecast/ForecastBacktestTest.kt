@@ -2,6 +2,7 @@ package com.aicfo.domain.engines.forecast
 
 import com.aicfo.core.common.AppError
 import com.aicfo.core.common.Err
+import com.aicfo.core.common.EvalDataset
 import com.aicfo.core.common.Ok
 import com.aicfo.core.common.Result
 import com.aicfo.core.model.Money
@@ -33,6 +34,41 @@ import java.time.LocalDate
  * MAPE — is recorded as deferred in ADR-0043.
  */
 class ForecastBacktestTest {
+    /**
+     * The revision of the frozen ledger set this run measured (issue 12.2; §21.5).
+     * Why:    so a backtest figure can be compared with one recorded last month. A set with no
+     *         declared revision fails here rather than reporting an unattributable number.
+     */
+    private val datasetVersion: String = EvalDataset.versionFrom(this, "/backtest/ledgers.txt")
+
+    /**
+     * Reports a basis-point metric against its bound, and asserts it (issue 12.2).
+     * Why:    these gates asserted their bounds and reported nothing, so a figure sitting just inside
+     *         a bound was invisible until it crossed. **Deliberately not `EvalReport`:** that models a
+     *         share of correct cases out of a total, and these two metrics are a median error and a
+     *         mean coverage in basis points — forcing them through a correct/total shape would make
+     *         the printed number mean something it does not. Same intent, right units.
+     * Result: prints one line; fails outside the bound. Input: [metric]; [measuredBps]; [boundBps];
+     *         [atMost] — true when the bound is a ceiling; [detail] — appended on failure.
+     * Output: none.
+     * Changelog: 2026-10-02 — Created for issue 12.2.
+     */
+    private fun reportBps(
+        metric: String,
+        measuredBps: Long,
+        boundBps: Long,
+        atMost: Boolean,
+        detail: String = "",
+    ) {
+        val within = if (atMost) measuredBps <= boundBps else measuredBps >= boundBps
+        val comparison = if (atMost) "max" else "min"
+        val line =
+            "forecast-ledgers v$datasetVersion — $metric $measuredBps bps " +
+                "($comparison $boundBps) — ${if (within) "ok" else "OUTSIDE the §21.5 bound"}"
+        println(line)
+        assertTrue("$line $detail", within)
+    }
+
     private val engine = ForecastEngineFactory.create()
     private val ledgers: List<Ledger> by lazy { load() }
 
@@ -50,9 +86,12 @@ class ForecastBacktestTest {
         val errors = ledgers.map { ledger -> spendErrorBps(ledger) }.sorted()
         val median = (errors[errors.size / 2 - 1] + errors[errors.size / 2]) / 2
 
-        assertTrue(
-            "median 90-day spend error $median bps exceeds $MAX_MEDIAN_SPEND_ERROR_BPS; per ledger: $errors",
-            median <= MAX_MEDIAN_SPEND_ERROR_BPS,
+        reportBps(
+            metric = "median 90-day spend error",
+            measuredBps = median,
+            boundBps = MAX_MEDIAN_SPEND_ERROR_BPS,
+            atMost = true,
+            detail = "per ledger: $errors",
         )
     }
 
@@ -61,9 +100,12 @@ class ForecastBacktestTest {
         val coverage = ledgers.map { ledger -> coverageBps(ledger) }
         val mean = coverage.sum() / coverage.size
 
-        assertTrue(
-            "mean band coverage $mean bps is below $MIN_MEAN_COVERAGE_BPS; per ledger: $coverage",
-            mean >= MIN_MEAN_COVERAGE_BPS,
+        reportBps(
+            metric = "mean P10-P90 band coverage",
+            measuredBps = mean,
+            boundBps = MIN_MEAN_COVERAGE_BPS,
+            atMost = false,
+            detail = "per ledger: $coverage",
         )
     }
 

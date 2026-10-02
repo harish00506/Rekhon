@@ -251,3 +251,32 @@ tasks.register<Exec>("scriptTests") {
     workingDir = rootProject.projectDir
     commandLine("python3", "-m", "unittest", "discover", "-s", "scripts", "-p", "test_*.py", "-v")
 }
+
+/**
+ * `aiEval` — every frozen AI-evaluation gate, named (issue 12.2; §21.5).
+ *
+ * Why:  §21.5's accuracy floors are the thresholds that "block merges", and until this task the only
+ *       way CI ran them was inside `unitTests` — four thousand anonymous tests, so a regression read
+ *       as "a test failed" rather than "categorisation accuracy dropped below 92%". Issue 10.6 made
+ *       exactly this argument for `guardrailEval`; this extends it to the other four sets.
+ * What: the five modules holding a frozen set — categorisation, receipts, SMS, forecast ledgers and
+ *       the chat guardrail.
+ * Result: one named CI step whose failure says which dataset regressed, and one command a developer
+ *       can run without the rest of the suite.
+ * Changelog: 2026-10-02 — Created for issue 12.2.
+ *
+ * **`unitTests` is still what blocks a merge** — these tasks are inside it. This exists so the
+ * pipeline names what it is checking, and so the accuracy lines the runners print are findable in a
+ * log rather than buried.
+ */
+tasks.register("aiEval") {
+    group = "verification"
+    description = "Runs every frozen AI-evaluation set and reports accuracy against its §21.5 floor."
+    dependsOn(
+        ":domain:engines:classification:test",
+        ":domain:engines:receipt:test",
+        ":domain:engines:sms:test",
+        ":domain:engines:forecast:test",
+        ":domain:engines:chat:test",
+    )
+}

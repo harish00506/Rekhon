@@ -1,5 +1,7 @@
 package com.aicfo.domain.engines.classification
 
+import com.aicfo.core.common.EvalDataset
+import com.aicfo.core.common.EvalReport
 import com.aicfo.core.common.Ok
 import com.aicfo.core.model.Category
 import com.aicfo.core.model.CategorySeed
@@ -35,6 +37,38 @@ import org.junit.Test
  * and the lesson `docs/report/2026-07-25-governance-standards-audit.md` recorded.
  */
 class ClassificationEvalTest {
+    /**
+     * The revision of the frozen set this run measured (issue 12.2; §21.5).
+     * Why:    every figure reported below names it, so a number from today can be compared with one
+     *         from last month. A set with no declared revision fails here rather than reporting an
+     *         unattributable score — see `EvalDataset`.
+     */
+    private val datasetVersion: String = EvalDataset.versionFrom(this, FIXTURE_PATH)
+
+    /**
+     * Reports a measured metric against its §21.5 floor, and asserts it (issue 12.2).
+     * Why:    until issue 12.2 these gates asserted their floors and reported nothing, so a score
+     *         sitting one case above the floor was invisible until it broke. The shared [EvalReport]
+     *         prints the number, the counts, the floor and the **dataset revision** that produced
+     *         them, so the trend is in the CI log and a failure message already carries it.
+     * Result: prints one line; fails below the floor. Input: [metric] — what was measured;
+     *         [correct]; [total]; [floor] — the §21.5 percentage; [detail] — appended on failure.
+     * Output: none.
+     * Changelog: 2026-10-02 — Created for issue 12.2.
+     */
+    private fun report(
+        metric: String,
+        correct: Int,
+        total: Int,
+        floor: Int,
+        detail: String = "",
+    ) {
+        val report = EvalReport(dataset = DATASET_NAME, version = datasetVersion, floorPercent = floor)
+        val line = report.line(metric, correct, total)
+        println(line)
+        assertTrue("$line $detail", report.meetsFloor(correct, total))
+    }
+
     private val engine = ClassificationEngineFactory.create()
     private val fixtures: List<EvalFixture> by lazy { loadFixtures() }
 
@@ -94,12 +128,13 @@ class ClassificationEvalTest {
     @Test
     fun `categorisation accuracy is at least 92 percent`() {
         val misses = labelled().filter { classify(it) != it.expected }
-        val accuracy = percent(labelled().size - misses.size, labelled().size)
 
-        assertTrue(
-            "categorisation accuracy $accuracy% is below the $MIN_ACCURACY% floor (SRS §8); " +
-                "missed: ${misses.map { it.merchant }}",
-            accuracy >= MIN_ACCURACY,
+        report(
+            metric = "accuracy",
+            correct = labelled().size - misses.size,
+            total = labelled().size,
+            floor = MIN_ACCURACY,
+            detail = "(SRS §8) missed: ${misses.map { it.merchant }}",
         )
     }
 
@@ -158,12 +193,6 @@ class ClassificationEvalTest {
         return liveCategories.first { it.id == suggestion.categoryId }.name
     }
 
-    /** Result: [hits] as a whole percent of [total], and 100 for an empty set. Output: [Int]. */
-    private fun percent(
-        hits: Int,
-        total: Int,
-    ): Int = if (total == 0) PCT_TOTAL else hits * PCT_TOTAL / total
-
     /**
      * Reads the frozen set off the classpath.
      * Why:    a resource rather than a path on disk, so the fixtures travel with the test jar and
@@ -182,6 +211,9 @@ class ClassificationEvalTest {
     }
 
     private companion object {
+        /** How this set is named in reports (issue 12.2). */
+        const val DATASET_NAME = "categorisation"
+
         const val FIXTURE_PATH = "/eval/categorisation.txt"
         const val SEPARATOR = "==="
 
@@ -193,9 +225,6 @@ class ClassificationEvalTest {
 
         /** The set is documented as seventy-odd merchants; fewer means one was lost in an edit. */
         const val MIN_FIXTURES = 70
-
-        /** The whole, as the percent a score is taken out of. */
-        const val PCT_TOTAL = 100
 
         /**
          * The seeded taxonomy as a profile actually holds it.

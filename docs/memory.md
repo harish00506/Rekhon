@@ -39,7 +39,7 @@
 
 ## Current state
 
-- **Version:** `0.12.1` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v29** (10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
+- **Version:** `0.12.2` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v29** (10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
   forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
   feed), 9.6 (the notification policy) and 9.7 (the numeric guardrail) shipped — **Epic 9 is
@@ -52,7 +52,8 @@
   11.2 (the screen-capture guard), 11.3 (the consents dashboard), 11.4 (the crypto-shredding erase)
   11.5 (DPDP alignment), 11.6 (R8 + OSV scanning) and 11.7 (the no-hand-rolled-crypto audit)
   shipped — **Epic 11 is complete**. **Epic 12 is open**: 12.1 (the golden-file/property harness)
-  shipped; **12.2 (frozen AI-eval datasets) is next**. Note `0.11.x` is deliberately unused — Epic 11
+  and 12.2 (versioned AI-eval datasets that report their scores) shipped; **12.3 (Paparazzi
+  screenshot tests) is next**. Note `0.11.x` is deliberately unused — Epic 11
   shipped as `0.10.8`–`0.10.14` by drift, recorded in `CHANGELOG.md` rather than renumbered.
   Deliberately
   unfinished: the key can be rotated but nothing offers it yet, `FLAG_SECURE` does not reach the
@@ -63,7 +64,7 @@
   ADR-0057/0058/0059/0060/0061/0062/0063. Two more: a release stack trace now needs `mapping.txt`
   and nothing archives it yet (11.6), and Argon2id stays BouncyCastle's until Tink ships a
   password-based KDF (ADR-0039, re-read by 11.7's audit).
-- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7, 10.1–10.8, 11.1–11.7 and 12.1 are merged to `dev`**
+- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7, 10.1–10.8, 11.1–11.7 and 12.1–12.2 are merged to `dev`**
   ([8.1 tracker](issues/8.1-e2ee-backup-argon2id-aes-256-gcm-tracker.md), ADR-0039;
   [8.2 tracker](issues/8.2-restore-on-fresh-device-tracker.md), ADR-0040;
   [8.3 tracker](issues/8.3-backup-restore-drill-tracker.md), ADR-0041;
@@ -587,6 +588,22 @@
   source set on every issue, device or no device.
 
 ## Completed
+
+- **Epic 12 — issue 12.2 (v0.12.2, 2026-10-02):** the frozen AI-eval datasets are now **versioned** and
+  every run **reports what it measured** (§21.5, §8, §18.1;
+  [ADR-0065](adr/0065-eval-datasets-are-versioned-and-every-run-reports-what-it-measured.md)). Each set
+  declares `# dataset-version:` in its header — a set without one fails, because an accuracy figure
+  means nothing if the set behind it may have changed, and because relabelling an awkward case is the
+  cheapest way to fix a failing gate and the marker is what makes that diff and the number tell the same
+  story. `EvalReport` prints score, counts, floor and revision: the share is **truncated never rounded**
+  (91.9% must not print as 92% beside a 92% floor), the floor is **inclusive** (§21.5 says "at least"),
+  and `0/0` is refused. The forecast backtest deliberately keeps its own bps reporter — a median error is
+  not a share of correct cases. `aiEval` names the gate in CI, additional to `unitTests`.
+  **What the survey corrected:** I first reported that a set could be gutted to lift a score; wrong —
+  all four runners already guard dataset size, confirmed by gutting one and watching it fail. The real
+  gaps were versioning, reporting and naming. **What reporting found immediately:** the forecast's mean
+  band coverage at 7027 bps against a 7000 bps bound — 0.27% of margin. Also deleted a per-runner
+  helper that reported an empty set as 100%. No threshold was changed.
 
 - **Epic 12 — issue 12.1 (v0.12.1, 2026-10-02):** the shared engine test harness (§21.5, P-08), in
   `:core:common`'s test fixtures — no new module, no new dependency, test-only so ARC-002 is untouched

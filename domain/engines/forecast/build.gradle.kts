@@ -13,4 +13,9 @@ dependencies {
     // §9.2's `seasonalAdjustment(d)` term: the forecast applies AI-SEAS's monthly factor to its
     // everyday spend and carries its result in the input (issue 9.3, ADR-0044).
     api(project(":domain:engines:seasonality"))
+
+    // Issue 12.2: EvalDataset — the shared reader for a frozen set's declared revision, so a
+    // backtest figure names the dataset version that produced it. Test-only, so ARC-002 is
+    // untouched: this engine still depends on nothing but :core:* and :domain:engines:seasonality.
+    testImplementation(testFixtures(project(":core:common")))
 }
