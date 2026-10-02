@@ -642,6 +642,34 @@ DashboardScreen → "Good day to invest?" → OpportunityScreen
     how old the price is · and that the screen never buys anything
 ```
 
+### 2.30 · The offline gate, on a real device (issue 12.4)
+
+**Until this issue nothing in the repository had ever turned airplane mode on.** P-04 lived in three
+source comments and in trackers where a human toggled a setting by hand.
+
+```
+./gradlew offlineSmoke                   on the release path only; needs an emulator
+├─ :app:connectedDebugAndroidTest        ← ran in NO CI job before 12.4
+│  └─ OfflineEndToEndTest
+│     ├─ @Before  executeShellCommand → airplane ON   (shell holds WRITE_SECURE_SETTINGS; the app
+│     │                                                never gets it)
+│     ├─ assert isAirplaneModeOn()        the test checks its own precondition
+│     ├─ launch → demo seed → dashboard renders ₹ figures → transactions
+│     ├─ assert isAirplaneModeOn()        still off at the end
+│     └─ @After   airplane RESTORED       even on failure, or every later suite fails
+└─ :data:repository:connectedDebugAndroidTest
+   └─ ArchiveRoundTripDeviceTest
+      ├─ seed → export → delete the DB **and its key** → reopen clean → import
+      │  ⇣ every row back, amounts exact to the paise (₹1,23,456.79, deliberately not round)
+      └─ an archive from an incompatible schema ⇒ REFUSED, and existing data untouched
+```
+
+**What the gate rests on.** A mutation showed the UI flow passes with the radio *on* — the demo path
+never touches the network — so the strength is the toggle plus the two assertions, proven by making
+the toggle a no-op and watching the test fail. A socket-reachability check was built to strengthen it
+and then **deleted**: on the CI emulator it can never fail, because that image has no route to the
+internet even with the radio on (ADR-0067).
+
 ### 2.29 · What the UI actually looks like (issue 12.3)
 
 **There is no emulator in this project**, so this path is the only one that produces a picture of the

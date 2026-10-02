@@ -39,7 +39,7 @@
 
 ## Current state
 
-- **Version:** `0.12.3` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v29** (10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
+- **Version:** `0.12.4` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v29** (10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
   forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
   feed), 9.6 (the notification policy) and 9.7 (the numeric guardrail) shipped — **Epic 9 is
@@ -53,7 +53,8 @@
   11.5 (DPDP alignment), 11.6 (R8 + OSV scanning) and 11.7 (the no-hand-rolled-crypto audit)
   shipped — **Epic 11 is complete**. **Epic 12 is open**: 12.1 (the golden-file/property harness)
   12.2 (versioned AI-eval datasets that report their scores) and 12.3 (screenshot coverage for the
-  critical screens) shipped; **12.4 (the instrumented E2E smoke) is next**. Note `0.11.x` is deliberately unused — Epic 11
+  critical screens) and 12.4 (the offline E2E gate) shipped; **12.5 (CI gates + the release train)
+  is next**. Note `0.11.x` is deliberately unused — Epic 11
   shipped as `0.10.8`–`0.10.14` by drift, recorded in `CHANGELOG.md` rather than renumbered.
   Deliberately
   unfinished: the key can be rotated but nothing offers it yet, `FLAG_SECURE` does not reach the
@@ -64,7 +65,7 @@
   ADR-0057/0058/0059/0060/0061/0062/0063. Two more: a release stack trace now needs `mapping.txt`
   and nothing archives it yet (11.6), and Argon2id stays BouncyCastle's until Tink ships a
   password-based KDF (ADR-0039, re-read by 11.7's audit).
-- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7, 10.1–10.8, 11.1–11.7 and 12.1–12.3 are merged to `dev`**
+- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7, 10.1–10.8, 11.1–11.7 and 12.1–12.4 are merged to `dev`**
   ([8.1 tracker](issues/8.1-e2ee-backup-argon2id-aes-256-gcm-tracker.md), ADR-0039;
   [8.2 tracker](issues/8.2-restore-on-fresh-device-tracker.md), ADR-0040;
   [8.3 tracker](issues/8.3-backup-restore-drill-tracker.md), ADR-0041;
@@ -588,6 +589,22 @@
   source set on every issue, device or no device.
 
 ## Completed
+
+- **Epic 12 — issue 12.4 (v0.12.4, 2026-10-02):** the offline end-to-end gate (§21.5, P-04;
+  [ADR-0067](adr/0067-airplane-mode-is-turned-on-by-a-test-and-a-check-that-cannot-fail-was-removed.md)).
+  **Until this issue nothing in the repository had ever turned airplane mode on** — P-04 lived in three
+  source comments and in trackers where a human toggled a setting and remembered to. `OfflineEndToEndTest`
+  now toggles it through `executeShellCommand` (shell holds `WRITE_SECURE_SETTINGS`; the app is never
+  granted it), drives launch → demo → dashboard figures → transactions, and **restores the radio in
+  `@After` even on failure**. `ArchiveRoundTripDeviceTest` round-trips §5.10's archive on **real
+  SQLCipher** — seed, export, delete the database *and its key*, reopen, import, every row back to the
+  paise — plus the failure that matters more: an incompatible archive is **refused and changes nothing**.
+  `offlineSmoke` puts `:app:connectedDebugAndroidTest` in CI for the first time.
+  **What measuring changed:** a mutation showed the UI flow passes with the radio *on* (the demo path
+  never touches the network), so the gate's strength is the toggle plus its assertions — proven by
+  making the toggle a no-op and watching it fail. A socket-reachability check was then built to
+  strengthen it and **deleted**, because on the CI emulator it can never fail: that image has no route
+  to the internet even with the radio on. A check that always passes is worse than none.
 
 - **Epic 12 — issue 12.3 (v0.12.3, 2026-10-02):** screenshot coverage reaches the three critical flows
   `CLAUDE.md` §4 names — add-transaction, onboarding, the purchase advisor — in light/dark/200%, taking

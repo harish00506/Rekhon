@@ -20,6 +20,8 @@
 #                able to fail the build. The scan replaces a placeholder that suggested `|| true`.
 #   2026-10-02 — Issue 12.2: the `aiEval` step, so an accuracy regression reads as the dataset that
 #                regressed rather than as one of five thousand anonymous tests.
+#   2026-10-02 — Issue 12.4: `offlineSmoke` joins the emulator job. `:app:connectedDebugAndroidTest`
+#                had never run in CI, and no test had ever turned airplane mode on (P-04).
 # =============================================================================
 name: CI
 
@@ -150,7 +152,7 @@ jobs:
   #       check. That is repository configuration, not something this file can set — see
   #       `docs/issues/00-issue-workflow.md`, "Release gate".
   restore-drill:
-    name: Backup restore drill (release gate)
+    name: Backup restore drill + offline E2E (release gate)
     if: >-
       (github.event_name == 'pull_request' && (github.base_ref == 'stage' || github.base_ref == 'main')) ||
       (github.event_name == 'push' && (github.ref == 'refs/heads/stage' || github.ref == 'refs/heads/main'))
@@ -175,14 +177,19 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Restore drill on an emulator
+      - name: Restore drill + offline end-to-end smoke on an emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
           arch: x86_64
           target: google_apis
           disable-animations: true
-          script: ./gradlew restoreDrill --stacktrace
+          # Issue 12.4 adds `offlineSmoke` beside the drill. It runs `:app:connectedDebugAndroidTest`,
+          # which until now ran in **no** CI job at all — the Definition of Done named it and nothing
+          # executed it. Its offline leg turns airplane mode on through the shell, drives the core
+          # flow, and restores the radio in @After even on failure. `restoreDrill` stays named
+          # separately because DRL-001 makes it a release gate in its own right (issue 8.3).
+          script: ./gradlew restoreDrill offlineSmoke --stacktrace
 
       - name: Upload drill results
         if: always()
