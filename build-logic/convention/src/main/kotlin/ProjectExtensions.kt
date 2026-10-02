@@ -128,6 +128,8 @@ internal fun Project.configureCoverage() {
  *            2026-10-01 — Issue 11.5: widened to the whole of `ai/` plus `docs/compliance/`, after
  *            finding that the nine other data files and every Android-library module were still
  *            exposed to the very skip 7.2 fixed.
+ *            2026-10-02 — Issue 11.7: added `docs/security/`, so the crypto audit's drift test is
+ *            scheduled rather than held up to date on an edit to the document it checks.
  */
 internal fun Project.configureCheckedDataAsTestInput() {
     val directories = CHECKED_DATA_PATHS.map { rootProject.layout.projectDirectory.dir(it) }
@@ -149,7 +151,7 @@ internal fun Project.configureCheckedDataAsTestInput() {
  * the two together. `docs/compliance/` holds the DPDP matrix, whose claims
  * `DpdpComplianceDriftTest` checks against the code (issue 11.5).
  */
-private val CHECKED_DATA_PATHS = listOf("ai", "docs/compliance")
+private val CHECKED_DATA_PATHS = listOf("ai", "docs/compliance", "docs/security")
 
 /** Engine/domain floor from CLAUDE.md §4. */
 private const val MIN_MODULE_COVERAGE = 85
