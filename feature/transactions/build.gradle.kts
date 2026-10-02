@@ -3,6 +3,10 @@
 // cross-feature navigation goes through :app's typed nav graph.
 plugins {
     alias(libs.plugins.cfo.android.feature)
+    // Issue 12.3: §21.5 asks for screenshot coverage of the critical screens in light/dark/200%.
+    // This is one of CLAUDE.md §4's three critical flows. Paparazzi is applied per module, not by
+    // the feature convention plugin — only the modules that need it pay for it.
+    alias(libs.plugins.paparazzi)
 }
 
 android {
