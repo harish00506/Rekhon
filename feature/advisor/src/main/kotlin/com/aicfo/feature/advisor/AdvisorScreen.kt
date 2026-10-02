@@ -2,7 +2,7 @@ package com.aicfo.feature.advisor
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -137,7 +137,14 @@ private fun MethodChips(
     onEvent: (AdvisorEvent) -> Unit,
 ) {
     Text(stringResource(R.string.advisor_method_label), style = MaterialTheme.typography.labelLarge)
-    Row(horizontalArrangement = Arrangement.spacedBy(CfoDimens.spaceSm)) {
+    // FlowRow, not Row: at a 200% font setting three chips are wider than a phone, and a fixed Row
+    // squeezes the last one until its label breaks mid-word — issue 12.3's first screenshot caught
+    // "Urgent" rendering as "Ur/ge/nt". Wrapping to a second line is what the user needs; shrinking
+    // a chip until its word falls apart is not. Same reasoning as `:feature:budgets`.
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(CfoDimens.spaceSm),
+        verticalArrangement = Arrangement.spacedBy(CfoDimens.spaceXs),
+    ) {
         PaymentMethod.entries.forEach { method ->
             FilterChip(
                 selected = uiState.method == method,
@@ -155,7 +162,12 @@ private fun UrgencyChips(
     onEvent: (AdvisorEvent) -> Unit,
 ) {
     Text(stringResource(R.string.advisor_urgency_label), style = MaterialTheme.typography.labelLarge)
-    Row(horizontalArrangement = Arrangement.spacedBy(CfoDimens.spaceSm)) {
+    // FlowRow for the reason `MethodChips` records: this is the row that broke "Urgent" into three
+    // lines at 200% font.
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(CfoDimens.spaceSm),
+        verticalArrangement = Arrangement.spacedBy(CfoDimens.spaceXs),
+    ) {
         Urgency.entries.forEach { urgency ->
             FilterChip(
                 selected = uiState.urgency == urgency,

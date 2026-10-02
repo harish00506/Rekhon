@@ -39,7 +39,7 @@
 
 ## Current state
 
-- **Version:** `0.12.2` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v29** (10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
+- **Version:** `0.12.3` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v29** (10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
   forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
   feed), 9.6 (the notification policy) and 9.7 (the numeric guardrail) shipped — **Epic 9 is
@@ -52,8 +52,8 @@
   11.2 (the screen-capture guard), 11.3 (the consents dashboard), 11.4 (the crypto-shredding erase)
   11.5 (DPDP alignment), 11.6 (R8 + OSV scanning) and 11.7 (the no-hand-rolled-crypto audit)
   shipped — **Epic 11 is complete**. **Epic 12 is open**: 12.1 (the golden-file/property harness)
-  and 12.2 (versioned AI-eval datasets that report their scores) shipped; **12.3 (Paparazzi
-  screenshot tests) is next**. Note `0.11.x` is deliberately unused — Epic 11
+  12.2 (versioned AI-eval datasets that report their scores) and 12.3 (screenshot coverage for the
+  critical screens) shipped; **12.4 (the instrumented E2E smoke) is next**. Note `0.11.x` is deliberately unused — Epic 11
   shipped as `0.10.8`–`0.10.14` by drift, recorded in `CHANGELOG.md` rather than renumbered.
   Deliberately
   unfinished: the key can be rotated but nothing offers it yet, `FLAG_SECURE` does not reach the
@@ -64,7 +64,7 @@
   ADR-0057/0058/0059/0060/0061/0062/0063. Two more: a release stack trace now needs `mapping.txt`
   and nothing archives it yet (11.6), and Argon2id stays BouncyCastle's until Tink ships a
   password-based KDF (ADR-0039, re-read by 11.7's audit).
-- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7, 10.1–10.8, 11.1–11.7 and 12.1–12.2 are merged to `dev`**
+- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7, 10.1–10.8, 11.1–11.7 and 12.1–12.3 are merged to `dev`**
   ([8.1 tracker](issues/8.1-e2ee-backup-argon2id-aes-256-gcm-tracker.md), ADR-0039;
   [8.2 tracker](issues/8.2-restore-on-fresh-device-tracker.md), ADR-0040;
   [8.3 tracker](issues/8.3-backup-restore-drill-tracker.md), ADR-0041;
@@ -588,6 +588,22 @@
   source set on every issue, device or no device.
 
 ## Completed
+
+- **Epic 12 — issue 12.3 (v0.12.3, 2026-10-02):** screenshot coverage reaches the three critical flows
+  `CLAUDE.md` §4 names — add-transaction, onboarding, the purchase advisor — in light/dark/200%, taking
+  the project from 11 to **26 committed baselines**
+  ([ADR-0066](adr/0066-screenshot-coverage-reaches-the-critical-screens-and-recording-is-never-automatic.md)).
+  Paparazzi stays **per-module** rather than in the feature convention plugin; tests render the
+  **stateless `*Content`** with no wrapper and no padding (issue 5.1's harness rendered every baseline
+  at double the real padding — a screen the app never draws); the theme is **pinned** or baselines
+  shift under an unrelated SDK update. **Recording stays manual** — `recordPaparazziDebug` makes any
+  diff disappear, so a flag or CI step that refreshed baselines would make every screenshot test agree
+  with whatever the UI became (the sixth "gate that cannot fail" argument in this repo).
+  **The first 200% render found a real accessibility defect:** the advisor's "Urgent" chip broke
+  mid-word as `Ur`/`ge`/`nt`, because a fixed `Row` squeezed it instead of wrapping. Fixed with
+  `FlowRow`. No unit test could have seen it — the text and semantics were both correct. Gate proven by
+  changing a padding value and by deleting a baseline, each of which fails the build. **Deferred:**
+  locale renders for the three new screens.
 
 - **Epic 12 — issue 12.2 (v0.12.2, 2026-10-02):** the frozen AI-eval datasets are now **versioned** and
   every run **reports what it measured** (§21.5, §8, §18.1;

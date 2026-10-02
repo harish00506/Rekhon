@@ -642,6 +642,34 @@ DashboardScreen → "Good day to invest?" → OpportunityScreen
     how old the price is · and that the screen never buys anything
 ```
 
+### 2.29 · What the UI actually looks like (issue 12.3)
+
+**There is no emulator in this project**, so this path is the only one that produces a picture of the
+app before it ships.
+
+```
+./gradlew verifyPaparazziDebug          inside unitTests ⇒ a visual diff BLOCKS a merge
+├─ :core:designsystem      3 baselines  every component + both charts, as one gallery
+├─ :feature:dashboard      8            loaded · empty · blurred · hi/kn/ta
+├─ :feature:onboarding     5  ← 12.3    welcome (the privacy pledge) · quick setup
+├─ :feature:transactions   5  ← 12.3    add-transaction empty · filled
+└─ :feature:advisor        5  ← 12.3    stretch · not-now · comfortable
+
+each test renders the STATELESS *Content:
+   no wrapping Column, no padding of its own   ⇣ the content already applies both; wrapping it
+                                                 renders a screen the app never draws (issue 5.1)
+   theme pinned                                ⇣ or baselines move under an unrelated SDK update
+   light · dark · fontScale = 2.0f
+
+./gradlew :feature:<m>:recordPaparazziDebug     deliberately MANUAL, never in CI
+   ⇣ it makes ANY diff disappear, including one nobody intended — a flag that refreshed baselines
+     would make every screenshot test agree with whatever the UI became (ADR-0066)
+```
+
+**What the 200% case found on its first run:** the advisor's "Urgent" chip breaking mid-word across
+three lines, because a fixed `Row` squeezed it instead of wrapping. Fixed with `FlowRow`. No unit test
+could have seen it — the text and the semantics were both correct.
+
 ### 2.28 · How the AI accuracy gates report themselves (issue 12.2)
 
 **A test path.** The gates existed before this issue; what they could not do was say what they measured.

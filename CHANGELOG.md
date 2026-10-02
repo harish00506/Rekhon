@@ -18,6 +18,28 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > renumbering them would make this file disagree with the history it documents. Epic 12 starts the
 > series it should.
 
+### [0.12.3] — Issue 12.3: seeing the screens that matter most  (2026-10-02)
+
+- **Implemented:** screenshot coverage for the three flows that matter most — adding a transaction,
+  onboarding, and the purchase advisor (**ADR-0066**, guide in `docs/testing/screenshot-tests.md`).
+  - Each is now rendered in **light, dark, and at 200% text size**, and those pictures are checked on
+    every build. If a layout shifts, the build fails with the before and after.
+  - **26 reference images, up from 11.** Until now only the dashboard and the design-system pieces
+    were covered, and nothing rendered the first screen a new user sees.
+- **It found a real problem on the very first picture it took.** On the purchase advisor at 200% text,
+  the "Urgent" button broke apart mid-word — rendering as "Ur / ge / nt" — because the row of choices
+  squeezed the last one instead of moving it to the next line. Fixed: the buttons now wrap. **No
+  ordinary test could have caught this** — the words were right, the screen worked, it just looked
+  broken for anyone using large text.
+- **Why this matters here:** this app is never run on a simulated phone during its automated checks.
+  These renders are the only way anyone sees what the app looks like before it reaches you.
+- **Updating a reference image stays a manual step**, on purpose. Refreshing them automatically would
+  mean the check silently agrees with whatever the screen has become, which is the same as not
+  checking at all.
+- **Deferred, on the record:** the three new screens are not yet rendered in Hindi, Kannada and Tamil
+  — the dashboard is, and a separate check already catches a missing translation.
+- **Requirements:** §21.5 · ADR-0066.
+
 ### [0.12.2] — Issue 12.2: the accuracy gates now say what they measured  (2026-10-02)
 
 - **Implemented:** versioning and reporting for the five frozen AI-evaluation sets (**ADR-0065**, guide
