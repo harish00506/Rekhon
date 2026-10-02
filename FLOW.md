@@ -642,6 +642,38 @@ DashboardScreen → "Good day to invest?" → OpportunityScreen
     how old the price is · and that the screen never buys anything
 ```
 
+### 2.28 · How the AI accuracy gates report themselves (issue 12.2)
+
+**A test path.** The gates existed before this issue; what they could not do was say what they measured.
+
+```
+./gradlew aiEval                      names the gate; `unitTests` is what blocks the merge
+├─ :domain:engines:classification:test
+├─ :domain:engines:receipt:test
+├─ :domain:engines:sms:test
+├─ :domain:engines:forecast:test
+└─ :domain:engines:chat:test          the guardrail set (issue 10.6)
+
+each runner:
+├─ EvalDataset.versionFrom(this, "/eval/x.txt")
+│  ├─ no `# dataset-version:` in the header  ⇒ ERROR (an unattributable score is worse than none)
+│  ├─ declared twice, or after the first record ⇒ ERROR
+│  └─ the revision every figure below is reported against
+├─ MIN_FIXTURES floor                        already present before 12.2 — a set cannot be gutted
+└─ EvalReport.line(metric, correct, total)
+   ├─ truncates, never rounds                91.9% must not print as 92% beside a 92% floor
+   ├─ floor is INCLUSIVE                     §21.5 says "at least"
+   ├─ 0/0 ⇒ ERROR                            not 100%; a set that was never loaded
+   └─ println + assert
+      ⇣ categorisation v1.0 — accuracy 96.3% (53/55), floor 92% — ok
+
+:domain:engines:forecast deliberately uses its OWN bps reporter, not EvalReport:
+   a median error and a mean coverage are not a share of correct cases (ADR-0065)
+      ⇣ forecast-ledgers v1.0 — mean P10-P90 band coverage 7027 bps (min 7000) — ok
+```
+
+That last line is why reporting was worth building: **0.27% of margin**, invisible until the run said so.
+
 ### 2.27 · How an engine's frozen expectations are read (issue 12.1)
 
 **A test path, not a runtime one.** It is here because twenty-four engines depend on it and because the

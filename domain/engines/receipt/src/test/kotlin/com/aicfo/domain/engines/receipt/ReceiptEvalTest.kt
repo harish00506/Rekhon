@@ -1,5 +1,7 @@
 package com.aicfo.domain.engines.receipt
 
+import com.aicfo.core.common.EvalDataset
+import com.aicfo.core.common.EvalReport
 import com.aicfo.core.common.Ok
 import com.aicfo.core.model.Money
 import com.aicfo.core.model.RecognizedBlock
@@ -29,6 +31,38 @@ import org.junit.Test
  * gets, and the lesson `docs/report/2026-07-25-governance-standards-audit.md` recorded.
  */
 class ReceiptEvalTest {
+    /**
+     * The revision of the frozen set this run measured (issue 12.2; §21.5).
+     * Why:    every figure reported below names it, so a number from today can be compared with one
+     *         from last month. A set with no declared revision fails here rather than reporting an
+     *         unattributable score — see `EvalDataset`.
+     */
+    private val datasetVersion: String = EvalDataset.versionFrom(this, FIXTURE_PATH)
+
+    /**
+     * Reports a measured metric against its §21.5 floor, and asserts it (issue 12.2).
+     * Why:    until issue 12.2 these gates asserted their floors and reported nothing, so a score
+     *         sitting one case above the floor was invisible until it broke. The shared [EvalReport]
+     *         prints the number, the counts, the floor and the **dataset revision** that produced
+     *         them, so the trend is in the CI log and a failure message already carries it.
+     * Result: prints one line; fails below the floor. Input: [metric] — what was measured;
+     *         [correct]; [total]; [floor] — the §21.5 percentage; [detail] — appended on failure.
+     * Output: none.
+     * Changelog: 2026-10-02 — Created for issue 12.2.
+     */
+    private fun report(
+        metric: String,
+        correct: Int,
+        total: Int,
+        floor: Int,
+        detail: String = "",
+    ) {
+        val report = EvalReport(dataset = DATASET_NAME, version = datasetVersion, floorPercent = floor)
+        val line = report.line(metric, correct, total)
+        println(line)
+        assertTrue("$line $detail", report.meetsFloor(correct, total))
+    }
+
     private val engine = ReceiptEngineFactory.create()
     private val fixtures: List<ReceiptFixture> by lazy { loadFixtures() }
 
@@ -52,12 +86,13 @@ class ReceiptEvalTest {
     @Test
     fun `total-amount accuracy is at least 95 percent`() {
         val misses = fixtures.filter { extract(it).total?.value != Money(it.totalMinor) }
-        val accuracy = percent(fixtures.size - misses.size, fixtures.size)
 
-        assertTrue(
-            "total-amount accuracy $accuracy% is below §18.1's $MIN_TOTAL_ACCURACY% floor; " +
-                "missed: ${misses.map { it.merchant }}",
-            accuracy >= MIN_TOTAL_ACCURACY,
+        report(
+            metric = "total-amount accuracy",
+            correct = fixtures.size - misses.size,
+            total = fixtures.size,
+            floor = MIN_TOTAL_ACCURACY,
+            detail = "(§18.1) missed: ${misses.map { it.merchant }}",
         )
     }
 
@@ -78,11 +113,12 @@ class ReceiptEvalTest {
                     fields.date?.value.orEmpty() == fixture.date &&
                     fields.merchant?.value.orEmpty() == fixture.merchant
             }
-        val accuracy = percent(complete, fixtures.size)
-
-        assertTrue(
-            "field-complete accuracy $accuracy% is below §18.1's $MIN_FIELD_ACCURACY% floor",
-            accuracy >= MIN_FIELD_ACCURACY,
+        report(
+            metric = "field-complete",
+            correct = complete,
+            total = fixtures.size,
+            floor = MIN_FIELD_ACCURACY,
+            detail = "(§18.1)",
         )
     }
 
@@ -150,6 +186,9 @@ class ReceiptEvalTest {
     }
 
     private companion object {
+        /** How this set is named in reports (issue 12.2). */
+        const val DATASET_NAME = "receipts"
+
         const val FIXTURE_PATH = "/eval/receipts.txt"
         const val SEPARATOR = "==="
 

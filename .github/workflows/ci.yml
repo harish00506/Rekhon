@@ -18,6 +18,8 @@
 #                required for every promotion into `stage` or `main` (§21.5, DRL-001).
 #   2026-10-02 — Issue 11.6: the OSV dependency scan and the release log-strip verification, both
 #                able to fail the build. The scan replaces a placeholder that suggested `|| true`.
+#   2026-10-02 — Issue 12.2: the `aiEval` step, so an accuracy regression reads as the dataset that
+#                regressed rather than as one of five thousand anonymous tests.
 # =============================================================================
 name: CI
 
@@ -86,6 +88,14 @@ jobs:
         # be disabled outright and this job would stay green while the rules quietly stopped being
         # enforced. Demonstrated by disabling MoneyDoubleDetector — `testDebugUnitTest` passed.
         run: ./gradlew unitTests koverVerify --stacktrace
+
+      - name: Frozen AI evaluation sets (§21.5 accuracy floors)
+        # Issue 12.2. These run inside `unitTests` above too — that is what blocks the merge. This
+        # step exists so the pipeline *names* the gate and so the accuracy lines each runner prints
+        # are findable in the log: categorisation ≥ 92%, receipts ≥ 95%, SMS ≥ 95%, and the forecast
+        # backtest's bounds. Every line carries the dataset revision that produced it, so a score can
+        # be compared with one recorded last month rather than taken on trust.
+        run: ./gradlew aiEval --stacktrace
 
       - name: Chat guardrail evaluation (AI-ARC-004, §21.5)
         # Issue 10.6. The frozen set in `ai/eval/guardrail-eval.json` runs inside `unitTests` above

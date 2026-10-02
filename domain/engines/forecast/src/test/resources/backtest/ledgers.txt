@@ -8,6 +8,10 @@
 # Format: `ledger <id>` then `today`, `opening`, `commitment label|paise|CADENCE|nextDue` lines,
 # `history date:paise` (the 90 days up to yesterday, everyday spend) and `actual date:paise` (the 90
 # forecast days' real everyday spend). Amounts are paise (MNY-001).
+# dataset-version: 1.0
+#
+# Issue 12.2 (§21.5). Bump this whenever a ledger is added, removed or regenerated — every
+# backtest figure is reported against it. See docs/testing/ai-evaluation-datasets.md.
 ledger L00
 today 2026-02-20
 opening 3780600
