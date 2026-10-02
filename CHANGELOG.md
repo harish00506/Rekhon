@@ -6,6 +6,51 @@ Single source of truth for the version number is the repo-root [`VERSION`](VERSI
 `app/build.gradle.kts` `versionName` equal to it. Epics map to the SRS roadmap (§26); every
 entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`](docs/issues/00-issue-workflow.md).
 
+## [0.12.0] — Epic 12: Quality, Testing & Release
+
+> The golden-file/property harness, frozen AI-eval datasets, screenshot tests, the instrumented E2E
+> smoke, and the CI gates + SemVer release train.
+>
+> **On the version numbering.** This file's convention is `0.<epic>.<issue>`, and **`0.11.x` is
+> deliberately unused**: Epic 11's seven issues shipped as `0.10.8`–`0.10.14` under the Epic 10
+> heading above. That was drift, not a decision, and it is recorded here rather than corrected
+> retroactively — `VERSION` and `versionCode` 51–58 are already in commits and release artefacts, and
+> renumbering them would make this file disagree with the history it documents. Epic 12 starts the
+> series it should.
+
+### [0.12.1] — Issue 12.1: a test harness that refuses to pass for nothing  (2026-10-02)
+
+- **Implemented:** the shared engine test harness §21.5 asks for (**ADR-0064**, guide in
+  `docs/testing/engine-test-harness.md`).
+  - **Golden-file tests now fail when they cannot do their job.** A missing fixture, an emptied one,
+    or a line that cannot be read is an error — not an empty list quietly asserting nothing. Twenty-four
+    engines had each written this reader themselves, which is twenty-four chances to get wrong the one
+    thing a test cannot check about itself: whether it read anything at all.
+  - **An absent number stays absent.** A field missing from a fixture reads as "not there", never as
+    zero, because zero is a real amount and treating a dropped line as a deliberate zero hides exactly
+    the change a frozen test exists to show. A `true`/`false` field refuses anything else, so a typo
+    cannot silently assert the opposite.
+  - **Property tests are reproducible.** Each case is driven by a fixed seed, and a failure tells you
+    the seed and how to re-run just that case. A randomised test you cannot reproduce is not a test.
+  - **Determinism is checked by running things twice**, which is the only way to catch an engine that
+    reads a clock or a shared random source.
+  - **Regenerating a frozen expectation never happens automatically.** The harness writes a candidate
+    file and fails, and a person copies it over after reading the diff — because a switch that rewrote
+    expectations in place could be left on and would make every frozen test in the app approve its own
+    output for ever.
+- **Found while writing it:** the first version of the reader split on `===` wherever it appeared, and
+  the harness's own sample file broke it — the paragraph explaining the format mentions `===`, so two
+  paragraphs became test cases. Markers are now anchored to the start of a line.
+- **Found by mutation:** two documented promises had no test — that each property case gets its own
+  random source (which is what makes a failure reproducible), and that an invalid `true`/`false` is
+  refused. Both now have one.
+- **Adopted by one engine as the reference:** the credit-card golden test lost 41 lines of file reading
+  and still asserts all fifteen of its frozen cases. The other twenty-three keep their own readers for
+  now, deliberately — their file formats differ, and a sweep to unify them would risk twenty-three
+  working gates for no gain.
+- **Tests:** 25 for the harness itself, with 12 mutations, all killed. No new dependency.
+- **Requirements:** §21.5, P-08 · ADR-0064.
+
 ## [0.10.0] — Epic 10: Advisor & Chat
 
 > The Purchase Advisor, buy list, what-if simulators, vehicle prediction, on-device chat + guardrail
