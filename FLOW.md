@@ -642,6 +642,40 @@ DashboardScreen → "Good day to invest?" → OpportunityScreen
     how old the price is · and that the screen never buys anything
 ```
 
+### 2.26 · What stops cryptography being invented here (issue 11.7)
+
+**A build-time path, like §2.25.** It has no runtime call chain at all, which is the point: the only
+moment a hand-rolled construction can be caught is the moment it is written.
+
+```
+any module's :lintDebug
+└─ lintChecks(project(":lint"))            applied by BOTH convention plugins, so no module opts out
+   └─ CfoIssueRegistry                     ← lint discovers checks through this ALONE
+      └─ CfoHandRolledCrypto  (ERROR)
+         ├─ getApplicableMethodNames = ["getInstance"]
+         │  └─ resolve the DECLARING class, not the identifier
+         │     ⇣ `import javax.crypto.Cipher as Box` cannot slip past a resolved type
+         ├─ getApplicableConstructorTypes = [SecretKeySpec, IvParameterSpec, GCMParameterSpec, PBEKeySpec]
+         ├─ exempt: KeyGenerator IF the file also mentions KeyGenParameterSpec   (ADR-0057)
+         └─ exempt: /src/test/, /src/androidTest/, /src/sharedTest/              (independent oracles)
+
+:core:common:test → Sec003AuditDriftTest
+└─ walks every src/main *.kt for a crypto import
+   ├─ a file touching crypto and absent from the audit table  ⇒ fail
+   └─ a table row naming a file that no longer does            ⇒ fail
+
+:lint:test → CfoHandRolledCryptoDetectorTest
+└─ the registry itself: all six issues published, every one at ERROR
+   ⇣ found by a mutation — dropping a detector from the registry left 25 tests green
+```
+
+**Unflagged on purpose:** `SecureRandom` (P-08 wants it injected, and every one here is) and
+`KeyStore` (it stores keys rather than implementing anything, and the erase must delete from it).
+
+**The one place SEC-003 is stretched** is Argon2id, which comes from BouncyCastle because Tink has no
+password-based KDF — argued in ADR-0039, re-read by this audit, and checked against OpenSSL's
+implementation rather than trusted.
+
 ### 2.25 · How a release is hardened, and how that is checked (issue 11.6)
 
 **Not a runtime path — a build one.** It is here because §10 asks for call paths and this one decides

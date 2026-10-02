@@ -39,7 +39,7 @@
 
 ## Current state
 
-- **Version:** `0.10.13` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v29** (10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
+- **Version:** `0.10.14` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v29** (10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
   forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
   feed), 9.6 (the notification policy) and 9.7 (the numeric guardrail) shipped — **Epic 9 is
@@ -50,16 +50,17 @@
   translations are machine-authored and **await a native review** (ADR-0056).
   **Epic 11 is open**: 11.1 (the database key — StrongBox, and a rotation that re-keys the file),
   11.2 (the screen-capture guard), 11.3 (the consents dashboard), 11.4 (the crypto-shredding erase)
-  11.5 (DPDP alignment) and 11.6 (R8 + OSV scanning) shipped; **11.7 (the no-hand-rolled-crypto
-  audit) is next**. Deliberately
+  11.5 (DPDP alignment), 11.6 (R8 + OSV scanning) and 11.7 (the no-hand-rolled-crypto audit)
+  shipped — **Epic 11 is complete**. Deliberately
   unfinished: the key can be rotated but nothing offers it yet, `FLAG_SECURE` does not reach the
   home-screen widget, the erase cannot reach a backup the user exported (it says so), the consent
   record is the latest grant/withdraw pair rather than an append-only history, and **four DPDP
   obligations are the publisher's, not the code's** — grievance contact, nomination, breach notice
   and children's data, all listed as open in `docs/compliance/dpdp-2023.md` —
-  ADR-0057/0058/0059/0060/0061/0062. One more, from 11.6: a release stack trace now needs
-  `mapping.txt` and nothing archives it yet.
-- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7, 10.1–10.8 and 11.1–11.6 are merged to `dev`**
+  ADR-0057/0058/0059/0060/0061/0062/0063. Two more: a release stack trace now needs `mapping.txt`
+  and nothing archives it yet (11.6), and Argon2id stays BouncyCastle's until Tink ships a
+  password-based KDF (ADR-0039, re-read by 11.7's audit).
+- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7, 10.1–10.8 and 11.1–11.7 are merged to `dev`**
   ([8.1 tracker](issues/8.1-e2ee-backup-argon2id-aes-256-gcm-tracker.md), ADR-0039;
   [8.2 tracker](issues/8.2-restore-on-fresh-device-tracker.md), ADR-0040;
   [8.3 tracker](issues/8.3-backup-restore-drill-tracker.md), ADR-0041;
@@ -583,6 +584,22 @@
   source set on every issue, device or no device.
 
 ## Completed
+
+- **Epic 11 — issue 11.7 (v0.10.14, 2026-10-02):** the no-hand-rolled-crypto audit (SEC-003), and
+  **Epic 11 closes with it**. The audit read every cryptographic call site in production code and
+  found **none hand-rolled** — every cipher, AEAD and MAC is Tink's, every key is in the Keystore, and
+  the one deviation (Argon2id from BouncyCastle, because Tink has no password-based KDF) was already
+  argued in ADR-0039. The finding was therefore not a bug but that the conclusion would decay
+  unchecked, so `CfoHandRolledCrypto` now enforces it at ERROR in every module
+  ([ADR-0063](adr/0063-sec-003-is-enforced-by-a-lint-rule-with-two-argued-exemptions.md)). It matches
+  **resolved types rather than identifier names**, because `import javax.crypto.Cipher as Box` would
+  defeat a name-based security rule — lint's own `IMPORT_ALIAS` mode caught that. Two argued
+  exemptions: `KeyGenerator` only alongside a `KeyGenParameterSpec`, and test sources (independent
+  oracles). **The mutation finding:** a detector could be dropped from `CfoIssueRegistry` with all 25
+  lint tests green, because every test passes `.issues(X.ISSUE)` and bypasses the registry — the only
+  thing that makes a rule apply. That exposed all five pre-existing rules too; two registry tests now
+  pin publication and ERROR severity. Same shape as 1.5, 7.2, 11.5 and 11.6: **what makes a check
+  apply is a separate concern from the check, and is never tested unless someone tests it.**
 
 - **Epic 11 — issue 11.6 (v0.10.13, 2026-10-02):** release hardening and supply-chain scanning
   (§21.3, §21.6, SEC-007). R8 minification plus resource shrinking (84.5 → 66.6 MB), with

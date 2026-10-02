@@ -13,10 +13,11 @@ import com.android.tools.lint.detector.api.Issue
  *       compile and do nothing — which is precisely the failure mode the governance audit found
  *       elsewhere in this repo, so it is worth being explicit: the proof these rules work is a
  *       seeded violation turning the build red, not the existence of the files.
- * What: the five issues that make MNY-001, ARC-006, TIM-001, the strings rule and P-01
- *       build-blocking, all at severity ERROR.
+ * What: the six issues that make MNY-001, ARC-006, TIM-001, the strings rule, P-01 and
+ *       SEC-003 build-blocking, all at severity ERROR.
  * Result: `lintChecks(project(":lint"))` in the convention plugins gives every module these rules.
  * Changelog: 2026-07-25 — Created for issue 1.5 / task 1.1.5.
+ *            2026-10-02 — Issue 11.7: added [HandRolledCryptoDetector] (SEC-003).
  */
 class CfoIssueRegistry : IssueRegistry() {
     /** The checks this registry contributes. */
@@ -27,6 +28,7 @@ class CfoIssueRegistry : IssueRegistry() {
             DomainClockDetector.ISSUE,
             HardcodedUiStringDetector.ISSUE,
             PiiLoggingDetector.ISSUE,
+            HandRolledCryptoDetector.ISSUE,
         )
 
     /** The lint API these detectors were compiled against (catalog `lintVersion`, tracks AGP). */

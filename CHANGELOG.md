@@ -11,6 +11,32 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > The Purchase Advisor, buy list, what-if simulators, vehicle prediction, on-device chat + guardrail
 > eval, market signals, and localisation.
 
+### [0.10.14] — Issue 11.7: nobody gets to invent cryptography here  (2026-10-02)
+
+- **Audited:** every piece of cryptography in the app (**ADR-0063**, full record in
+  `docs/security/sec-003-crypto-audit.md`). **Nothing is hand-rolled.** Every cipher and message tag
+  comes from Google's Tink library, every key is held by the phone's own hardware key store, and the
+  one exception — the way your backup passphrase is turned into a key — uses a published standard
+  from a maintained library, because Tink has no equivalent, and is checked against an independent
+  implementation.
+- **Implemented:** the rule that keeps it that way. The build now **refuses to compile** code that
+  builds cryptography by hand. This matters more than most rules because bad cryptography does not
+  look broken: it encrypts, it decrypts, every test passes, and it is still breakable. There is no
+  later test that catches that, so the check happens as the code is written.
+  - It cannot be dodged by renaming the import, which is the kind of gap that makes a security rule
+    decorative.
+  - The two things it allows, it allows for a stated reason: asking the phone's key store for a key,
+    and a test that implements a primitive by hand to check the real one's answer against.
+- **Found by a mutation:** any of this project's six build-blocking rules could have been **quietly
+  switched off** — removed from the list the build reads them from — with all 25 of their tests still
+  passing, because each test invokes its rule directly. A rule nobody runs enforces nothing. Two
+  tests now check that every rule is registered and that none has been downgraded to a warning.
+- **Tests:** 11 for the new rule (8 mutations, all killed), 4 keeping the audit's inventory honest,
+  and the seeded violation proven to fail a real build rather than only the test harness.
+- **Epic 11 is complete** — key management, the capture guard, the consents dashboard, the
+  crypto-shredding erase, DPDP alignment, dependency scanning, and this audit.
+- **Requirements:** SEC-003 · ADR-0063.
+
 ### [0.10.13] — Issue 11.6: a smaller, quieter release, and a scan that can say no  (2026-10-02)
 
 - **Implemented:** release hardening and supply-chain scanning (**ADR-0062**).
