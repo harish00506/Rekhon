@@ -11,6 +11,7 @@ import com.aicfo.core.database.entity.CreditCardEntity
 import com.aicfo.core.database.entity.GoalContributionEntity
 import com.aicfo.core.database.entity.GoalEntity
 import com.aicfo.core.database.entity.GoalFundingAccountEntity
+import com.aicfo.core.database.entity.HouseholdEntity
 import com.aicfo.core.database.entity.InsightEntity
 import com.aicfo.core.database.entity.InterviewAnswerEntity
 import com.aicfo.core.database.entity.InvestmentHoldingEntity
@@ -55,6 +56,7 @@ import kotlinx.serialization.Serializable
  *   2026-09-25 — Issue 10.1 added [purchaseTraces] and [purchaseTraceGates].
  *   2026-09-26 — Issue 10.2 added [wishlistItems] and [interviewAnswers].
  *   2026-09-27 — Issue 10.7 added [marketCloses].
+ *   2026-10-03 — Issue 13.1 added [households], the row above the profile (ADR-0069).
  *   2026-09-26 — Issue 10.4 added [vehicles], [vehicleOdometer], [vehicleServices] and
  *   [vehicleRenewals]: a restored phone keeps the readings, because they *are* the prediction.
  *
@@ -93,6 +95,15 @@ data class CfoArchive(
     val archiveVersion: Int,
     val schemaVersion: Int,
     val exportedAtUtcMillis: Long,
+    /**
+     * The household the profile belongs to (issue 13.1, schema 30).
+     *
+     * First in the list because it is the parent row, and present at all because of the warning
+     * above: a new *table* is the one thing holding entities directly does not cover, and `goal`
+     * already proved it. A backup without this would restore a profile whose `household_id` points
+     * at a household that no longer exists, losing whatever the user called it.
+     */
+    val households: List<HouseholdEntity> = emptyList(),
     val profiles: List<ProfileEntity> = emptyList(),
     val accounts: List<AccountEntity> = emptyList(),
     val categories: List<CategoryEntity> = emptyList(),

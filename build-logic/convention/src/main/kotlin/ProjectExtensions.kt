@@ -144,6 +144,38 @@ internal fun Project.configureCheckedDataAsTestInput() {
 }
 
 /**
+ * Declares the module's own `src/main` tree as an input to its test tasks (CLAUDE.md §21.5).
+ *
+ * Why:  [configureCheckedDataAsTestInput] fixed this bug for *data* a module reads at runtime, and
+ *       issue 13.1 found the same hole one layer over: a test that reads **Kotlin source**.
+ *       `ProfileScopingTest` scans every `@Query` in `Daos.kt` and the `profileId` columns in
+ *       `Entities.kt`, and the facts it checks live largely in **comments** — the `// DEVICE-WIDE:`
+ *       marker and the reason underneath it. A comment-only edit compiles to byte-identical
+ *       classes, so Gradle finds nothing changed on the task's declared inputs and replays the
+ *       previous **pass**. Measured: deleting the marker left `:core:database:testDebugUnitTest`
+ *       UP-TO-DATE and the build green in 1s; the same edit under `--rerun-tasks` failed two
+ *       assertions. The gate was right and only its scheduling was wrong — for the fourth time in
+ *       this repository (issues 7.2, 11.5, 11.7, 13.1).
+ * What: names `src/main` as an input, so any edit to the module's own source — comments included —
+ *       invalidates its test tasks.
+ * Result: a convention test cannot be defeated by the compiler discarding the thing it checks.
+ *         Declared per module rather than per file, so a later source-scanning test is covered
+ *         without anyone remembering this paragraph.
+ * Input:  the receiver — the module being configured. Output: none (configures the tasks).
+ * Changelog: 2026-10-03 — Created for issue 13.1 (ADR-0069).
+ */
+internal fun Project.configureOwnSourceAsTestInput() {
+    val mainSource = layout.projectDirectory.dir("src/main")
+    tasks.withType(Test::class.java).configureEach {
+        inputs
+            .dir(mainSource)
+            .optional(true)
+            .withPropertyName("cfoOwnMainSource")
+            .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
+    }
+}
+
+/**
  * The directories whose contents a drift test may read.
  *
  * `ai/` is the AI subsystem's runtime data — rulebooks, knowledge bases, the tool registry, the

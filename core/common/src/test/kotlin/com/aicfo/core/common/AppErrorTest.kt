@@ -113,6 +113,7 @@ class AppErrorTest {
                 AppError.Network(retryable = true),
                 AppError.Crypto("GeneralSecurityException"),
                 AppError.Unexpected("NoSuchElementException"),
+                AppError.FeatureDisabled,
             )
         val forbidden = listOf("₹", "/", "\\", "@", "1234", "IOException", "amount")
         errors.forEach { error ->
@@ -161,9 +162,18 @@ class AppErrorTest {
                 AppError.Network(retryable = false).code,
                 AppError.Crypto("op").code,
                 AppError.Unexpected("cause").code,
+                AppError.FeatureDisabled.code,
             )
         assertEquals(
-            listOf("validation", "not_found", "storage", "network", "crypto", "unexpected"),
+            listOf(
+                "validation",
+                "not_found",
+                "storage",
+                "network",
+                "crypto",
+                "unexpected",
+                "feature_disabled",
+            ),
             codes,
         )
         assertEquals("codes must be unique", codes.size, codes.toSet().size)
@@ -191,5 +201,6 @@ class AppErrorTest {
         assertEquals(AppError.Crypto("unwrap"), AppError.Crypto("unwrap"))
         assertEquals(AppError.Unexpected("Boom"), AppError.Unexpected("Boom"))
         assertEquals(AppError.NotFound, AppError.NotFound)
+        assertEquals(AppError.FeatureDisabled, AppError.FeatureDisabled)
     }
 }

@@ -204,6 +204,91 @@ class QuickSetupRepositoryTest {
             assertEquals(clock.nowUtcMillis(), profileColumn("updated_at_utc_millis"))
         }
 
+    // --- the household (issue 13.1) ---------------------------------------------------------------
+
+    /**
+     * Input:  a full plan for the local profile.
+     * Output: asserts a fresh install lands with the **same** household `MIGRATION_29_30` gives an
+     *         upgrading one — one row, the default id, and dated as the profile.
+     *
+     * Why:  ADR-0069 §1 claims an upgrade and a fresh install "land in the same shape", and until
+     *       this test that claim rested on two separate pieces of code agreeing by eye. Without a
+     *       household row a fresh install would differ from a migrated one in a way nothing in v1
+     *       notices — household mode is off, so no screen reads it — and the difference would only
+     *       surface the day it ships, as an installation whose profiles belong to a household that
+     *       does not exist.
+     */
+    @Test
+    fun `a fresh install gets the same default household a migration would have created`() =
+        runTest {
+            assertTrue(repository.applySeeds(fullPlan(), profileSeed()) is Ok)
+
+            assertEquals(1, count("household"))
+            assertEquals("household-default", householdColumn("id"))
+            assertEquals("My household", householdColumn("display_name"))
+            assertEquals(
+                profileColumn("created_at_utc_millis").toString(),
+                householdColumn("created_at_utc_millis"),
+            )
+            assertEquals("household-default", householdColumn("household_id", table = "profile"))
+        }
+
+    /**
+     * Input:  a household written, the clock moved, then a second run.
+     * Output: asserts the household keeps its date and does not multiply. REPLACE is a
+     *         delete-and-insert, so the same trap the profile's `created_at` fell into applies
+     *         here — and a second row would make "which household am I in?" ambiguous.
+     */
+    @Test
+    fun `a re-run keeps one household with its original date`() =
+        runTest {
+            repository.applySeeds(fullPlan(), profileSeed())
+            val createdAt = householdColumn("created_at_utc_millis")
+            clock.advanceBy(java.time.Duration.ofDays(30))
+
+            repository.applySeeds(fullPlan(), profileSeed())
+
+            assertEquals(1, count("household"))
+            assertEquals(createdAt, householdColumn("created_at_utc_millis"))
+        }
+
+    /**
+     * Input:  a profile already moved into a second household, then a re-run of the same plan.
+     * Output: asserts the profile stays where it was put.
+     *
+     * Why:  `upsert` is `REPLACE`, which is a delete-and-insert, so every column not carried over
+     *       from the existing row is silently reset to the entity's default — and this column's
+     *       default is the *default household*. A re-run of onboarding would therefore move a
+     *       member of a second household back into the first, taking all their data with them.
+     *       This is the one household behaviour v1 cannot reach through the UI (the flag is off and
+     *       nothing creates a second household), so it is driven through the DAO instead: the
+     *       schema allows the state, which is enough for the bug to be real the day the flag flips.
+     */
+    @Test
+    fun `a re-run leaves a profile in whichever household it already belongs to`() =
+        runTest {
+            repository.applySeeds(fullPlan(), profileSeed())
+            database.householdDao().upsert(
+                com.aicfo.core.database.entity.HouseholdEntity(
+                    id = "household:second",
+                    displayName = "The other one",
+                    createdAtUtcMillis = clock.nowUtcMillis(),
+                ),
+            )
+            database.query(
+                "UPDATE profile SET household_id = 'household:second'",
+                emptyArray(),
+            ).use { it.moveToFirst() }
+
+            repository.applySeeds(fullPlan(), profileSeed())
+
+            assertEquals(
+                "a re-run must not move a profile between households",
+                "household:second",
+                householdColumn("household_id", table = "profile"),
+            )
+        }
+
     // --- fabricating nothing (P-03) --------------------------------------------------------------
 
     /**
@@ -219,6 +304,9 @@ class QuickSetupRepositoryTest {
 
             assertTrue("an empty plan is not an error", outcome is Ok)
             assertEquals(0, count("profile"))
+            // Issue 13.1: and no household either — a household with no profile in it would be the
+            // same half-set-up state the profile row is kept out of here.
+            assertEquals(0, count("household"))
             assertEquals(0, count("budget"))
             assertEquals(0, count("recurring_rule"))
         }
@@ -429,6 +517,20 @@ class QuickSetupRepositoryTest {
         database.query("SELECT COUNT(*) FROM $table", emptyArray()).use { cursor ->
             cursor.moveToFirst()
             cursor.getInt(0)
+        }
+
+    /**
+     * Result: one column of the single `household` row, as text (issue 13.1).
+     * Input:  [column]; [table] — `household` by default, `profile` to read `household_id`.
+     * Output: the value as a [String], so an id and a date can share one helper.
+     */
+    private fun householdColumn(
+        column: String,
+        table: String = "household",
+    ): String =
+        database.query("SELECT $column FROM $table", emptyArray()).use { cursor ->
+            cursor.moveToFirst()
+            cursor.getString(0)
         }
 
     private fun profileColumn(column: String): Long =

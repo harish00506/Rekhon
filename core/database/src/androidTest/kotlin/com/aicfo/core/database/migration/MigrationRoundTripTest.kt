@@ -7,6 +7,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.aicfo.core.database.CfoDatabase
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -1846,6 +1847,56 @@ class MigrationRoundTripTest {
             assertTrue(cursor.moveToFirst())
             assertEquals(28_450L, cursor.getLong(0))
             assertEquals("quote", cursor.getString(1))
+        }
+    }
+
+    /**
+     * 29 → 30: the household every existing profile joins (issue 13.1; §27, §33, ADR-0069).
+     *
+     * Why:  this is the first migration that **backfills a value into an existing row**, and the
+     *       failure mode is quiet. If `household_id` landed empty, nothing would crash — the app
+     *       would run exactly as before, and the day household mode shipped, the user's entire
+     *       financial history would belong to no household and vanish from the member list. A
+     *       column default is also the kind of thing that is easy to write in the entity and
+     *       forget in the migration, which `MigrationSafetyTest` cannot catch: both halves would
+     *       be internally consistent and only a migrated database would disagree.
+     *
+     *       The household's date is asserted too, because "now" was the tempting value and a
+     *       migration has no clock to read (TIM-001). ADR-0069 §1 dates the household as its
+     *       oldest profile, which makes the migration deterministic: the same database upgrades to
+     *       the same bytes every time.
+     * Result: the pre-existing profile keeps its data, joins the default household, and the
+     *       household is dated as that profile.
+     */
+    @Test
+    fun migrate29To30_putsTheExistingProfileInADefaultHouseholdDatedAsItself() {
+        val profileCreatedAt = 1_700_000_000_000L
+        helper.createDatabase(TEST_DB, 29).use { old ->
+            old.execSQL(
+                "INSERT INTO profile (id, display_name, time_zone_id, currency_code, " +
+                    "created_at_utc_millis, updated_at_utc_millis, deleted_at_utc_millis) " +
+                    "VALUES ('local', 'Harish', 'Asia/Kolkata', 'INR', " +
+                    "$profileCreatedAt, $profileCreatedAt, NULL)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 30, true, Migrations.MIGRATION_29_30)
+
+        migrated.query("SELECT household_id, time_zone_id FROM profile WHERE id = 'local'").use { cursor ->
+            assertTrue("the profile must survive the upgrade", cursor.moveToFirst())
+            assertEquals("household-default", cursor.getString(0))
+            assertEquals("Asia/Kolkata", cursor.getString(1))
+        }
+
+        migrated.query("SELECT display_name, created_at_utc_millis FROM household").use { cursor ->
+            assertTrue("the migration must create the default household", cursor.moveToFirst())
+            assertEquals("My household", cursor.getString(0))
+            assertEquals(
+                "the household is dated as its oldest profile, not as migration time",
+                profileCreatedAt,
+                cursor.getLong(1),
+            )
+            assertFalse("exactly one household, not one per run", cursor.moveToNext())
         }
     }
 

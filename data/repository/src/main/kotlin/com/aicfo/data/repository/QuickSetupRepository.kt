@@ -8,6 +8,7 @@ import com.aicfo.core.common.Result
 import com.aicfo.core.common.runCatchingToResult
 import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.database.entity.BudgetEntity
+import com.aicfo.core.database.entity.HouseholdEntity
 import com.aicfo.core.database.entity.ProfileEntity
 import com.aicfo.core.database.entity.RecurringRuleEntity
 import com.aicfo.core.model.Money
@@ -185,6 +186,16 @@ internal class RoomQuickSetupRepository(
             // thread; the reads below are inside the same transaction as the writes on purpose.
             database.withTransaction {
                 val existing = database.profileDao().findById(profile.id)
+                // Issue 13.1: a fresh install gets the same household an upgraded one gets from
+                // MIGRATION_29_30, so `household` is never empty on one path and populated on the
+                // other. INSERT is an upsert here, so a re-run does not restate the date either.
+                database.householdDao().upsert(
+                    HouseholdEntity(
+                        id = HouseholdEntity.DEFAULT_ID,
+                        displayName = HouseholdEntity.DEFAULT_DISPLAY_NAME,
+                        createdAtUtcMillis = existing?.createdAtUtcMillis ?: now,
+                    ),
+                )
                 database.profileDao().upsert(
                     ProfileEntity(
                         id = profile.id,
@@ -195,6 +206,9 @@ internal class RoomQuickSetupRepository(
                         // re-run would restate when the user joined as today.
                         createdAtUtcMillis = existing?.createdAtUtcMillis ?: now,
                         updatedAtUtcMillis = now,
+                        // Preserved for the same reason (issue 13.1): a re-run must not move an
+                        // existing profile back into the default household.
+                        householdId = existing?.householdId ?: HouseholdEntity.DEFAULT_ID,
                     ),
                 )
                 database.budgetDao().upsertAll(

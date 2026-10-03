@@ -227,10 +227,11 @@ class MigrationSafetyTest {
      *         it by adding a string — this test makes that a deliberate, reviewed edit.
      */
     @Test
-    fun `only the eight argued-for tables are exempt from the per-row invariants`() {
+    fun `only the nine argued-for tables are exempt from the per-row invariants`() {
         assertEquals(
             setOf(
                 "audit_log",
+                "household",
                 "chat_message",
                 "sms_draft",
                 "budget_alert",
@@ -512,6 +513,31 @@ class MigrationSafetyTest {
                 .keys
         assertEquals(setOf("id", "event", "occurred_at_utc_millis", "method"), columns)
     }
+
+    /**
+     * Input:  the `household` table's columns (issue 13.1; ADR-0069).
+     * Output: asserts it holds a name and a date and **nothing else** — no `profile_id`, no
+     *         tombstone, and above all no money.
+     *
+     * Why pinned rather than described: the exemption above argues this table is outside the
+     * per-profile invariants *because there is nothing per-profile in it*. That argument is only
+     * true while the column set stays this small. A column added later called `balance_minor`,
+     * `shared_budget_minor` or `owner_name` would put two people's money or a person's identity in
+     * a table that no scoping rule governs — the one place in this schema where that is possible.
+     * ADR-0069 §3 makes composing from per-profile engine runs the only way to a household figure;
+     * this test is what stops a column from offering a shortcut around it.
+     */
+    @Test
+    fun `household holds a name and a date and nothing that could leak between members`() {
+        val columns =
+            SchemaFixtures.load(CfoDatabase.VERSION)
+                .database
+                .entitiesByTableName()
+                .getValue("household")
+                .fieldsByColumnName()
+                .keys
+        assertEquals(setOf("id", "display_name", "created_at_utc_millis"), columns)
+    }
 }
 
 /**
@@ -533,6 +559,18 @@ private val INVARIANT_EXEMPT_TABLES =
             "to go. The same clause keeps the table out of backups, so there is nothing for " +
             "DB-003's recoverability argument to protect: a restore was never going to bring it " +
             "back. Rows leave with the profile, and with the clear.",
+        "household" to
+            "the row above the profile (issue 13.1, §27/§33, ADR-0069): both invariants protect " +
+            "*per-profile user data*, and this table is neither. A `profile_id` column would " +
+            "invert the relationship it exists to express — a household contains profiles, so " +
+            "scoping it to one would make the group a property of a member. There is also nothing " +
+            "to leak: the table holds a display name and a creation date, no money and no " +
+            "per-person data, which is exactly why ADR-0069 §3 can compose household figures " +
+            "from per-profile engine runs instead of a cross-profile query. No tombstone for a " +
+            "different reason: v1 has exactly one household, created by MIGRATION_29_30 and never " +
+            "deletable by the user, so there is no deletion for recoverability to protect — and a " +
+            "soft-deleted household would be worse than absent, because every profile still " +
+            "pointing at it would be a member of a tombstone.",
         "audit_log" to
             "append-only security log (issue 2.2, §21.6): no profile exists at unlock time, and " +
             "a security log that can be soft-deleted proves nothing. Rows leave only with " +

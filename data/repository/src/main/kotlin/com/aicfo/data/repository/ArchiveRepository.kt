@@ -135,7 +135,7 @@ internal class RoomArchiveRepository(
                             goalFundingAccounts = dao.goalFundingAccounts(profileId),
                             insights = dao.insights(profileId),
                             notificationLog = dao.notificationLog(profileId),
-                        ).withAdvisor(dao, profileId).withConsentRecord(record),
+                        ).withHousehold(dao, profileId).withAdvisor(dao, profileId).withConsentRecord(record),
                     )
                 }
             }
@@ -161,6 +161,20 @@ internal class RoomArchiveRepository(
             is Ok -> Ok(ledger.value.toConsentRecords())
             is Err -> ledger
         }
+
+    /**
+     * Adds the household to an archive (issue 13.1; ADR-0069).
+     * Why:    its own function for the same reason `withAdvisor` is — one more read inside `export`
+     *         took it past detekt's 40-line limit — and because it is the one read in the export
+     *         that is **not** scoped by a `profile_id` column. `household` sits above the profile,
+     *         so the DAO reaches it through the profile's `household_id` instead, and keeping that
+     *         here rather than in the list of forty says so.
+     * Result: the archive with the household. Input: [dao]; [profileId]. Output: [CfoArchive].
+     */
+    private suspend fun CfoArchive.withHousehold(
+        dao: ArchiveDao,
+        profileId: String,
+    ): CfoArchive = copy(households = dao.households(profileId))
 
     /**
      * Adds the advisor's and the buy list's tables to an archive (issues 10.1, 10.2).
@@ -306,6 +320,10 @@ internal class RoomArchiveRepository(
      */
     private suspend fun restore(archive: CfoArchive) {
         val dao = database.archiveDao()
+        // Issue 13.1: the household first — the profile row points at it. Deliberately not in
+        // `wipe`: `household` is not profile-scoped, so a per-profile restore has no business
+        // deleting a row another profile may belong to. REPLACE makes the re-insert enough.
+        dao.insertHouseholds(archive.households)
         dao.insertProfiles(archive.profiles)
         dao.insertAccounts(archive.accounts)
         dao.insertCategories(archive.categories)

@@ -45,6 +45,53 @@ import kotlinx.serialization.Serializable
  */
 
 /**
+ * A household — the row above the profile (issue 13.1; §27, §33, ADR-0069).
+ *
+ * Why:  §27/§33 describe several people sharing one app. ADR-0069 §1 models that as one row above
+ *       the profile rather than a column inside it, and rejected a `household_member` join table:
+ *       nothing in the SRS asks for a profile in two households, and a join would turn "which
+ *       household is this profile in?" into a query when the app already has the profile row
+ *       loaded.
+ *
+ *       This table deliberately carries **no** `profile_id` and **no** money. It is not a
+ *       profile-scoped table, so `ProfileScopingTest` does not govern it, and there is nothing in
+ *       it that could leak between members — a display name and when it was created. Every figure
+ *       a household view shows is composed from per-profile engine runs instead (ADR-0069 §3).
+ * What: the identity of the household an installation's profiles belong to.
+ * Result: a Room row in `household`, one per installation in v1 (household mode is off —
+ *       `HouseholdMode.IS_ENABLED`).
+ * Input:  see the constructor. Output: a Room row.
+ * Changelog: 2026-10-03 — Created for issue 13.1 at schema version 30.
+ */
+@Serializable
+@Entity(tableName = "household")
+data class HouseholdEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    /** What the user calls this household. Never a person's name by default. */
+    @ColumnInfo(name = "display_name")
+    val displayName: String,
+    /** UTC epoch millis (TIM-001). For the row the migration backfills, the oldest profile's date. */
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+) {
+    companion object {
+        /**
+         * The household every v1 installation has.
+         *
+         * Why:  household mode is off, so there is exactly one. Holding its id as a constant means
+         *       the migration's SQL default, a fresh install's seed and any test all name the same
+         *       row instead of three string literals drifting apart.
+         */
+        const val DEFAULT_ID: String = "household-default"
+
+        /** The name the default household is created with; the user can change it later. */
+        const val DEFAULT_DISPLAY_NAME: String = "My household"
+    }
+}
+
+/**
  * A person using the app. One profile per household member.
  * Why:    every other row is scoped to a profile, and the profile owns the time zone all calendar
  *         logic resolves in (TIM-001) — which is why `Clock` reads its zone from settings rather
@@ -73,6 +120,21 @@ data class ProfileEntity(
     val updatedAtUtcMillis: Long,
     @ColumnInfo(name = "deleted_at_utc_millis")
     val deletedAtUtcMillis: Long? = null,
+    /**
+     * The household this profile belongs to (issue 13.1, schema 30; ADR-0069 §1).
+     *
+     * Not null: every profile is in exactly one household. The migration adds the column with
+     * [HouseholdEntity.DEFAULT_ID] as its SQL default, so an upgrading user and a fresh install
+     * land in the same shape and the value is never absent. The same default is declared here, so
+     * Room's exported schema and the hand-written migration agree rather than merely coinciding.
+     *
+     * **Declared last on purpose.** `ALTER TABLE ... ADD COLUMN` appends, so a column declared
+     * mid-list would make the exported `createSql` disagree with the column order a migrated
+     * database actually has. Keeping it last also leaves every positional `ProfileEntity(...)` in
+     * the test fixtures compiling unchanged.
+     */
+    @ColumnInfo(name = "household_id", defaultValue = "'${HouseholdEntity.DEFAULT_ID}'")
+    val householdId: String = HouseholdEntity.DEFAULT_ID,
 )
 
 /**

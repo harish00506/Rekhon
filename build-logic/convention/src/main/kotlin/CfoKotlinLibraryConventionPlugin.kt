@@ -50,6 +50,7 @@ class CfoKotlinLibraryConventionPlugin : Plugin<Project> {
             configureCoverage()
             configureCustomLint()
             configureCheckedDataAsTestInput()
+            configureOwnSourceAsTestInput()
             extensions.configure<Lint> {
                 abortOnError = true
                 checkDependencies = true

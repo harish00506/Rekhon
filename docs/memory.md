@@ -39,7 +39,7 @@
 
 ## Current state
 
-- **Version:** `0.12.5` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v29** (10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
+- **Version:** `0.13.0` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v30** (13.1's `household` + `profile.household_id`; v29 was 10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
   forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
   feed), 9.6 (the notification policy) and 9.7 (the numeric guardrail) shipped — **Epic 9 is
@@ -53,7 +53,10 @@
   11.5 (DPDP alignment), 11.6 (R8 + OSV scanning) and 11.7 (the no-hand-rolled-crypto audit)
   shipped — **Epic 11 is complete**. **Epic 12 is complete too**: 12.1 (the golden-file/property
   harness), 12.2 (versioned AI-eval datasets that report their scores), 12.3 (screenshot coverage for
-  the critical screens), 12.4 (the offline E2E gate) and 12.5 (the release train). Note `0.11.x` is deliberately unused — Epic 11
+  the critical screens), 12.4 (the offline E2E gate) and 12.5 (the release train).
+  **Epic 13 is open**: 13.1 (household mode's foundation) shipped — the schema supports
+  household → profiles, scoping is enforced by a test over every `@Query`, the aggregation views are
+  specified, and `HouseholdMode.IS_ENABLED` is **false** (ADR-0069). Note `0.11.x` is deliberately unused — Epic 11
   shipped as `0.10.8`–`0.10.14` by drift, recorded in `CHANGELOG.md` rather than renumbered.
   Deliberately
   unfinished: the key can be rotated but nothing offers it yet, `FLAG_SECURE` does not reach the
@@ -588,6 +591,34 @@
   source set on every issue, device or no device.
 
 ## Completed
+
+- **Epic 13 — issue 13.1 (v0.13.0, 2026-10-03):** household mode's foundation (§27, §33;
+  [ADR-0069](adr/0069-household-is-a-row-above-the-profile-and-aggregation-composes-scoped-reads.md)),
+  and **Epic 13 opens with it.** Schema **v30** adds a `household` table and `profile.household_id` —
+  a row *above* the profile, holding a name and a date, no `profile_id` and **no money**. Household
+  figures are **N per-profile engine runs summed in Kotlin**, never one query without the
+  `profile_id` clause: a bug can then produce a wrong total but can never leak one profile's rows
+  into another's view. `HouseholdAggregation` refuses an empty household, a blank profile id and a
+  profile counted twice. The flag is **off**.
+  **Scoping became a test.** `ProfileScopingTest` reads `Daos.kt` and requires every `@Query` on one
+  of the 33 profile-scoped tables to be profile-filtered, id-keyed, or marked `// DEVICE-WIDE:` with
+  a reason; one query earns it (`deleteAllPending` — SMS consent is device-wide) and the count is
+  pinned. **The 14 id-keyed queries are the recorded precondition for the flag**: they are safe only
+  because one profile exists today.
+  **The read-at-runtime staleness bug came back a fourth time** — and for the first time in a test
+  that reads *source*. Most of what the scoping test checks lives in comments, which compile to
+  identical bytecode, so deleting the `// DEVICE-WIDE:` marker left the task **UP-TO-DATE and the
+  build green in 1s**; `--rerun-tasks` then failed two assertions. `configureOwnSourceAsTestInput()`
+  declares each module's own `src/main` as a test input. **If a test reads a file at runtime, declare
+  the file.** Issues 7.2, 11.5, 11.7 and now 13.1.
+  **Two more gates were checking less than they claimed.** The archive's format test listed **14 of
+  38 keys**, so `goals`, `vehicles` and `marketCloses` were never checked — it now reads the
+  serializer's descriptor, with the key count pinned so a removal is still deliberate. And the
+  device-wide *reason* check measured "everything after the marker", which swept up the KDoc below
+  it: a marker gutted to `// DEVICE-WIDE: on purpose.` passed until a mutation showed it.
+  **The restore drill refused the new table**, which is what `Archive.kt`'s own comment warns about
+  — `goal` silently dropped out of every export for two issues. `household` is in the archive, read
+  *through* the profile since it has no `profile_id`.
 
 - **Epic 12 — issue 12.5 (v0.12.5, 2026-10-03):** the release train and its gate (§21.6, §26;
   [ADR-0068](adr/0068-the-release-train-checks-four-files-and-found-two-drifts-already-in-the-history.md)),

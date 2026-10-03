@@ -18,6 +18,7 @@ import com.aicfo.core.database.dao.DemoDao
 import com.aicfo.core.database.dao.GoalContributionDao
 import com.aicfo.core.database.dao.GoalDao
 import com.aicfo.core.database.dao.GoalFundingAccountDao
+import com.aicfo.core.database.dao.HouseholdDao
 import com.aicfo.core.database.dao.InsightDao
 import com.aicfo.core.database.dao.InvestmentHoldingDao
 import com.aicfo.core.database.dao.InvestmentLotDao
@@ -46,6 +47,7 @@ import com.aicfo.core.database.entity.CreditCardEntity
 import com.aicfo.core.database.entity.GoalContributionEntity
 import com.aicfo.core.database.entity.GoalEntity
 import com.aicfo.core.database.entity.GoalFundingAccountEntity
+import com.aicfo.core.database.entity.HouseholdEntity
 import com.aicfo.core.database.entity.InsightEntity
 import com.aicfo.core.database.entity.InterviewAnswerEntity
 import com.aicfo.core.database.entity.InvestmentHoldingEntity
@@ -125,6 +127,7 @@ import com.aicfo.core.database.entity.WishlistItemEntity
         VehicleRenewalEntity::class,
         ChatMessageEntity::class,
         MarketCloseEntity::class,
+        HouseholdEntity::class,
     ],
     version = CfoDatabase.VERSION,
     exportSchema = true,
@@ -218,6 +221,9 @@ abstract class CfoDatabase : RoomDatabase() {
     /** Result: the cached daily closes AI-MKT scores (issue 10.7; §30). */
     abstract fun marketCloseDao(): MarketCloseDao
 
+    /** Households — the row above the profile (issue 13.1; ADR-0069). */
+    abstract fun householdDao(): HouseholdDao
+
     /**
      * Input:  none. Output: the demo wipe DAO (issue 2.4, FR-ONB-004).
      *
@@ -281,7 +287,7 @@ abstract class CfoDatabase : RoomDatabase() {
          * has a quote feed and AI-MKT needs a history, so the history accumulates here — which is
          * also what lets the engine work offline and means nothing extra leaves the device; §30).
          */
-        const val VERSION = 29
+        const val VERSION = 30
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"

@@ -76,17 +76,23 @@ data class ProfileSnapshot(
                         val name = cursor.getColumnIndexOrThrow("name")
                         buildList { while (cursor.moveToNext()) add(cursor.getString(name)) }
                     }
-                val scope =
+                // A predicate rather than a column name, because `household` is reached *through*
+                // the profile: it is the row above it and carries no `profile_id` (issue 13.1,
+                // ADR-0069). Scoping it by subquery keeps it inside the drill instead of excluded
+                // from it — a backup that dropped the household would lose the name the user gave
+                // it, which is exactly the table-shaped gap `goal` fell through in issue 7.1.
+                val predicate =
                     when {
-                        "profile_id" in columns -> "profile_id"
-                        table == "profile" -> "id"
+                        "profile_id" in columns -> "`profile_id` = ?"
+                        table == "profile" -> "`id` = ?"
+                        table == "household" -> "`id` = (SELECT `household_id` FROM `profile` WHERE `id` = ?)"
                         else -> null
                     }
-                if (scope == null) {
+                if (predicate == null) {
                     unscoped += table
                 } else {
                     tables[table] =
-                        db.query("SELECT * FROM `$table` WHERE `$scope` = ?", arrayOf(profileId)).use(::rows)
+                        db.query("SELECT * FROM `$table` WHERE $predicate", arrayOf(profileId)).use(::rows)
                 }
             }
             return ProfileSnapshot(tables, unscoped)
