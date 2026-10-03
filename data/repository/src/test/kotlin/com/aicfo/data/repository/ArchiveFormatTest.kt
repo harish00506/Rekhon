@@ -71,15 +71,19 @@ class ArchiveFormatTest {
      */
     @Test
     fun `the envelope carries exactly the keys it is known to carry`() {
+        // 38 at issue 13.1; **41 at issue 13.2**, which added `appliances`, `applianceServices`
+        // and `applianceConsumables`. Each defaults to an empty list, so an archive written before
+        // them still decodes and `archiveVersion` stays 1 — the envelope's shape did not change in
+        // a way any reader has to know about.
         assertEquals(
             "a key was added to or removed from CfoArchive: say which table, and why a backup " +
                 "taken by an older build still restores",
-            38,
+            41,
             TABLES.size,
         )
         assertEquals(
             "the three scalars are the envelope's header; the rest are tables",
-            35,
+            38,
             TABLES.size - 3,
         )
     }
@@ -164,7 +168,7 @@ class ArchiveFormatTest {
          * Every key the envelope carries, taken from the serializer rather than listed by hand.
          *
          * Why:  this was a hand-written list of fourteen names, and by issue 13.1 the envelope had
-         *       thirty-eight keys — so `goals`, `vehicles`, `marketCloses` and two dozen others were
+         *       forty-one keys — so `goals`, `vehicles`, `marketCloses` and two dozen others were
          *       never checked at all. A gate that names what it covers goes stale on exactly the
          *       commits it exists to watch, which is the same failure the class comment in
          *       `Archive.kt` records about `goal` itself. Reading the descriptor means a list added

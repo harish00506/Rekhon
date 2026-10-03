@@ -12,6 +12,9 @@ import androidx.room.Relation
 import androidx.room.Transaction
 import androidx.room.Update
 import com.aicfo.core.database.entity.AccountEntity
+import com.aicfo.core.database.entity.ApplianceConsumableEntity
+import com.aicfo.core.database.entity.ApplianceEntity
+import com.aicfo.core.database.entity.ApplianceServiceEntity
 import com.aicfo.core.database.entity.AttachmentEntity
 import com.aicfo.core.database.entity.AuditLogEntity
 import com.aicfo.core.database.entity.BudgetAlertEntity
@@ -2837,6 +2840,18 @@ interface ArchiveDao {
     )
     suspend fun households(profileId: String): List<HouseholdEntity>
 
+    /** Result: every appliance (issue 13.2; §12). Input: [profileId]. */
+    @Query("SELECT * FROM appliance WHERE profile_id = :profileId ORDER BY id")
+    suspend fun appliances(profileId: String): List<ApplianceEntity>
+
+    /** Result: every appliance service visit. Input: [profileId]. */
+    @Query("SELECT * FROM appliance_service WHERE profile_id = :profileId ORDER BY id")
+    suspend fun applianceServices(profileId: String): List<ApplianceServiceEntity>
+
+    /** Result: every consumable replacement. Input: [profileId]. */
+    @Query("SELECT * FROM appliance_consumable WHERE profile_id = :profileId ORDER BY id")
+    suspend fun applianceConsumables(profileId: String): List<ApplianceConsumableEntity>
+
     /** Result: every SMS draft, in whatever state the user left it (§18, §23). Input: [profileId]. */
     @Query("SELECT * FROM sms_draft WHERE profile_id = :profileId ORDER BY id")
     suspend fun smsDrafts(profileId: String): List<SmsDraftEntity>
@@ -2858,6 +2873,18 @@ interface ArchiveDao {
     /** Result: the accounts are present. Input: [rows]. Output: none (suspends). */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAccounts(rows: List<AccountEntity>)
+
+    /** Result: the appliances are present (issue 13.2). Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAppliances(rows: List<ApplianceEntity>)
+
+    /** Result: the appliance service history is present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertApplianceServices(rows: List<ApplianceServiceEntity>)
+
+    /** Result: the consumable replacements are present. Input: [rows]. Output: none (suspends). */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertApplianceConsumables(rows: List<ApplianceConsumableEntity>)
 
     /** Result: the taxonomy is present. Input: [rows]. Output: none (suspends). */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -4463,4 +4490,81 @@ interface MarketCloseDao {
     /** Result: every row — the archive's read. Input: [profileId]. */
     @Query("SELECT * FROM market_close WHERE profile_id = :profileId")
     suspend fun allCloses(profileId: String): List<MarketCloseEntity>
+}
+
+/**
+ * Reads and writes appliances and what has been done to them (issue 13.2; §12, ADR-0070).
+ *
+ * Why:  AI-APP is pure and reads nothing; these are the rows a repository would hand it. Every
+ *       query here filters on `profile_id`, which is what `ProfileScopingTest` requires of a table
+ *       carrying one — an appliance belongs to a household member, and so does what they paid to
+ *       service it.
+ * What: one observe and one upsert per table, plus the two history reads a prediction needs.
+ * Result: the storage side of §12's appliance clause, with no screen on it yet
+ *       (`ApplianceMode.IS_ENABLED` is false).
+ */
+@Dao
+interface ApplianceDao {
+    /**
+     * Inserts an appliance, replacing one with the same id.
+     * Result: the row is present afterwards. Input: [appliance]. Output: none (suspends).
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(appliance: ApplianceEntity)
+
+    /**
+     * Observes a profile's live appliances.
+     * Result: emits on every change; excludes soft-deleted rows; oldest first so the order a list
+     *         renders in is stable rather than whatever SQLite returns.
+     * Input:  [profileId]. Output: `Flow<List<ApplianceEntity>>`.
+     */
+    @Query(
+        "SELECT * FROM appliance WHERE profile_id = :profileId " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY created_at_utc_millis",
+    )
+    fun observeAll(profileId: String): Flow<List<ApplianceEntity>>
+
+    /**
+     * Records a service visit.
+     * Result: the row is present. Input: [service]. Output: none (suspends).
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertService(service: ApplianceServiceEntity)
+
+    /**
+     * One appliance's service history, newest first.
+     * Result: what the engine dates the next service from. Input: [profileId]; [applianceId].
+     * Output: `List<ApplianceServiceEntity>`.
+     */
+    @Query(
+        "SELECT * FROM appliance_service WHERE profile_id = :profileId " +
+            "AND appliance_id = :applianceId AND deleted_at_utc_millis IS NULL " +
+            "ORDER BY serviced_iso_date DESC",
+    )
+    suspend fun servicesFor(
+        profileId: String,
+        applianceId: String,
+    ): List<ApplianceServiceEntity>
+
+    /**
+     * Records a consumable replacement.
+     * Result: the row is present. Input: [consumable]. Output: none (suspends).
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertConsumable(consumable: ApplianceConsumableEntity)
+
+    /**
+     * One appliance's consumable replacements, newest first.
+     * Result: what restarts each item's own clock. Input: [profileId]; [applianceId].
+     * Output: `List<ApplianceConsumableEntity>`.
+     */
+    @Query(
+        "SELECT * FROM appliance_consumable WHERE profile_id = :profileId " +
+            "AND appliance_id = :applianceId AND deleted_at_utc_millis IS NULL " +
+            "ORDER BY replaced_iso_date DESC",
+    )
+    suspend fun consumablesFor(
+        profileId: String,
+        applianceId: String,
+    ): List<ApplianceConsumableEntity>
 }

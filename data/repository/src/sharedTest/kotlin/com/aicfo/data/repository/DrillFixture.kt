@@ -3,6 +3,9 @@ package com.aicfo.data.repository
 import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.database.dao.ArchiveDao
 import com.aicfo.core.database.entity.AccountEntity
+import com.aicfo.core.database.entity.ApplianceConsumableEntity
+import com.aicfo.core.database.entity.ApplianceEntity
+import com.aicfo.core.database.entity.ApplianceServiceEntity
 import com.aicfo.core.database.entity.AttachmentEntity
 import com.aicfo.core.database.entity.BudgetAlertEntity
 import com.aicfo.core.database.entity.BudgetEntity
@@ -61,6 +64,9 @@ object DrillFixture {
 
     /** Issue 10.4: the vehicle every reading, service and renewal hangs off. */
     const val VEHICLE = "vehicle:1"
+
+    /** The appliance every appliance row hangs off (issue 13.2). */
+    const val APPLIANCE = "appliance:1"
     const val BUDGET = "budget:1"
     const val PARENT_CATEGORY = "category:food"
     const val HOLDING = "holding:1"
@@ -98,6 +104,56 @@ object DrillFixture {
         )
         dao.insertProfiles(listOf(profile(profileId)))
         dao.insertAccounts(listOf(account(profileId)))
+        // Issue 13.2: §12's appliances. Seeded with a tombstone on one row and a null cost on
+        // another, so the drill carries both the soft-delete column and the deliberate absence of a
+        // figure — a restore that silently turned `null` into 0 would be inventing a bill (P-03).
+        dao.insertAppliances(
+            listOf(
+                ApplianceEntity(
+                    id = APPLIANCE,
+                    profileId = profileId,
+                    label = "Living room AC",
+                    applianceClass = "AC",
+                    purchasedOnIsoDate = "2025-04-18",
+                    ratedWatts = 1_500,
+                    minutesPerDay = 300,
+                    tariffPaisePerKwh = 850,
+                    deletedAtUtcMillis = null,
+                    createdAtUtcMillis = NOW,
+                    updatedAtUtcMillis = NOW,
+                ),
+            ),
+        )
+        dao.insertApplianceServices(
+            listOf(
+                ApplianceServiceEntity(
+                    id = "appliance_service:1",
+                    profileId = profileId,
+                    applianceId = APPLIANCE,
+                    servicedIsoDate = "2026-03-01",
+                    costMinor = 95_000L,
+                    note = "pre-summer",
+                    deletedAtUtcMillis = DELETED_AT,
+                    createdAtUtcMillis = NOW,
+                    updatedAtUtcMillis = NOW,
+                ),
+            ),
+        )
+        dao.insertApplianceConsumables(
+            listOf(
+                ApplianceConsumableEntity(
+                    id = "appliance_consumable:1",
+                    profileId = profileId,
+                    applianceId = APPLIANCE,
+                    item = "air_filter",
+                    replacedIsoDate = "2026-09-01",
+                    costMinor = null,
+                    deletedAtUtcMillis = null,
+                    createdAtUtcMillis = NOW,
+                    updatedAtUtcMillis = NOW,
+                ),
+            ),
+        )
         dao.insertCategories(
             listOf(
                 CategoryEntity(

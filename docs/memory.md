@@ -39,7 +39,7 @@
 
 ## Current state
 
-- **Version:** `0.13.0` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v30** (13.1's `household` + `profile.household_id`; v29 was 10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
+- **Version:** `0.13.1` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v31** (13.2's three `appliance*` tables; v30 was 13.1's `household` + `profile.household_id`; v29 was 10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
   forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
   feed), 9.6 (the notification policy) and 9.7 (the numeric guardrail) shipped — **Epic 9 is
@@ -54,9 +54,11 @@
   shipped — **Epic 11 is complete**. **Epic 12 is complete too**: 12.1 (the golden-file/property
   harness), 12.2 (versioned AI-eval datasets that report their scores), 12.3 (screenshot coverage for
   the critical screens), 12.4 (the offline E2E gate) and 12.5 (the release train).
-  **Epic 13 is open**: 13.1 (household mode's foundation) shipped — the schema supports
-  household → profiles, scoping is enforced by a test over every `@Query`, the aggregation views are
-  specified, and `HouseholdMode.IS_ENABLED` is **false** (ADR-0069). Note `0.11.x` is deliberately unused — Epic 11
+  **Epic 13 is open**: 13.1 (household mode's foundation) and 13.2 (appliances) shipped — the schema
+  supports household → profiles, scoping is enforced by a test over every `@Query`, the aggregation
+  views are specified, and `HouseholdMode.IS_ENABLED` is **false** (ADR-0069); AI-APP predicts an
+  appliance's service, consumables, warranty and **running cost** from its own knowledge base, with
+  `ApplianceMode.IS_ENABLED` **false** (ADR-0070). Note `0.11.x` is deliberately unused — Epic 11
   shipped as `0.10.8`–`0.10.14` by drift, recorded in `CHANGELOG.md` rather than renumbered.
   Deliberately
   unfinished: the key can be rotated but nothing offers it yet, `FLAG_SECURE` does not reach the
@@ -591,6 +593,33 @@
   source set on every issue, device or no device.
 
 ## Completed
+
+- **Epic 13 — issue 13.2 (v0.13.1, 2026-10-03):** appliances (§12's closing clause;
+  [ADR-0070](adr/0070-appliances-are-a-sibling-of-ai-veh-and-the-running-cost-is-the-new-number.md)).
+  §12 ends with one line — *"Appliances (Phase 4): same engine, different knowledge base (AC service
+  pre-summer, water-purifier filters, extended-warranty expiry)"* — and this builds it as
+  **`:domain:engines:appliance`, a sibling of AI-VEH rather than the same class.** The shape is
+  copied exactly; the arithmetic cannot be, because a vehicle's prediction hangs off a robust slope
+  through odometer readings and **an appliance has no odometer**.
+  **The running cost is the number it adds:** `watts × minutes/day × days × tariff ÷ 60 000`, one
+  division at the end, HALF_EVEN. It is the only appliance cost that never arrives as a bill of its
+  own. **Minutes, not hours** — forty minutes of geyser is a decimal in hours, and MNY-001 keeps
+  decimals out of money.
+  **Schema v31** adds `appliance`, `appliance_service`, `appliance_consumable`, all profile-scoped,
+  all in the backup from the first commit, with `cost_minor` nullable so a remembered visit with a
+  forgotten bill stays "unknown" rather than becoming "free" (P-03).
+  **The golden file comes from an independent Python oracle** reading the same KB — the two agreed
+  on all eight scenarios at the first run.
+  **A mutation showed what a golden file cannot test:** half-even → half-up left every scenario
+  green, because every cost range in the shipped KB sums to an even number. *A golden file tests the
+  engine against the data that ships, not the data that could* — so rounding rules belong in a unit
+  test on the inputs that distinguish them.
+  **13.1's two pins both fired** (scoped tables 33 → 36, archive keys 38 → 41), which is what they
+  are for.
+  **Found and deliberately not fixed:** `ai/orchestrator/engine-registry.yaml` is missing **10 of 28
+  engine modules** and names one that does not exist (`:domain:engines:growth`), and **nothing checks
+  it**. Writing the drift test would go red at once; greening it honestly needs ten accurate contract
+  lines. Recorded in ADR-0070 as its own issue.
 
 - **Epic 13 — issue 13.1 (v0.13.0, 2026-10-03):** household mode's foundation (§27, §33;
   [ADR-0069](adr/0069-household-is-a-row-above-the-profile-and-aggregation-composes-scoped-reads.md)),

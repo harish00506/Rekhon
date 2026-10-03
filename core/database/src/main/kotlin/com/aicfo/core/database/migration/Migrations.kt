@@ -1636,6 +1636,51 @@ internal object Migrations {
             }
         }
 
+    /**
+     * 30 → 31: appliances, their services and their consumables (issue 13.2; §12, ADR-0070).
+     *
+     * Why:  §12's closing clause — "Appliances (Phase 4): same engine, different knowledge base".
+     *       Three tables because the three things have three lifetimes: the appliance is bought
+     *       once, serviced on a cadence, and has consumables that each run on their own clock from
+     *       their own last replacement.
+     * What: creates the three tables and their indices.
+     * Result: AI-APP has somewhere to read from when `ApplianceMode.IS_ENABLED` is turned on.
+     *
+     * Purely additive, so DB-003 holds: nothing is dropped, nothing changes type, and no existing
+     * row is touched. There is no backfill because there is nothing to backfill — an installation
+     * upgrading to 31 owns no appliances until the user adds one.
+     */
+    val MIGRATION_30_31 =
+        object : Migration(VERSION_30, VERSION_31) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(APPLIANCE_TABLE)
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_appliance_profile_id` ON `appliance` (`profile_id`)")
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_appliance_profile_id_deleted_at_utc_millis` " +
+                        "ON `appliance` (`profile_id`, `deleted_at_utc_millis`)",
+                )
+                db.execSQL(APPLIANCE_SERVICE_TABLE)
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_appliance_service_profile_id` " +
+                        "ON `appliance_service` (`profile_id`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_appliance_service_profile_id_appliance_id` " +
+                        "ON `appliance_service` (`profile_id`, `appliance_id`)",
+                )
+                db.execSQL(APPLIANCE_CONSUMABLE_TABLE)
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_appliance_consumable_profile_id` " +
+                        "ON `appliance_consumable` (`profile_id`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS " +
+                        "`index_appliance_consumable_profile_id_appliance_id_item` " +
+                        "ON `appliance_consumable` (`profile_id`, `appliance_id`, `item`)",
+                )
+            }
+        }
+
     /** Every migration, in order, for `CfoDatabaseFactory` to register. */
     val ALL: Array<Migration> =
         arrayOf(
@@ -1668,7 +1713,53 @@ internal object Migrations {
             MIGRATION_27_28,
             MIGRATION_28_29,
             MIGRATION_29_30,
+            MIGRATION_30_31,
         )
+
+    /** `appliance`'s columns (issue 13.2). Mirrors `ApplianceEntity`. */
+    private const val APPLIANCE_TABLE =
+        "CREATE TABLE IF NOT EXISTS `appliance` (" +
+            "`id` TEXT NOT NULL, " +
+            "`profile_id` TEXT NOT NULL, " +
+            "`label` TEXT NOT NULL, " +
+            "`appliance_class` TEXT NOT NULL, " +
+            "`purchased_on_iso_date` TEXT NOT NULL, " +
+            "`rated_watts` INTEGER, " +
+            "`minutes_per_day` INTEGER, " +
+            "`tariff_paise_per_kwh` INTEGER, " +
+            "`deleted_at_utc_millis` INTEGER, " +
+            "`created_at_utc_millis` INTEGER NOT NULL, " +
+            "`updated_at_utc_millis` INTEGER NOT NULL, " +
+            "PRIMARY KEY(`id`))"
+
+    /** `appliance_service`'s columns (issue 13.2). `cost_minor` is nullable: a remembered visit
+     * with a forgotten bill is still worth recording, and a zero would be a figure (P-03). */
+    private const val APPLIANCE_SERVICE_TABLE =
+        "CREATE TABLE IF NOT EXISTS `appliance_service` (" +
+            "`id` TEXT NOT NULL, " +
+            "`profile_id` TEXT NOT NULL, " +
+            "`appliance_id` TEXT NOT NULL, " +
+            "`serviced_iso_date` TEXT NOT NULL, " +
+            "`cost_minor` INTEGER, " +
+            "`note` TEXT, " +
+            "`deleted_at_utc_millis` INTEGER, " +
+            "`created_at_utc_millis` INTEGER NOT NULL, " +
+            "`updated_at_utc_millis` INTEGER NOT NULL, " +
+            "PRIMARY KEY(`id`))"
+
+    /** `appliance_consumable`'s columns (issue 13.2). */
+    private const val APPLIANCE_CONSUMABLE_TABLE =
+        "CREATE TABLE IF NOT EXISTS `appliance_consumable` (" +
+            "`id` TEXT NOT NULL, " +
+            "`profile_id` TEXT NOT NULL, " +
+            "`appliance_id` TEXT NOT NULL, " +
+            "`item` TEXT NOT NULL, " +
+            "`replaced_iso_date` TEXT NOT NULL, " +
+            "`cost_minor` INTEGER, " +
+            "`deleted_at_utc_millis` INTEGER, " +
+            "`created_at_utc_millis` INTEGER NOT NULL, " +
+            "`updated_at_utc_millis` INTEGER NOT NULL, " +
+            "PRIMARY KEY(`id`))"
 
     /**
      * `household`'s columns (issue 13.1). Mirrors `HouseholdEntity`; no `profile_id`, no money.
@@ -1815,6 +1906,9 @@ internal object Migrations {
 
     /** Schema 30: `household` and `profile.household_id` (issue 13.1).*/
     private const val VERSION_30 = 30
+
+    /** Schema 31: `appliance`, `appliance_service` and `appliance_consumable` (issue 13.2). */
+    private const val VERSION_31 = 31
 
     /**
      * `wishlist_item`'s columns (issue 10.2).

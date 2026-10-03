@@ -25,6 +25,9 @@
         household before the profile. Noted rather than given a section because household mode's
         own surface does not exist yet — `HouseholdMode.IS_ENABLED` is false and nothing calls
         `HouseholdAggregation`, so there is no runtime path to trace (ADR-0069).
+    2026-10-03 — Issue 13.2: §2.05 also carries the three appliance tables. AI-APP likewise has
+        no runtime path — `ApplianceMode.IS_ENABLED` is false and nothing calls the engine, so
+        the only flow this issue changed is the backup's (ADR-0070).
     2026-09-03 — Issue 7.3 added §2.6, the goal waterfall. Still Shape A — a screen — but the first
         read assembled from four repositories, and the first write driven by a gesture, so it is
         traced beside §2.5 rather than folded into it.
@@ -256,6 +259,7 @@ DashboardEvent.ExportRequested
     └─ archiveDao().<35 reads>                       SELECT *, tombstones INCLUDED, ORDER BY id
         ├─ .withHousehold(dao, profileId)            household scoped THROUGH profile.household_id
         │                                            — it has no profile_id (13.1, ADR-0069)
+        │   + appliances · applianceServices · applianceConsumables   (13.2, schema 31)
         └─ Json.encodeToString(CfoArchive(...))      entities ARE the format (ADR-0023)
     ⇣  ArchiveUiState.ReadyToWrite(json)
 ArchiveHost (STATEFUL half — owns the Uri)
@@ -277,6 +281,7 @@ ArchiveHost └─ OpenDocument(["application/json"]) → context.readText(uri)
                                restore(archive)      archiveDao inserts, REPLACE
                                  household FIRST     the profile points at it; NOT in wipe(),
                                                      being the one row above the profile (13.1)
+                                 restoreAppliances() the three 13.2 tables, after the accounts
                            }
     ⇣  ArchiveUiState.Imported(rows, exportedAt)
 ```

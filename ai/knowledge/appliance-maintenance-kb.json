@@ -1,0 +1,120 @@
+{
+  "_meta": {
+    "file": "appliance-maintenance-kb.json",
+    "why": "SRS §12 closes with one line about appliances: 'same engine, different knowledge base (AC service pre-summer, water-purifier filters, extended-warranty expiry)'. This is that knowledge base. A household's appliances cost money in three predictable ways — the service that is always coming, the consumable that silently expires, and the electricity they draw every day — and none of the three is a surprise if somebody wrote the intervals down.",
+    "what": "Per appliance class: service cadence in months and the month it is anchored to where the service is seasonal, typical Indian cost ranges (minor units, INR paise), manufacturer warranty length, consumable replacement intervals with their own cost ranges, and the power draw a running cost is computed from.",
+    "result": "'AC service due 1 Mar, expect INR 600-1,200', 'water-purifier filter due in 3 weeks, INR 1,200-2,500', 'warranty expires in 46 days', and a running cost per month for each appliance.",
+    "source_section": "§12",
+    "version": "1.0",
+    "changelog": [
+      "2026-10-03 — Created from SRS v1.7 §12's appliance clause for issue 13.2. Cost ranges, warranty lengths and power figures are starter estimates for Indian households; the tariff is a national-average slab. See ADR-0070."
+    ],
+    "prediction_note": "nextService.dueAt = seasonal_month's 1st, next occurrence (seasonal classes) OR last service date + interval_months, falling back to the purchase date when nothing has been serviced yet. warrantyExpiry = purchase date + warranty_months. consumable.dueAt = last replacement + interval_months, else purchase + interval_months. runningCostPerMonth = rated_watts x typical_minutes_per_day x days_per_month x tariff_paise_per_kwh / 60000, rounded HALF_EVEN.",
+    "power_note": "Why minutes rather than hours: a geyser runs about 40 minutes a day and a fraction of an hour would have to be a decimal, which MNY-001 keeps out of money arithmetic. Minutes are an integer all the way to paise.",
+    "not_modelled": "Star rating, inverter vs non-inverter, standby draw, and tariff slabs that change with monthly consumption. Each would change the running cost, and each needs a figure the app does not hold. A flat tariff that the user can override is an honest approximation; a slab table the app cannot fill would not be. See ADR-0070."
+  },
+
+  "prediction": {
+    "id": "APP-PREDICT",
+    "version": "1.0",
+    "why": "The parameters shared by every class, kept here rather than in an engine so that changing one is a data edit (CLAUDE.md §6).",
+    "days_per_month": 30,
+    "default_tariff_paise_per_kwh": 800,
+    "seasonal_due_day_of_month": 1
+  },
+
+  "alerts": {
+    "id": "APP-ALERTS",
+    "version": "1.0",
+    "why": "When to speak. A warranty notice on the day it expires is useless — the window to buy an extension has already closed — so it leads by two months, and the service lead matches AI-VEH's so the two engines do not disagree about what 'due soon' means.",
+    "service_due_days": 30,
+    "consumable_due_days": 14,
+    "warranty_reminder_days": [60, 14]
+  },
+
+  "appliance_classes": [
+    {
+      "class": "AC",
+      "label": "Air conditioner",
+      "service": {
+        "interval_months": 12,
+        "seasonal_month": 3,
+        "cost_range_minor": [60000, 120000]
+      },
+      "warranty_months": 12,
+      "power": {
+        "rated_watts": 1500,
+        "typical_minutes_per_day": 300
+      },
+      "consumables": [
+        { "item": "air_filter", "interval_months": 6, "cost_range_minor": [20000, 50000] },
+        { "item": "gas_refill", "interval_months": 36, "cost_range_minor": [200000, 350000] }
+      ]
+    },
+    {
+      "class": "WATER_PURIFIER",
+      "label": "Water purifier",
+      "service": {
+        "interval_months": 12,
+        "seasonal_month": null,
+        "cost_range_minor": [50000, 90000]
+      },
+      "warranty_months": 12,
+      "power": {
+        "rated_watts": 60,
+        "typical_minutes_per_day": 60
+      },
+      "consumables": [
+        { "item": "filter_cartridge", "interval_months": 6, "cost_range_minor": [120000, 250000] },
+        { "item": "uv_lamp", "interval_months": 12, "cost_range_minor": [60000, 120000] }
+      ]
+    },
+    {
+      "class": "REFRIGERATOR",
+      "label": "Refrigerator",
+      "service": {
+        "interval_months": 24,
+        "seasonal_month": null,
+        "cost_range_minor": [50000, 100000]
+      },
+      "warranty_months": 12,
+      "power": {
+        "rated_watts": 200,
+        "typical_minutes_per_day": 480
+      },
+      "consumables": []
+    },
+    {
+      "class": "WASHING_MACHINE",
+      "label": "Washing machine",
+      "service": {
+        "interval_months": 12,
+        "seasonal_month": null,
+        "cost_range_minor": [40000, 90000]
+      },
+      "warranty_months": 24,
+      "power": {
+        "rated_watts": 500,
+        "typical_minutes_per_day": 60
+      },
+      "consumables": []
+    },
+    {
+      "class": "GEYSER",
+      "label": "Water heater",
+      "service": {
+        "interval_months": 12,
+        "seasonal_month": 10,
+        "cost_range_minor": [30000, 70000]
+      },
+      "warranty_months": 24,
+      "power": {
+        "rated_watts": 2000,
+        "typical_minutes_per_day": 40
+      },
+      "consumables": [
+        { "item": "anode_rod", "interval_months": 24, "cost_range_minor": [50000, 90000] }
+      ]
+    }
+  ]
+}

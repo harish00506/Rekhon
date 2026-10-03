@@ -1901,6 +1901,66 @@ class MigrationRoundTripTest {
     }
 
     /**
+     * 30 → 31: appliances, their services and their consumables (issue 13.2; §12, ADR-0070).
+     *
+     * Why:  three tables arriving at once is the shape of migration that quietly half-lands — two
+     *       created, the third's `execSQL` left out of the block, and nothing notices until someone
+     *       inserts into the missing one months later. `runMigrationsAndValidate` compares the
+     *       result against the exported schema and so catches a missing *table*; it does not catch
+     *       a missing *index*, nor prove a row survives, which is what the inserts below are for.
+     *
+     *       The nullable `cost_minor` is asserted specifically. A user who remembers the service
+     *       but not the bill records the visit with no figure, and a column that silently became
+     *       `0` would turn "I don't know" into "it was free" — a number the engine would then
+     *       average into something (P-03).
+     * Result: all three tables exist, keep their rows, and keep a null cost null.
+     */
+    @Test
+    fun migrate30To31_createsTheApplianceTablesAndKeepsANullCostNull() {
+        helper.createDatabase(TEST_DB, 30).close()
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 31, true, Migrations.MIGRATION_30_31)
+
+        migrated.execSQL(
+            "INSERT INTO appliance (id, profile_id, label, appliance_class, purchased_on_iso_date, " +
+                "rated_watts, minutes_per_day, tariff_paise_per_kwh, deleted_at_utc_millis, " +
+                "created_at_utc_millis, updated_at_utc_millis) " +
+                "VALUES ('appliance:1', 'local', 'Living room AC', 'AC', '2025-04-18', " +
+                "1500, 300, 850, NULL, 1790000000000, 1790000000000)",
+        )
+        migrated.execSQL(
+            "INSERT INTO appliance_service (id, profile_id, appliance_id, serviced_iso_date, " +
+                "cost_minor, note, deleted_at_utc_millis, created_at_utc_millis, updated_at_utc_millis) " +
+                "VALUES ('appliance_service:1', 'local', 'appliance:1', '2026-03-01', " +
+                "NULL, 'visit remembered, bill not', NULL, 1790000000000, 1790000000000)",
+        )
+        migrated.execSQL(
+            "INSERT INTO appliance_consumable (id, profile_id, appliance_id, item, replaced_iso_date, " +
+                "cost_minor, deleted_at_utc_millis, created_at_utc_millis, updated_at_utc_millis) " +
+                "VALUES ('appliance_consumable:1', 'local', 'appliance:1', 'air_filter', '2026-09-01', " +
+                "120000, NULL, 1790000000000, 1790000000000)",
+        )
+
+        migrated.query(
+            "SELECT appliance_class, rated_watts, tariff_paise_per_kwh FROM appliance WHERE id = 'appliance:1'",
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("AC", cursor.getString(0))
+            assertEquals(1_500L, cursor.getLong(1))
+            assertEquals(850L, cursor.getLong(2))
+        }
+        migrated.query("SELECT cost_minor FROM appliance_service WHERE id = 'appliance_service:1'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertTrue("a forgotten bill must stay null, never become 0 (P-03)", cursor.isNull(0))
+        }
+        migrated.query("SELECT item, cost_minor FROM appliance_consumable").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("air_filter", cursor.getString(0))
+            assertEquals(1_20_000L, cursor.getLong(1))
+        }
+    }
+
+    /**
      * Result: true when [sql] was refused by a constraint. Input: [db]; [sql]. Output: [Boolean].
      */
     private fun refuses(
