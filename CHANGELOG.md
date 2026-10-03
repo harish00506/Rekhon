@@ -18,6 +18,32 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > renumbering them would make this file disagree with the history it documents. Epic 12 starts the
 > series it should.
 
+### [0.12.5] — Issue 12.5: the release train, and what it found in the past  (2026-10-03)
+
+- **Implemented:** the version/changelog release train and its gate (**ADR-0068**, guide in
+  `docs/releases-process.md`).
+  - **Four files have to move together** when a version changes — the version number, the build's own
+    counter, the changelog and a release ledger. Until now that was done by hand with nothing checking
+    it. `scripts/release.py` does the mechanical part; a new check fails the build when they disagree.
+  - **It writes everything except the release notes**, on purpose. A generated line saying "this
+    shipped" would be worse than none.
+- **Reconstructing the history found two things that had already gone wrong, neither ever noticed:**
+  - **Seven releases were numbered into the wrong series.** The rule is that a new chapter of work
+    starts a new version series; Epic 11's seven issues continued the previous one. The new check
+    compares the issue number in each entry against the version, which would have caught it on the
+    first release rather than the seventh.
+  - **Ten releases reused the previous build counter.** Google Play rejects an upload whose counter
+    did not increase — *after* the release has been packaged. None of these was ever uploaded, since
+    the app has not shipped, so the record stands as it happened and the check guards from here on.
+- **Both are left exactly as they were**, with the reasons written down. Renumbering released versions
+  would make the changelog disagree with the commits it describes.
+- **Also documented:** every gate that blocks a merge, in one table, and how to tag a release. This
+  repository still has **no tags**, because nothing has been promoted beyond the integration branch —
+  a true statement about the project rather than a gap in the process.
+- **Tests:** 24 for the release gate and 8 for the version arithmetic, with 8 mutations — 7 killed, 1
+  recorded as behaviourally equivalent rather than counted.
+- **Requirements:** §21.6, §26, SemVer · ADR-0068.
+
 ### [0.12.4] — Issue 12.4: the offline promise is now actually tested  (2026-10-02)
 
 - **Implemented:** the end-to-end offline check this app's central promise deserves (**ADR-0067**).
