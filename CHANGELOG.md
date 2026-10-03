@@ -6,6 +6,54 @@ Single source of truth for the version number is the repo-root [`VERSION`](VERSI
 `app/build.gradle.kts` `versionName` equal to it. Epics map to the SRS roadmap (§26); every
 entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`](docs/issues/00-issue-workflow.md).
 
+## [0.13.0] — Epic 13: Expansion
+
+> Design-for-later scope: household mode, appliances, insurance, tax v2, business mode, Account
+> Aggregator and iOS via KMP — foundations in v1, each behind a flag, each with an ADR.
+
+### [0.13.0] — Issue 13.1: household mode's foundation, and the rule that stops a cross-leak  (2026-10-03)
+
+- **Implemented:** household → profiles, with strict per-profile scoping and the aggregation views
+  specified but not built (**ADR-0069**).
+  - **Schema 30** adds a `household` table and `profile.household_id`. A household is the row
+    *above* the profile — one table plus a column, not a join table, because nothing asks for a
+    profile in two households. It holds a name and a date: no `profile_id`, and no money.
+  - **Aggregation composes scoped reads.** The tempting household net-worth view is one query
+    without the `profile_id` clause; that is banned. Household figures are N per-profile engine runs
+    summed in Kotlin, so a bug can produce a wrong total but can never leak one profile's rows into
+    another's view. `HouseholdAggregation` refuses an empty household, a blank profile id and a
+    profile counted twice — the one mistake here that invents money.
+  - **The flag is off.** `HouseholdMode.IS_ENABLED` is `false`; the foundation ships because it is
+    inert data and a build-time check. ADR-0069 §5 records the precondition for turning it on:
+    **14 id-keyed DAO queries are safe only because one profile exists today**, and must constrain
+    `profile_id` first.
+- **Scoping is now a test, not a convention.** `ProfileScopingTest` reads `Daos.kt` and requires
+  every `@Query` on one of the 33 profile-scoped tables to be profile-filtered, id-keyed, or
+  carry an explicit `// DEVICE-WIDE:` marker with a reason. One query earns the marker
+  (`deleteAllPending` — SMS consent is device-wide), and the count is pinned, so a second is a
+  deliberate act somebody has to write down.
+- **Three gates were found checking less than they claimed:**
+  - **A test that reads source could be skipped — the fourth instance of this bug.** Issues 7.2,
+    11.5 and 11.7 each fixed it for *data* a test reads; a test reading **Kotlin source** was still
+    exposed. Most of what the scoping test checks lives in comments, which compile to identical
+    bytecode, so deleting the `// DEVICE-WIDE:` marker left the task **UP-TO-DATE and the build
+    green in 1s**. `configureOwnSourceAsTestInput()` declares each module's own `src/main` as a test
+    input.
+  - **The archive's format test listed 14 of 38 keys**, so `goals`, `vehicles`, `marketCloses` and
+    two dozen others were never checked. It now reads the serializer's own descriptor, and the key
+    count is pinned so a removal is still a deliberate edit.
+  - **The reason check measured the wrong text.** Found by mutation: a marker gutted to
+    `// DEVICE-WIDE: on purpose.` passed, because "everything after the marker" swept up the KDoc
+    below it. It now reads only the marker's own comment block.
+- **A backup would have lost the household.** The restore drill refused the new table outright —
+  `Archive.kt` already records `goal` silently dropping out of every export for two issues, and this
+  is the same table-shaped gap. `household` is in the archive, read *through* the profile since it
+  has no `profile_id` column, and the drill reaches it the same way.
+- **Tests:** 12 for the aggregation (including two properties over 200 seeded households — the total
+  equals its parts, and member order cannot change it), 5 for the scoping gate, 4 for quick setup's
+  household seeding, 1 for the schema invariants, and the 29 → 30 migration round-trip. Twelve
+  mutations run; every one went red, three of them only after the gate was fixed.
+
 ## [0.12.0] — Epic 12: Quality, Testing & Release
 
 > The golden-file/property harness, frozen AI-eval datasets, screenshot tests, the instrumented E2E

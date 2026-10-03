@@ -13,6 +13,7 @@ import com.aicfo.core.database.entity.CreditCardEntity
 import com.aicfo.core.database.entity.GoalContributionEntity
 import com.aicfo.core.database.entity.GoalEntity
 import com.aicfo.core.database.entity.GoalFundingAccountEntity
+import com.aicfo.core.database.entity.HouseholdEntity
 import com.aicfo.core.database.entity.InsightEntity
 import com.aicfo.core.database.entity.InterviewAnswerEntity
 import com.aicfo.core.database.entity.InvestmentHoldingEntity
@@ -85,6 +86,16 @@ object DrillFixture {
         profileId: String,
     ) {
         val dao = database.archiveDao()
+        // Issue 13.1: the household is above the profile, so it is seeded first — and it is seeded
+        // at all because the drill requires every table in the schema to hold a row (DRL-001): a
+        // table left empty would let the restore pass for nothing.
+        database.householdDao().upsert(
+            HouseholdEntity(
+                id = HouseholdEntity.DEFAULT_ID,
+                displayName = HouseholdEntity.DEFAULT_DISPLAY_NAME,
+                createdAtUtcMillis = NOW,
+            ),
+        )
         dao.insertProfiles(listOf(profile(profileId)))
         dao.insertAccounts(listOf(account(profileId)))
         dao.insertCategories(

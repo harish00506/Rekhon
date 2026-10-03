@@ -1,6 +1,7 @@
 package com.aicfo.data.repository
 
 import com.aicfo.core.database.entity.TransactionEntity
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -53,8 +54,34 @@ class ArchiveFormatTest {
         val encoded = json.encodeToString(CfoArchive(archiveVersion = 1, schemaVersion = 15, exportedAtUtcMillis = 0L))
 
         TABLES.forEach { table ->
-            assertTrue("the archive no longer carries a '$table' list", encoded.contains("\"$table\""))
+            assertTrue("the archive no longer carries a '$table' key", encoded.contains("\"$table\""))
         }
+    }
+
+    /**
+     * Input:  the envelope's own descriptor.
+     * Output: asserts it carries exactly the three scalars and thirty-five lists it has today.
+     *
+     * Why:  [TABLES] is derived from the serializer, which makes it impossible to go stale but also
+     *       unable to notice a field being **removed** — the key and the expectation would vanish
+     *       together. Pinning the count puts that back: deleting a list from [CfoArchive] breaks
+     *       this test, so dropping a table out of every future backup is a deliberate edit with a
+     *       number to change, rather than a quiet one-line deletion. Adding a list breaks it too,
+     *       which is the cheap half of the trade — bump the number and say which table arrived.
+     */
+    @Test
+    fun `the envelope carries exactly the keys it is known to carry`() {
+        assertEquals(
+            "a key was added to or removed from CfoArchive: say which table, and why a backup " +
+                "taken by an older build still restores",
+            38,
+            TABLES.size,
+        )
+        assertEquals(
+            "the three scalars are the envelope's header; the rest are tables",
+            35,
+            TABLES.size - 3,
+        )
     }
 
     /**
@@ -133,12 +160,21 @@ class ArchiveFormatTest {
         )
 
     private companion object {
-        /** Every list the envelope carries. A table dropped from here is data dropped from backups. */
-        val TABLES =
-            listOf(
-                "profiles", "accounts", "categories", "transactions", "transactionSplits",
-                "tags", "transactionTags", "budgets", "budgetAlerts", "budgetReviews",
-                "recurringRules", "netWorthSnapshots", "attachments", "smsDrafts",
-            )
+        /**
+         * Every key the envelope carries, taken from the serializer rather than listed by hand.
+         *
+         * Why:  this was a hand-written list of fourteen names, and by issue 13.1 the envelope had
+         *       thirty-eight keys — so `goals`, `vehicles`, `marketCloses` and two dozen others were
+         *       never checked at all. A gate that names what it covers goes stale on exactly the
+         *       commits it exists to watch, which is the same failure the class comment in
+         *       `Archive.kt` records about `goal` itself. Reading the descriptor means a list added
+         *       to [CfoArchive] is covered the moment it is declared, with nobody remembering.
+         * Result: the names of every field the archive serialises, scalars included.
+         */
+        @OptIn(ExperimentalSerializationApi::class)
+        val TABLES: List<String> =
+            CfoArchive.serializer().descriptor.let { descriptor ->
+                (0 until descriptor.elementsCount).map(descriptor::getElementName)
+            }
     }
 }

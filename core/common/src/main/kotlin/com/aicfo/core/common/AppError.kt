@@ -78,7 +78,21 @@ sealed class AppError(
      * Result: a generic failure carrying the exception's class name for diagnosis.
      * Input:  [cause] — the exception's class name only. Output: an [AppError].
      */
+
     data class Unexpected(val cause: String) : AppError("unexpected", "Something went wrong.")
+
+    /**
+     * A feature exists in the code but is switched off in this build.
+     *
+     * Why:  issue 13.1 ships household mode's foundation behind a flag, and the entry point has to
+     *       answer *something* when the flag is off. Returning a zero would be the dangerous
+     *       choice — a screen would render it as a real figure — so the call fails with a reason
+     *       the UI can distinguish from a storage or validation failure and simply not offer the
+     *       feature.
+     * Result: an error carrying no caller data at all.
+     * Input:  none. Output: an [AppError].
+     */
+    data object FeatureDisabled : AppError("feature_disabled", "That isn't available yet.")
 }
 
 /**

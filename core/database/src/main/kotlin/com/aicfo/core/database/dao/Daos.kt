@@ -24,6 +24,7 @@ import com.aicfo.core.database.entity.CreditCardEntity
 import com.aicfo.core.database.entity.GoalContributionEntity
 import com.aicfo.core.database.entity.GoalEntity
 import com.aicfo.core.database.entity.GoalFundingAccountEntity
+import com.aicfo.core.database.entity.HouseholdEntity
 import com.aicfo.core.database.entity.InsightEntity
 import com.aicfo.core.database.entity.InterviewAnswerEntity
 import com.aicfo.core.database.entity.InvestmentHoldingEntity
@@ -67,6 +68,50 @@ import kotlinx.coroutines.flow.Flow
  *
  * Everything is `suspend` or `Flow`: no DAO call may block a caller's thread (CLAUDE.md §5).
  */
+
+/**
+ * Reads and writes households — the row above the profile (issue 13.1; ADR-0069).
+ *
+ * Why:  §27/§33's household mode needs somewhere to put the group a set of profiles belongs to.
+ *       Every query here is on `household`, which carries no `profile_id` and no money, so none of
+ *       them can leak between members — the table holds a name and a date.
+ * What: upsert, one read, and the membership list.
+ * Result: the foundation household mode is built on, with the feature itself off
+ *       (`HouseholdMode.IS_ENABLED`).
+ *
+ * [members] returns **profiles, never financial rows**. That is the boundary ADR-0069 §3 draws: a
+ * household view gets the list of members from here and then runs each member's own scoped engine,
+ * so no statement in this repository ever selects money across profiles.
+ */
+@Dao
+interface HouseholdDao {
+    /**
+     * Inserts a household, replacing one with the same id.
+     * Result: the row is present afterwards. Input: [household]. Output: none (suspends).
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(household: HouseholdEntity)
+
+    /**
+     * Fetches one household.
+     * Result: the row, or `null` if it does not exist. Input: [id]. Output: `HouseholdEntity?`.
+     */
+    @Query("SELECT * FROM household WHERE id = :id")
+    suspend fun findById(id: String): HouseholdEntity?
+
+    /**
+     * Observes the profiles belonging to one household.
+     * Why:    the member list a household view iterates over, to run each member's scoped engine.
+     * Result: emits on every change; excludes soft-deleted profiles; oldest profile first, so the
+     *         order a view renders members in is stable rather than whatever SQLite returns.
+     * Input:  [householdId]. Output: `Flow<List<ProfileEntity>>` — profiles only, no money.
+     */
+    @Query(
+        "SELECT * FROM profile WHERE household_id = :householdId " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY created_at_utc_millis",
+    )
+    fun members(householdId: String): Flow<List<ProfileEntity>>
+}
 
 /** Reads and writes profiles — the root record other tables are scoped to. */
 @Dao
@@ -2774,14 +2819,37 @@ interface ArchiveDao {
      * them wherever the user sends the file (ADR-0023, P-01). The row keeps `file_name`, so an
      * archive imported on the same device still finds its images.
      */
+
     @Query("SELECT * FROM attachments WHERE profile_id = :profileId ORDER BY id")
     suspend fun attachments(profileId: String): List<AttachmentEntity>
+
+    /**
+     * Result: the one household [profileId] belongs to (issue 13.1; ADR-0069).
+     *
+     * Scoped *through* the profile rather than by a `profile_id` column, because `household` has
+     * none — it is the row above the profile. So this selects the household the profile points at,
+     * which keeps the export per-profile even for a table that is not profile-scoped.
+     * Input:  [profileId]. Output: at most one row.
+     */
+    @Query(
+        "SELECT * FROM household WHERE id = " +
+            "(SELECT household_id FROM profile WHERE id = :profileId) ORDER BY id",
+    )
+    suspend fun households(profileId: String): List<HouseholdEntity>
 
     /** Result: every SMS draft, in whatever state the user left it (§18, §23). Input: [profileId]. */
     @Query("SELECT * FROM sms_draft WHERE profile_id = :profileId ORDER BY id")
     suspend fun smsDrafts(profileId: String): List<SmsDraftEntity>
 
     // --- restore: one write per table, REPLACE, into a profile the import has just wiped --------
+
+    /**
+     * Result: the household row is present (issue 13.1). Input: [rows]. Output: none (suspends).
+     *
+     * Written before the profiles, because the profile points at it.
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertHouseholds(rows: List<HouseholdEntity>)
 
     /** Result: the profile row is present. Input: [rows]. Output: none (suspends). */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -3240,6 +3308,12 @@ interface SmsDraftDao {
      */
     @Query("DELETE FROM sms_draft WHERE profile_id = :profileId AND status = 'pending'")
     suspend fun deletePending(profileId: String): Int
+
+    // DEVICE-WIDE: SMS consent is given for the device, not for a profile, so a revocation scoped to
+    // whichever profile happened to be showing would leave the other's drafts on disk. Issue 13.1
+    // made this marker explicit rather than inferred from the prose above: `ProfileScopingTest`
+    // requires every query that crosses profiles to declare it here, so adding a second is a
+    // deliberate act somebody has to write down (ADR-0069).
 
     /**
      * Deletes every undecided draft, **for every profile** — what revoking the consent does (P-01).

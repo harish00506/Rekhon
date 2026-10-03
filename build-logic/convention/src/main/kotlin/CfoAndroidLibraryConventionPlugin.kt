@@ -34,6 +34,7 @@ class CfoAndroidLibraryConventionPlugin : Plugin<Project> {
             // Issue 11.5: an Android-library module never got 7.2's drift-test input at all,
             // so `:core:datastore`'s DPDP matrix test was held UP-TO-DATE on a doc edit.
             configureCheckedDataAsTestInput()
+            configureOwnSourceAsTestInput()
             dependencies {
                 add("testImplementation", libs.findLibrary("junit4").get())
             }

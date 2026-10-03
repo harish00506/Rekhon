@@ -1600,6 +1600,42 @@ internal object Migrations {
             }
         }
 
+    /**
+     * 29 → 30: `household`, and the column that puts every profile in one (issue 13.1; ADR-0069).
+     *
+     * Why:  §27/§33's household mode needs a row above the profile. ADR-0069 §1 chose a table plus
+     *       a column over a join table.
+     * What: creates `household`, inserts the one household an upgrading installation has, then
+     *       adds `profile.household_id` with that household as the column's SQL default.
+     * Result: every existing profile belongs to the default household, and no row is ever null.
+     *
+     * **The order matters.** The household row is inserted *before* the column exists, so the
+     * `INSERT ... SELECT` can read `profile` without the column it is about to gain. The row is
+     * dated `MIN(created_at_utc_millis)` over the profiles rather than "now": a migration has no
+     * injected `Clock` (TIM-001 bans a wall-clock read in domain code and there is none to inject
+     * here), and the oldest profile's creation date is both truthful and deterministic — the same
+     * database migrates to the same bytes every time, which is what `MigrationRoundTripTest`
+     * asserts. `COALESCE` covers the degenerate case of a database with no profile row at all.
+     *
+     * Additive only, so DB-003 holds: nothing is dropped and no type changes.
+     */
+    val MIGRATION_29_30 =
+        object : Migration(VERSION_29, VERSION_30) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(HOUSEHOLD_TABLE)
+                db.execSQL(
+                    "INSERT OR IGNORE INTO `household` (`id`, `display_name`, " +
+                        "`created_at_utc_millis`) SELECT '$DEFAULT_HOUSEHOLD_ID', " +
+                        "'$DEFAULT_HOUSEHOLD_NAME', " +
+                        "COALESCE((SELECT MIN(created_at_utc_millis) FROM profile), 0)",
+                )
+                db.execSQL(
+                    "ALTER TABLE `profile` ADD COLUMN `household_id` TEXT NOT NULL " +
+                        "DEFAULT '$DEFAULT_HOUSEHOLD_ID'",
+                )
+            }
+        }
+
     /** Every migration, in order, for `CfoDatabaseFactory` to register. */
     val ALL: Array<Migration> =
         arrayOf(
@@ -1631,7 +1667,28 @@ internal object Migrations {
             MIGRATION_26_27,
             MIGRATION_27_28,
             MIGRATION_28_29,
+            MIGRATION_29_30,
         )
+
+    /**
+     * `household`'s columns (issue 13.1). Mirrors `HouseholdEntity`; no `profile_id`, no money.
+     *
+     * The two literals below are duplicated from `HouseholdEntity`'s companion deliberately: a
+     * migration must keep producing the schema it produced when it shipped, so it cannot follow a
+     * constant someone later renames. `MigrationRoundTripTest` is what checks the two still agree.
+     */
+    private const val HOUSEHOLD_TABLE =
+        "CREATE TABLE IF NOT EXISTS `household` (" +
+            "`id` TEXT NOT NULL, " +
+            "`display_name` TEXT NOT NULL, " +
+            "`created_at_utc_millis` INTEGER NOT NULL, " +
+            "PRIMARY KEY(`id`))"
+
+    /** The id of the household schema 30 backfills. Frozen copy of `HouseholdEntity.DEFAULT_ID`. */
+    private const val DEFAULT_HOUSEHOLD_ID = "household-default"
+
+    /** Frozen copy of `HouseholdEntity.DEFAULT_DISPLAY_NAME`. */
+    private const val DEFAULT_HOUSEHOLD_NAME = "My household"
 
     /**
      * `purchase_trace`'s columns (issue 10.1).
@@ -1755,6 +1812,9 @@ internal object Migrations {
 
     /** Issue 10.7: the cached daily closes. */
     private const val VERSION_29 = 29
+
+    /** Schema 30: `household` and `profile.household_id` (issue 13.1).*/
+    private const val VERSION_30 = 30
 
     /**
      * `wishlist_item`'s columns (issue 10.2).

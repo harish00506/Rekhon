@@ -21,6 +21,10 @@
     2026-09-19 — Issue 9.3: §2.08 runs AI-SEAS before AI-FCT, over closed-month category history.
     2026-09-20 — Issue 9.4 added §2.09: the health score, assembled from seven repositories.
     2026-09-20 — Issue 9.5 added §2.10: the insight orchestrator — the first read that *writes*.
+    2026-10-03 — Issue 13.1: §2.05's export gains `.withHousehold()` and its restore writes the
+        household before the profile. Noted rather than given a section because household mode's
+        own surface does not exist yet — `HouseholdMode.IS_ENABLED` is false and nothing calls
+        `HouseholdAggregation`, so there is no runtime path to trace (ADR-0069).
     2026-09-03 — Issue 7.3 added §2.6, the goal waterfall. Still Shape A — a screen — but the first
         read assembled from four repositories, and the first write driven by a gesture, so it is
         traced beside §2.5 rather than folded into it.
@@ -249,7 +253,9 @@ EXPORT
 DashboardEvent.ExportRequested
 └─ ArchiveRepository.export()                        data/repository — ARC-005
     ├─ activeProfileId.first()                       the demo exports itself, never the real profile
-    └─ archiveDao().<14 reads>                       SELECT *, tombstones INCLUDED, ORDER BY id
+    └─ archiveDao().<35 reads>                       SELECT *, tombstones INCLUDED, ORDER BY id
+        ├─ .withHousehold(dao, profileId)            household scoped THROUGH profile.household_id
+        │                                            — it has no profile_id (13.1, ADR-0069)
         └─ Json.encodeToString(CfoArchive(...))      entities ARE the format (ADR-0023)
     ⇣  ArchiveUiState.ReadyToWrite(json)
 ArchiveHost (STATEFUL half — owns the Uri)
@@ -269,6 +275,8 @@ ArchiveHost └─ OpenDocument(["application/json"]) → context.readText(uri)
                         └─ database.withTransaction {
                                wipe(profileId)       reuses DemoDao's 14 deletes, FK order
                                restore(archive)      archiveDao inserts, REPLACE
+                                 household FIRST     the profile points at it; NOT in wipe(),
+                                                     being the one row above the profile (13.1)
                            }
     ⇣  ArchiveUiState.Imported(rows, exportedAt)
 ```
