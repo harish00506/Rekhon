@@ -84,8 +84,9 @@ evaluate: RuleEngine.evaluate(ruleId, FeatureSnapshot)
 
 | Rule ID | Definition (default) | Consumed by |
 |---------|----------------------|-------------|
-| RULE-TERM-10X | Term cover ≈ 10–15× annual income if dependents | FHS protection pillar |
-| RULE-HEALTH-COVER | Health cover ≥ ₹5–10L per family (metro 10L) | FHS protection pillar |
+| RULE-TERM-10X | Term cover = **max**(10–15× annual income + outstanding liabilities, IRDAI HLV multiple for the age band: 25× 18–35, 20× 36–45, 15× 46–50, 10× 51–60) if dependents. Single-income → top of the band (§39.3) | FHS protection pillar, **AI-INS** |
+| RULE-HEALTH-COVER | Health cover ≥ ₹5–10L per family (metro 10L), sized against ~14% healthcare inflation; a super top-up is suggested above the floor | FHS protection pillar, **AI-INS** |
+| RULE-TERM-VS-ENDOW | A policy costing **> ₹3,000 per lakh of cover per year** is insurance-cum-investment, not protection; shown against buy-term-invest-the-rest over 30 years (SIP 12%, endowment 4–6%). Advisory only — never "surrender it" (P-07) | **AI-INS** |
 | RULE-RUNWAY-M | Emergency runway ≥ personal multiplier M (§10) | Emergency coach, AI-MKT gate |
 | RULE-EMF-MULT | M = 6 base months, +1 if income cv is 0.10–0.30 and +3 above it, then clamped by RULE-RUNWAY-M. Essentials are the median NEED spend over 6 months, needing 3 months observed | AI-EMF |
 | RULE-EMF-COACH | Runway under 1 month is urgent; over the target plus 2 months is surplus. The band between is RULE-EMERG-FIRST's 3 months | AI-EMF |

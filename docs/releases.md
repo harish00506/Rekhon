@@ -103,3 +103,4 @@ from this release on, a code that does not increase fails `verifyReleaseMetadata
 | 0.12.5 | 63 |  |
 | 0.13.0 | 64 |  |
 | 0.13.1 | 65 |  |
+| 0.13.2 | 66 |  |

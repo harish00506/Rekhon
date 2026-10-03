@@ -35,7 +35,7 @@ data class SimulatorRules(
         private const val MAX_SEARCH_STEPS = 200
 
         /** The rulebook file these values were copied from, as `_meta.version`. */
-        const val RULEBOOK_VERSION = "1.23.0"
+        const val RULEBOOK_VERSION = "1.24.0" // Issue 13.3 restated it; no row mirrored here changed.
 
         /** `RULE-PREPAY-VS-INVEST` — the loan's rate against an after-tax return, with the breakeven. */
         val PREPAY_VS_INVEST = RuleCitation("RULE-PREPAY-VS-INVEST", "1.0")

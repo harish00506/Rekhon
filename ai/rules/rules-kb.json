@@ -5,7 +5,7 @@
     "what": "Seed rows for the rules_knowledge_base table (§29.1). RuleEngine.evaluate(ruleId, FeatureSnapshot) -> RuleResult{pass|warn|fail, measuredValue, threshold, evidence, ruleId, version}.",
     "result": "Changing a number here changes the app's advice everywhere that rule is cited, reproducibly and with an audit trail.",
     "source_section": "§29",
-    "version": "1.23.0",
+    "version": "1.24.0",
     "changelog": [
       "2026-07-17 — Created from SRS v1.7 §29.2–§29.5; defaults are the floor, refined by user overrides at runtime.",
       "2026-08-07 — Added RULE-SMS-PARSE for issue 3.9's opt-in, on-device bank-alert parser (§18, §23).",
@@ -23,7 +23,8 @@
       "2026-09-26 — Added RULE-PAI-LADDER and RULE-PAI-SCORE for issue 10.2's buy list and adaptive interview (AI-PA-INT, §13.3). §13.3.1's escalation table and §13.3.2's outcome bands are params now; the per-answer score deltas are minted, since §13.3.2 names the factors without numbering them. New rows at v1.0, no shipped row changed. See ADR-0050.",
       "2026-09-25 — Added RULE-PA-GATES and RULE-PA-OPPCOST for issue 10.1's Purchase Advisor (AI-PA, §13). §13.1 states the seven gates and 'worst severity across gates, softened by urgency' as prose; the softening limits, the thirty-day month behind a goal delay and the opportunity-cost assumption are params now rather than constants in the engine. New rows at v1.0, no shipped row changed; the advisor also reads RULE-EMI-40, RULE-COOL-OFF, RULE-STS and RULE-FCT-CRUNCH unchanged. See ADR-0049.",
       "2026-09-23 — Added RULE-GRD-LADDER and RULE-GRD-TRANSFORMS for issue 9.7's numeric guardrail (AI-GRD, AI-ARC-004, ai/chat/guardrail.md). That file states N = 2 regeneration attempts and the allowlist of display transforms as prose; both are params now rather than constants in the engine, so tightening the gate — disallowing lakh/crore wording, say — is a data edit. New rows at v1.0, no shipped row changed. See ADR-0048.",
-      "2026-09-20 — Added RULE-NTF-BUDGET and RULE-NTF-QUIET for issue 9.6's notification policy (§17.2, AI-NTF). NTF-001's caps (2 non-critical a day, 8 a week, critical exempt) and NTF-002's quiet hours (22:00–08:00, critical may bypass) are stated in the SRS as prose; they are now params an engine reads rather than constants it carries. The taxonomy's per-type defaults (§17.1) are NOT minted: they are user settings with no field yet, and inventing rows for them would ship numbers nothing reads (the ADR-0034 argument). New rows at v1.0, no shipped row changed. See ADR-0047."
+      "2026-09-20 — Added RULE-NTF-BUDGET and RULE-NTF-QUIET for issue 9.6's notification policy (§17.2, AI-NTF). NTF-001's caps (2 non-critical a day, 8 a week, critical exempt) and NTF-002's quiet hours (22:00–08:00, critical may bypass) are stated in the SRS as prose; they are now params an engine reads rather than constants it carries. The taxonomy's per-type defaults (§17.1) are NOT minted: they are user settings with no field yet, and inventing rows for them would ship numbers nothing reads (the ADR-0034 argument). New rows at v1.0, no shipped row changed. See ADR-0047.",
+      "2026-10-03 \u2014 Issue 13.3 (AI-INS, \u00a739.1): RULE-TERM-10X 1.0 \u2192 1.1 gains the IRDAI HLV age multipliers, outstanding liabilities and \u00a739.3's single-income nudge; RULE-HEALTH-COVER 1.0 \u2192 1.1 gains the ~14% healthcare inflation it is sized against; RULE-TERM-VS-ENDOW added for INS-002's endowment/ULIP detector. No existing threshold changed value. See ADR-0071."
     ],
     "schema": {
       "rule_id": "stable public ID cited in evidence — never rename, deprecate instead",
@@ -451,26 +452,39 @@
     {
       "rule_id": "RULE-TERM-10X",
       "domain": "protection",
-      "name": "Term life cover ~ 10-15x annual income if dependents exist.",
+      "name": "Term life cover = max(10-15x annual income + outstanding liabilities, HLV by IRDAI age multiplier) if dependents exist.",
       "formula_id": "term_cover_need",
-      "params_json": { "income_multiple_min": 10, "income_multiple_max": 15, "requires_dependents": true },
+      "params_json": { "income_multiple_min": 10, "income_multiple_max": 15, "requires_dependents": true, "include_outstanding_liabilities": true, "hlv_age_multipliers": [[18, 35, 25], [36, 45, 20], [46, 50, 15], [51, 60, 10]], "single_income_uses_max_multiple": true },
       "severity": "warn",
-      "rationale": "Replaces lost income for dependents; refined by HLV multipliers (§39.1).",
-      "source_note": "Insurance adequacy.",
+      "rationale": "Replaces lost income for dependents. §39.1 takes the HIGHER of the income-multiple and the IRDAI human-life-value figures, because each misses a different household: the multiple under-covers a young earner with decades of income ahead, and HLV alone ignores the loan somebody would inherit. §39.3 nudges a single-income household to the top of the band.",
+      "source_note": "SRS §39.1 (AI-INS); IRDAI HLV age bands; §39.3 for the single-income nudge.",
       "consumed_by": ["AI-FHS.protection_pillar", "AI-INS"],
       "enabled": true,
-      "version": "1.0"
+      "version": "1.1"
     },
     {
       "rule_id": "RULE-HEALTH-COVER",
       "domain": "protection",
-      "name": "Health cover >= INR 5-10L per family (metro: 10L).",
+      "name": "Health cover >= INR 5-10L per family (metro: 10L), sized against healthcare inflation.",
       "formula_id": "health_cover_floor",
-      "params_json": { "base_floor_inr_lakh": 5, "metro_floor_inr_lakh": 10 },
+      "params_json": { "base_floor_inr_lakh": 5, "metro_floor_inr_lakh": 10, "healthcare_inflation_bps": 1400, "recommend_super_top_up_above_floor": true },
       "severity": "warn",
       "rationale": "One hospitalisation can erase years of savings; ~14% healthcare inflation.",
       "source_note": "Insurance adequacy.",
       "consumed_by": ["AI-FHS.protection_pillar", "AI-INS"],
+      "enabled": true,
+      "version": "1.1"
+    },
+    {
+      "rule_id": "RULE-TERM-VS-ENDOW",
+      "domain": "protection",
+      "name": "Insurance-cum-investment premia are flagged against buy-term-invest-the-rest.",
+      "formula_id": "premium_per_lakh_cover",
+      "params_json": { "term_premium_per_lakh_paise_max": 140000, "flag_premium_per_lakh_paise_min": 300000, "equity_sip_return_bps": 1200, "endowment_return_bps_low": 400, "endowment_return_bps_high": 600, "comparison_horizon_years": 30 },
+      "severity": "info",
+      "rationale": "A policy that both insures and invests usually does neither well. The discriminator is PREMIUM PER LAKH OF COVER PER YEAR, and the threshold sits in a gap that was measured rather than guessed: real term plans run about INR 120 per lakh at age 30, INR 850 at 55 and INR 1,400 at 60, while endowments and ULIPs run INR 8,000-10,000. Flagging at INR 3,000 is above any genuine term plan - including an older person's, the false positive that would matter most - and well below any investment-linked policy. The app shows the arithmetic and stops there: it never says surrender, because surrender value, tax already paid and health since purchase are facts it does not hold (P-07).",
+      "source_note": "SRS §39.1 INS-002; threshold measured against Indian term/endowment pricing, 2026.",
+      "consumed_by": ["AI-INS"],
       "enabled": true,
       "version": "1.0"
     },
