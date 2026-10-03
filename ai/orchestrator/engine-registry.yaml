@@ -166,6 +166,23 @@ engines:
     feeds: []   # AI-FCT once the flag is on; see ADR-0070
     srs: "§12"
 
+  - id: AI-INS
+    name: Protection Suite — Insurance Adequacy
+    layer: L4
+    module: ":domain:engines:insurance"
+    version: "1.0"
+    # Issue 13.3 built it (ADR-0071), from §39.1. The cover gap is the LARGER of two readings —
+    # income multiple + liabilities, and the IRDAI human-life-value multiple for the age band —
+    # because each misses a different household. §39.3's single-income nudge takes the multiple to
+    # the top of the band. The endowment detector reads premium PER LAKH OF COVER, and only looks at
+    # policies the user labelled OTHER, so a dear but genuine term plan can never be flagged.
+    # Advisory by construction (P-07): there is nowhere in the result to put a recommendation.
+    # Not wired to any surface — ProtectionMode.IS_ENABLED is false.
+    contract: "household{age, income, liabilities, dependents, single-income, metro} + policies -> {term cover needed + basis + gap, health floor + gap, investment-linked policies with the buy-term-invest-the-rest workings}"
+    reads: [../rules/rules-kb.json]   # RULE-TERM-10X@1.1, RULE-HEALTH-COVER@1.1, RULE-TERM-VS-ENDOW@1.0
+    feeds: []   # AI-FHS's protection pillar once the flag is on; see ADR-0071
+    srs: "§39.1, §39.3"
+
   - id: AI-PA
     name: Purchase Advisor Decision Engine
     layer: L5

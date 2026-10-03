@@ -39,7 +39,7 @@
 
 ## Current state
 
-- **Version:** `0.13.1` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v31** (13.2's three `appliance*` tables; v30 was 13.1's `household` + `profile.household_id`; v29 was 10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
+- **Version:** `0.13.2` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Rulebook is 1.24.0.** **Schema is v31** (13.2's three `appliance*` tables; v30 was 13.1's `household` + `profile.household_id`; v29 was 10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
   forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
   feed), 9.6 (the notification policy) and 9.7 (the numeric guardrail) shipped — **Epic 9 is
@@ -58,7 +58,8 @@
   supports household → profiles, scoping is enforced by a test over every `@Query`, the aggregation
   views are specified, and `HouseholdMode.IS_ENABLED` is **false** (ADR-0069); AI-APP predicts an
   appliance's service, consumables, warranty and **running cost** from its own knowledge base, with
-  `ApplianceMode.IS_ENABLED` **false** (ADR-0070). Note `0.11.x` is deliberately unused — Epic 11
+  `ApplianceMode.IS_ENABLED` **false** (ADR-0070); 13.3 adds AI-INS, which turns §14's self-declared
+  protection booleans into a rupee cover gap, with `ProtectionMode.IS_ENABLED` **false** (ADR-0071). Note `0.11.x` is deliberately unused — Epic 11
   shipped as `0.10.8`–`0.10.14` by drift, recorded in `CHANGELOG.md` rather than renumbered.
   Deliberately
   unfinished: the key can be rotated but nothing offers it yet, `FLAG_SECURE` does not reach the
@@ -593,6 +594,30 @@
   source set on every issue, device or no device.
 
 ## Completed
+
+- **Epic 13 — issue 13.3 (v0.13.2, 2026-10-03):** the Protection Suite (§39.1, §39.3;
+  [ADR-0071](adr/0071-the-cover-gap-is-the-larger-of-two-readings-and-the-engine-never-says-surrender.md)).
+  §14's Protection pillar has been scored off **self-declared booleans** since issue 9.4 — a
+  household with a ₹3L health policy and a ₹2Cr liability answers "yes" to both questions and is not
+  protected at all. AI-INS replaces the ticks with a number.
+  **The gap is the LARGER of §39.1's two arms** — `10–15× income + liabilities` and the IRDAI HLV
+  multiple for the age band — because each misses a different household, and `CoverBasis` says which
+  won. **An age outside the four bands is refused, not estimated**, and **no dependents means no
+  assessment**, not a gap of zero.
+  **The endowment detector reads premium per lakh of cover**, with a threshold *measured* rather than
+  guessed: term is ₹120/lakh at 30 and ₹1,400 at 60; endowment and ULIP are ₹8,000–10,000; the flag
+  sits at ₹3,000. Two independent defences stop a genuine term plan being flagged — the threshold,
+  and a filter that only examines policies the user labelled `OTHER`.
+  **Advisory is structural, not a remembered rule:** there is nowhere in `ProtectionAssessment` to
+  put a recommendation. Acting on a flagged policy depends on surrender value, tax already paid and
+  health since purchase — three facts the app does not hold.
+  **The engine reproduces the SRS's own illustration** (₹1,59,27,957 for §39.1's "₹1.5–2.7Cr"), via
+  an *ordinary* annuity, stated and tested because an annuity-due reads ~12% higher.
+  **Rulebook 1.23.0 → 1.24.0**: two rows extended to 1.1, one added. No threshold changed value.
+  **Lesson: never re-serialise a checked data file to edit it.** Rewriting `rules-kb.json` through
+  `json.dumps` reformatted all 50 untouched rules — 570 insertions hiding a 3-rule change — and
+  broke a drift test that reads the file's own inline array style. Redone textually: 21 insertions.
+  Edit checked data **as text**, and make drift parsers read numbers rather than formatting.
 
 - **Epic 13 — issue 13.2 (v0.13.1, 2026-10-03):** appliances (§12's closing clause;
   [ADR-0070](adr/0070-appliances-are-a-sibling-of-ai-veh-and-the-running-cost-is-the-new-number.md)).

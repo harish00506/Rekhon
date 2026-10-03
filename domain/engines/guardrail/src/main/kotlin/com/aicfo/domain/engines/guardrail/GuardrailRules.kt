@@ -46,7 +46,7 @@ data class GuardrailRules(
         private const val MAX_DECIMALS_CEILING = 4
 
         /** The rulebook file these values were copied from, as `_meta.version`. */
-        const val RULEBOOK_VERSION = "1.23.0"
+        const val RULEBOOK_VERSION = "1.24.0" // Issue 13.3 restated it; no row mirrored here changed.
 
         /** `RULE-GRD-LADDER` — pass, write it again, refuse. */
         val LADDER = RuleCitation("RULE-GRD-LADDER", "1.0")

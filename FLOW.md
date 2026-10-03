@@ -28,6 +28,10 @@
     2026-10-03 — Issue 13.2: §2.05 also carries the three appliance tables. AI-APP likewise has
         no runtime path — `ApplianceMode.IS_ENABLED` is false and nothing calls the engine, so
         the only flow this issue changed is the backup's (ADR-0070).
+    2026-10-03 — Issue 13.3 changed **no** call path at all. AI-INS is pure, has no entity and no
+        repository, and `ProtectionMode.IS_ENABLED` is false, so nothing reaches it — not even the
+        backup, which is what distinguished 13.1 and 13.2. Recorded rather than left blank, so a
+        reader does not go looking for the box (ADR-0071).
     2026-09-03 — Issue 7.3 added §2.6, the goal waterfall. Still Shape A — a screen — but the first
         read assembled from four repositories, and the first write driven by a gesture, so it is
         traced beside §2.5 rather than folded into it.

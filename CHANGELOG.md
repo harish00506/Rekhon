@@ -11,6 +11,49 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > Design-for-later scope: household mode, appliances, insurance, tax v2, business mode, Account
 > Aggregator and iOS via KMP — foundations in v1, each behind a flag, each with an ADR.
 
+### [0.13.2] — Issue 13.3: the cover gap, and the policies that are investments  (2026-10-03)
+
+- **Implemented:** AI-INS, §39.1's Protection Suite (**ADR-0071**, contract in
+  `domain/engines/insurance/ENGINE.md`).
+  - **The gap is the larger of two readings.** `max(10–15× income + outstanding liabilities, IRDAI
+    HLV multiple for the age band)`, because each arm misses a different household: the multiple
+    under-covers a young earner with decades ahead, and HLV alone ignores the loan somebody would
+    inherit. `CoverBasis` reports which arm won, so the figure comes with its reasoning (P-02).
+  - **Why this matters:** §14's Protection pillar has been scored off *self-declared booleans* since
+    9.4. A household with a ₹3L health policy and a ₹2Cr liability answers "yes" to both questions
+    and is not protected at all.
+  - **An age outside §39.1's four bands is refused, not estimated.** The rulebook has no multiple
+    there, and an invented one would look exactly as authoritative as a real one (P-03). **No
+    dependents means no term assessment at all** — `null`, not a gap of zero.
+  - **The endowment detector reads price per lakh of cover**, and the threshold was *measured*: term
+    runs ₹120/lakh at age 30, ₹850 at 55, ₹1,400 at 60; endowments and ULIPs ₹8,000–10,000. Flagging
+    at ₹3,000 sits in that gap. There are **two independent defences** against the false positive
+    that would cost the most trust — the threshold, and a filter that examines only policies the
+    user labelled `OTHER`. A term plan is never flagged, however dear.
+  - **Advisory is a property of the types** (P-07): there is nowhere in `ProtectionAssessment` to put
+    a recommendation. No "buy", no "surrender", no product ranking — because whether to act depends
+    on surrender value, tax already paid and health since purchase, three facts the app does not
+    hold.
+  - **The flag is off.** `ProtectionMode.IS_ENABLED` is `false`: "you are ₹3.5 crore under-insured"
+    is the most alarming sentence this app can produce, and §39.1 specifies the calculation while
+    specifying nothing about how it is said.
+- **Rulebook 1.23.0 → 1.24.0.** `RULE-TERM-10X` 1.0 → 1.1 (IRDAI bands, liabilities, §39.3's
+  single-income nudge), `RULE-HEALTH-COVER` 1.0 → 1.1 (the ~14% healthcare inflation it is sized
+  against), and `RULE-TERM-VS-ENDOW` added. **No existing threshold changed value**, which is why
+  both are minor bumps — the ids are cited in stored insights and renaming one breaks traceability.
+  All 14 engine mirrors restate the version; their rows are unchanged and the drift tests confirm it.
+- **The engine reproduces the SRS's own illustration.** §39.1 says the difference "SIP-ed at ~12%
+  compounds to ₹1.5–2.7Cr over 30 years"; the engine's arithmetic on a ₹66,000 difference gives
+  **₹1,59,27,957**. Two independent routes to the same claim — and the future value is an *ordinary*
+  annuity, stated and tested, because an annuity-due would read about 12% higher.
+- **Tests:** 45 new (19 engine, 14 math incl. six seeded properties, 10 rulebook drift, 2 golden
+  against an independent Python oracle). **10 mutations run; every one went red.**
+- **A reformatting mistake, caught by a test and undone.** Rewriting `rules-kb.json` through a JSON
+  serialiser reformatted all 50 untouched rules — 570 insertions hiding a 3-rule change — and broke
+  `PurchaseRulebookDriftTest`, which reads the file's own inline array style. Redone as textual
+  edits: 21 insertions. The drift test's array parser is now bracket-counted, so it reads numbers
+  rather than formatting.
+
 ### [0.13.1] — Issue 13.2: appliances — the service, the filter, and the electricity  (2026-10-03)
 
 - **Implemented:** AI-APP, §12's closing clause built — *"Appliances (Phase 4): same engine,
