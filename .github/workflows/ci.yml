@@ -22,6 +22,8 @@
 #                regressed rather than as one of five thousand anonymous tests.
 #   2026-10-02 — Issue 12.4: `offlineSmoke` joins the emulator job. `:app:connectedDebugAndroidTest`
 #                had never run in CI, and no test had ever turned airplane mode on (P-04).
+#   2026-10-03 — Issue 12.5: `verifyReleaseMetadata`, so a version bump that disagrees with the
+#                changelog or the versionCode ledger fails here rather than at the Play console.
 # =============================================================================
 name: CI
 
@@ -74,6 +76,14 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+
+      - name: Release metadata — VERSION · versionCode · CHANGELOG (§26, SemVer)
+        # Issue 12.5. These three are bumped by hand on every issue and nothing checked they agree.
+        # They had already drifted twice: Epic 11's seven issues shipped in the 0.10.x series, and ten
+        # versions shipped with a versionCode that did not increase — which Play rejects at upload,
+        # after the release is cut. Cheap, so it runs first: a bad bump fails in seconds rather than
+        # after the emulator job.
+        run: ./gradlew verifyReleaseMetadata --stacktrace
 
       - name: Convention plugins · ARC-002 guard (TestKit)
         # Enforces the module-boundary invariant (ARC-002) before anything else.

@@ -307,3 +307,38 @@ tasks.register("offlineSmoke") {
         ":data:repository:connectedDebugAndroidTest",
     )
 }
+
+/**
+ * `verifyReleaseMetadata` — VERSION, versionCode and CHANGELOG must agree (issue 12.5; §26, SemVer).
+ *
+ * Why:  all three are bumped **by hand** on every issue and nothing checked that they agree. They
+ *       have already drifted twice, and both are recorded rather than tidied away: Epic 11's seven
+ *       issues shipped in the `0.10.x` series when the workflow says an epic starts with a minor
+ *       bump, and **ten versions shipped with a `versionCode` that did not increase** — which Google
+ *       Play rejects at upload, after a release has been cut.
+ * What: the version parses as SemVer, has exactly one changelog entry, that entry's issue belongs to
+ *       the epic its minor names, and the `versionCode` is positive, monotonic, and unchanged for a
+ *       version already in `docs/releases.md`.
+ * Result: a release bump that is internally inconsistent fails the build instead of being noticed
+ *       seven releases later, or by the Play console.
+ * Changelog: 2026-10-03 — Created for issue 12.5.
+ *
+ * Reads `docs/releases.md` rather than git history, because a shallow CI clone cannot answer "what
+ * was the last versionCode?".
+ */
+tasks.register<Exec>("verifyReleaseMetadata") {
+    group = "verification"
+    description = "Fails when VERSION, versionCode and CHANGELOG.md disagree (§26, SemVer)."
+    commandLine(
+        "python3",
+        rootProject.file("scripts/verify_release_metadata.py").absolutePath,
+        rootProject.projectDir.absolutePath,
+    )
+    // Declared so an edit to any of the four actually re-runs the check — issue 11.5's finding, which
+    // is that a file read at runtime is invisible to Gradle's up-to-date checking.
+    inputs.file(rootProject.file("VERSION"))
+    inputs.file(rootProject.file("CHANGELOG.md"))
+    inputs.file(rootProject.file("docs/releases.md"))
+    inputs.file(rootProject.file("app/build.gradle.kts"))
+    outputs.upToDateWhen { false }
+}

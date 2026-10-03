@@ -642,6 +642,34 @@ DashboardScreen → "Good day to invest?" → OpportunityScreen
     how old the price is · and that the screen never buys anything
 ```
 
+### 2.31 · How a release is cut (issue 12.5)
+
+**A build path, and the one that found two drifts already in the history.**
+
+```
+python3 scripts/release.py <patch|minor|major>
+├─ VERSION                      patch +1 · minor resets patch to 0 (a new epic) · major resets both
+├─ app/build.gradle.kts         versionCode = one above the ledger's HIGHEST
+│                               ⇣ highest, not last: ten historical rows share a code with the
+│                                 row before them, so the two are genuinely different numbers
+├─ docs/releases.md             the ledger row
+└─ prints what is left — it does NOT write the changelog entry (those are the release notes)
+   and does NOT tag (tags belong to a promotion)
+
+./gradlew verifyReleaseMetadata          runs FIRST in CI; costs seconds
+├─ VERSION parses as SemVer
+├─ exactly one `### [VERSION]` entry in CHANGELOG.md
+├─ the entry's **Issue N.x** must have N == the version's minor
+│  ⇣ NOT "the heading's minor" — that rule was written first and, measured against this repo's
+│    own history, called `### [0.10.11] — Issue 11.4` consistent, because both say 10
+└─ versionCode positive · monotonic vs the ledger · unchanged for an already-released version
+```
+
+**The full gate set**, all blocking, is tabulated in `docs/releases-process.md` §1:
+`verifyReleaseMetadata` · `:convention:test` · `ktlintCheck detekt lintDebug` · `unitTests koverVerify`
+· `aiEval` · `guardrailEval` · `verifyPaparazziDebug` · `scanDependencies` ·
+`verifyReleaseLogStripping` · and on the release path `offlineSmoke` + `restoreDrill`.
+
 ### 2.30 · The offline gate, on a real device (issue 12.4)
 
 **Until this issue nothing in the repository had ever turned airplane mode on.** P-04 lived in three

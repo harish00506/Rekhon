@@ -39,7 +39,7 @@
 
 ## Current state
 
-- **Version:** `0.12.4` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v29** (10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
+- **Version:** `0.12.5` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Schema is v29** (10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
   forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
   feed), 9.6 (the notification policy) and 9.7 (the numeric guardrail) shipped — **Epic 9 is
@@ -51,10 +51,9 @@
   **Epic 11 is open**: 11.1 (the database key — StrongBox, and a rotation that re-keys the file),
   11.2 (the screen-capture guard), 11.3 (the consents dashboard), 11.4 (the crypto-shredding erase)
   11.5 (DPDP alignment), 11.6 (R8 + OSV scanning) and 11.7 (the no-hand-rolled-crypto audit)
-  shipped — **Epic 11 is complete**. **Epic 12 is open**: 12.1 (the golden-file/property harness)
-  12.2 (versioned AI-eval datasets that report their scores) and 12.3 (screenshot coverage for the
-  critical screens) and 12.4 (the offline E2E gate) shipped; **12.5 (CI gates + the release train)
-  is next**. Note `0.11.x` is deliberately unused — Epic 11
+  shipped — **Epic 11 is complete**. **Epic 12 is complete too**: 12.1 (the golden-file/property
+  harness), 12.2 (versioned AI-eval datasets that report their scores), 12.3 (screenshot coverage for
+  the critical screens), 12.4 (the offline E2E gate) and 12.5 (the release train). Note `0.11.x` is deliberately unused — Epic 11
   shipped as `0.10.8`–`0.10.14` by drift, recorded in `CHANGELOG.md` rather than renumbered.
   Deliberately
   unfinished: the key can be rotated but nothing offers it yet, `FLAG_SECURE` does not reach the
@@ -65,7 +64,7 @@
   ADR-0057/0058/0059/0060/0061/0062/0063. Two more: a release stack trace now needs `mapping.txt`
   and nothing archives it yet (11.6), and Argon2id stays BouncyCastle's until Tink ships a
   password-based KDF (ADR-0039, re-read by 11.7's audit).
-- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7, 10.1–10.8, 11.1–11.7 and 12.1–12.4 are merged to `dev`**
+- **Currently working file:** none. Issues **8.1–8.3, 9.1–9.7, 10.1–10.8, 11.1–11.7 and 12.1–12.5 are merged to `dev`**
   ([8.1 tracker](issues/8.1-e2ee-backup-argon2id-aes-256-gcm-tracker.md), ADR-0039;
   [8.2 tracker](issues/8.2-restore-on-fresh-device-tracker.md), ADR-0040;
   [8.3 tracker](issues/8.3-backup-restore-drill-tracker.md), ADR-0041;
@@ -589,6 +588,20 @@
   source set on every issue, device or no device.
 
 ## Completed
+
+- **Epic 12 — issue 12.5 (v0.12.5, 2026-10-03):** the release train and its gate (§21.6, §26;
+  [ADR-0068](adr/0068-the-release-train-checks-four-files-and-found-two-drifts-already-in-the-history.md)),
+  and **Epic 12 closes with it.** `verifyReleaseMetadata` checks `VERSION`, `versionCode`,
+  `CHANGELOG.md` and a reconstructed `docs/releases.md` ledger agree; `scripts/release.py` performs the
+  bump and deliberately writes neither the release notes nor a tag. **The gate compares the issue id in
+  an entry's title against the version's minor** — the obvious heading-based rule was written first and,
+  measured against this repository's own history, called the known-drifted releases *consistent*.
+  **Reconstructing the history found two drifts nobody had noticed:** Epic 11's seven issues shipped as
+  `0.10.8`–`0.10.14` when the rule says an epic starts with a minor bump, and **ten versions reused the
+  previous `versionCode`** (0.3.10, 0.3.11 and 0.4.0 all at 18), which Play rejects after a release is
+  cut. Both left in place with the reasons written down — renumbering would make the changelog disagree
+  with the commits it documents, and nothing was ever uploaded. AC1's gates were already in place from
+  issues 1.1–12.4; `docs/releases-process.md` now tabulates all ten in one page.
 
 - **Epic 12 — issue 12.4 (v0.12.4, 2026-10-02):** the offline end-to-end gate (§21.5, P-04;
   [ADR-0067](adr/0067-airplane-mode-is-turned-on-by-a-test-and-a-check-that-cannot-fail-was-removed.md)).
