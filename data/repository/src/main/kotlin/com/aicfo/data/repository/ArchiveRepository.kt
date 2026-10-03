@@ -163,7 +163,24 @@ internal class RoomArchiveRepository(
         }
 
     /**
-     * Adds the household to an archive (issue 13.1; ADR-0069).
+     * Writes the appliance tables back (issue 13.2).
+     * Why:    its own function for the same reason `withHousehold` is — three more inserts took
+     *         `restore` past detekt's 40-line limit — and because the three belong together: an
+     *         appliance without its service history predicts from the purchase date instead, which
+     *         is a different answer rather than a missing one.
+     * Result: the three tables are present. Input: [dao]; [archive]. Output: none (suspends).
+     */
+    private suspend fun restoreAppliances(
+        dao: ArchiveDao,
+        archive: CfoArchive,
+    ) {
+        dao.insertAppliances(archive.appliances)
+        dao.insertApplianceServices(archive.applianceServices)
+        dao.insertApplianceConsumables(archive.applianceConsumables)
+    }
+
+    /**
+     * Adds the household and the appliances to an archive (issues 13.1, 13.2).
      * Why:    its own function for the same reason `withAdvisor` is — one more read inside `export`
      *         took it past detekt's 40-line limit — and because it is the one read in the export
      *         that is **not** scoped by a `profile_id` column. `household` sits above the profile,
@@ -174,7 +191,13 @@ internal class RoomArchiveRepository(
     private suspend fun CfoArchive.withHousehold(
         dao: ArchiveDao,
         profileId: String,
-    ): CfoArchive = copy(households = dao.households(profileId))
+    ): CfoArchive =
+        copy(
+            households = dao.households(profileId),
+            appliances = dao.appliances(profileId),
+            applianceServices = dao.applianceServices(profileId),
+            applianceConsumables = dao.applianceConsumables(profileId),
+        )
 
     /**
      * Adds the advisor's and the buy list's tables to an archive (issues 10.1, 10.2).
@@ -324,6 +347,7 @@ internal class RoomArchiveRepository(
         // `wipe`: `household` is not profile-scoped, so a per-profile restore has no business
         // deleting a row another profile may belong to. REPLACE makes the re-insert enough.
         dao.insertHouseholds(archive.households)
+        restoreAppliances(dao, archive)
         dao.insertProfiles(archive.profiles)
         dao.insertAccounts(archive.accounts)
         dao.insertCategories(archive.categories)

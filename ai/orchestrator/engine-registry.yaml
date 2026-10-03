@@ -144,10 +144,26 @@ engines:
     # odometer reading cannot move it; the date is the earlier of the distance and time limits and
     # says which it was; the cost is the KB range moved by what this household actually pays; and a
     # renewal enters the forecast only with a price the user recorded, because the KB has cadences
-    # and not premiums (P-03). Appliances are not built — the name is the registry's, from §12.
+    # and not premiums (P-03). Appliances are now built, as AI-APP below (issue 13.2).
     contract: "odometer readings + service history + renewal dates -> {kmPerMonth, nextService{dueAt, dueOdometer, basis}, predictedCost range, personal cost index, alerts, predicted outflows for the forecast}"
     reads: [../knowledge/vehicle-maintenance-kb.json]   # v1.1: VEH-KB.service, VEH-PREDICT, VEH-ALERTS
     feeds: [AI-FCT]
+    srs: "§12"
+
+  - id: AI-APP
+    name: Appliance Maintenance & Running Cost
+    layer: L4
+    module: ":domain:engines:appliance"
+    version: "1.0"
+    # Issue 13.2 built it (ADR-0070), from §12's closing clause: "Appliances (Phase 4): same engine,
+    # different knowledge base". A sibling of AI-VEH rather than the same class — the shape is
+    # copied, the arithmetic is not, because an appliance has no odometer and so no slope to fit.
+    # The number it adds is the running cost: watts x minutes/day x days x tariff / 60 000, which is
+    # the one appliance cost that never arrives as a bill of its own. Not wired to any surface —
+    # ApplianceMode.IS_ENABLED is false, and ADR-0070 lists what turning it on needs.
+    contract: "appliance + service history + consumable replacements -> {nextService{dueAt, basis}, cost range, warranty standing, running cost per month, consumables due, alerts, predicted outflows}"
+    reads: [../knowledge/appliance-maintenance-kb.json]   # v1.0: APP-KB.service, APP-PREDICT, APP-ALERTS
+    feeds: []   # AI-FCT once the flag is on; see ADR-0070
     srs: "§12"
 
   - id: AI-PA

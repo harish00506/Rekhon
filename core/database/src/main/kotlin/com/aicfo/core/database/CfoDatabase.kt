@@ -3,6 +3,7 @@ package com.aicfo.core.database
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import com.aicfo.core.database.dao.AccountDao
+import com.aicfo.core.database.dao.ApplianceDao
 import com.aicfo.core.database.dao.ArchiveDao
 import com.aicfo.core.database.dao.AttachmentDao
 import com.aicfo.core.database.dao.AuditLogDao
@@ -35,6 +36,9 @@ import com.aicfo.core.database.dao.TransactionDao
 import com.aicfo.core.database.dao.TransactionSplitDao
 import com.aicfo.core.database.dao.VehicleDao
 import com.aicfo.core.database.entity.AccountEntity
+import com.aicfo.core.database.entity.ApplianceConsumableEntity
+import com.aicfo.core.database.entity.ApplianceEntity
+import com.aicfo.core.database.entity.ApplianceServiceEntity
 import com.aicfo.core.database.entity.AttachmentEntity
 import com.aicfo.core.database.entity.AuditLogEntity
 import com.aicfo.core.database.entity.BudgetAlertEntity
@@ -128,6 +132,9 @@ import com.aicfo.core.database.entity.WishlistItemEntity
         ChatMessageEntity::class,
         MarketCloseEntity::class,
         HouseholdEntity::class,
+        ApplianceEntity::class,
+        ApplianceServiceEntity::class,
+        ApplianceConsumableEntity::class,
     ],
     version = CfoDatabase.VERSION,
     exportSchema = true,
@@ -224,6 +231,9 @@ abstract class CfoDatabase : RoomDatabase() {
     /** Households — the row above the profile (issue 13.1; ADR-0069). */
     abstract fun householdDao(): HouseholdDao
 
+    /** Appliances and their maintenance history (issue 13.2; ADR-0070). */
+    abstract fun applianceDao(): ApplianceDao
+
     /**
      * Input:  none. Output: the demo wipe DAO (issue 2.4, FR-ONB-004).
      *
@@ -287,7 +297,7 @@ abstract class CfoDatabase : RoomDatabase() {
          * has a quote feed and AI-MKT needs a history, so the history accumulates here — which is
          * also what lets the engine work offline and means nothing extra leaves the device; §30).
          */
-        const val VERSION = 30
+        const val VERSION = 31
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"

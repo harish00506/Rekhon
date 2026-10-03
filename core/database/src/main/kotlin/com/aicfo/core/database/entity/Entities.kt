@@ -2371,3 +2371,147 @@ data class MarketCloseEntity(
     @ColumnInfo(name = "updated_at_utc_millis")
     val updatedAtUtcMillis: Long,
 )
+
+/**
+ * A household appliance (issue 13.2; §12's appliance clause, ADR-0070).
+ *
+ * Why:  §12 ends with "Appliances (Phase 4): same engine, different knowledge base". An appliance
+ *       takes money three predictable ways — the service, the consumable, and the electricity — and
+ *       the only one of the three the household can see on a bill is the third, mixed in with
+ *       everything else. This row is what lets AI-APP put a figure on each.
+ * Result: a Room row in `appliance`, scoped to one profile.
+ * Changelog: 2026-10-03 — Created for issue 13.2 (schema 31).
+ *
+ * Input:  [id]; [profileId]; [label] — what the user calls it; [applianceClass] — the KB class name,
+ *         stored as the enum's own `name` so a row is readable without a lookup; [purchasedOnIsoDate]
+ *         — ISO `yyyy-MM-dd` (TIM-002), the anchor for the warranty; [ratedWatts], [minutesPerDay]
+ *         and [tariffPaisePerKwh] — this household's own figures where it gave them, `null` meaning
+ *         "use the knowledge base", which is a distinction the evidence line depends on (P-02); the
+ *         tombstone and timestamps.
+ * Output: a Room row.
+ */
+@Serializable
+@Entity(
+    tableName = "appliance",
+    indices = [
+        Index("profile_id"),
+        Index(value = ["profile_id", "deleted_at_utc_millis"]),
+    ],
+)
+data class ApplianceEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    @ColumnInfo(name = "label")
+    val label: String,
+    @ColumnInfo(name = "appliance_class")
+    val applianceClass: String,
+    @ColumnInfo(name = "purchased_on_iso_date")
+    val purchasedOnIsoDate: String,
+    /** Null means the knowledge base's figure for the class, not zero. */
+    @ColumnInfo(name = "rated_watts")
+    val ratedWatts: Int? = null,
+    /** Minutes, never hours: a fraction of an hour would put a decimal into money arithmetic. */
+    @ColumnInfo(name = "minutes_per_day")
+    val minutesPerDay: Int? = null,
+    /** What this household pays for a unit, in paise (MNY-001). Null means the KB's default. */
+    @ColumnInfo(name = "tariff_paise_per_kwh")
+    val tariffPaisePerKwh: Int? = null,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+)
+
+/**
+ * A service an appliance has actually had (issue 13.2; §12).
+ *
+ * Why:  the knowledge base says how often; this says when it last happened, which is what turns a
+ *       cadence into a date. [costMinor] is nullable on purpose — a user who remembers the visit but
+ *       not the bill should be able to record the visit, and a zero would be a figure the engine
+ *       would then average into something (P-03).
+ * Result: the engine's `ApplianceServiceRecord`.
+ * Changelog: 2026-10-03 — Created for issue 13.2 (schema 31).
+ *
+ * Input:  [id]; [profileId]; [applianceId]; [servicedIsoDate] — ISO date (TIM-002); [costMinor] —
+ *         paise or `null`; [note]; the tombstone and timestamps.
+ * Output: a Room row.
+ */
+@Serializable
+@Entity(
+    tableName = "appliance_service",
+    indices = [
+        Index("profile_id"),
+        Index(value = ["profile_id", "appliance_id"]),
+    ],
+)
+data class ApplianceServiceEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    @ColumnInfo(name = "appliance_id")
+    val applianceId: String,
+    @ColumnInfo(name = "serviced_iso_date")
+    val servicedIsoDate: String,
+    @ColumnInfo(name = "cost_minor")
+    val costMinor: Long? = null,
+    @ColumnInfo(name = "note")
+    val note: String? = null,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+)
+
+/**
+ * A consumable replacement — the filter, the lamp, the anode rod (issue 13.2; §12).
+ *
+ * Why:  §12 names "water-purifier filters" specifically, and the reason is that the consumable is
+ *       the running cost of a purifier: the machine is serviced once a year and the cartridge twice.
+ *       A replacement restarts that item's own clock, which is why this is a row per replacement and
+ *       not a column on the appliance.
+ * Result: the engine's `ConsumableRecord`.
+ * Changelog: 2026-10-03 — Created for issue 13.2 (schema 31).
+ *
+ * Input:  [id]; [profileId]; [applianceId]; [item] — the KB's `consumables[].item` key, so a row
+ *         joins to the knowledge base by name; [replacedIsoDate]; [costMinor] — paise or `null`;
+ *         the tombstone and timestamps.
+ * Output: a Room row.
+ */
+@Serializable
+@Entity(
+    tableName = "appliance_consumable",
+    indices = [
+        Index("profile_id"),
+        Index(value = ["profile_id", "appliance_id", "item"]),
+    ],
+)
+data class ApplianceConsumableEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    @ColumnInfo(name = "appliance_id")
+    val applianceId: String,
+    @ColumnInfo(name = "item")
+    val item: String,
+    @ColumnInfo(name = "replaced_iso_date")
+    val replacedIsoDate: String,
+    @ColumnInfo(name = "cost_minor")
+    val costMinor: Long? = null,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+)

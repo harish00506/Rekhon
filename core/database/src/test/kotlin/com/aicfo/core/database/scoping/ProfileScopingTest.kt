@@ -218,8 +218,15 @@ class ProfileScopingTest {
         const val SOURCE_ROOT = "core/database/src/main/kotlin/com/aicfo/core/database"
         const val MIN_LENGTH = 2_000
 
-        /** Tables carrying `profileId` today. Pinned so a new one has to be classified. */
-        const val EXPECTED_SCOPED_TABLES = 33
+        /**
+         * Tables carrying `profileId` today. Pinned so a new one has to be classified.
+         *
+         * 33 at issue 13.1; **36 at issue 13.2**, which added `appliance`, `appliance_service` and
+         * `appliance_consumable`. Raising this number is the deliberate act the pin exists to force:
+         * it is the moment somebody confirms the new tables' queries were looked at, which for 13.2
+         * they were — all six filter on `profile_id`, so none of them needed a marker.
+         */
+        const val EXPECTED_SCOPED_TABLES = 36
 
         /** `sms_draft`'s revocation sweep — see `SmsRepository.onConsentRevoked`. */
         const val EXPECTED_DEVICE_WIDE = 1

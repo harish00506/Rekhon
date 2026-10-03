@@ -1,6 +1,9 @@
 package com.aicfo.data.repository
 
 import com.aicfo.core.database.entity.AccountEntity
+import com.aicfo.core.database.entity.ApplianceConsumableEntity
+import com.aicfo.core.database.entity.ApplianceEntity
+import com.aicfo.core.database.entity.ApplianceServiceEntity
 import com.aicfo.core.database.entity.AttachmentEntity
 import com.aicfo.core.database.entity.BudgetAlertEntity
 import com.aicfo.core.database.entity.BudgetEntity
@@ -57,6 +60,8 @@ import kotlinx.serialization.Serializable
  *   2026-09-26 — Issue 10.2 added [wishlistItems] and [interviewAnswers].
  *   2026-09-27 — Issue 10.7 added [marketCloses].
  *   2026-10-03 — Issue 13.1 added [households], the row above the profile (ADR-0069).
+ *   2026-10-03 — Issue 13.2 added [appliances], [applianceServices] and
+ *   [applianceConsumables] (ADR-0070).
  *   2026-09-26 — Issue 10.4 added [vehicles], [vehicleOdometer], [vehicleServices] and
  *   [vehicleRenewals]: a restored phone keeps the readings, because they *are* the prediction.
  *
@@ -104,6 +109,10 @@ data class CfoArchive(
      * at a household that no longer exists, losing whatever the user called it.
      */
     val households: List<HouseholdEntity> = emptyList(),
+    /** Appliances and their maintenance history (issue 13.2, schema 31). */
+    val appliances: List<ApplianceEntity> = emptyList(),
+    val applianceServices: List<ApplianceServiceEntity> = emptyList(),
+    val applianceConsumables: List<ApplianceConsumableEntity> = emptyList(),
     val profiles: List<ProfileEntity> = emptyList(),
     val accounts: List<AccountEntity> = emptyList(),
     val categories: List<CategoryEntity> = emptyList(),
