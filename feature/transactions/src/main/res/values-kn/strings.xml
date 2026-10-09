@@ -167,4 +167,5 @@
     <string name="nature_invest">ಇಟ್ಟು ಬೆಳೆಯುತ್ತಿರುವುದು</string>
     <string name="nature_asset">ಏನೋ ಆಗಿ ಬದಲಾಗಿದ್ದು</string>
     <string name="nature_liability">ಸಾಲ</string>
+    <string name="transactions_source_aa">ನಿಮ್ಮ ಬ್ಯಾಂಕ್‌ನಿಂದ</string>
 </resources>

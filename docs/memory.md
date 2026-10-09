@@ -39,7 +39,7 @@
 
 ## Current state
 
-- **Version:** `0.13.4` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Rulebook is 1.24.0; tax KB 1.1 (FY rules 2025-26.1).** **Schema is v31** (13.2's three `appliance*` tables; v30 was 13.1's `household` + `profile.household_id`; v29 was 10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
+- **Version:** `0.13.5` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Rulebook is 1.24.0; tax KB 1.1 (FY rules 2025-26.1).** **Schema is v31** (13.2's three `appliance*` tables; v30 was 13.1's `household` + `profile.household_id`; v29 was 10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
   forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
   feed), 9.6 (the notification policy) and 9.7 (the numeric guardrail) shipped — **Epic 9 is
@@ -62,7 +62,8 @@
   protection booleans into a rupee cover gap, with `ProtectionMode.IS_ENABLED` **false** (ADR-0071);
   13.4 adds AI-TAX — both regimes, the break-even in rupees, §38.2 capital gains — with
   `TaxMode.IS_ENABLED` **false** (ADR-0072); 13.5 specifies business mode (ADR only, per its AC) with
-  `BusinessMode.IS_ENABLED` **false** (ADR-0073). Note `0.11.x` is deliberately unused — Epic 11
+  `BusinessMode.IS_ENABLED` **false** (ADR-0073); 13.6 designs and stubs Account Aggregator ingest,
+  shipping only the reserved `source = 'aa'` value and a default-off consent (ADR-0074). Note `0.11.x` is deliberately unused — Epic 11
   shipped as `0.10.8`–`0.10.14` by drift, recorded in `CHANGELOG.md` rather than renumbered.
   Deliberately
   unfinished: the key can be rotated but nothing offers it yet, `FLAG_SECURE` does not reach the
@@ -597,6 +598,29 @@
   source set on every issue, device or no device.
 
 ## Completed
+
+- **Epic 13 — issue 13.6 (v0.13.5, 2026-10-09):** Account Aggregator ingest, designed and stubbed
+  ([ADR-0074](adr/0074-aa-is-designed-and-the-reserved-source-value-had-to-ship-now.md)).
+  AA is the one functional gap against every Indian competitor that syncs a bank account.
+  **§33 promised two things about AA; neither was kept, and one had to be fixed immediately.**
+  `TransactionSource` had no `aa` value. `fromStored` returns null for an unknown value and **the
+  mapper drops the whole row** — so the day an AA build writes it, every older build silently hides
+  the user's entire imported bank history. The enum already reserves `RECURRING_AUTO` for exactly
+  this reason, citing the `DEMO` incident. *A reserved constant costs one line; the integration
+  costs a quarter. **They are not the same decision** — and conflating them is how the gap survived
+  to v0.13.4.* Removing it now fails to compile.
+  **The interface makes dangerous shapes unavailable rather than discouraged:** no fetch without a
+  `ConsentHandle`; `FetchedStatements` cannot exist without a fetch time, so AA data cannot be
+  rendered without a staleness label (P-04); `ConsentHandle` holds only an id and an expiry, so no
+  bank identifier can reach a log; `StatementLine` keeps the bank's `externalId`, because
+  deduplicating by amount-and-date is how a second import doubles somebody's rent.
+  **Two independent off-switches:** the app's `ConsentFeature.ACCOUNT_AGGREGATOR` sits in front of
+  the AA framework's own consent artefact. No `IS_ENABLED` flag — the consent *is* the gate.
+  **Three closed-set gates fired and were satisfied deliberately** — the source closed set,
+  `DpdpComplianceDriftTest` (which refused the consent until it had a DPDP matrix row), and
+  Kotlin's exhaustive `when` across two screens and a label, which forced the consent to become
+  visible and revocable in four languages. *A consent the user cannot see is not a consent.*
+  `import_batches`, §33's second promise, is recorded and not built.
 
 - **Epic 13 — issue 13.5 (v0.13.4, 2026-10-09):** business mode's design (§3.3, §27, §33;
   [ADR-0073](adr/0073-the-business-book-is-a-second-profile-and-two-promises-were-broken.md)).

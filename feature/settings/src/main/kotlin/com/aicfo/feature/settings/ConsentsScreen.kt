@@ -154,6 +154,7 @@ internal fun ConsentFeature.purpose(): Int =
         ConsentFeature.MARKET_DATA -> R.string.consent_market_data_purpose
         ConsentFeature.CLOUD_LLM -> R.string.consent_cloud_llm_purpose
         ConsentFeature.CLOUD_BACKUP -> R.string.consent_cloud_backup_purpose
+        ConsentFeature.ACCOUNT_AGGREGATOR -> R.string.consent_account_aggregator_purpose
     }
 
 /**
@@ -169,4 +170,5 @@ internal fun ConsentFeature.whenWithdrawn(): Int =
         ConsentFeature.MARKET_DATA -> R.string.consent_market_data_withdrawn
         ConsentFeature.CLOUD_LLM -> R.string.consent_cloud_llm_withdrawn
         ConsentFeature.CLOUD_BACKUP -> R.string.consent_cloud_backup_withdrawn
+        ConsentFeature.ACCOUNT_AGGREGATOR -> R.string.consent_account_aggregator_withdrawn
     }

@@ -167,4 +167,5 @@
     <string name="nature_invest">வைத்து வளர்வது</string>
     <string name="nature_asset">ஏதோ ஒன்றாக மாறியது</string>
     <string name="nature_liability">கடன்</string>
+    <string name="transactions_source_aa">உங்கள் வங்கியிலிருந்து</string>
 </resources>

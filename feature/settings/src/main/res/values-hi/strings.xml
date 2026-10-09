@@ -107,4 +107,7 @@
     <string name="erase_done_detail">आपका डेटा जा चुका है और वापस नहीं लाया जा सकता। अब ऐप बंद करें; अगली बार खोलेंगे तो यह नए सिरे से शुरू होगा।</string>
     <string name="erase_close_app">ऐप बंद करें</string>
     <string name="settings_erase_body">इस ऐप के पास आपके बारे में इस फ़ोन पर जो भी डेटा है, उसे हमेशा के लिए मिटा दें।</string>
+    <string name="consent_account_aggregator">अपने बैंक से स्टेटमेंट लाएँ</string>
+    <string name="consent_account_aggregator_purpose">आपके बैंक को भारत के अकाउंट एग्रीगेटर के ज़रिए आपके स्टेटमेंट सीधे इस ऐप में भेजने देगा, ताकि लेन-देन टाइप न करने पड़ें। अभी बना नहीं है — इसे चालू करने से आज कुछ नहीं होता।</string>
+    <string name="consent_account_aggregator_withdrawn">ऐप आपके बैंक से कुछ भी माँगना बंद कर देता है। पहले लाए गए स्टेटमेंट तब तक इसी फ़ोन पर रहते हैं जब तक आप उन्हें हटा न दें।</string>
 </resources>

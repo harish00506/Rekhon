@@ -37,6 +37,7 @@
          system file picker points - a memory card as easily as a cloud drive - so the label says
          what the consent actually covers: an encrypted copy leaving this device (ADR-0039). -->
     <string name="consent_cloud_backup">Save encrypted backups off this device</string>
+    <string name="consent_account_aggregator">Fetch statements from your bank</string>
 
     <!-- The app lock. -->
     <string name="settings_lock_title">Lock the app</string>
@@ -137,6 +138,8 @@
     <string name="consent_cloud_llm_withdrawn">Nothing changes today, because nothing uses it yet.</string>
     <string name="consent_cloud_backup_purpose">Lets you save an encrypted backup somewhere other than this phone. The file is locked with your passphrase before it leaves.</string>
     <string name="consent_cloud_backup_withdrawn">No backup can be written off this device, and a backup waiting to be saved is dropped.</string>
+    <string name="consent_account_aggregator_purpose">Would let your bank send your statements straight to this app through India\'s Account Aggregator, so transactions need not be typed. Not built yet — turning this on does nothing today.</string>
+    <string name="consent_account_aggregator_withdrawn">The app stops asking your bank for anything. Statements already fetched stay on this device until you delete them.</string>
 
     <!-- Issue 11.4: erase everything. §34's right to erasure, behind two deliberate gates. -->
     <string name="erase_open">Erase everything</string>

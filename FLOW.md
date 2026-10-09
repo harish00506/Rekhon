@@ -40,6 +40,11 @@
         only in v1". Worth one line here for what it *found* about an existing path — the
         receipt flow extracts a GST figure, `ReceiptReviewScreen` shows it, and
         `ReceiptRepository.save` drops it, because `transactions` has no tax column (ADR-0073 §4).
+    2026-10-09 — Issue 13.6 is the first Epic 13 issue to change a **surface**: the consents
+        dashboard and the settings screen now list a fifth consent, `account_aggregator`, and the
+        transaction source label can render "From your bank". Kotlin's exhaustive `when` forced
+        all three, which is the correct outcome — a consent the user cannot see is not a consent
+        (P-01). Nothing calls `AccountAggregatorApi`: the only implementation refuses (ADR-0074).
     2026-09-03 — Issue 7.3 added §2.6, the goal waterfall. Still Shape A — a screen — but the first
         read assembled from four repositories, and the first write driven by a gesture, so it is
         traced beside §2.5 rather than folded into it.
