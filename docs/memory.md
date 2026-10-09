@@ -39,7 +39,7 @@
 
 ## Current state
 
-- **Version:** `0.13.2` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Rulebook is 1.24.0.** **Schema is v31** (13.2's three `appliance*` tables; v30 was 13.1's `household` + `profile.household_id`; v29 was 10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
+- **Version:** `0.13.3` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Rulebook is 1.24.0; tax KB 1.1 (FY rules 2025-26.1).** **Schema is v31** (13.2's three `appliance*` tables; v30 was 13.1's `household` + `profile.household_id`; v29 was 10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
   forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
   feed), 9.6 (the notification policy) and 9.7 (the numeric guardrail) shipped — **Epic 9 is
@@ -59,7 +59,9 @@
   views are specified, and `HouseholdMode.IS_ENABLED` is **false** (ADR-0069); AI-APP predicts an
   appliance's service, consumables, warranty and **running cost** from its own knowledge base, with
   `ApplianceMode.IS_ENABLED` **false** (ADR-0070); 13.3 adds AI-INS, which turns §14's self-declared
-  protection booleans into a rupee cover gap, with `ProtectionMode.IS_ENABLED` **false** (ADR-0071). Note `0.11.x` is deliberately unused — Epic 11
+  protection booleans into a rupee cover gap, with `ProtectionMode.IS_ENABLED` **false** (ADR-0071);
+  13.4 adds AI-TAX — both regimes, the break-even in rupees, §38.2 capital gains — with
+  `TaxMode.IS_ENABLED` **false** (ADR-0072). Note `0.11.x` is deliberately unused — Epic 11
   shipped as `0.10.8`–`0.10.14` by drift, recorded in `CHANGELOG.md` rather than renumbered.
   Deliberately
   unfinished: the key can be rotated but nothing offers it yet, `FLAG_SECURE` does not reach the
@@ -594,6 +596,30 @@
   source set on every issue, device or no device.
 
 ## Completed
+
+- **Epic 13 — issue 13.4 (v0.13.3, 2026-10-09):** the tax engine (§38.1, §38.2;
+  [ADR-0072](adr/0072-the-tax-kb-had-no-slabs-and-an-estimate-must-say-what-it-left-out.md)).
+  **The knowledge base could not be computed from.** `tax-kb-fy2025-26.json` had existed since the
+  skeleton and **neither regime had a slab table** — and §38.1 does not state one either. Both were
+  added as data rows and **corroborated against §38.1's own anchors**: tax at ₹12L taxable is
+  ₹60,000, exactly the 87A rebate that makes ₹12L "effectively tax-free". The 4% cess was missing
+  too — leaving it out understates every figure by 4%, consistently enough to look right.
+  **An estimate now says what it left out.** `TaxLimitation` travels on the result. Surcharge above
+  ₹50L is not modelled (marginal relief needs a second computation; a bad approximation is worse
+  than a stated gap), and property has no `AssetClass` at all. *P-03 is usually "never invent a
+  number"; this is its other half — never hide that one is incomplete.*
+  **Two guarantees are structural:** `TaxAlert` has nowhere to put an instrument, so TAX-001's
+  "never say sell fund X" is a property of the type; and nothing in `TaxEstimate` represents an
+  action (P-07).
+  **What the break-even reveals:** at ₹18L income, 80C + 80CCD(1B) + 80D maxed *plus* ₹2L home-loan
+  interest — ₹4.25L of deductions — **still loses to the new regime by ₹67,600**. The old regime
+  needs ~₹7.25L. A test asserting otherwise failed, and the engine was right.
+  **A gate passed vacuously and was tightened:** the golden fixture's "each regime wins somewhere"
+  was satisfied by `zero_income`, where both compute zero and the tie-break picks OLD. It now
+  demands a **positive margin**. *A coverage assertion satisfied by a degenerate case is not
+  coverage.*
+  **Closes half of ADR-0070's registry drift:** AI-TAX pointed at `:domain:engines:growth`, a module
+  that never existed. The other half — 10 engines with no registry entry — is still open.
 
 - **Epic 13 — issue 13.3 (v0.13.2, 2026-10-03):** the Protection Suite (§39.1, §39.3;
   [ADR-0071](adr/0071-the-cover-gap-is-the-larger-of-two-readings-and-the-engine-never-says-surrender.md)).

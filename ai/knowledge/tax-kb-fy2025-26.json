@@ -7,9 +7,10 @@
     "source_section": "§38",
     "fy": "2025-26",
     "fy_rules_version": "2025-26.1",
-    "version": "1.0",
+    "version": "1.1",
     "changelog": [
-      "2026-07-17 — Created from SRS v1.7 §38.1, §38.2. UPDATE every Budget and bump fy_rules_version."
+      "2026-07-17 — Created from SRS v1.7 §38.1, §38.2. UPDATE every Budget and bump fy_rules_version.",
+      "2026-10-09 — Issue 13.4 built AI-TAX against this file and found it could not be computed from: NEITHER regime had a slab table, and §38.1 does not state one either. Added both (the new-regime table is corroborated by §38.1's own anchors — 30% above 24L, and tax at 12L taxable = 60,000 = the 87A rebate that makes 12L tax-free), plus the 4% cess, the 87A rebate amounts and the old-regime standard deduction. Capital-gains and harvesting rules moved out of prose into typed fields, with the sentence kept as `says` so the transcription can be checked. `fy_rules_version` is UNCHANGED at 2025-26.1: the law did not move, only this file's completeness. See ADR-0072."
     ],
     "scope_note": "The engine never files taxes and links complex cases (property, foreign/RSU taxation) to a professional (TAX-002)."
   },
@@ -21,15 +22,39 @@
       "80C_covers": ["EPF", "PPF", "ELSS", "life_premium", "tax_saver_FD", "home_loan_principal"],
       "80CCD(1B)_nps_additional_inr": 50000,
       "80CCD(1B)_note": "Additional 50,000 -> 2L combined with 80C",
-      "80CCD(2)_employer_nps": "Deductible in BOTH regimes, up to 14% of salary",
-      "80D_health_premium": "Old regime only"
+      "80CCD(2)_employer_nps_cap_pct_of_salary": 14,
+      "80CCD(2)_note": "Deductible in BOTH regimes.",
+      "80D_health_premium_old_regime_only": true,
+      "80D_cap_inr": 25000,
+      "standard_deduction_inr": 50000,
+      "rebate_87A_max_inr": 12500,
+      "rebate_87A_taxable_income_upto_inr": 500000,
+      "slabs_note": "Typed so an engine can read them. A rate is BASIS POINTS (MNY-002); `upto_inr` null means no upper bound. Boundaries are exclusive of the previous band and inclusive of upto_inr.",
+      "slabs": [
+        { "upto_inr": 250000, "rate_bps": 0 },
+        { "upto_inr": 500000, "rate_bps": 500 },
+        { "upto_inr": 1000000, "rate_bps": 2000 },
+        { "upto_inr": null, "rate_bps": 3000 }
+      ]
     },
     "new_regime": {
       "standard_deduction_inr": 75000,
       "rebate_87A_income_effectively_tax_free_upto_inr": 1200000,
       "top_slab_30pct_starts_above_inr": 2400000,
       "deductions_available": ["standard_deduction", "80CCD(2)"],
-      "deductions_not_available": ["80C", "80D", "80CCD(1)", "80CCD(1B)"]
+      "deductions_not_available": ["80C", "80D", "80CCD(1)", "80CCD(1B)"],
+      "rebate_87A_max_inr": 60000,
+      "rebate_87A_taxable_income_upto_inr": 1200000,
+      "slabs_note": "Corroborated against §38.1's own anchors: the 30% band starts above 24L, and tax at 12L taxable is 20,000 + 40,000 = 60,000 — exactly the 87A rebate that makes 12L 'effectively tax-free'. Rates are BASIS POINTS (MNY-002).",
+      "slabs": [
+        { "upto_inr": 400000, "rate_bps": 0 },
+        { "upto_inr": 800000, "rate_bps": 500 },
+        { "upto_inr": 1200000, "rate_bps": 1000 },
+        { "upto_inr": 1600000, "rate_bps": 1500 },
+        { "upto_inr": 2000000, "rate_bps": 2000 },
+        { "upto_inr": 2400000, "rate_bps": 2500 },
+        { "upto_inr": null, "rate_bps": 3000 }
+      ]
     }
   },
 
@@ -40,22 +65,66 @@
 
   "capital_gains": {
     "_source": "§38.2 post-23-July-2024 rules",
+    "_typed_note": "Issue 13.4 moved these out of prose and into fields an engine can read, the way issue 10.4 did for the vehicle KB. The sentences are kept as `says` so the reader can check the transcription. Rates are BASIS POINTS (MNY-002).",
     "rules": [
-      { "asset": "equity_or_equity_mf", "stcg": "20% (holding <= 12 months)", "ltcg": "12.5% on gains above INR 1.25L/year, no indexation (holding > 12 months)" },
-      { "asset": "debt_mf_bought_on_or_after_2023-04-01", "treatment": "Slab rate always - no LTCG benefit; engine labels lots accordingly" },
-      { "asset": "debt_mf_pre_2023-04-01_or_gold", "ltcg": "12.5% without indexation" },
-      { "asset": "property", "ltcg": "12.5% no-indexation, OR 20% with indexation if acquired before 23 Jul 2024 and lower - engine computes both" },
-      { "asset": "sgb_held_to_maturity", "treatment": "Capital gains fully exempt - flagged as the most tax-efficient gold route" }
+      {
+        "asset": "equity_or_equity_mf",
+        "long_term_after_months": 12,
+        "stcg_rate_bps": 2000,
+        "ltcg_rate_bps": 1250,
+        "ltcg_annual_exemption_inr": 125000,
+        "indexation": false,
+        "says": "STCG (<=12 mo) 20%; LTCG (>12 mo) 12.5% on gains above INR 1.25L/year, no indexation"
+      },
+      {
+        "asset": "debt_mf_bought_on_or_after_2023-04-01",
+        "long_term_after_months": null,
+        "taxed_at_slab_rate": true,
+        "indexation": false,
+        "says": "Slab rate always - no LTCG benefit; engine labels lots accordingly"
+      },
+      {
+        "asset": "debt_mf_pre_2023-04-01_or_gold",
+        "long_term_after_months": 24,
+        "stcg_taxed_at_slab_rate": true,
+        "ltcg_rate_bps": 1250,
+        "ltcg_annual_exemption_inr": 0,
+        "indexation": false,
+        "says": "12.5% without indexation"
+      },
+      {
+        "asset": "property",
+        "modelled": false,
+        "says": "12.5% no-indexation, OR 20% with indexation if acquired before 23 Jul 2024 and lower - engine computes both"
+      },
+      {
+        "asset": "sgb_held_to_maturity",
+        "exempt": true,
+        "says": "Capital gains fully exempt - flagged as the most tax-efficient gold route"
+      }
     ],
     "ltcg_equity_exemption_inr": 125000
   },
 
+  "surcharge_and_cess": {
+    "_source": "Finance Act FY2025-26. Cess applies to every taxpayer; surcharge only above 50L.",
+    "health_and_education_cess_bps": 400,
+    "cess_note": "4% on (tax + surcharge), after the 87A rebate. Applies in BOTH regimes. Leaving it out would understate every estimate by 4%.",
+    "surcharge_modelled": false,
+    "surcharge_applies_above_taxable_inr": 5000000,
+    "surcharge_note": "NOT modelled. Surcharge starts at 10% above 50L and rises in bands, and it comes with MARGINAL RELIEF, which needs a second computation at the band boundary. The engine flags that an estimate above this income is understated rather than quietly reporting a low figure (P-03)."
+  },
+
   "harvesting_alerts": {
     "_source": "TAX-001 (generic, never 'sell fund X')",
+    "fy_end_iso_month_day": "03-31",
+    "exemption_alert_days_before_fy_end": 60,
+    "stcg_to_ltcg_countdown_days": 30,
     "rules": [
-      "Unused INR 1.25L LTCG exemption approaching FY-end -> gains can be realised tax-free and cost basis reset.",
-      "Harvestable losses before 31 March (India has no wash-sale rule).",
-      "STCG->LTCG countdown when a planned sale is < 30 days from turning long-term."
-    ]
+      { "id": "TAX-001a", "says": "Unused INR 1.25L LTCG exemption approaching FY-end -> gains can be realised tax-free and cost basis reset." },
+      { "id": "TAX-001b", "says": "Harvestable losses before 31 March (India has no wash-sale rule)." },
+      { "id": "TAX-001c", "says": "STCG->LTCG countdown when a planned sale is < 30 days from turning long-term." }
+    ],
+    "never": "The alerts are GENERIC. The engine never names an instrument to sell (TAX-001)."
   }
 }
