@@ -34,7 +34,7 @@ class TransactionTest {
      * 3.7 — it comes from the requirement alone.
      */
     private val storedValues =
-        listOf("manual", "ocr", "sms", "import", "recurring_auto", "reconciliation", "demo")
+        listOf("manual", "ocr", "sms", "import", "recurring_auto", "reconciliation", "demo", "aa")
 
     @Test
     fun `every stored source exists, and no others`() {
@@ -48,6 +48,17 @@ class TransactionTest {
         listOf("manual", "ocr", "sms", "import", "recurring_auto").forEach {
             assertNotNull("FR-TXN-009 requires the source $it", TransactionSource.fromStored(it))
         }
+    }
+
+    @Test
+    fun `the Account Aggregator value is reserved before anything writes it`() {
+        // §33's forward-compatibility table promised `aa` from v1 and it was never added
+        // (issue 13.6, ADR-0074). The hazard is `fromStored` returning null and the mapper
+        // dropping the whole row: the day an AA build writes this value, an older build would
+        // silently hide the user's entire imported bank history. Reserving it now is what makes
+        // that impossible, and this test is what stops it being removed again as "unused".
+        assertEquals(TransactionSource.ACCOUNT_AGGREGATOR, TransactionSource.fromStored("aa"))
+        assertEquals("aa", TransactionSource.ACCOUNT_AGGREGATOR.storedValue)
     }
 
     @Test

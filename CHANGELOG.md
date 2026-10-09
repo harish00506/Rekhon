@@ -11,6 +11,45 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > Design-for-later scope: household mode, appliances, insurance, tax v2, business mode, Account
 > Aggregator and iOS via KMP — foundations in v1, each behind a flag, each with an ADR.
 
+### [0.13.5] — Issue 13.6: Account Aggregator designed, and one line of it shipped today  (2026-10-09)
+
+- **Implemented:** AA ingest's design and interface stub (**ADR-0074**), per AC2's "an ADR +
+  interface stub exist in v1". AA is the one functional gap between this app and every Indian
+  competitor that syncs a bank account.
+- **§33 promised two things about AA. Neither was kept — and one had to be fixed immediately.**
+  - `TransactionSource` had seven values and **none of them was `aa`**, despite §33 naming it as
+    reserved from v1. That is not cosmetic, and the enum's own doc already explains why:
+    `fromStored` returns `null` for a value it does not recognise and **the mapper drops the whole
+    row**. `RECURRING_AUTO` is reserved for exactly this reason, citing the `DEMO` incident where
+    the omission silently emptied a transaction list.
+    **For AA the same bug loses the user's entire imported bank history**, silently, on any build
+    older than the one that writes it. A reserved constant costs one line; the integration is a
+    quarter. Those are not the same decision — so the constant ships now and the integration does
+    not. Removing it again now **fails to compile**.
+  - `import_batches` does not exist. Recorded, not built: when AA lands there is nowhere to record
+    *which fetch a row came from*, so a duplicate import cannot be traced to the pull that caused
+    it. Pinned in issue 13.5's direction — the test fails when the table is **added**.
+- **The interface makes the dangerous shapes unavailable, not merely discouraged:**
+  `statements(consent: ConsentHandle)` has no overload without a consent; `FetchedStatements`
+  **requires** a non-zero `fetchedAtUtcMillis`, so AA data cannot be held without knowing its age
+  (P-04's staleness label); `ConsentHandle` carries only an id and an expiry, so a bank identifier
+  cannot reach a log or a UI state; `StatementLine` keeps the bank's own `externalId`, because
+  deduplicating by amount-and-date is how a second import doubles somebody's rent.
+- **Two independent off-switches.** `ConsentFeature.ACCOUNT_AGGREGATOR` is the app's gate *in front
+  of* the AA framework's own consent artefact — revoking here stops the app asking even while an AA
+  consent is still live (P-01). No `IS_ENABLED` flag was added: the consent defaults to off and is
+  the honest gate; a second switch would be read by nobody.
+- **`UnconfiguredAccountAggregatorApi` is the only implementation that ships**, mirroring issue
+  6.5's market-data client exactly: refuses instantly, `retryable = false`, and **no client is
+  constructed to reach it** — no OkHttp instance, no socket, no permission.
+- **Three closed-set gates fired and were satisfied deliberately**, which is what they are for: the
+  `TransactionSource` closed set, `DpdpComplianceDriftTest` (which refused the new consent until it
+  had a row in the DPDP matrix), and Kotlin's own exhaustive `when` across the consents dashboard,
+  the settings screen and the transaction source label. The consent is now visible and revocable in
+  the UI in four languages — which is the correct outcome: a consent the user cannot see is not one.
+- **Tests:** 12 new (8 on the interface's shape, 3 on the schema's AA readiness, 1 pinning the
+  reservation). **6 mutations run; every one went red**, one of them at compile time.
+
 ### [0.13.4] — Issue 13.5: the business book, and two promises the SRS made and never kept  (2026-10-09)
 
 - **Implemented:** business mode's design (**ADR-0073**). This issue's AC2 is "**ADR only in v1**",

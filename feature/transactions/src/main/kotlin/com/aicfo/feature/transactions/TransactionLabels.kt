@@ -105,6 +105,7 @@ internal object TransactionLabels {
             TransactionSource.RECURRING_AUTO -> R.string.transactions_source_recurring
             TransactionSource.RECONCILIATION -> R.string.transactions_source_reconciliation
             TransactionSource.DEMO -> R.string.transactions_source_demo
+            TransactionSource.ACCOUNT_AGGREGATOR -> R.string.transactions_source_aa
         }
 
     /**

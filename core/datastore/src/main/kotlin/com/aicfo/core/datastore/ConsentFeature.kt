@@ -32,6 +32,18 @@ enum class ConsentFeature(
     CLOUD_LLM("cloud_llm"),
 
     /**
+     * Pulling bank statements through India's Account Aggregator framework (issue 13.6; §16, §22).
+     *
+     * Separate from every other consent here, and deliberately so. The others govern data leaving
+     * the device; this one governs **a regulated third party handing the app a copy of the user's
+     * bank history**, which is the largest single disclosure the product can ask for. AA has its
+     * own consent artefact at the framework level, with its own purpose, scope and expiry — this
+     * flag is the app's gate in front of that, so revoking here stops the app asking even if an
+     * AA consent is still live (P-01, ADR-0074).
+     */
+    ACCOUNT_AGGREGATOR("account_aggregator"),
+
+    /**
      * Saving the end-to-end-encrypted backup off this device (issue 8.1, ADR-0039). Gates the whole
      * backup: the system file picker can hand back a cloud drive as easily as a memory card, and the
      * app cannot tell them apart. The id keeps its original name because it is persisted.

@@ -57,6 +57,7 @@
     <string name="transactions_source_recurring">Recurring</string>
     <string name="transactions_source_reconciliation">Balance adjustment</string>
     <string name="transactions_source_demo">Sample data</string>
+    <string name="transactions_source_aa">From your bank</string>
     <!-- The "no filter" chip. Not "All sources" - the chip row is short and the context is obvious. -->
     <string name="transactions_source_all">All</string>
     <!-- Content description on the chip row, so a screen reader says what the chips are for. -->

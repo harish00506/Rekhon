@@ -59,6 +59,24 @@ enum class TransactionSource(val storedValue: String) {
     RECONCILIATION("reconciliation"),
 
     /**
+     * Brought in from a bank through India's Account Aggregator framework (issue 13.6; §16, §22).
+     *
+     * **Nothing writes this yet, and it is here for the same reason [RECURRING_AUTO] is — only
+     * more urgently.** §33's forward-compatibility table promised this value would be reserved
+     * from v1 and it never was. The hazard is the one that paragraph describes and that [DEMO]
+     * demonstrated: [fromStored] returns `null` for a value it does not recognise, and the mapper
+     * drops the whole row with it. So the day an AA build writes `source = 'aa'`, every older
+     * build reading that database silently hides those transactions.
+     *
+     * For a mistyped demo row that was an empty list. For AA it would be **the user's entire
+     * imported bank history**, vanishing with no error — which is why reserving the constant is
+     * the one part of issue 13.6 that ships rather than waiting for the integration (ADR-0074).
+     *
+     * The stored string is `aa`, exactly as §33 named it.
+     */
+    ACCOUNT_AGGREGATOR("aa"),
+
+    /**
      * Part of the sample dataset (issue 2.4; FR-ONB-004).
      *
      * Never the user's own money. The demo banner is what tells them so on screen (P-02); this is

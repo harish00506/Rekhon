@@ -333,6 +333,7 @@ internal fun ConsentFeature.label(): Int =
         ConsentFeature.MARKET_DATA -> R.string.consent_market_data
         ConsentFeature.CLOUD_LLM -> R.string.consent_cloud_llm
         ConsentFeature.CLOUD_BACKUP -> R.string.consent_cloud_backup
+        ConsentFeature.ACCOUNT_AGGREGATOR -> R.string.consent_account_aggregator
     }
 
 /** The field name the ViewModel reports when the income is missing or unparseable. */

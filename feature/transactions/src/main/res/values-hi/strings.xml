@@ -167,4 +167,5 @@
     <string name="nature_invest">रखा और बढ़ रहा</string>
     <string name="nature_asset">किसी चीज़ में बदला</string>
     <string name="nature_liability">कर्ज़</string>
+    <string name="transactions_source_aa">आपके बैंक से</string>
 </resources>
