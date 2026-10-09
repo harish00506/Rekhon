@@ -315,11 +315,24 @@ engines:
   - id: AI-TAX
     name: Tax Engine v2
     layer: L3/L5
-    module: ":domain:engines:growth"
-    version: "fy2025-26"
-    contract: "salary + deductions + lots -> {regime comparison, harvesting alerts}"
-    reads: [../knowledge/tax-kb-fy2025-26.json]
-    srs: "§38"
+    module: ":domain:engines:tax"
+    version: "1.0"
+    # Issue 13.4 built it (ADR-0072). The module path was ":domain:engines:growth" until then —
+    # a module that has never existed, one of the two registry drifts issue 13.2 measured and
+    # recorded in ADR-0070. Building the engine is what let it be corrected rather than guessed at.
+    #
+    # The knowledge base could not be computed from when this started: NEITHER regime had a slab
+    # table, and §38.1 does not state one either. Both were added (the new-regime table is
+    # corroborated by §38.1's own anchors), with the 4% cess, the 87A rebate amounts and the
+    # old-regime standard deduction. Capital-gains and harvesting rules moved out of prose into
+    # typed fields. `fy_rules_version` is unchanged: the law did not move, only the file.
+    #
+    # The estimate carries what it did NOT model — surcharge above 50L, property gains — on the
+    # result rather than in a comment. Not wired to any surface: TaxMode.IS_ENABLED is false.
+    contract: "salary + deductions + realised gains -> {both regimes with their slab bands, winner + margin, break-even in rupees, capital gains by asset class, TAX-001 alerts, explicit limitations, fy_rules_version}"
+    reads: [../knowledge/tax-kb-fy2025-26.json]   # v1.1
+    feeds: []   # AI-FCT and the insight feed once the flag is on; see ADR-0072
+    srs: "§38.1, §38.2"
 
   - id: AI-CHAT
     name: Chat Assistant (verbaliser)

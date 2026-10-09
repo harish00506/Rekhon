@@ -11,6 +11,45 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > Design-for-later scope: household mode, appliances, insurance, tax v2, business mode, Account
 > Aggregator and iOS via KMP — foundations in v1, each behind a flag, each with an ADR.
 
+### [0.13.3] — Issue 13.4: the tax engine, and the slabs the knowledge base never had  (2026-10-09)
+
+- **Implemented:** AI-TAX, §38's Tax Engine v2 (**ADR-0072**, contract in
+  `domain/engines/tax/ENGINE.md`).
+- **The knowledge base could not be computed from.** `tax-kb-fy2025-26.json` has existed since the
+  skeleton, and **neither regime had a slab table** — and §38.1 does not state one either, only the
+  caps and the anchors. Both tables were added as data rows (§6), and the new-regime one is
+  **corroborated against §38.1's own anchors**: the 30% band starts above ₹24L ✓, and tax at ₹12L
+  taxable is ₹20,000 + ₹40,000 = **₹60,000**, which is exactly the 87A rebate that makes ₹12L
+  "effectively tax-free" ✓. The **4% cess** was missing too; leaving it out understates every figure
+  by 4%, consistently enough to look right.
+  Capital-gains and harvesting rules moved out of prose (`"20% (holding <= 12 months)"`) into typed
+  fields, keeping the sentence beside them as `says` so the transcription can be checked —
+  the same thing issue 10.4 did to the vehicle KB. **`fy_rules_version` is unchanged**: the law did
+  not move, only the file's completeness.
+- **An estimate now says what it left out.** `TaxLimitation` travels on the result, not in a
+  comment. Surcharge starts at 10% above ₹50L and comes with marginal relief — modelling it badly is
+  worse than not modelling it, so the engine does not, and above that income it **says the estimate
+  is understated**. Property gains have no `AssetClass` at all, so they cannot be supplied (TAX-002
+  sends complex cases to a professional). *P-03 is usually "never invent a number"; this is its other
+  half — never hide that one is incomplete.*
+- **Two guarantees are structural, not remembered.** `TaxAlert` has nowhere to put an instrument, so
+  TAX-001's "never say sell fund X" is a property of the type — a test drives a year-end scenario
+  with real fund names attached and asserts none appears. And nothing in `TaxEstimate` represents an
+  action (P-07).
+- **The break-even, and what it reveals.** §38.1 asks for it "shown in rupees". At ₹18L of income,
+  80C, 80CCD(1B) and 80D all maxed *plus* ₹2L of home-loan interest — **₹4.25L of deductions — still
+  loses to the new regime by ₹67,600**. The old regime needs about ₹7.25L. A test was written
+  asserting the old regime won at ₹4.25L; it failed, and the engine was right.
+- **A gate that passed vacuously, tightened.** The golden fixture required "a household where each
+  regime wins" — and passed on `zero_income`, where both compute zero and the tie-break picks the old
+  one. It now requires a win with a **positive margin**, and a thirteenth household was added that
+  reaches one.
+- **One of ADR-0070's registry drifts is closed.** AI-TAX pointed at `:domain:engines:growth`, a
+  module that has never existed. It now names the one that does. The other half — 10 engine modules
+  with no entry — is still open and still its own issue.
+- **Tests:** 46 new (22 engine, 11 math incl. four seeded properties, 10 KB drift, 3 golden against
+  an independent Python oracle). **10 mutations run; every one went red.**
+
 ### [0.13.2] — Issue 13.3: the cover gap, and the policies that are investments  (2026-10-03)
 
 - **Implemented:** AI-INS, §39.1's Protection Suite (**ADR-0071**, contract in
