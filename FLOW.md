@@ -36,6 +36,10 @@
         repository, and `TaxMode.IS_ENABLED` is false. Three Epic 13 engines now exist that
         nothing reaches — which is what "design-for" means here, and is recorded so the
         absence reads as deliberate rather than missed (ADR-0072).
+    2026-10-09 — Issue 13.5 changed no call path either, and built no engine: its AC is "ADR
+        only in v1". Worth one line here for what it *found* about an existing path — the
+        receipt flow extracts a GST figure, `ReceiptReviewScreen` shows it, and
+        `ReceiptRepository.save` drops it, because `transactions` has no tax column (ADR-0073 §4).
     2026-09-03 — Issue 7.3 added §2.6, the goal waterfall. Still Shape A — a screen — but the first
         read assembled from four repositories, and the first write driven by a gesture, so it is
         traced beside §2.5 rather than folded into it.

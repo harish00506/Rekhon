@@ -11,6 +11,45 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > Design-for-later scope: household mode, appliances, insurance, tax v2, business mode, Account
 > Aggregator and iOS via KMP — foundations in v1, each behind a flag, each with an ADR.
 
+### [0.13.4] — Issue 13.5: the business book, and two promises the SRS made and never kept  (2026-10-09)
+
+- **Implemented:** business mode's design (**ADR-0073**). This issue's AC2 is "**ADR only in v1**",
+  so the deliverable is the specification — plus the audit that writing it down made possible.
+- **A business book is a second profile, not a new mechanism.** The isolation it needs is exactly
+  the isolation issue 13.1 already built: `profile_id` on 36 tables and `ProfileScopingTest` failing
+  the build for any query that crosses them. So there is nothing to build, and inventing a second
+  scoping rule (a `book_id` beside `profile_id`) would mean two gates and two ways to get it wrong.
+  It **inherits ADR-0069 §5's precondition unchanged** — and here a leak between a person's business
+  and personal books is the kind a tax authority takes an interest in.
+- **A GST-aware category is a column on the existing taxonomy**, not a parallel one: `gst_rate_bps`
+  and `input_credit_eligible` on `category`, `tax_minor` on `transactions`. A freelancer's "internet
+  bill" is one category that is sometimes business and sometimes not, so duplicating the taxonomy
+  would make every classification decision happen twice and drift.
+- **§33's forward-compatibility table makes three promises about business mode. Two were never
+  kept:**
+  - **Kept:** "tags support business/personal from v1" — `tags` and `transaction_tags` have existed
+    since schema 1, so the interim separation is a convention, now named `BusinessMode.INTERIM_TAG`.
+  - **Broken, and losing data every day:** "GST fields captured by OCR are **stored**". Traced end
+    to end — the OCR engine extracts the figure, the review screen **displays** it, and
+    `ReceiptRepository.save` takes a `TransactionDraft` that maps to a `transactions` table with no
+    tax column. The number is read off the bill, shown once, and **discarded**. Unlike an ordinary
+    missing feature the cost compounds: receipt images are deliberately kept out of backups
+    (ADR-0023), so every GST figure scanned before the column lands is unrecoverable — which is
+    precisely what that table existed to prevent.
+  - **Broken:** "categories carry `tax_relevance` from v1" — `category` has nine columns and that is
+    not one of them. It has already cost something: issue 13.4's AI-TAX must be *handed* a
+    household's deductions because no category can say which spending was deductible.
+- **The findings are pinned in the unusual direction.** `BusinessModeDriftTest` fails when a gap is
+  **closed**, and its failure message is the instruction to delete the stale paragraph — an ADR that
+  still described a solved problem would read as unfinished work.
+- **The fifth instance of the read-at-runtime staleness bug, pre-empted rather than discovered.**
+  The drift test reads two files from outside its own module, so the build file declares them as
+  task inputs. Demonstrated: with the declarations removed, editing the ADR's finding away leaves
+  the task **UP-TO-DATE and green**; with them, it goes red. 13.1's `configureOwnSourceAsTestInput()`
+  does not cover this — it declares a module's *own* `src/main`.
+- **Tests:** 5 new (the flag, the three §33 promises, and the ADR's own claims). **5 mutations run;
+  every one went red**, including both "a gap closed" cases.
+
 ### [0.13.3] — Issue 13.4: the tax engine, and the slabs the knowledge base never had  (2026-10-09)
 
 - **Implemented:** AI-TAX, §38's Tax Engine v2 (**ADR-0072**, contract in

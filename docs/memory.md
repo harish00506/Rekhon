@@ -39,7 +39,7 @@
 
 ## Current state
 
-- **Version:** `0.13.3` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Rulebook is 1.24.0; tax KB 1.1 (FY rules 2025-26.1).** **Schema is v31** (13.2's three `appliance*` tables; v30 was 13.1's `household` + `profile.household_id`; v29 was 10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
+- **Version:** `0.13.4` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Rulebook is 1.24.0; tax KB 1.1 (FY rules 2025-26.1).** **Schema is v31** (13.2's three `appliance*` tables; v30 was 13.1's `household` + `profile.household_id`; v29 was 10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
   forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
   feed), 9.6 (the notification policy) and 9.7 (the numeric guardrail) shipped — **Epic 9 is
@@ -61,7 +61,8 @@
   `ApplianceMode.IS_ENABLED` **false** (ADR-0070); 13.3 adds AI-INS, which turns §14's self-declared
   protection booleans into a rupee cover gap, with `ProtectionMode.IS_ENABLED` **false** (ADR-0071);
   13.4 adds AI-TAX — both regimes, the break-even in rupees, §38.2 capital gains — with
-  `TaxMode.IS_ENABLED` **false** (ADR-0072). Note `0.11.x` is deliberately unused — Epic 11
+  `TaxMode.IS_ENABLED` **false** (ADR-0072); 13.5 specifies business mode (ADR only, per its AC) with
+  `BusinessMode.IS_ENABLED` **false** (ADR-0073). Note `0.11.x` is deliberately unused — Epic 11
   shipped as `0.10.8`–`0.10.14` by drift, recorded in `CHANGELOG.md` rather than renumbered.
   Deliberately
   unfinished: the key can be rotated but nothing offers it yet, `FLAG_SECURE` does not reach the
@@ -596,6 +597,29 @@
   source set on every issue, device or no device.
 
 ## Completed
+
+- **Epic 13 — issue 13.5 (v0.13.4, 2026-10-09):** business mode's design (§3.3, §27, §33;
+  [ADR-0073](adr/0073-the-business-book-is-a-second-profile-and-two-promises-were-broken.md)).
+  Its AC says **"ADR only in v1"**, so nothing was built — and writing the design down is what made
+  the audit possible.
+  **A business book is a second profile.** 13.1's `profile_id` scoping and `ProfileScopingTest`
+  already provide the isolation; a `book_id` beside it would mean two gates. It inherits ADR-0069
+  §5's id-keyed precondition unchanged, and a cross-book leak is the kind a tax authority notices.
+  **Two of §33's three forward-compatibility promises were never kept.** `category` has no
+  `tax_relevance` — which already cost AI-TAX, since it must be *handed* deductions it could have
+  derived. And the OCR's **GST figure is extracted, displayed on the review screen, and then
+  discarded**: `ReceiptRepository.save` takes a `TransactionDraft` and `transactions` has no tax
+  column.
+  **That second one compounds.** Receipt images deliberately stay out of backups (ADR-0023), so
+  every GST figure scanned before the column lands is unrecoverable — exactly what a
+  forward-compatibility table exists to prevent. *When a promise is about preserving history, the
+  cost of not keeping it grows every day.*
+  **The fifth instance of the read-at-runtime staleness bug — pre-empted, not discovered.** The
+  drift test reads two files from outside its module, so the build file declares them as inputs.
+  Demonstrated both ways: without them, editing the ADR's finding away leaves the task UP-TO-DATE
+  and green. 13.1's `configureOwnSourceAsTestInput()` covers a module's *own* `src/main` only.
+  **The findings are pinned in the unusual direction:** each test fails when a gap is *closed*, and
+  says so — an ADR describing a solved problem reads as unfinished work.
 
 - **Epic 13 — issue 13.4 (v0.13.3, 2026-10-09):** the tax engine (§38.1, §38.2;
   [ADR-0072](adr/0072-the-tax-kb-had-no-slabs-and-an-estimate-must-say-what-it-left-out.md)).
