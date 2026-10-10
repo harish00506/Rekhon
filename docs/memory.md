@@ -39,7 +39,7 @@
 
 ## Current state
 
-- **Version:** `0.13.6` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Rulebook is 1.24.0; tax KB 1.1 (FY rules 2025-26.1).** **Schema is v31** (13.2's three `appliance*` tables; v30 was 13.1's `household` + `profile.household_id`; v29 was 10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
+- **Version:** `0.13.7` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Rulebook is 1.24.0; tax KB 1.1 (FY rules 2025-26.1).** **Schema is v31** (13.2's three `appliance*` tables; v30 was 13.1's `household` + `profile.household_id`; v29 was 10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
   forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
   feed), 9.6 (the notification policy) and 9.7 (the numeric guardrail) shipped — **Epic 9 is
@@ -599,6 +599,24 @@
 
 ## Completed
 
+- **Maintenance (v0.13.7, 2026-10-10):** the engine registry reconciled and checked
+  ([ADR-0076](adr/0076-the-engine-registry-is-reconciled-and-now-checked.md)).
+  Nine `:domain:engines:*` modules had no entry since the file was created, and **nothing had ever
+  checked it** — the missing rows were the symptom, the absent check the defect.
+  **No ids were minted.** All nine already stamp a stable provenance id into real results
+  (`budget-planner`, `net-worth`, `sms-parser`, …), so a stored result citing one resolved to
+  nothing — the exact failure AI-ARC-006 exists to prevent. The catalogue did not know names the
+  data already carried.
+  **`provenance_id` was added** for three registered engines whose stamped id differs from their
+  registry id (`AI-CLS`→`auto-categoriser`, `AI-INV`→`investment-xirr`, `AI-STS`→`safe-to-spend`).
+  Neither name can move: the `AI-*` ids are cited by rules-kb `consumed_by`, the stamped ids are in
+  results already written.
+  **The drift test pins the module count**, so a new engine must be registered in the same change
+  that creates it — without that, nine could accumulate again exactly as they did.
+  **Correction:** ADR-0070's "10 of 28" was wrong — nine. `chat` was registered under a compound
+  `module:` field the one-off regex could not parse. *A drift audit written as a one-off regex is
+  itself unchecked code.* History left as written, corrected forward.
+
 - **Epic 13 — issue 13.7 (v0.13.6, 2026-10-10):** KMP feasibility
   ([ADR-0075](adr/0075-android-free-is-not-kmp-portable-and-money-is-the-blocker.md)).
   **Epic 13 is complete.**
@@ -735,10 +753,10 @@
   test on the inputs that distinguish them.
   **13.1's two pins both fired** (scoped tables 33 → 36, archive keys 38 → 41), which is what they
   are for.
-  **Found and deliberately not fixed:** `ai/orchestrator/engine-registry.yaml` is missing **10 of 28
-  engine modules** and names one that does not exist (`:domain:engines:growth`), and **nothing checks
-  it**. Writing the drift test would go red at once; greening it honestly needs ten accurate contract
-  lines. Recorded in ADR-0070 as its own issue.
+  **Found and deliberately not fixed at the time:** `ai/orchestrator/engine-registry.yaml` was
+  missing engine entries and nothing checked it. **Closed on 2026-10-10** (ADR-0076), which also
+  corrected the count — **nine, not ten**: `chat` was registered under a compound `module:` field
+  the measuring regex could not parse.
 
 - **Epic 13 — issue 13.1 (v0.13.0, 2026-10-03):** household mode's foundation (§27, §33;
   [ADR-0069](adr/0069-household-is-a-row-above-the-profile-and-aggregation-composes-scoped-reads.md)),

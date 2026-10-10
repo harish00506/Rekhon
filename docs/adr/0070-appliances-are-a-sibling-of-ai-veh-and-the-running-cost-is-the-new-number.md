@@ -123,6 +123,12 @@ unification comes due.
 
 ## A registry drift this work uncovered, and did not fix
 
+> **Corrected and closed on 2026-10-10 by [ADR-0076](0076-the-engine-registry-is-reconciled-and-now-checked.md).**
+> The count below is wrong: it was **nine**, not ten. `chat` *was* registered, under a compound
+> `module:` field spanning three modules, which the one-off regex used here could not parse. The
+> text is left as written — it is the account of what was believed on 2026-10-03 — and the drift
+> itself is now fixed and guarded by `EngineRegistryDriftTest`.
+
 `ai/orchestrator/engine-registry.yaml` is described as the index of the AI pipeline, and **nothing
 checks it**. Measured while adding AI-APP's row:
 

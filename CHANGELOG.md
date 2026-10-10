@@ -11,6 +11,35 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > Design-for-later scope: household mode, appliances, insurance, tax v2, business mode, Account
 > Aggregator and iOS via KMP — foundations in v1, each behind a flag, each with an ADR.
 
+### [0.13.7] — Maintenance: the engine registry is reconciled, and now checked  (2026-10-10)
+
+Not an issue — the open finding ADR-0070 recorded and deferred, closed on request (**ADR-0076**).
+
+- **Nine engine modules had no registry entry**, since the file was created. `ai/orchestrator/engine-registry.yaml`
+  calls itself "one row per engine (module `:domain:engines:*`)" and **nothing had ever checked
+  that**. The missing rows were the symptom; the absent check was the defect.
+- **The ids were not minted — the engines already had them.** The obstacle looked like naming,
+  because most of these are deterministic feature engines the SRS gives an `FR-` id rather than an
+  `AI-*` name. But all nine have been stamping a stable provenance id into real results since they
+  were built: `budget-planner`, `card-planner`, `loan-amortiser`, `nature-classifier`, `net-worth`,
+  `quick-setup`, `receipt-parser`, `recurring-detector`, `sms-parser`. **A stored result citing
+  `budget-planner` resolved to nothing** — the exact failure AI-ARC-006 exists to prevent.
+- **`provenance_id`, because neither name can move.** Three *registered* engines stamp something
+  else: `AI-CLS`→`auto-categoriser`, `AI-INV`→`investment-xirr`, `AI-STS`→`safe-to-spend`. The
+  `AI-*` ids are cited by `rules-kb.json`'s `consumed_by`, so renaming them breaks citations; the
+  stamped ids are in results already written, so renaming those orphans history. Both now resolve.
+- **`EngineRegistryDriftTest` is the actual fix** — every module has an entry, no entry names a
+  module that does not exist, every stamped id resolves, and **the module count is pinned** so a new
+  engine must be registered in the same change that creates it. Without that last one, nine could
+  accumulate again exactly as they did.
+- **A correction: ADR-0070's "10 of 28" was wrong — it was nine.** `chat` *was* registered, under a
+  compound `module:` field spanning three modules, which the one-off regex used to measure it could
+  not parse. ADR-0070 and issue 13.2's records are **left as written**, with a forward-pointing note;
+  the correction lives in ADR-0076. *A drift audit written as a one-off regex is itself unchecked
+  code* — had it been a test from the start, its blind spot would have surfaced the first time
+  somebody added an entry it could not parse.
+- **Tests:** 5 new. **3 mutations run; every one went red.**
+
 ### [0.13.6] — Issue 13.7: "Android-free" is not "KMP-portable", and Money is the blocker  (2026-10-10)
 
 - **Implemented:** the KMP feasibility ADR and a spike (**ADR-0075**, `:spike:kmp`). **Epic 13
