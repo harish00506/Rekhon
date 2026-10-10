@@ -83,6 +83,9 @@ include(":domain:engines:vehicle")   // §12 AI-VEH — when the next service fa
 include(":domain:engines:appliance") // §12 AI-APP — an appliance's next service, its consumables, its warranty and what it costs to run
 include(":domain:engines:insurance") // §39.1 AI-INS — term and health cover gaps, and the endowment detector
 include(":domain:engines:tax") // §38 AI-TAX — the two regimes, capital gains, and what it will not estimate
+
+// :spike:* — time-boxed feasibility work. Never shipped; see the module build file.
+include(":spike:kmp") // issue 13.7 — can the money math run on Kotlin/Native?
 include(":domain:engines:chat")      // §19 AI-CHAT — intent -> registry tools -> a guardrailed reply
 include(":domain:engines:marketsignal") // §30 AI-MKT — cached closes -> an opportunity score and its measured hit rate
 include(":domain:usecase")

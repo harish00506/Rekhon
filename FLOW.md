@@ -45,6 +45,9 @@
         transaction source label can render "From your bank". Kotlin's exhaustive `when` forced
         all three, which is the correct outcome — a consent the user cannot see is not a consent
         (P-01). Nothing calls `AccountAggregatorApi`: the only implementation refuses (ADR-0074).
+    2026-10-10 — Issue 13.7 changed no call path: `:spike:kmp` is a feasibility module nothing
+        depends on. Noted because it measured one — **no engine can run on Kotlin/Native today**,
+        since all thirty depend on `:core:model` and `Money` uses `BigDecimal` (ADR-0075).
     2026-09-03 — Issue 7.3 added §2.6, the goal waterfall. Still Shape A — a screen — but the first
         read assembled from four repositories, and the first write driven by a gesture, so it is
         traced beside §2.5 rather than folded into it.

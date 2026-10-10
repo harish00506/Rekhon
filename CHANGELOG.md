@@ -11,6 +11,45 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > Design-for-later scope: household mode, appliances, insurance, tax v2, business mode, Account
 > Aggregator and iOS via KMP — foundations in v1, each behind a flag, each with an ADR.
 
+### [0.13.6] — Issue 13.7: "Android-free" is not "KMP-portable", and Money is the blocker  (2026-10-10)
+
+- **Implemented:** the KMP feasibility ADR and a spike (**ADR-0075**, `:spike:kmp`). **Epic 13
+  completes with this issue.**
+- **AC1 asked to "confirm `:core:model` + `:domain:*` stay Android-free **so** they are
+  KMP-portable". Those are two claims joined by a "so", and the join fails.** They *are*
+  Android-free — `enforceNoAndroidPlugins()` still guards that. But Kotlin/Native has no `java.*`
+  at all, and **40 of 139 main sources (29%)** in that layer import it: `java.time.LocalDate` (31),
+  `java.math.BigDecimal` (14), `java.math.RoundingMode` (13). So §33's claim that "only UI and
+  platform services need porting" is wrong.
+- **Proved with a compiler, not an argument.** The spike's negative control adds the exact
+  `import java.math.BigDecimal` that `Money` uses to a common source: it compiles for the JVM target
+  and fails for Kotlin/Native with `Unresolved reference 'java'`.
+- **The spike ports `Money`, not an engine — deliberately.** Six engines are already free of
+  `java.*`, so one could have been nominated and declared "shared". That would have proved nothing:
+  **every one of the thirty engines depends on `:core:model`, and `Money` uses `BigDecimal`**, so no
+  engine compiles for Native until Money does. `PortableMoney` reimplements `percentOf`, `split`,
+  `allocate` and half-even division in common Kotlin.
+  - **16 tests run on *both* the JVM and `linuxX64`** — Gradle compiles `commonTest` twice, so a
+    green Kotlin/Native run is the evidence.
+  - **5 more compare it against the real `Money`** over ~16,000 seeded cases, including the exact
+    ties where a half-up implementation would diverge. They agree.
+  - `linuxX64` rather than an iOS target because iOS needs macOS; both are Kotlin/Native and share
+    a stdlib, so `java.*` fails identically. **The spike does not claim to prove an iOS build.**
+- **What losing `BigDecimal` costs, measured:** `percentOf` is exact only while `|minor| × bps` fits
+  in a `Long` — about **₹92 billion** at the maximum rate. It throws rather than wrapping. Common
+  Kotlin has no 128-bit integer, so a production port must accept the bound or carry one.
+- **The audit is pinned and fails in both directions** — up means a `java.*` import was added to the
+  portable layer, down means a port is progressing and ADR-0075's figures need updating. It also
+  names the six clean modules individually and asserts `Money` still uses `BigDecimal`, so the day
+  that test fails, the largest obstacle to iOS is gone.
+- **A test nothing ran, caught by its own task's comment.** `unitTests` matches tasks named `test`
+  or `testDebugUnitTest`; a KMP module has neither, so the spike's tests were orphaned — "this
+  project's recurring defect", in the words of that very task. `jvmTest` is now wired in. The
+  Kotlin/Native half is deliberately **not**: it needs ~1GB of toolchain in `~/.konan` that CI does
+  not cache, so it runs on demand.
+- **Tests:** 21 new (16 × 2 targets, plus 5 equivalence and 5 audit). **3 mutations run; every one
+  went red**, plus the negative control.
+
 ### [0.13.5] — Issue 13.6: Account Aggregator designed, and one line of it shipped today  (2026-10-09)
 
 - **Implemented:** AA ingest's design and interface stub (**ADR-0074**), per AC2's "an ADR +
