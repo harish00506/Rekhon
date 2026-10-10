@@ -1705,6 +1705,34 @@ internal object Migrations {
             }
         }
 
+    /**
+     * 32 → 33: `import_batches`, and the column that points at it (§20.1, §33, ADR-0078).
+     *
+     * Why:  §33 promised the table from v1 and it was never built, so an import had nowhere to
+     *       record which run produced a row. ADR-0074 found the gap while designing AA ingest.
+     * Result: the table exists and `transactions` can name a batch. Additive only, so DB-003 holds.
+     * Input:  [db]. Output: none.
+     *
+     * **The new column is nullable with no default**, like `tax_minor` before it: `null` means the
+     * row was not imported, and every row that exists today was not. A `DEFAULT ''` would give the
+     * whole history a batch id naming nothing — a dangling pointer in every row, written by a
+     * migration, which the repository's existence check would then reject for ever.
+     */
+    val MIGRATION_32_33 =
+        object : Migration(VERSION_32, VERSION_33) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(IMPORT_BATCHES_TABLE)
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_import_batches_profile_id` ON `import_batches` (`profile_id`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_import_batches_profile_id_started_at_utc_millis` " +
+                        "ON `import_batches` (`profile_id`, `started_at_utc_millis`)",
+                )
+                db.execSQL("ALTER TABLE `transactions` ADD COLUMN `import_batch_id` TEXT")
+            }
+        }
+
     /** Every migration, in order, for `CfoDatabaseFactory` to register. */
     val ALL: Array<Migration> =
         arrayOf(
@@ -1739,6 +1767,7 @@ internal object Migrations {
             MIGRATION_29_30,
             MIGRATION_30_31,
             MIGRATION_31_32,
+            MIGRATION_32_33,
         )
 
     /** `appliance`'s columns (issue 13.2). Mirrors `ApplianceEntity`. */
@@ -1938,6 +1967,8 @@ internal object Migrations {
     /** Schema 32: `transactions.tax_minor` (ADR-0077). */
     private const val VERSION_32 = 32
 
+    private const val VERSION_33 = 33
+
     /**
      * `wishlist_item`'s columns (issue 10.2).
      * Held as a constant for the reason [PURCHASE_TRACE_TABLE] is: the DDL inside the method would
@@ -2001,6 +2032,24 @@ internal object Migrations {
             "`close_iso_date` TEXT NOT NULL, " +
             "`close_minor` INTEGER NOT NULL, " +
             "`source` TEXT NOT NULL, " +
+            "`deleted_at_utc_millis` INTEGER, " +
+            "`created_at_utc_millis` INTEGER NOT NULL, " +
+            "`updated_at_utc_millis` INTEGER NOT NULL, " +
+            "PRIMARY KEY(`id`))"
+
+    /** `import_batches`'s columns (schema 33; ADR-0078). Mirrors `ImportBatchEntity`. */
+    private const val IMPORT_BATCHES_TABLE =
+        "CREATE TABLE IF NOT EXISTS `import_batches` (" +
+            "`id` TEXT NOT NULL, " +
+            "`profile_id` TEXT NOT NULL, " +
+            "`source` TEXT NOT NULL, " +
+            "`started_at_utc_millis` INTEGER NOT NULL, " +
+            "`fetched_at_utc_millis` INTEGER, " +
+            "`window_start_iso_date` TEXT, " +
+            "`window_end_iso_date` TEXT, " +
+            "`complete` INTEGER NOT NULL DEFAULT 1, " +
+            "`line_count` INTEGER NOT NULL DEFAULT 0, " +
+            "`accepted_count` INTEGER NOT NULL DEFAULT 0, " +
             "`deleted_at_utc_millis` INTEGER, " +
             "`created_at_utc_millis` INTEGER NOT NULL, " +
             "`updated_at_utc_millis` INTEGER NOT NULL, " +

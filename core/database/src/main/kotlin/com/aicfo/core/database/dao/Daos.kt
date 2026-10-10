@@ -28,6 +28,7 @@ import com.aicfo.core.database.entity.GoalContributionEntity
 import com.aicfo.core.database.entity.GoalEntity
 import com.aicfo.core.database.entity.GoalFundingAccountEntity
 import com.aicfo.core.database.entity.HouseholdEntity
+import com.aicfo.core.database.entity.ImportBatchEntity
 import com.aicfo.core.database.entity.InsightEntity
 import com.aicfo.core.database.entity.InterviewAnswerEntity
 import com.aicfo.core.database.entity.InvestmentHoldingEntity
@@ -2554,6 +2555,47 @@ interface DemoDao {
     suspend fun deleteSmsDrafts(profileId: String): Int
 
     /**
+     * Result: rows removed from `chat_message`. Input: [profileId]. Output: the count.
+     *
+     * **Issue 10.5 shipped `chat_message` without this, and `WipeCoverageTest` found it.** Every
+     * question the user asked the assistant — and every answer, which quotes their own figures —
+     * survived both the demo exit and a restore. On a restore that is a stranger's conversation
+     * left under the restored profile; on a demo exit it is advice about a sample household kept
+     * as if it were the user's. CHT-004's delete is a real delete, so this one is too.
+     */
+    @Query("DELETE FROM chat_message WHERE profile_id = :profileId")
+    suspend fun deleteChatMessages(profileId: String): Int
+
+    /**
+     * Result: rows removed from `appliance_service`. Input: [profileId]. Output: the count.
+     *
+     * Issue 13.2 shipped the three `appliance*` tables without any of these three queries. Run
+     * **before** [deleteAppliances], like every other child here — a failure in between would
+     * otherwise leave service rows pointing at an appliance that no longer exists, which the
+     * residue count would then report for ever.
+     */
+    @Query("DELETE FROM appliance_service WHERE profile_id = :profileId")
+    suspend fun deleteApplianceServices(profileId: String): Int
+
+    /** Result: rows removed from `appliance_consumable`. Input: [profileId]. Output: the count. */
+    @Query("DELETE FROM appliance_consumable WHERE profile_id = :profileId")
+    suspend fun deleteApplianceConsumables(profileId: String): Int
+
+    /** Result: rows removed from `appliance`. Input: [profileId]. Output: the count. */
+    @Query("DELETE FROM appliance WHERE profile_id = :profileId")
+    suspend fun deleteAppliances(profileId: String): Int
+
+    /**
+     * Result: rows removed from `import_batches`. Input: [profileId]. Output: the count.
+     *
+     * Run **after** [deleteTransactions] (ADR-0078): the transactions are what point at a batch, so
+     * clearing the batches first would leave rows naming provenance that no longer exists — the
+     * dangling pointer `TransactionRepository` refuses to create on the way in.
+     */
+    @Query("DELETE FROM import_batches WHERE profile_id = :profileId")
+    suspend fun deleteImportBatches(profileId: String): Int
+
+    /**
      * Removes the profile row itself.
      * Why:    called **last**, after everything scoped to it — deleting the parent first would leave
      *         orphans behind if the caller failed mid-way, which is exactly the residue this exists
@@ -2619,7 +2661,15 @@ interface DemoDao {
             "(SELECT COUNT(*) FROM vehicle_service WHERE profile_id = :profileId) + " +
             "(SELECT COUNT(*) FROM vehicle_renewal WHERE profile_id = :profileId) + " +
             // Issue 10.7's own.
-            "(SELECT COUNT(*) FROM market_close WHERE profile_id = :profileId)",
+            "(SELECT COUNT(*) FROM market_close WHERE profile_id = :profileId) + " +
+            // `WipeCoverageTest`'s own four, absent since 10.5 and 13.2 — the third time this
+            // query has been found short, and the first time a test rather than a person found
+            // it. Plus `import_batches` (ADR-0078), added under that test.
+            "(SELECT COUNT(*) FROM chat_message WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM appliance WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM appliance_service WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM appliance_consumable WHERE profile_id = :profileId) + " +
+            "(SELECT COUNT(*) FROM import_batches WHERE profile_id = :profileId)",
     )
     suspend fun countRowsFor(profileId: String): Int
 }
@@ -2852,6 +2902,16 @@ interface ArchiveDao {
     @Query("SELECT * FROM appliance_consumable WHERE profile_id = :profileId ORDER BY id")
     suspend fun applianceConsumables(profileId: String): List<ApplianceConsumableEntity>
 
+    /**
+     * Result: every import batch (schema 33; ADR-0078). Input: [profileId].
+     *
+     * In the archive because `transactions.import_batch_id` is: restoring the rows without their
+     * batches would leave every imported transaction pointing at provenance that no longer exists,
+     * which is the dangling state the write path refuses to create.
+     */
+    @Query("SELECT * FROM import_batches WHERE profile_id = :profileId ORDER BY id")
+    suspend fun importBatches(profileId: String): List<ImportBatchEntity>
+
     /** Result: every SMS draft, in whatever state the user left it (§18, §23). Input: [profileId]. */
     @Query("SELECT * FROM sms_draft WHERE profile_id = :profileId ORDER BY id")
     suspend fun smsDrafts(profileId: String): List<SmsDraftEntity>
@@ -2885,6 +2945,15 @@ interface ArchiveDao {
     /** Result: the consumable replacements are present. Input: [rows]. Output: none (suspends). */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertApplianceConsumables(rows: List<ApplianceConsumableEntity>)
+
+    /**
+     * Result: the import batches are present (schema 33; ADR-0078). Input: [rows]. Output: none.
+     *
+     * Restored **before** the transactions that name them, on the parents-before-children rule the
+     * rest of this restore follows.
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertImportBatches(rows: List<ImportBatchEntity>)
 
     /** Result: the taxonomy is present. Input: [rows]. Output: none (suspends). */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -4567,4 +4636,88 @@ interface ApplianceDao {
         profileId: String,
         applianceId: String,
     ): List<ApplianceConsumableEntity>
+}
+
+/**
+ * Where imported rows came from (schema 33; §20.1, §33, ADR-0078).
+ *
+ * Why:  §33 promises "statement-grade provenance" and nothing could supply it, because the table
+ *       did not exist. These are the queries that answer the question the promise implies: given a
+ *       transaction, which run brought it in, and what did that run cover?
+ * What: writes a batch, lists a profile's batches, and resolves a transaction back to its batch.
+ * Result: the storage side of §33's second AA promise, with no ingest path on it yet.
+ * Changelog: 2026-10-10 — Created (schema 33).
+ */
+@Dao
+interface ImportBatchDao {
+    /**
+     * Inserts a batch, replacing one with the same id.
+     * Result: the row is present afterwards. Input: [batch]. Output: none (suspends).
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(batch: ImportBatchEntity)
+
+    /**
+     * Observes a profile's import history, newest first.
+     * Result: what a future "where did this data come from" screen renders.
+     * Input:  [profileId]. Output: a `Flow` of the live batches.
+     */
+    @Query(
+        "SELECT * FROM import_batches WHERE profile_id = :profileId " +
+            "AND deleted_at_utc_millis IS NULL ORDER BY started_at_utc_millis DESC, id",
+    )
+    fun observeFor(profileId: String): Flow<List<ImportBatchEntity>>
+
+    /**
+     * Finds one batch, scoped to the profile that owns it.
+     * Why:    **both** parameters, never the id alone. This is the lookup
+     *         `TransactionRepository` uses to refuse a write naming a batch that does not exist,
+     *         and an id-only read would accept another profile's batch — turning the integrity
+     *         check into a way to link one profile's transaction to another's import.
+     * Result: the batch, or `null` when no live batch in that profile has that id.
+     * Input:  [profileId]; [id]. Output: `ImportBatchEntity?`.
+     */
+    @Query(
+        "SELECT * FROM import_batches WHERE profile_id = :profileId AND id = :id " +
+            "AND deleted_at_utc_millis IS NULL",
+    )
+    suspend fun find(
+        profileId: String,
+        id: String,
+    ): ImportBatchEntity?
+
+    /**
+     * Whether a batch exists in the same profile as an account — the integrity check, as one read.
+     * Why:    `TransactionRepository` holds an account id and a batch id, and must refuse a write
+     *         unless both belong to one profile. Asking for the account and then the batch would be
+     *         two round trips and would put the profile comparison in Kotlin, where a later edit
+     *         could drop it; the join states the rule once, in the place the rule is about.
+     * Result: true only when a live batch with that id shares a profile with that account.
+     * Input:  [batchId]; [accountId]. Output: `Boolean`.
+     */
+    @Query(
+        "SELECT EXISTS(SELECT 1 FROM import_batches b " +
+            "INNER JOIN account a ON a.profile_id = b.profile_id " +
+            "WHERE b.id = :batchId AND a.id = :accountId " +
+            "AND b.deleted_at_utc_millis IS NULL)",
+    )
+    suspend fun existsForAccount(
+        batchId: String,
+        accountId: String,
+    ): Boolean
+
+    /**
+     * The batch one transaction arrived in — §33's question, asked directly.
+     * Why:    a join rather than two reads, because the caller holds a transaction id and nothing
+     *         else; making it fetch the row first only to read one column back out would put the
+     *         `null`-means-not-imported case in two places instead of one.
+     * Result: the batch, or `null` when the row was not imported or its batch is gone.
+     * Input:  [transactionId]. Output: `ImportBatchEntity?`.
+     */
+    @Query(
+        "SELECT b.* FROM import_batches b " +
+            "INNER JOIN transactions t ON t.import_batch_id = b.id AND t.profile_id = b.profile_id " +
+            "WHERE t.id = :transactionId AND b.deleted_at_utc_millis IS NULL",
+    )
+    suspend fun forTransaction(transactionId: String): ImportBatchEntity?
 }

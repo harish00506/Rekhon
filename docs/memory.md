@@ -39,7 +39,7 @@
 
 ## Current state
 
-- **Version:** `0.13.8` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Rulebook is 1.24.0; tax KB 1.1 (FY rules 2025-26.1).** **Schema is v32** (the 2026-10-10 maintenance fix's `transactions.tax_minor`, nullable — `null` means no GST figure was read, `0` means the bill stated zero, ADR-0077; v31 was 13.2's three `appliance*` tables; v30 was 13.1's `household` + `profile.household_id`; v29 was 10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
+- **Version:** `0.13.9` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Rulebook is 1.24.0; tax KB 1.1 (FY rules 2025-26.1).** **Schema is v33** (`import_batches` + `transactions.import_batch_id`, ADR-0078; v32 was `transactions.tax_minor`, nullable — `null` means no GST figure was read, `0` means the bill stated zero, ADR-0077; v31 was 13.2's three `appliance*` tables; v30 was 13.1's `household` + `profile.household_id`; v29 was 10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
   forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
   feed), 9.6 (the notification policy) and 9.7 (the numeric guardrail) shipped — **Epic 9 is
@@ -599,6 +599,28 @@
 
 ## Completed
 
+- **Maintenance (v0.13.9, 2026-10-10):** `import_batches` built, and the profile wipe turned from
+  a claim into a checked one ([ADR-0078](adr/0078-import-batches-exists-and-the-wipe-is-checked-not-trusted.md)).
+  Schema **v33**. One row per ingest run carrying the window, the completeness and two timestamps —
+  when the app ran the import and when the data was true at the source, which can be days apart and
+  is the one P-04's staleness label must render. The counts are **stored, not derived**: counting
+  rows in `transactions` would make "this import skipped five lines" change the day the user deletes
+  one. *Evidence that moves is not evidence.* With no foreign keys in the schema, the repository's
+  refusal of a batch id naming nothing **is** the constraint, scoped to the account's profile so one
+  profile cannot claim another's fetch.
+  **The real finding was next door.** `DemoDao`'s comment records the wipe being found short twice
+  and says *"a count that omits a table is not a weaker assertion; it is a false one"* — and nothing
+  ever checked it, so it happened a third time. `chat_message` and three `appliance*` tables were
+  absent from the DAO and from `countRowsFor`, which therefore returned **0 for a profile that still
+  had rows**; `attachments` was absent from the demo exit; and **eleven** tables were absent from
+  `ArchiveRepository.wipe`, whose own doc comment warns about precisely the drift it had suffered —
+  so "replace my data with this archive" had been meaning "merge it into whatever was here".
+  *A safeguard documented in prose, with no test asserting it runs, is a comment.* The fix is the
+  two coverage tests; the sixteen deletes are their first output.
+  **Open, pinned, not fixed:** `DemoDao.attachmentFileNames` has never had a caller, so both wipes
+  orphan encrypted receipt blobs until a full device erase clears the directory. Bounded, not
+  permanent. Pinned in 13.5's direction so closing it forces the finding to be deleted.
+
 - **Maintenance (v0.13.8, 2026-10-10):** the receipt path now **keeps** the GST figure
   ([ADR-0077](adr/0077-the-gst-figure-is-stored-and-null-is-not-zero.md)). Schema **v32** adds
   `transactions.tax_minor`, nullable with **no default** — `null` means no figure was read, `0`
@@ -671,7 +693,7 @@
   `DpdpComplianceDriftTest` (which refused the consent until it had a DPDP matrix row), and
   Kotlin's exhaustive `when` across two screens and a label, which forced the consent to become
   visible and revocable in four languages. *A consent the user cannot see is not a consent.*
-  `import_batches`, §33's second promise, is recorded and not built.
+  `import_batches`, §33's second promise, is recorded and not built. **Built on 2026-10-10** ([ADR-0078](adr/0078-import-batches-exists-and-the-wipe-is-checked-not-trusted.md)), schema **v33** — and building it found sixteen missing deletes in the profile wipe.
 
 - **Epic 13 — issue 13.5 (v0.13.4, 2026-10-09):** business mode's design (§3.3, §27, §33;
   [ADR-0073](adr/0073-the-business-book-is-a-second-profile-and-two-promises-were-broken.md)).

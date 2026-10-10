@@ -226,7 +226,7 @@ class ProfileScopingTest {
          * it is the moment somebody confirms the new tables' queries were looked at, which for 13.2
          * they were — all six filter on `profile_id`, so none of them needed a marker.
          */
-        const val EXPECTED_SCOPED_TABLES = 36
+        const val EXPECTED_SCOPED_TABLES = 37
 
         /** `sms_draft`'s revocation sweep — see `SmsRepository.onConsentRevoked`. */
         const val EXPECTED_DEVICE_WIDE = 1

@@ -380,6 +380,27 @@ data class TransactionEntity(
      */
     @ColumnInfo(name = "tax_minor")
     val taxMinor: Long? = null,
+    /**
+     * The import run this row arrived in — §33's "statement-grade provenance". Schema 33; ADR-0078.
+     *
+     * Why:  §33 promised `import_batches` from v1 and ADR-0074 found it had never been built, so
+     *       there was nowhere to record **which fetch a row came from**. Without it a duplicate
+     *       import cannot be traced to the pull that caused it, and a user who imports the same
+     *       statement twice has no way to tell the app which copy to keep.
+     *
+     * **Null, not a sentinel batch.** `null` means this row was not imported at all — which is
+     * every manual, OCR, SMS and recurring row, and will stay the overwhelming majority. It never
+     * means "imported, origin unknown": a non-null value always names a row in `import_batches`,
+     * and `TransactionRepository` refuses a write whose batch does not exist in the same profile.
+     * There are no foreign keys in this schema (issue 1.6 chose application-level integrity), so
+     * that refusal **is** the constraint.
+     *
+     * **Declared last on purpose**, for the reason [taxMinor] gives: `ALTER TABLE ... ADD COLUMN`
+     * appends, and a column declared mid-list makes the exported `createSql` disagree with the
+     * column order a migrated database actually has.
+     */
+    @ColumnInfo(name = "import_batch_id")
+    val importBatchId: String? = null,
 )
 
 /**
@@ -2533,6 +2554,109 @@ data class ApplianceConsumableEntity(
     val replacedIsoDate: String,
     @ColumnInfo(name = "cost_minor")
     val costMinor: Long? = null,
+    @ColumnInfo(name = "deleted_at_utc_millis")
+    val deletedAtUtcMillis: Long? = null,
+    @ColumnInfo(name = "created_at_utc_millis")
+    val createdAtUtcMillis: Long,
+    @ColumnInfo(name = "updated_at_utc_millis")
+    val updatedAtUtcMillis: Long,
+)
+
+/**
+ * One ingest run — a bank fetch or a file import (schema 33; §20.1, §33, ADR-0078).
+ *
+ * Why:  §33 promises "`import_batches` supports statement-grade provenance", and §20.1 lists the
+ *       table among the system tables. Neither existed. ADR-0074 recorded the gap when it designed
+ *       Account Aggregator ingest and could find nowhere to write down which fetch produced a row.
+ *
+ *       "Statement-grade" is the demanding word. A bank statement is evidence: it covers a stated
+ *       period, it is either whole or truncated, and it was true as at a moment. A provenance
+ *       record that only said "imported" would answer none of those, so this row carries the
+ *       window, the completeness and the fetch instant alongside the counts.
+ * What: the parent row every imported transaction points at through `transactions.import_batch_id`.
+ * Result: given any transaction, the app can say which run brought it in, what that run covered,
+ *         whether the run was complete, and how much of it was kept.
+ * Changelog: 2026-10-10 — Created (schema 33).
+ *
+ * **It holds no account number, no bank name and no file name**, which is deliberate and not an
+ * oversight. This is the row a diagnostic or a support log would quote, and §21.6 bans personal
+ * data from logs; a file name alone can name the bank and the last four digits of the account.
+ * [source] says *how* the data arrived, which is all a provenance answer needs.
+ *
+ * Input:  [id]; [profileId] — scoped like every other row (ADR-0069 §5); [source] — a
+ *         `TransactionSource.storedValue`, reusing the vocabulary the rows themselves carry rather
+ *         than inventing a second one; [startedAtUtcMillis] — when the app ran the import
+ *         (TIM-001, from the injected clock); [fetchedAtUtcMillis] — when the *data* was true,
+ *         which for an AA pull is `FetchedStatements.fetchedAtUtcMillis` and is null for a file
+ *         the user supplied; [windowStartIsoDate], [windowEndIsoDate] — the period the statement
+ *         covered, ISO dates (TIM-002), null when the source did not state one;
+ *         [complete] — false when the window was truncated, so a partial history is never shown as
+ *         a whole one (P-04); [lineCount] — how many rows the source offered; [acceptedCount] —
+ *         how many became transactions, so the difference is visibly the duplicates and rejects;
+ *         the tombstone and timestamps.
+ * Output: a Room row.
+ *
+ * Table named `import_batches`, plural, exactly as §20.1 and §33 name it — like `transactions`,
+ * and unlike every other table here, because the SRS is the vocabulary and renaming it would make
+ * the promise and the thing that keeps it look like two different objects.
+ */
+@Serializable
+@Entity(
+    tableName = "import_batches",
+    indices = [
+        Index("profile_id"),
+        Index(value = ["profile_id", "started_at_utc_millis"]),
+    ],
+)
+data class ImportBatchEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+    @ColumnInfo(name = "profile_id")
+    val profileId: String,
+    /** `aa` | `import` — a `TransactionSource.storedValue`, the same vocabulary the rows carry. */
+    @ColumnInfo(name = "source")
+    val source: String,
+    /** TIM-001: when the app ran this import, from the injected clock. */
+    @ColumnInfo(name = "started_at_utc_millis")
+    val startedAtUtcMillis: Long,
+    /**
+     * TIM-001: when the data was true at the source. Null for a file, which has no fetch instant.
+     *
+     * Separate from [startedAtUtcMillis] because they answer different questions and can be days
+     * apart: a statement downloaded this morning may have been generated last week, and a staleness
+     * label (P-04) has to render the second, not the first.
+     */
+    @ColumnInfo(name = "fetched_at_utc_millis")
+    val fetchedAtUtcMillis: Long? = null,
+    /** TIM-002: the first day the statement covered, ISO `yyyy-MM-dd`. Null when unstated. */
+    @ColumnInfo(name = "window_start_iso_date")
+    val windowStartIsoDate: String? = null,
+    /** TIM-002: the last day the statement covered. Null when unstated. */
+    @ColumnInfo(name = "window_end_iso_date")
+    val windowEndIsoDate: String? = null,
+    /**
+     * False when the source truncated the window — `FetchedStatements.complete`.
+     *
+     * `NOT NULL` with a default, which the [taxMinor] column deliberately refused. The difference
+     * is that this table is **new**: it has no historical rows for a default to make a false claim
+     * about, so the default only ever applies to a row this build is writing right now.
+     */
+    @ColumnInfo(name = "complete", defaultValue = "1")
+    val complete: Boolean,
+    /** How many rows the source offered. */
+    @ColumnInfo(name = "line_count", defaultValue = "0")
+    val lineCount: Int,
+    /**
+     * How many became transactions.
+     *
+     * Stored rather than counted from `transactions`, and the difference is the point: a row the
+     * user later deletes would make a derived count drop, turning "this import dropped four
+     * duplicates" into "this import dropped five" a month after the fact. A provenance record that
+     * changes when the ledger changes is not evidence.
+     */
+    @ColumnInfo(name = "accepted_count", defaultValue = "0")
+    val acceptedCount: Int,
     @ColumnInfo(name = "deleted_at_utc_millis")
     val deletedAtUtcMillis: Long? = null,
     @ColumnInfo(name = "created_at_utc_millis")

@@ -735,6 +735,31 @@ object RepositoryFactory {
         )
 
     /**
+     * Where imported rows came from (ADR-0078; §20.1, §33).
+     * Why:    §33 promised `import_batches` from v1 and ADR-0074 found it unbuilt. Nothing calls
+     *         `record` yet — AA ingest is stubbed and no file import exists — so this is wired for
+     *         the same reason `TransactionSource.ACCOUNT_AGGREGATOR` shipped before its writer: the
+     *         history is what cannot be recovered later.
+     * Result: an [ImportBatchRepository]. Input: [database]; [clock]; [idGenerator];
+     *         [dispatchers]; [activeProfileId]. Output: the repository.
+     * Changelog: 2026-10-10 — Created (ADR-0078).
+     */
+    fun importBatches(
+        database: CfoDatabase,
+        clock: Clock,
+        idGenerator: IdGenerator,
+        dispatchers: DispatcherProvider,
+        activeProfileId: Flow<String>,
+    ): ImportBatchRepository =
+        RoomImportBatchRepository(
+            database = database,
+            clock = clock,
+            ids = idGenerator,
+            dispatchers = dispatchers,
+            activeProfileId = activeProfileId,
+        )
+
+    /**
      * The vehicles and their predictions (issue 10.4; §12).
      * Why:    AI-VEH is pure; this is where a household's readings, bills and renewal dates meet it,
      *         in the profile's own today.

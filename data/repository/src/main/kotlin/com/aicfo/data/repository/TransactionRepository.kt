@@ -720,6 +720,18 @@ data class TransactionDraft(
      * a person can choose is a claim rather than a record. The add-transaction screen never sets it.
      */
     val source: TransactionSource = TransactionSource.MANUAL,
+    /**
+     * The import run this row arrived in — §33's statement-grade provenance (ADR-0078).
+     *
+     * `null` means the row was not imported, which is every draft any screen produces today. A
+     * non-null value **must name a live batch in the same profile**: the repository looks it up and
+     * refuses the write otherwise, which is the whole of the integrity rule, because the schema
+     * declares no foreign keys (issue 1.6 chose application-level integrity).
+     *
+     * Not something the user picks, for the reason [source] is not: provenance a person can choose
+     * is a claim rather than a record.
+     */
+    val importBatchId: String? = null,
 )
 
 /**
@@ -1187,6 +1199,23 @@ internal class RoomTransactionRepository(
             rules = input.rules,
         )
 
+    /**
+     * Whether the draft's import batch exists in the same profile as its account (ADR-0078).
+     * Why:    split out of [create] so the guard there reads as one sentence, and so the `null`
+     *         case is stated once — a draft with no batch id has nothing to verify and must not
+     *         cost a database read.
+     * Result: true when there is nothing to check, or when the batch and the account share a live
+     *         profile; false when the id names nothing reachable from that account.
+     * Input:  [draft] — already validated. Output: `Boolean`.
+     * Changelog: 2026-10-10 — Created (ADR-0078).
+     */
+    private suspend fun batchBelongsToAccount(draft: TransactionDraft): Boolean {
+        val batchId = draft.importBatchId ?: return true
+        return withContext(dispatchers.io) {
+            database.importBatchDao().existsForAccount(batchId, draft.accountId)
+        }
+    }
+
     override suspend fun create(draft: TransactionDraft): Result<Transaction, AppError> {
         // Validated before `withContext`, so a rejected draft costs no thread switch and — more to
         // the point — cannot have written anything by the time it is rejected.
@@ -1199,6 +1228,16 @@ internal class RoomTransactionRepository(
         // Today, not the booked day: the account lookup only proves the account is live, and its
         // balance is read as at now (issue 3.4 bounded `findWithBalance` by date).
         val today = clock.today().toString()
+        // ADR-0078: a batch id naming nothing — or naming *another profile's* run — would be
+        // provenance that resolves to no import, which is worse than the honest absence ADR-0074
+        // chose over a half-built substitute. The schema declares no foreign keys, so this check is
+        // the entire constraint. A guard rather than a branch inside the write, so a rejected draft
+        // costs no thread switch and cannot have written anything by the time it is rejected — the
+        // same reasoning the two guards above carry. It reads nothing at all for a hand-typed row,
+        // which is every draft any screen produces today.
+        if (validated.importBatchId != null && !batchBelongsToAccount(validated)) {
+            return Err(AppError.Validation("importBatchId"))
+        }
         return withContext(dispatchers.io) {
             runCatchingToResult {
                 // The account is read for three things at once: proof it exists and is live, the
@@ -1209,44 +1248,68 @@ internal class RoomTransactionRepository(
                     database.accountDao().findWithBalance(validated.accountId, today)?.account
                         ?: return@runCatchingToResult null
                 val now = stamps.nowUtcMillis
-                val entity =
-                    TransactionEntity(
-                        id = ids.newId(TransactionRepository.ID_PREFIX),
-                        // The **account's** profile, not the active one — the same choice
-                        // `writeAdjustment` makes in `AccountRepository` (ADR-0006): a row must land
-                        // where the demo wipe can reach it.
-                        profileId = account.profileId,
-                        accountId = account.id,
-                        amountMinor = validated.amount.minor,
-                        currencyCode = account.currencyCode,
-                        occurredAtUtcMillis = stamps.occurredAtUtcMillis,
-                        bookedOnIsoDate = stamps.bookedOnIsoDate,
-                        categoryId = validated.categoryId,
-                        merchant = validated.merchant,
-                        note = validated.note,
-                        // ADR-0077: what the receipt said the tax was, or null when nothing read
-                        // one. Until this column existed the figure was shown to the user and then
-                        // discarded.
-                        taxMinor = validated.tax?.minor,
-                        // FR-TXN-009. Defaults to `manual` on the draft, which is what every screen
-                        // that lets a person type a transaction leaves it as; the receipt scanner
-                        // (issue 3.8) passes `ocr` and issue 3.9's SMS parser will pass `sms`.
-                        source = validated.source.storedValue,
-                        // Derived from the sign, never taken from the caller — the whole of the
-                        // type/sign invariant is this one expression plus the transfer legs below.
-                        type = validated.amount.directionType().storedValue,
-                        // Null for a future-dated row: `ScheduledTransactionWorker` stamps it when
-                        // the day arrives (FR-TXN-010). It does not decide any balance.
-                        postedAtUtcMillis = stamps.postedAtUtcMillis,
-                        createdAtUtcMillis = now,
-                        updatedAtUtcMillis = now,
-                    )
+                val entity = rowFor(validated, account, stamps)
                 database.transactionDao().upsert(entity)
                 // No balance write: `account.current_balance_minor` is a cache nothing reads, and the
                 // row just inserted has already moved every derived balance (DB-001, ADR-0007).
                 entity.toTransaction()
             }.flatMapPresent()
         }
+    }
+
+    /**
+     * Builds the row from a validated draft and the account it lands in.
+     * Why:    extracted from [create] when the import-batch guard (ADR-0078) pushed it past
+     *         detekt's 40-line limit — and it is the right seam anyway: everything here is a
+     *         mapping decision, while what is left in [create] is the sequence of checks. The two
+     *         read very differently and were only ever adjacent.
+     * Result: the [TransactionEntity] to insert.
+     * Input:  [draft] — already validated and already checked against its batch; [account] — the
+     *         verified live account, whose profile and currency the row takes; [stamps] — the
+     *         booked day and instants, resolved once by the caller (issue 3.4).
+     * Output: [TransactionEntity].
+     * Changelog: 2026-10-10 — Extracted (ADR-0078).
+     */
+    private fun rowFor(
+        draft: TransactionDraft,
+        account: AccountEntity,
+        stamps: BookingStamps,
+    ): TransactionEntity {
+        val now = stamps.nowUtcMillis
+        return TransactionEntity(
+            id = ids.newId(TransactionRepository.ID_PREFIX),
+            // The **account's** profile, not the active one — the same choice
+            // `writeAdjustment` makes in `AccountRepository` (ADR-0006): a row must land
+            // where the demo wipe can reach it.
+            profileId = account.profileId,
+            accountId = account.id,
+            amountMinor = draft.amount.minor,
+            currencyCode = account.currencyCode,
+            occurredAtUtcMillis = stamps.occurredAtUtcMillis,
+            bookedOnIsoDate = stamps.bookedOnIsoDate,
+            categoryId = draft.categoryId,
+            merchant = draft.merchant,
+            note = draft.note,
+            // ADR-0077: what the receipt said the tax was, or null when nothing read
+            // one. Until this column existed the figure was shown to the user and then
+            // discarded.
+            taxMinor = draft.tax?.minor,
+            // ADR-0078: the run this row arrived in, already proven to exist in this
+            // account's profile by the lookup above. Null for everything a person types.
+            importBatchId = draft.importBatchId,
+            // FR-TXN-009. Defaults to `manual` on the draft, which is what every screen
+            // that lets a person type a transaction leaves it as; the receipt scanner
+            // (issue 3.8) passes `ocr` and issue 3.9's SMS parser will pass `sms`.
+            source = draft.source.storedValue,
+            // Derived from the sign, never taken from the caller — the whole of the
+            // type/sign invariant is this one expression plus the transfer legs below.
+            type = draft.amount.directionType().storedValue,
+            // Null for a future-dated row: `ScheduledTransactionWorker` stamps it when
+            // the day arrives (FR-TXN-010). It does not decide any balance.
+            postedAtUtcMillis = stamps.postedAtUtcMillis,
+            createdAtUtcMillis = now,
+            updatedAtUtcMillis = now,
+        )
     }
 
     override suspend fun createTransfer(draft: TransferDraft): Result<Transfer, AppError> {

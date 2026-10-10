@@ -171,6 +171,13 @@ internal class RoomDemoModeRepository(
         // Issue 10.7: a demo session's cached closes are the sample household's, not the user's,
         // and a series that survived the wipe would be scored as theirs.
         demo.deleteMarketCloses(DemoModeRepository.DEMO_PROFILE_ID)
+        // Issue 10.5 shipped `chat_message` without a wipe at all: every question asked in the demo
+        // — and every answer, which quotes the sample household's figures — survived the exit.
+        demo.deleteChatMessages(DemoModeRepository.DEMO_PROFILE_ID)
+        // Issue 13.2's three tables, likewise never wiped. Children first.
+        demo.deleteApplianceServices(DemoModeRepository.DEMO_PROFILE_ID)
+        demo.deleteApplianceConsumables(DemoModeRepository.DEMO_PROFILE_ID)
+        demo.deleteAppliances(DemoModeRepository.DEMO_PROFILE_ID)
     }
 
     override suspend fun exit(): Result<Unit, AppError> =
@@ -222,10 +229,20 @@ internal class RoomDemoModeRepository(
                     // Issue 3.9: same reasoning as the snapshot above — the daily SMS scan writes
                     // drafts against whichever profile is active, so a demo session on a phone whose
                     // owner opted in leaves inferences drawn from their real inbox behind.
+                    // Issue 3.8's table, never wiped by the exit until `ProfileWipeCallSitesTest`
+                    // said so — the restore's wipe has always deleted it. The demo dataset seeds no
+                    // attachments, but a user who scans a real receipt while browsing the demo
+                    // creates one, and it is a photo of their own bill.
+                    //
+                    // **The rows go; the encrypted blobs do not.** `DemoDao.attachmentFileNames`
+                    // exists to list them and has never had a caller — see ADR-0078's open finding.
+                    demo.deleteAttachments(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteSmsDrafts(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteTransactionTags(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteTags(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteTransactions(DemoModeRepository.DEMO_PROFILE_ID)
+                    // After the transactions: they are what point at a batch (ADR-0078).
+                    demo.deleteImportBatches(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteCategories(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteAccounts(DemoModeRepository.DEMO_PROFILE_ID)
                     demo.deleteProfile(DemoModeRepository.DEMO_PROFILE_ID)

@@ -61,6 +61,27 @@
                         → transactions.tax_minor (schema 32, nullable, no default)
                           → CfoArchive (no change needed — it holds the entity, ADR-0023)
         Nothing *reads* the column yet; business mode will.
+    2026-10-10 — Maintenance: `import_batches` (ADR-0078). Two changes to the spine, one of them
+        not the one that was asked for.
+
+        **The provenance chain**, built end to end and called by nothing yet — AA ingest is still
+        stubbed, which is the point of a forward-compatibility table:
+            ImportBatchRepository.record()
+              → import_batches (schema 33)
+            TransactionDraft.importBatchId
+              → TransactionRepository.create()
+                → ImportBatchDao.existsForAccount()      ← the refusal that stands in for a FK
+                  → TransactionEntity.importBatchId
+            ImportBatchRepository.batchFor(txnId)
+              → ImportBatchDao.forTransaction()          ← §33's question, asked directly
+
+        **The wipe**, which is the change that mattered. Both profile wipes were calling a
+        hand-maintained subset of the DAO's deletes:
+            DemoModeRepository.exit()      + 5 deletes (chat, 3 × appliance, attachments)
+            ArchiveRepository.wipe()       + 11 deletes, so a restore replaces rather than merges
+            DemoDao.countRowsFor()         + 5 terms, so it can no longer return 0 for a dirty profile
+        Guarded now by `WipeCoverageTest` and `ProfileWipeCallSitesTest` rather than by the comment
+        that said it was guarded.
     2026-09-03 — Issue 7.3 added §2.6, the goal waterfall. Still Shape A — a screen — but the first
         read assembled from four repositories, and the first write driven by a gesture, so it is
         traced beside §2.5 rather than folded into it.

@@ -147,3 +147,15 @@ dependencies {
     androidTestImplementation(project(":core:datastore"))
     androidTestImplementation(testFixtures(project(":core:common")))
 }
+
+// ProfileWipeCallSitesTest reads `DemoDao` from :core:database to check that both profile wipes
+// call every delete it declares. A file read at runtime that Gradle does not know about leaves the
+// task UP-TO-DATE on exactly the edit the test watches — issues 7.2, 11.5, 11.7, 13.1 and 13.5 each
+// found that bug in a different guise, and 13.1's `configureOwnSourceAsTestInput()` does not cover
+// it: that declares a module's OWN src/main, and this file lives in another module.
+tasks.withType<Test>().configureEach {
+    inputs.file(
+        rootProject.file("core/database/src/main/kotlin/com/aicfo/core/database/dao/Daos.kt"),
+    ).withPropertyName("databaseDaos")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+}

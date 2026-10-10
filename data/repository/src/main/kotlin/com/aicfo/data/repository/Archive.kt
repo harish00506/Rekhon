@@ -15,6 +15,7 @@ import com.aicfo.core.database.entity.GoalContributionEntity
 import com.aicfo.core.database.entity.GoalEntity
 import com.aicfo.core.database.entity.GoalFundingAccountEntity
 import com.aicfo.core.database.entity.HouseholdEntity
+import com.aicfo.core.database.entity.ImportBatchEntity
 import com.aicfo.core.database.entity.InsightEntity
 import com.aicfo.core.database.entity.InterviewAnswerEntity
 import com.aicfo.core.database.entity.InvestmentHoldingEntity
@@ -150,6 +151,15 @@ data class CfoArchive(
     val vehicleRenewals: List<VehicleRenewalEntity> = emptyList(),
     /** Issue 10.7: the cached closes — AI-MKT's whole input, and months to rebuild if lost. */
     val marketCloses: List<MarketCloseEntity> = emptyList(),
+    /**
+     * Schema 33: where imported rows came from (ADR-0078).
+     *
+     * Here because `transactions.import_batch_id` is restored with the rows. An archive that
+     * carried the transactions without their batches would restore a ledger in which every
+     * imported row points at provenance that no longer exists — the dangling state
+     * `TransactionRepository` refuses to create on the way in, recreated by the restore.
+     */
+    val importBatches: List<ImportBatchEntity> = emptyList(),
     /**
      * Issue 11.5: what the app was allowed to do, and since when (DPDP's right of access).
      *
