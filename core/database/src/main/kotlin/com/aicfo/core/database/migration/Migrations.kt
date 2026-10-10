@@ -1681,6 +1681,30 @@ internal object Migrations {
             }
         }
 
+    /**
+     * 31 → 32: the tax figure the OCR has been reading and throwing away (ADR-0077; §33).
+     *
+     * Why:  the receipt engine extracts a GST amount, the review screen displays it, and nothing
+     *       stored it — so every figure was discarded at the moment the user saw it. §33 promised
+     *       the opposite from v1. The cost compounds: receipt images stay out of backups (ADR-0023)
+     *       and erase destroys them, so an uncaptured figure is unrecoverable.
+     * What: one nullable column on `transactions`.
+     * Result: a GST figure read today survives, and the business reports Epic 13 designed have a
+     *       history to read when they arrive.
+     *
+     * **Nullable with no default, deliberately.** Every existing row genuinely has no tax figure —
+     * nobody recorded one — and `null` says that. A `DEFAULT 0` would assert that millions of past
+     * transactions were zero-rated, which is a different and false claim (P-03).
+     *
+     * Additive, so DB-003 holds.
+     */
+    val MIGRATION_31_32 =
+        object : Migration(VERSION_31, VERSION_32) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `transactions` ADD COLUMN `tax_minor` INTEGER")
+            }
+        }
+
     /** Every migration, in order, for `CfoDatabaseFactory` to register. */
     val ALL: Array<Migration> =
         arrayOf(
@@ -1714,6 +1738,7 @@ internal object Migrations {
             MIGRATION_28_29,
             MIGRATION_29_30,
             MIGRATION_30_31,
+            MIGRATION_31_32,
         )
 
     /** `appliance`'s columns (issue 13.2). Mirrors `ApplianceEntity`. */
@@ -1909,6 +1934,9 @@ internal object Migrations {
 
     /** Schema 31: `appliance`, `appliance_service` and `appliance_consumable` (issue 13.2). */
     private const val VERSION_31 = 31
+
+    /** Schema 32: `transactions.tax_minor` (ADR-0077). */
+    private const val VERSION_32 = 32
 
     /**
      * `wishlist_item`'s columns (issue 10.2).

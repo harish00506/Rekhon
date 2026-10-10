@@ -682,6 +682,14 @@ data class TransactionDraft(
     val merchant: String? = null,
     val note: String? = null,
     /**
+     * The tax on this bill — GST, where a receipt stated one — in paise (ADR-0077; §33).
+     *
+     * `null` means no figure was read, which is every manually typed row. Zero means the bill said
+     * zero, which is a different statement. The receipt scanner fills this from what the parser
+     * extracted and the review screen showed; nothing else sets it yet.
+     */
+    val tax: Money? = null,
+    /**
      * The day this transaction is booked on (issue 3.4; FR-TXN-010). `null` means today.
      *
      * **A date, not an instant** (TIM-002): "next Tuesday" is a calendar answer in the profile zone,
@@ -1216,6 +1224,10 @@ internal class RoomTransactionRepository(
                         categoryId = validated.categoryId,
                         merchant = validated.merchant,
                         note = validated.note,
+                        // ADR-0077: what the receipt said the tax was, or null when nothing read
+                        // one. Until this column existed the figure was shown to the user and then
+                        // discarded.
+                        taxMinor = validated.tax?.minor,
                         // FR-TXN-009. Defaults to `manual` on the draft, which is what every screen
                         // that lets a person type a transaction leaves it as; the receipt scanner
                         // (issue 3.8) passes `ocr` and issue 3.9's SMS parser will pass `sms`.
@@ -1604,6 +1616,11 @@ internal class RoomTransactionRepository(
  */
 internal fun TransactionDraft.validated(): TransactionDraft? {
     if (accountId.isBlank() || amount == Money.ZERO) return null
+    // ADR-0077: a tax figure that is negative, or larger than the bill it sits inside, is a parse
+    // error rather than a fact — a receipt's GST line is part of its total, never more than it.
+    // Rejecting the whole draft rather than silently dropping the tax, because a row saved with its
+    // tax quietly discarded is the behaviour this change exists to end.
+    if (tax != null && (tax < Money.ZERO || tax.minor > kotlin.math.abs(amount.minor))) return null
     return copy(
         accountId = accountId.trim(),
         categoryId = categoryId?.trim()?.takeIf { it.isNotBlank() },
@@ -1728,7 +1745,14 @@ internal fun Money.directionType(): TransactionType =
  * Input:  the receiver. Output: [String].
  * Changelog: 2026-08-02 — Created for issue 3.1.
  */
-internal fun TransactionDraft.invalidField(): String = if (amount == Money.ZERO) "amount" else "accountId"
+internal fun TransactionDraft.invalidField(): String =
+    when {
+        amount == Money.ZERO -> "amount"
+        // ADR-0077: named so the review screen can point at the tax field rather than the amount,
+        // which is the one the user would otherwise go looking at.
+        tax != null && (tax < Money.ZERO || tax.minor > kotlin.math.abs(amount.minor)) -> "tax"
+        else -> "accountId"
+    }
 
 /**
  * Converts a row into the domain model.

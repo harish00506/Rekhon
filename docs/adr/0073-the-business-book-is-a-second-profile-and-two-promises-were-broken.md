@@ -89,6 +89,12 @@ nature — it is a personal-or-business *attribution*, which is the tag today an
 
 ### 4 · The promise that was broken, and it is losing data every day
 
+> **Fixed on 2026-10-10 by [ADR-0077](0077-the-gst-figure-is-stored-and-null-is-not-zero.md).**
+> Schema 32 added `transactions.tax_minor` and the review screen now passes the figure it had been
+> displaying. The finding below is kept as written — it is why the fix happened — and
+> `BusinessModeDriftTest` has been **inverted**: it used to fail when this gap closed, and now
+> fails if the column is ever removed.
+
 §33 says "GST fields captured by OCR are **stored** even before business reports exist". **Checked:
 the capture half is true; the storage half is not.**
 

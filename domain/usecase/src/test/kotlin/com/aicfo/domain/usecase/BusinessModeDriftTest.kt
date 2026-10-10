@@ -82,36 +82,34 @@ class BusinessModeDriftTest {
     }
 
     /**
-     * Input:  the `transactions` and `attachments` tables, and the receipt engine's own result type.
-     * Output: asserts the GST figure is still extracted and still has nowhere to go.
+     * Input:  the `transactions` table and the receipt engine's own result type.
+     * Output: asserts the GST figure is extracted **and now stored**.
      *
-     * §33 says "GST fields captured by OCR are stored even before business reports exist". The
-     * capture half is true — `ReceiptFields` carries a `tax`, and the review screen shows it. The
-     * **storage half is not**: `transactions` has no tax column, `attachments` has none, and
-     * `ReceiptRepository.save` takes a `TransactionDraft` that cannot express one. The number is
-     * read off the bill, shown to the user once, and discarded.
+     * **This assertion was inverted on 2026-10-10, which is what it was built for.** It used to
+     * assert the column was *absent*, failing the day the gap closed and telling whoever closed it
+     * to delete ADR-0073's stale paragraph. That day came: schema 32 added `transactions.tax_minor`
+     * and `TransactionDraft` carries the figure from the review screen to the row (ADR-0077).
      *
-     * The compile-time reference to [ReceiptFields.tax] is deliberate: if the engine ever stops
-     * extracting GST, this test stops compiling rather than silently passing.
+     * It is kept rather than deleted, pointing the other way. §33's promise is now real, and the
+     * thing worth guarding is that it stays real — a column dropped, or a draft field quietly
+     * removed, would silently restore the old behaviour where the number is shown and discarded,
+     * and no other test would notice.
      *
-     * **This test fails when a tax column is added** — at which point the gap is closed and
-     * ADR-0073 §4 should be rewritten as history.
+     * The compile-time reference to [ReceiptFields.tax] still matters: if the engine ever stops
+     * extracting GST, this stops compiling rather than passing.
      */
     @Test
-    fun `the second broken promise — the GST figure is captured, shown, and then thrown away`() {
+    fun `the promise kept late — the GST figure is extracted, and now stored`() {
         // Compile-time: the engine still has somewhere to put a GST figure.
         val extracts = ReceiptFields::tax
         assertTrue("the receipt engine no longer extracts GST at all", extracts.name == "tax")
 
-        listOf("transactions", "attachments").forEach { table ->
-            val block = tableBlock(table)
-            assertFalse(
-                "`$table` now has a tax column — §33's storage promise is finally kept, so " +
-                    "ADR-0073's finding is stale. Delete it, and make ReceiptRepository.save carry " +
-                    "the figure the review screen has been showing all along",
-                TAX_COLUMNS.any { it in block },
-            )
-        }
+        assertTrue(
+            "`transactions` lost its tax column — the GST figure would be shown to the user and " +
+                "then discarded again, which is the behaviour ADR-0077 exists to end. Receipt " +
+                "images stay out of backups, so a figure not stored at scan time is unrecoverable",
+            TAX_COLUMNS.any { it in tableBlock("transactions") },
+        )
     }
 
     // --- the ADR itself -----------------------------------------------------------------------------

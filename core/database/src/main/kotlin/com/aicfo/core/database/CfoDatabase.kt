@@ -297,7 +297,7 @@ abstract class CfoDatabase : RoomDatabase() {
          * has a quote feed and AI-MKT needs a history, so the history accumulates here — which is
          * also what lets the engine work offline and means nothing extra leaves the device; §30).
          */
-        const val VERSION = 31
+        const val VERSION = 32
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"

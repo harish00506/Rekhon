@@ -232,6 +232,8 @@ internal fun ReceiptReviewUiState.withScan(scan: ReceiptScan): ReceiptReviewUiSt
         merchantText = fields.merchant?.value.orEmpty(),
         merchantFlagged = fields.merchant?.let { it.confidenceBps < floor } ?: false,
         taxText = fields.tax?.value?.let { MoneyFormatter.format(it) }.orEmpty(),
+        // ADR-0077: the value as well as its rendering, so the draft can carry it.
+        tax = fields.tax?.value,
         duplicates = scan.duplicates,
     )
 }
@@ -260,6 +262,9 @@ internal fun ReceiptReviewUiState.toDraftOrNull(): TransactionDraft? {
             merchant = merchantText.takeIf { it.isNotBlank() },
             // FR-TXN-010: a receipt is always in the past, and the repository stamps the day.
             bookedOn = day,
+            // ADR-0077: what the receipt said the tax was. Shown on this screen since issue 3.8
+            // and, until schema 32, dropped here — the row had nowhere to keep it.
+            tax = tax,
             // FR-TXN-009 is the repository's to stamp — a screen that named its own provenance would
             // be making a claim rather than recording one.
         )

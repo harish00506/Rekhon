@@ -355,6 +355,31 @@ data class TransactionEntity(
     val updatedAtUtcMillis: Long,
     @ColumnInfo(name = "deleted_at_utc_millis")
     val deletedAtUtcMillis: Long? = null,
+    /**
+     * The tax on this bill — in practice GST — in paise (MNY-001). Schema 32; §33, ADR-0077.
+     *
+     * Why:  §33's forward-compatibility table promised "GST fields captured by OCR are stored even
+     *       before business reports exist", and until now they were not. The receipt engine has
+     *       extracted the figure since issue 3.8 and `ReceiptReviewScreen` has **shown it to the
+     *       user**, but `TransactionDraft` had nowhere to put it and this table had no column, so
+     *       every GST figure the app read was discarded the moment the screen closed.
+     *
+     *       That was not an ordinary missing feature. Receipt images stay on-device and out of
+     *       backups (ADR-0023, P-01) and the erase path destroys them, so a figure not captured at
+     *       scan time cannot be recovered later — which is exactly what the forward-compatibility
+     *       promise existed to prevent. The column is cheap; the history is not replaceable.
+     *
+     * **Null, not zero.** `null` means "no tax figure was read", which is the common case for a
+     * manually typed row and for a receipt with no GST line. Zero means "the bill said zero tax" —
+     * a real and different statement, and a zero-rated supply is a thing. Collapsing them would
+     * make the business reports this enables unable to tell "unknown" from "exempt" (P-03).
+     *
+     * **Declared last on purpose.** `ALTER TABLE ... ADD COLUMN` appends, so a column declared
+     * mid-list would make the exported `createSql` disagree with the column order a migrated
+     * database actually has — the same reasoning `profile.household_id` carries (issue 13.1).
+     */
+    @ColumnInfo(name = "tax_minor")
+    val taxMinor: Long? = null,
 )
 
 /**

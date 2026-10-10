@@ -39,7 +39,8 @@
     2026-10-09 — Issue 13.5 changed no call path either, and built no engine: its AC is "ADR
         only in v1". Worth one line here for what it *found* about an existing path — the
         receipt flow extracts a GST figure, `ReceiptReviewScreen` shows it, and
-        `ReceiptRepository.save` drops it, because `transactions` has no tax column (ADR-0073 §4).
+        `ReceiptRepository.save` drops it, because `transactions` has no tax column (ADR-0073 §4). **Fixed
+        2026-10-10 — see the entry below.**
     2026-10-09 — Issue 13.6 is the first Epic 13 issue to change a **surface**: the consents
         dashboard and the settings screen now list a fifth consent, `account_aggregator`, and the
         transaction source label can render "From your bank". Kotlin's exhaustive `when` forced
@@ -48,6 +49,18 @@
     2026-10-10 — Issue 13.7 changed no call path: `:spike:kmp` is a feasibility module nothing
         depends on. Noted because it measured one — **no engine can run on Kotlin/Native today**,
         since all thirty depend on `:core:model` and `Money` uses `BigDecimal` (ADR-0075).
+    2026-10-10 — Maintenance: the receipt path now **keeps** the GST figure 13.5 found it dropping.
+        One field, threaded through a chain that already existed end to end except for its last
+        link (ADR-0077):
+            ReceiptScanEngine (reads `gst`/`cgst`/`sgst`)
+              → ReceiptReviewUiState.tax                       ← the field that was missing
+                → ReceiptReviewViewModel.toDraftOrNull()
+                  → TransactionDraft.tax: Money?
+                    → TransactionRepository.validated()        ← refuses tax < 0 or tax > |amount|
+                      → TransactionEntity.taxMinor
+                        → transactions.tax_minor (schema 32, nullable, no default)
+                          → CfoArchive (no change needed — it holds the entity, ADR-0023)
+        Nothing *reads* the column yet; business mode will.
     2026-09-03 — Issue 7.3 added §2.6, the goal waterfall. Still Shape A — a screen — but the first
         read assembled from four repositories, and the first write driven by a gesture, so it is
         traced beside §2.5 rather than folded into it.

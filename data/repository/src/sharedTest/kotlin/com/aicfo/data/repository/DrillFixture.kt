@@ -732,5 +732,8 @@ object DrillFixture {
             createdAtUtcMillis = NOW,
             updatedAtUtcMillis = NOW,
             deletedAtUtcMillis = DELETED_AT,
+            // ADR-0077: a GST figure on the seeded row, so the restore drill proves the new
+            // column survives a backup round trip rather than merely existing.
+            taxMinor = 1_800L,
         )
 }

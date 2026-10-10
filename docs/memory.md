@@ -39,7 +39,7 @@
 
 ## Current state
 
-- **Version:** `0.13.7` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Rulebook is 1.24.0; tax KB 1.1 (FY rules 2025-26.1).** **Schema is v31** (13.2's three `appliance*` tables; v30 was 13.1's `household` + `profile.household_id`; v29 was 10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
+- **Version:** `0.13.8` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Rulebook is 1.24.0; tax KB 1.1 (FY rules 2025-26.1).** **Schema is v32** (the 2026-10-10 maintenance fix's `transactions.tax_minor`, nullable — `null` means no GST figure was read, `0` means the bill stated zero, ADR-0077; v31 was 13.2's three `appliance*` tables; v30 was 13.1's `household` + `profile.household_id`; v29 was 10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
   forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
   feed), 9.6 (the notification policy) and 9.7 (the numeric guardrail) shipped — **Epic 9 is
@@ -599,6 +599,19 @@
 
 ## Completed
 
+- **Maintenance (v0.13.8, 2026-10-10):** the receipt path now **keeps** the GST figure
+  ([ADR-0077](adr/0077-the-gst-figure-is-stored-and-null-is-not-zero.md)). Schema **v32** adds
+  `transactions.tax_minor`, nullable with **no default** — `null` means no figure was read, `0`
+  means the bill stated zero tax, and a `DEFAULT 0` would have written a false fact into every
+  historical row. A tax above its own bill is **refused** naming the field, because saving the row
+  minus the tax is the original bug in a validation costume.
+  **Why a path with tests at both ends lost data: nothing tested the join.** The parser was proven
+  to extract GST, the screen proven to display it, and `toDraftOrNull` never mentioned it. A
+  mutation reproduced the gap *after* the column existed — deleting `tax = tax` left the full suite
+  green. *Producing a value and showing it are not keeping it; a pipeline needs a test at the seam.*
+  **13.5's drift test was inverted rather than deleted** — it used to fail when the gap closed, and
+  now fails if the column is removed.
+
 - **Maintenance (v0.13.7, 2026-10-10):** the engine registry reconciled and checked
   ([ADR-0076](adr/0076-the-engine-registry-is-reconciled-and-now-checked.md)).
   Nine `:domain:engines:*` modules had no entry since the file was created, and **nothing had ever
@@ -676,6 +689,8 @@
   every GST figure scanned before the column lands is unrecoverable — exactly what a
   forward-compatibility table exists to prevent. *When a promise is about preserving history, the
   cost of not keeping it grows every day.*
+  **The GST half was closed on 2026-10-10** ([ADR-0077](adr/0077-the-gst-figure-is-stored-and-null-is-not-zero.md)) —
+  schema **v32**'s nullable `transactions.tax_minor`. `tax_relevance` is still open.
   **The fifth instance of the read-at-runtime staleness bug — pre-empted, not discovered.** The
   drift test reads two files from outside its module, so the build file declares them as inputs.
   Demonstrated both ways: without them, editing the ADR's finding away leaves the task UP-TO-DATE

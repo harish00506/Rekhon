@@ -41,6 +41,16 @@ data class ReceiptReviewUiState(
     val merchantText: String = "",
     val merchantFlagged: Boolean = false,
     val taxText: String = "",
+    /**
+     * The parsed tax, beside the formatted [taxText] the screen renders (ADR-0077; §33).
+     *
+     * **This field is the fix.** The screen has shown a GST figure since issue 3.8, but only ever
+     * as text — the parsed `Money` stopped here, so `toDraftOrNull` had nothing to pass on and every
+     * figure the OCR read was discarded when the screen closed. Holding the value as well as its
+     * rendering is what lets it reach the row. `null` means no figure was read; it is never zero
+     * for "unknown" (P-03).
+     */
+    val tax: Money? = null,
     val duplicates: List<Transaction> = emptyList(),
     val isSaving: Boolean = false,
     val isSaved: Boolean = false,
