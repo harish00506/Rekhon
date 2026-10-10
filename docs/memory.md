@@ -39,7 +39,7 @@
 
 ## Current state
 
-- **Version:** `0.13.5` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Rulebook is 1.24.0; tax KB 1.1 (FY rules 2025-26.1).** **Schema is v31** (13.2's three `appliance*` tables; v30 was 13.1's `household` + `profile.household_id`; v29 was 10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
+- **Version:** `0.13.6` (see [`../VERSION`](../VERSION)) · **Phase:** 2–4. **Rulebook is 1.24.0; tax KB 1.1 (FY rules 2025-26.1).** **Schema is v31** (13.2's three `appliance*` tables; v30 was 13.1's `household` + `profile.household_id`; v29 was 10.7's `market_close`; 10.8 and 11.1 add no tables — a language tag in settings, and a second key slot beside the wrapped passphrase).
 - **Epics 1–8 are done; Epic 9 is open** — 9.1 (stream classification), 9.2 (the cash-flow
   forecast), 9.3 (seasonality), 9.4 (the health score), 9.5 (the insight orchestrator and its
   feed), 9.6 (the notification policy) and 9.7 (the numeric guardrail) shipped — **Epic 9 is
@@ -63,7 +63,7 @@
   13.4 adds AI-TAX — both regimes, the break-even in rupees, §38.2 capital gains — with
   `TaxMode.IS_ENABLED` **false** (ADR-0072); 13.5 specifies business mode (ADR only, per its AC) with
   `BusinessMode.IS_ENABLED` **false** (ADR-0073); 13.6 designs and stubs Account Aggregator ingest,
-  shipping only the reserved `source = 'aa'` value and a default-off consent (ADR-0074). Note `0.11.x` is deliberately unused — Epic 11
+  shipping only the reserved `source = 'aa'` value and a default-off consent (ADR-0074); 13.7 measures KMP feasibility and **Epic 13 completes** (ADR-0075). Note `0.11.x` is deliberately unused — Epic 11
   shipped as `0.10.8`–`0.10.14` by drift, recorded in `CHANGELOG.md` rather than renumbered.
   Deliberately
   unfinished: the key can be rotated but nothing offers it yet, `FLAG_SECURE` does not reach the
@@ -598,6 +598,26 @@
   source set on every issue, device or no device.
 
 ## Completed
+
+- **Epic 13 — issue 13.7 (v0.13.6, 2026-10-10):** KMP feasibility
+  ([ADR-0075](adr/0075-android-free-is-not-kmp-portable-and-money-is-the-blocker.md)).
+  **Epic 13 is complete.**
+  AC1 asked to confirm the domain layer is "Android-free **so** KMP-portable". Those are two claims
+  joined by a "so", and the join fails: Kotlin/Native has **no `java.*` at all**, and **40 of 139**
+  main sources in `:core:model` + `:domain:*` import it. §33's "only UI and platform services need
+  porting" is wrong.
+  **Proved with a compiler:** the negative control adds `Money`'s own `import java.math.BigDecimal`
+  to a common source — it compiles for JVM and fails for Kotlin/Native with "Unresolved reference
+  'java'".
+  **The spike ports `Money`, not an engine.** Six engines are already clean, so one could have been
+  nominated and declared "shared" — proving nothing, because **all thirty depend on `:core:model`**.
+  *Spike the blocker, not the easy thing that sits behind it.* `PortableMoney` runs 16 tests on both
+  JVM and `linuxX64`, and 5 more show it agrees with the shipped `Money` over ~16,000 seeded cases.
+  **The cost of losing `BigDecimal` is a bounded range** (~₹92 billion), because common Kotlin has
+  no 128-bit integer. A port must accept it or carry one.
+  **`unitTests` matched no task a KMP module has**, so the spike's tests were orphaned — the defect
+  that task's own comment warns about. `jvmTest` wired in; `linuxX64Test` deliberately left on
+  demand (~1GB toolchain CI does not cache).
 
 - **Epic 13 — issue 13.6 (v0.13.5, 2026-10-09):** Account Aggregator ingest, designed and stubbed
   ([ADR-0074](adr/0074-aa-is-designed-and-the-reserved-source-value-had-to-ship-now.md)).

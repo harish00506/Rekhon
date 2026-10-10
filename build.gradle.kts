@@ -67,7 +67,14 @@ tasks.register("unitTests") {
     dependsOn(
         subprojects.mapNotNull { module ->
             module.tasks.matching {
-                it.name == "testDebugUnitTest" || it.name == "test" || it.name == "verifyPaparazziDebug"
+                // `jvmTest` is issue 13.7's KMP spike (:spike:kmp), whose tests are named by target
+                // rather than `test` — so without it they would be tests nothing runs, which is the
+                // defect this very comment warns about. Its **Kotlin/Native** half is deliberately
+                // NOT here: `linuxX64Test` needs ~1GB of toolchain in ~/.konan, which CI does not
+                // cache, so it is run on demand (ADR-0075). The JVM half — the Money-equivalence
+                // check and the portability audit — gates every build.
+                it.name == "testDebugUnitTest" || it.name == "test" ||
+                    it.name == "verifyPaparazziDebug" || it.name == "jvmTest"
             }
         },
     )
