@@ -18,6 +18,11 @@
 #                pipeline, plus the persisted feed it writes (ADR-0046).
 #   2026-09-20 — Issue 9.6: AI-NTF built — §17.2's gate for every notification (ADR-0047).
 #   2026-09-23 — Issue 9.7: AI-GRD built — AI-ARC-004's numeric guardrail (ADR-0048).
+#   2026-10-10 — Registry reconciliation (ADR-0076): the nine deterministic feature engines
+#                that had never been listed were added, using the provenance ids they have
+#                been stamping all along; `provenance_id` was added to AI-CLS, AI-INV and
+#                AI-STS, whose stamped id differs from the SRS name used as their `id`.
+#                `EngineRegistryDriftTest` now fails the build if either drifts again.
 #   2026-09-25 — Issue 10.1: AI-PA built — §13's Purchase Advisor and its kept trace (ADR-0049).
 #   2026-09-26 — Issue 10.2: AI-PA-INT built — §13.3's buy list and adaptive interview (ADR-0050).
 #   2026-09-26 — Issue 10.3: AI-SIM built — §36's and §40.2's what-if simulators (ADR-0051).
@@ -42,6 +47,8 @@ engines:
     name: Fixed/Variable + Nature Classification
     layer: L2
     module: ":domain:engines:classification"
+    provenance_id: "auto-categoriser"   # what the engine actually stamps; `id` here is
+                                   # the SRS name, cited by rules-kb consumed_by
     version: "1.0"
     contract: "transactions + corrections -> {classification, nature} per txn/stream"
     reads: [../knowledge/classification-kb.json]
@@ -130,6 +137,8 @@ engines:
     name: Investment Intelligence
     layer: L3/L4
     module: ":domain:engines:investment"
+    provenance_id: "investment-xirr"   # what the engine actually stamps; `id` here is
+                                   # the SRS name, cited by rules-kb consumed_by
     version: "1.1"
     contract: "holdings -> {allocation, diversification, XIRR, rebalancing signal}"
     reads: [../rules/rules-kb.json]      # RULE-AGE-EQUITY, RULE-5-25, caps
@@ -226,6 +235,8 @@ engines:
     name: Safe-to-Spend
     layer: L5
     module: ":domain:engines:safetospend"
+    provenance_id: "safe-to-spend"   # what the engine actually stamps; `id` here is
+                                   # the SRS name, cited by rules-kb consumed_by
     version: "1.0"
     contract: "income + commitments -> {safeToSpend, ordered breakdown lines} (signed paise)"
     reads: [../rules/rules-kb.json]      # RULE-STS
@@ -333,6 +344,115 @@ engines:
     reads: [../knowledge/tax-kb-fy2025-26.json]   # v1.1
     feeds: []   # AI-FCT and the insight feed once the flag is on; see ADR-0072
     srs: "§38.1, §38.2"
+
+  # --- Deterministic feature engines ------------------------------------------------------------
+  # Added by the 2026-10-10 registry reconciliation. These nine were absent since the file was
+  # created: the header has always said "one row per engine (module :domain:engines:*)", and they
+  # were skipped because the SRS gives them FR ids rather than AI-* names. That is not a reason —
+  # AI-ARC-006 says a stored result names the engine that produced it, and all nine have been
+  # stamping a provenance id into real results the whole time. Their `id` here IS that stamped
+  # string, so a stored result can finally be resolved against this catalogue. See ADR-0076.
+
+  - id: net-worth
+    name: Net Worth
+    layer: L2
+    module: ":domain:engines:networth"
+    version: "1.0"
+    # Issue 2.6. FR-ACC-005 is a MUST — "net worth MUST equal assets - liabilities" — so the engine
+    # exists to make the app's headline figure a derivation anyone can check rather than a total.
+    contract: "account balances -> {assets, liabilities, net worth} with each account's contribution"
+    reads: []   # no thresholds: there is no number to tune (CLAUDE.md §6 does not apply)
+    srs: "FR-ACC-005"
+
+  - id: nature-classifier
+    name: Nature Classification (AI-CLS-N)
+    layer: L2
+    module: ":domain:engines:nature"
+    version: "1.0"
+    # Issue 4.3. §8.3 calls nature "the axis the advice layer is built on" — the 50/30/20 rings,
+    # Safe-to-Spend and the health score all branch on it. §8.3.1's decision order, first match wins.
+    contract: "transaction {category, type, account, merchant, amount} -> nature {NEED|WANT|INVEST|ASSET|LIABILITY} + the rule that decided it"
+    reads: [../knowledge/classification-kb.json]
+    srs: "§8.3, §8.3.1"
+
+  - id: receipt-parser
+    name: Receipt Field Extraction
+    layer: L2
+    module: ":domain:engines:receipt"
+    version: "1.0"
+    # Issue 3.8. Nothing is computed by a model (P-03): every figure is read off recognised text and
+    # carries its own confidence, and the review screen pre-fills rather than saves (P-07).
+    contract: "recognised text blocks -> {total, date, merchant, tax} each with a confidence"
+    reads: [../rules/rules-kb.json]   # RULE-RECEIPT-PARSE
+    srs: "FR-OCR-003, §18.1"
+
+  - id: sms-parser
+    name: Bank SMS Parsing
+    layer: L2
+    module: ":domain:engines:sms"
+    version: "1.0"
+    # Issue 3.9. Runs on-device under an explicit, revocable opt-in; nothing is uploaded (P-01), and
+    # the result is a draft the user edits, never a saved row (P-07).
+    contract: "one SMS + sender -> draft {amount, direction, payee, account hint} | nothing"
+    reads: [../rules/rules-kb.json]   # RULE-SMS-PARSE
+    srs: "§18, §23, FR-TXN-009"
+
+  - id: recurring-detector
+    name: Recurring Series Detection
+    layer: L2
+    module: ":domain:engines:recurring"
+    version: "1.0"
+    # Issue 3.7. It proposes only (P-07) — a series becomes a `recurring_rule` row when the user
+    # confirms it, never before.
+    contract: "flat transaction list -> proposed series {cadence, amount, next due, occurrences} with evidence"
+    reads: [../rules/rules-kb.json]   # RULE-RECUR-DETECT
+    srs: "FR-TXN-006"
+
+  - id: budget-planner
+    name: Budget Suggestion & Tracking
+    layer: L3
+    module: ":domain:engines:budget"
+    version: "1.0"
+    # Issues 4.4, 4.5, 4.6. Four operations behind one interface: suggest, track, alert, review —
+    # each result carrying the rule that produced it (AI-ARC-003).
+    contract: "category history + live budget -> {suggested amount, spent/remaining/pace/projection, band alerts, closed-month review}"
+    reads: [../rules/rules-kb.json]   # RULE-50-30-20, RULE-BUD-SUGGEST, RULE-BUD-PACE
+    srs: "§5.5, FR-BUD-002, FR-BUD-003, FR-BUD-004"
+
+  - id: quick-setup
+    name: Quick Setup Plan
+    layer: L3
+    module: ":domain:engines:quicksetup"
+    version: "1.0"
+    # Issue 2.3. Turns onboarding's three optional figures into a first-day budget, each envelope
+    # traceable to a rule. An unanswered figure produces no row rather than a zero one (P-03).
+    contract: "income + rent + savings seeds -> {budget envelopes, recurring seeds, emergency-fund target} with citations"
+    reads: [../rules/rules-kb.json]   # RULE-50-30-20, RULE-EMERG-FIRST, RULE-EMI-40, RULE-RUNWAY-M
+    srs: "FR-ONB-002"
+
+  - id: loan-amortiser
+    name: Loan EMI & Amortisation
+    layer: L3
+    module: ":domain:engines:loan"
+    version: "1.0"
+    # Issue 6.2. A loan is the one account whose balance tells you almost nothing; the
+    # principal/interest split is what §8.3 needs to say what an EMI rupee became, and what the
+    # prepay simulator (AI-SIM) runs on.
+    contract: "loan terms {principal, rate, tenure} -> {EMI, full schedule, one instalment's principal/interest split}"
+    reads: []   # the terms are the user's own; no threshold to tune
+    srs: "§5.8, §11, FR-ACC-003"
+
+  - id: card-planner
+    name: Credit Card Cycle & Utilisation
+    layer: L3/L4
+    module: ":domain:engines:card"
+    version: "1.0"
+    # Issue 6.1. Three questions that look like one: where in the billing cycle, how much of the
+    # limit is used, and whether either is worth interrupting someone about. §17.1 classes a card
+    # payment as a Critical money event, which is why its alerts are modelled rather than inferred.
+    contract: "card {limit, statement day, due day} + outstanding + today -> {billing cycle dates, days until due, utilisation bps, alerts}"
+    reads: [../rules/rules-kb.json]   # RULE-CC-UTIL, RULE-CC-DUE
+    srs: "§5.7, §17.1, FR-ACC-002"
 
   - id: AI-CHAT
     name: Chat Assistant (verbaliser)
