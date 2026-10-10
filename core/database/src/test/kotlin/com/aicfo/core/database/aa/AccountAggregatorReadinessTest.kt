@@ -1,6 +1,5 @@
 package com.aicfo.core.database.aa
 
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -11,16 +10,18 @@ import java.io.File
  * Why:  §33's forward-compatibility table makes two promises on AA's behalf. Issue 13.6 found that
  *       **neither was kept**, and kept one of them — the reserved `source = 'aa'` value, which had
  *       to ship because omitting it would make an older build silently drop every AA-imported row.
- *       The other, `import_batches`, is recorded rather than built, because this issue's AC asks
+ The other, `import_batches`, was recorded rather than built, because that issue's AC asked
  *       for an ADR and an interface stub.
  *
- *       This pins the remaining gap **in the direction 13.5 established**: the test fails when the
- *       table is *added*, and says so — because at that moment ADR-0074's finding is stale and the
- *       paragraph should go.
- * What: that `import_batches` is still absent, and that the schema has not grown a half-built
- *       version of it under another name.
- * Result: the ADR cannot describe a gap that somebody has quietly closed.
+ *       **Both promises are now kept.** The table arrived with schema 33 (ADR-0078), so the pin
+ *       that used to fail when the table was *added* — 13.5's "unusual direction" — has done its
+ *       job and been **turned around** rather than deleted: the behaviour worth guarding has
+ *       changed from "this is missing" to "this must not go missing again".
+ * What: that `import_batches` exists, that `transactions` can name a batch, and that the two never
+ *       exist without each other in either direction.
+ * Result: neither half of §33's AA promise can be removed without a test saying so.
  * Changelog: 2026-10-09 — Created for issue 13.6.
+ *            2026-10-10 — Inverted when ADR-0078 built the table.
  *
  * Reads this module's own `Entities.kt`, which issue 13.1's `configureOwnSourceAsTestInput()`
  * already declares as a test input — so a comment-only edit cannot leave this UP-TO-DATE.
@@ -30,42 +31,46 @@ class AccountAggregatorReadinessTest {
 
     /**
      * Input:  the entity declarations.
-     * Output: asserts `import_batches` is still absent.
+     * Output: asserts `import_batches` exists.
      *
-     * §33 says "import_batches supports statement-grade provenance". There is no such table. The
-     * consequence is concrete: when AA ingest lands there is nowhere to record **which fetch a row
-     * came from**, so a duplicate or a partial import cannot be traced back to the pull that caused
-     * it — and a user who imports twice has no way to tell the app which copy to keep.
+     * §33 says "import_batches supports statement-grade provenance", and for thirteen schema
+     * versions there was no such table, so there was nowhere to record **which fetch a row came
+     * from** — a duplicate or partial import could not be traced to the pull that caused it, and a
+     * user who imported twice had no way to tell the app which copy to keep.
      *
-     * **This test fails when the table is added**, which is the point: the gap is closed, and
-     * ADR-0074's finding should be deleted rather than left describing solved work.
+     * This test used to fail when the table was added. It now fails if the table is removed.
      */
     @Test
-    fun `the import_batches table §33 promised is still absent`() {
-        assertFalse(
-            "an `import_batches` table now exists — §33's second AA promise is finally kept, so " +
-                "ADR-0074's finding is stale: delete it, and point AA ingest at the new provenance",
+    fun `the import_batches table §33 promised exists`() {
+        assertTrue(
+            "the `import_batches` table is gone — §33's second AA promise was kept by ADR-0078 " +
+                "and removing the table unkeeps it, leaving imported rows with no traceable origin",
             "tableName = \"import_batches\"" in entities,
         )
     }
 
     /**
      * Input:  the entity declarations.
-     * Output: asserts no table has grown a half-built substitute under a near-miss name. A
-     *         `batch_id` column on `transactions` with no batch table behind it would be worse
-     *         than the honest absence — it would look like provenance and hold nothing.
+     * Output: asserts the pointer and the table it points at exist together.
+     *
+     * The original form of this test refused a `batch_id` column with no batch table behind it,
+     * because provenance that holds nothing is worse than the honest absence. That hazard has not
+     * gone away — it has only changed direction: with the table built, the broken state is now the
+     * **table without the column**, which would be an import history nothing can be traced to.
+     * Both halves are asserted, so neither can be removed alone.
      */
     @Test
-    fun `no table carries a batch reference with nothing behind it`() {
-        val nearMisses = listOf("import_batch_id", "batch_id", "fetch_id")
-
-        nearMisses.forEach { column ->
-            assertFalse(
-                "a `$column` column exists without an `import_batches` table to point at — that is " +
-                    "provenance that holds nothing. Either build the table or drop the column",
-                "name = \"$column\"" in entities,
-            )
-        }
+    fun `the batch table and the column pointing at it exist together`() {
+        assertTrue(
+            "`transactions.import_batch_id` is gone while `import_batches` remains — an import " +
+                "history no transaction can be traced to answers nothing (ADR-0078)",
+            "name = \"import_batch_id\"" in entities,
+        )
+        assertTrue(
+            "`import_batches` is gone while `transactions.import_batch_id` remains — that is " +
+                "provenance that holds nothing, the half-built state ADR-0074 refused",
+            "tableName = \"import_batches\"" in entities,
+        )
     }
 
     /**

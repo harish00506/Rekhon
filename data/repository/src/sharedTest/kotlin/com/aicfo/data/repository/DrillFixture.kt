@@ -17,6 +17,7 @@ import com.aicfo.core.database.entity.GoalContributionEntity
 import com.aicfo.core.database.entity.GoalEntity
 import com.aicfo.core.database.entity.GoalFundingAccountEntity
 import com.aicfo.core.database.entity.HouseholdEntity
+import com.aicfo.core.database.entity.ImportBatchEntity
 import com.aicfo.core.database.entity.InsightEntity
 import com.aicfo.core.database.entity.InterviewAnswerEntity
 import com.aicfo.core.database.entity.InvestmentHoldingEntity
@@ -67,6 +68,9 @@ object DrillFixture {
 
     /** The appliance every appliance row hangs off (issue 13.2). */
     const val APPLIANCE = "appliance:1"
+
+    /** The import run the seeded transaction arrived in (ADR-0078). */
+    const val IMPORT_BATCH = "imp:drill"
     const val BUDGET = "budget:1"
     const val PARENT_CATEGORY = "category:food"
     const val HOLDING = "holding:1"
@@ -148,6 +152,29 @@ object DrillFixture {
                     item = "air_filter",
                     replacedIsoDate = "2026-09-01",
                     costMinor = null,
+                    deletedAtUtcMillis = null,
+                    createdAtUtcMillis = NOW,
+                    updatedAtUtcMillis = NOW,
+                ),
+            ),
+        )
+        // ADR-0078: the batch goes in **before** the transaction that names it, mirroring the
+        // restore's own parents-before-children order. Seeded as a truncated fetch so the drill
+        // carries the `complete = false` case too — a restore that quietly turned a partial
+        // statement into a whole one would be a staleness claim nobody made (P-04).
+        dao.insertImportBatches(
+            listOf(
+                ImportBatchEntity(
+                    id = IMPORT_BATCH,
+                    profileId = profileId,
+                    source = "aa",
+                    startedAtUtcMillis = NOW,
+                    fetchedAtUtcMillis = NOW - 1_000L,
+                    windowStartIsoDate = "2026-09-01",
+                    windowEndIsoDate = "2026-09-30",
+                    complete = false,
+                    lineCount = 47,
+                    acceptedCount = 42,
                     deletedAtUtcMillis = null,
                     createdAtUtcMillis = NOW,
                     updatedAtUtcMillis = NOW,
@@ -735,5 +762,9 @@ object DrillFixture {
             // ADR-0077: a GST figure on the seeded row, so the restore drill proves the new
             // column survives a backup round trip rather than merely existing.
             taxMinor = 1_800L,
+            // ADR-0078: the drill proves the provenance survives the round trip, not merely
+            // that the column compiles. A restored transaction whose batch did not travel
+            // with it would point at an import that no longer exists.
+            importBatchId = IMPORT_BATCH,
         )
 }

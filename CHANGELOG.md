@@ -11,6 +11,41 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > Design-for-later scope: household mode, appliances, insurance, tax v2, business mode, Account
 > Aggregator and iOS via KMP — foundations in v1, each behind a flag, each with an ADR.
 
+### [0.13.9] — Maintenance: `import_batches` exists, and the wipe is checked  (2026-10-10)
+
+Not an issue — the open finding ADR-0074 recorded, closed on request (**ADR-0078**).
+
+- **§33's second AA promise is kept.** §20.1 listed `import_batches` and §33 promised it supported
+  statement-grade provenance; neither was true. Schema **33** adds the table and
+  `transactions.import_batch_id`, so an imported row can finally be traced to the run that brought
+  it in — without which a duplicate import cannot be told from the pull that caused it.
+- **"Statement-grade" is the demanding word.** A statement is evidence: it covers a period, it is
+  whole or truncated, and it was true as at a moment. The row carries the window, the completeness,
+  and **two** timestamps — when the app ran the import, and when the data was true at the source.
+  They can be days apart and P-04's staleness label has to render the second.
+- **The counts are stored, not derived.** `line_count` and `accepted_count` answer "why does my
+  import look short"; counting rows in `transactions` would make that answer change the moment the
+  user deletes one. Evidence that moves is not evidence.
+- **The refusal is the foreign key.** The schema has none, so `TransactionRepository` refuses a
+  batch id that names nothing — scoped to the account's profile, because an id-only check would let
+  one profile's transaction claim another's bank fetch. `null` means *not imported* and can never
+  mean "imported, origin unknown".
+- **Building it uncovered sixteen missing deletes.** `DemoDao`'s own comment records the wipe being
+  found short twice before — *"a count that omits a table is not a weaker assertion; it is a false
+  one"* — and nothing ever checked it, so it happened again. Missing: `chat_message` and the three
+  `appliance*` tables from the DAO and from `countRowsFor`, which therefore returned **0 for a
+  profile that still had rows**; `attachments` from the demo exit; and **eleven** tables from
+  `ArchiveRepository.wipe`, whose doc comment warned about exactly the drift it had suffered. For
+  those eleven, "replace my data with this archive" had been quietly meaning "merge it into
+  whatever was here".
+- **The fix is the check; the sixteen deletes are its first output.** `WipeCoverageTest` and
+  `ProfileWipeCallSitesTest` derive the scoped tables from the source, because a list somebody
+  maintains is the thing that went stale three times.
+- **Open, recorded, not fixed:** `DemoDao.attachmentFileNames` has never had a caller, so both
+  wipes leave orphaned encrypted receipt blobs until a full device erase removes the directory
+  wholesale. Pinned so the finding cannot be quietly closed. See ADR-0078.
+- Nothing calls `record` yet; AA ingest is still stubbed. `ai/` unchanged.
+
 ### [0.13.8] — Maintenance: the GST figure is stored, and `null` is not zero  (2026-10-10)
 
 Not an issue — the data-losing finding ADR-0073 §4 recorded, closed on request (**ADR-0077**).

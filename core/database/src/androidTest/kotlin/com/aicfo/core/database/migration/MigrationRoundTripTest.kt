@@ -2006,6 +2006,62 @@ class MigrationRoundTripTest {
     }
 
     /**
+     * Input:  a schema-32 database holding one hand-typed transaction.
+     * Output: asserts history comes back with a **null** batch, and that a new row can name one.
+     *
+     * `null` is the assertion that matters. A `DEFAULT ''` on the new column would have given every
+     * row in the user's existing history a batch id naming nothing — a dangling pointer in every
+     * transaction, written by a migration, which the repository's existence check would then refuse
+     * for ever. The same trap `tax_minor` avoided one version earlier (ADR-0077).
+     */
+    @Test
+    fun migrate32To33_leavesHistoryUnimportedAndCarriesABatch() {
+        helper.createDatabase(TEST_DB, 32).use { old ->
+            old.execSQL(
+                "INSERT INTO transactions (id, profile_id, account_id, amount_minor, currency_code, " +
+                    "occurred_at_utc_millis, booked_on_iso_date, source, type, created_at_utc_millis, " +
+                    "updated_at_utc_millis) VALUES ('txn:typed', 'local', 'acc:1', -25000, 'INR', " +
+                    "1790000000000, '2026-10-01', 'manual', 'expense', 1790000000000, 1790000000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 33, true, Migrations.MIGRATION_32_33)
+
+        migrated.query("SELECT import_batch_id FROM transactions WHERE id = 'txn:typed'").use { cursor ->
+            assertTrue("the existing transaction must survive", cursor.moveToFirst())
+            assertTrue(
+                "history must stay NULL — a default would point every past row at a batch that " +
+                    "does not exist",
+                cursor.isNull(0),
+            )
+        }
+
+        migrated.execSQL(
+            "INSERT INTO import_batches (id, profile_id, source, started_at_utc_millis, " +
+                "fetched_at_utc_millis, window_start_iso_date, window_end_iso_date, complete, " +
+                "line_count, accepted_count, created_at_utc_millis, updated_at_utc_millis) VALUES " +
+                "('imp:1', 'local', 'aa', 1790000000000, 1789900000000, '2026-09-01', '2026-09-30', " +
+                "1, 47, 42, 1790000000000, 1790000000000)",
+        )
+        migrated.execSQL(
+            "INSERT INTO transactions (id, profile_id, account_id, amount_minor, currency_code, " +
+                "occurred_at_utc_millis, booked_on_iso_date, source, type, import_batch_id, " +
+                "created_at_utc_millis, updated_at_utc_millis) VALUES ('txn:imported', 'local', " +
+                "'acc:1', -250000, 'INR', 1790000000000, '2026-09-15', 'aa', 'expense', 'imp:1', " +
+                "1790000000000, 1790000000000)",
+        )
+        migrated.query(
+            "SELECT b.line_count, b.accepted_count, b.complete FROM import_batches b " +
+                "INNER JOIN transactions t ON t.import_batch_id = b.id WHERE t.id = 'txn:imported'",
+        ).use { cursor ->
+            assertTrue("the imported row must trace back to its batch", cursor.moveToFirst())
+            assertEquals(47L, cursor.getLong(0))
+            assertEquals(42L, cursor.getLong(1))
+            assertEquals("a complete fetch must not read as truncated", 1L, cursor.getLong(2))
+        }
+    }
+
+    /**
      * Result: true when [sql] was refused by a constraint. Input: [db]; [sql]. Output: [Boolean].
      */
     private fun refuses(

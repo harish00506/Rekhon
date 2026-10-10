@@ -20,6 +20,7 @@ import com.aicfo.core.database.dao.GoalContributionDao
 import com.aicfo.core.database.dao.GoalDao
 import com.aicfo.core.database.dao.GoalFundingAccountDao
 import com.aicfo.core.database.dao.HouseholdDao
+import com.aicfo.core.database.dao.ImportBatchDao
 import com.aicfo.core.database.dao.InsightDao
 import com.aicfo.core.database.dao.InvestmentHoldingDao
 import com.aicfo.core.database.dao.InvestmentLotDao
@@ -52,6 +53,7 @@ import com.aicfo.core.database.entity.GoalContributionEntity
 import com.aicfo.core.database.entity.GoalEntity
 import com.aicfo.core.database.entity.GoalFundingAccountEntity
 import com.aicfo.core.database.entity.HouseholdEntity
+import com.aicfo.core.database.entity.ImportBatchEntity
 import com.aicfo.core.database.entity.InsightEntity
 import com.aicfo.core.database.entity.InterviewAnswerEntity
 import com.aicfo.core.database.entity.InvestmentHoldingEntity
@@ -135,6 +137,7 @@ import com.aicfo.core.database.entity.WishlistItemEntity
         ApplianceEntity::class,
         ApplianceServiceEntity::class,
         ApplianceConsumableEntity::class,
+        ImportBatchEntity::class,
     ],
     version = CfoDatabase.VERSION,
     exportSchema = true,
@@ -234,6 +237,9 @@ abstract class CfoDatabase : RoomDatabase() {
     /** Appliances and their maintenance history (issue 13.2; ADR-0070). */
     abstract fun applianceDao(): ApplianceDao
 
+    /** Where imported rows came from — §33's statement-grade provenance (ADR-0078). */
+    abstract fun importBatchDao(): ImportBatchDao
+
     /**
      * Input:  none. Output: the demo wipe DAO (issue 2.4, FR-ONB-004).
      *
@@ -296,8 +302,14 @@ abstract class CfoDatabase : RoomDatabase() {
          * per day, unique per day so a second refresh corrects rather than double-counts. The app
          * has a quote feed and AI-MKT needs a history, so the history accumulates here — which is
          * also what lets the engine work offline and means nothing extra leaves the device; §30).
+         * · **33 — `import_batches`** (ADR-0078). §20.1 listed it and §33 promised it
+         * from v1; neither was true until now. One row per ingest run, carrying the window
+         * it covered, whether that window was whole, and how many of its lines were kept —
+         * which is what makes the provenance "statement-grade" rather than just "imported".
+         * `transactions.import_batch_id` points at it, nullable, because almost nothing is
+         * imported.
          */
-        const val VERSION = 32
+        const val VERSION = 33
 
         /** The on-disk file name, inside app-private storage. */
         const val FILE_NAME = "cfo.db"

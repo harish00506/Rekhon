@@ -11,6 +11,7 @@ import com.aicfo.core.common.flatMap
 import com.aicfo.core.common.runCatchingToResult
 import com.aicfo.core.database.CfoDatabase
 import com.aicfo.core.database.dao.ArchiveDao
+import com.aicfo.core.database.dao.DemoDao
 import com.aicfo.core.datastore.ConsentFeature
 import com.aicfo.core.datastore.ConsentState
 import com.aicfo.core.datastore.ConsentStore
@@ -194,6 +195,7 @@ internal class RoomArchiveRepository(
     ): CfoArchive =
         copy(
             households = dao.households(profileId),
+            importBatches = dao.importBatches(profileId),
             appliances = dao.appliances(profileId),
             applianceServices = dao.applianceServices(profileId),
             applianceConsumables = dao.applianceConsumables(profileId),
@@ -307,8 +309,12 @@ internal class RoomArchiveRepository(
     private suspend fun wipe(profileId: String) {
         val demo = database.demoDao()
         // Children before parents, exactly as DemoModeRepository.exit() orders them.
+        // Eleven of these were missing until `ProfileWipeCallSitesTest` was written (ADR-0078).
+        // This list is hand-maintained beside `DemoModeRepository.exit`'s, which is exactly the
+        // drift the doc comment above warned about and did not prevent; the test prevents it now.
         demo.deleteInsights(profileId)
         demo.deleteNotificationLog(profileId)
+        wipeLaterEpics(demo, profileId)
         demo.deleteBudgetAlerts(profileId)
         demo.deleteCardAlerts(profileId)
         demo.deleteBudgets(profileId)
@@ -321,6 +327,8 @@ internal class RoomArchiveRepository(
         demo.deleteTransactionTags(profileId)
         demo.deleteTags(profileId)
         demo.deleteTransactions(profileId)
+        // After the transactions: they are what point at a batch (ADR-0078).
+        demo.deleteImportBatches(profileId)
         demo.deleteCategories(profileId)
         demo.deleteCreditCards(profileId)
         demo.deleteInvestmentLots(profileId)
@@ -351,6 +359,9 @@ internal class RoomArchiveRepository(
         dao.insertProfiles(archive.profiles)
         dao.insertAccounts(archive.accounts)
         dao.insertCategories(archive.categories)
+        // Parents before children: a transaction naming a batch that is not yet present would be
+        // a dangling pointer for the length of the restore (ADR-0078).
+        dao.insertImportBatches(archive.importBatches)
         dao.insertTransactions(archive.transactions)
         dao.insertTransactionSplits(archive.transactionSplits)
         dao.insertTags(archive.tags)
@@ -466,3 +477,38 @@ private fun Map<ConsentFeature, ConsentState>.toConsentRecords(): List<ConsentRe
             revokedAtUtcMillis = state.revokedAtUtcMillis,
         )
     }
+
+/**
+ * The Epic 10 and Epic 13 tables, wiped children-first.
+ * Why:    a top-level private function rather than a method, because extracting it as one
+ *         pushed `RoomArchiveRepository` past detekt's eleven-function limit. Split out when
+ *         [RoomArchiveRepository] reached the length limit — and they belong together for
+ *         the reason `DemoModeRepository.wipeEpicTen` groups its own: **every one of these was
+ *         missing from this wipe** until `ProfileWipeCallSitesTest` was written (ADR-0078), so
+ *         the grouping is what makes the omission visible if it recurs.
+ * Result: the advisor's traces, the buy list, the vehicles, the cached closes, the chat history
+ *         and the appliances are gone.
+ * Input:  [demo] — the wipe DAO; [profileId]. Output: none (suspends).
+ * Changelog: 2026-10-10 — Extracted (ADR-0078).
+ */
+private suspend fun wipeLaterEpics(
+    demo: DemoDao,
+    profileId: String,
+) {
+    demo.deletePurchaseTraceGates(profileId)
+    demo.deletePurchaseTraces(profileId)
+    demo.deleteInterviewAnswers(profileId)
+    demo.deleteWishlistItems(profileId)
+    demo.deleteVehicleOdometer(profileId)
+    demo.deleteVehicleServices(profileId)
+    demo.deleteVehicleRenewals(profileId)
+    demo.deleteVehicles(profileId)
+    demo.deleteMarketCloses(profileId)
+    // CHT-004 keeps conversations out of the archive, which is why nothing restores them — and
+    // is exactly why the wipe must still reach them: a chat the archive cannot carry is a chat
+    // the previous owner's questions would survive in, under the restored profile.
+    demo.deleteChatMessages(profileId)
+    demo.deleteApplianceServices(profileId)
+    demo.deleteApplianceConsumables(profileId)
+    demo.deleteAppliances(profileId)
+}

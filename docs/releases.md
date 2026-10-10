@@ -110,3 +110,4 @@ from this release on, a code that does not increase fails `verifyReleaseMetadata
 | 0.13.6 | 70 |  |
 | 0.13.7 | 71 |  |
 | 0.13.8 | 72 |  |
+| 0.13.9 | 73 |  |

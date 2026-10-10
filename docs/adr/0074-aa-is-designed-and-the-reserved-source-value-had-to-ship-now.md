@@ -110,6 +110,12 @@ it defaults to off, and a second flag would be a switch nobody reads.
 
 ## The second promise, recorded and not kept
 
+> **Kept on 2026-10-10 by [ADR-0078](0078-import-batches-exists-and-the-wipe-is-checked-not-trusted.md).**
+> Schema 33 added `import_batches` and `transactions.import_batch_id`. The finding below is kept as
+> written — it is why the table exists — and `AccountAggregatorReadinessTest` has been **inverted**:
+> it used to fail when the table was added, and now fails if the table or the column is removed.
+> Building it uncovered sixteen missing deletes in the profile wipe; see ADR-0078 §4.
+
 §33 also says `import_batches` supports statement-grade provenance. **There is no such table.**
 
 The consequence is concrete: when AA ingest lands there is nowhere to record *which fetch a row came

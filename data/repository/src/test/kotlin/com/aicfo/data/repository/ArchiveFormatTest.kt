@@ -60,7 +60,7 @@ class ArchiveFormatTest {
 
     /**
      * Input:  the envelope's own descriptor.
-     * Output: asserts it carries exactly the three scalars and thirty-five lists it has today.
+     * Output: asserts it carries exactly the three scalars and thirty-nine lists it has today.
      *
      * Why:  [TABLES] is derived from the serializer, which makes it impossible to go stale but also
      *       unable to notice a field being **removed** — the key and the expectation would vanish
@@ -71,6 +71,9 @@ class ArchiveFormatTest {
      */
     @Test
     fun `the envelope carries exactly the keys it is known to carry`() {
+        // 42 at schema 33 (ADR-0078), which added `importBatches` — the batches have to travel
+        // with the transactions that name them, or a restore recreates the dangling pointer the
+        // write path refuses.
         // 38 at issue 13.1; **41 at issue 13.2**, which added `appliances`, `applianceServices`
         // and `applianceConsumables`. Each defaults to an empty list, so an archive written before
         // them still decodes and `archiveVersion` stays 1 — the envelope's shape did not change in
@@ -78,12 +81,12 @@ class ArchiveFormatTest {
         assertEquals(
             "a key was added to or removed from CfoArchive: say which table, and why a backup " +
                 "taken by an older build still restores",
-            41,
+            42,
             TABLES.size,
         )
         assertEquals(
             "the three scalars are the envelope's header; the rest are tables",
-            38,
+            39,
             TABLES.size - 3,
         )
     }
