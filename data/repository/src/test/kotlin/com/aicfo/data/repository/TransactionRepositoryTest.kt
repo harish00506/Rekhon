@@ -92,6 +92,85 @@ class TransactionRepositoryTest {
 
     // --- create ------------------------------------------------------------------------------------
 
+    // --- the GST figure the app used to discard (ADR-0077; §33) ----------------------------------
+
+    /**
+     * Input:  a draft carrying a tax figure, as the receipt review screen now supplies.
+     * Output: asserts the figure reaches the row.
+     *
+     * This is the fix. The receipt engine has extracted GST since issue 3.8 and the review screen
+     * has displayed it, but `TransactionDraft` had no field for it and `transactions` had no column,
+     * so the number was shown to the user and discarded. §33 promised the opposite from v1.
+     */
+    @Test
+    fun `a tax figure on the draft is stored, not discarded`() =
+        runTest {
+            val account = newAccount()
+
+            val created = repository.create(TransactionDraft(account.id, Money(-1_180_00L), tax = Money(180_00L)))
+
+            val stored = rawRow((created as Ok).value.id)
+            assertEquals(180_00L, stored?.taxMinor)
+        }
+
+    /**
+     * Input:  an ordinary typed transaction, with no tax.
+     * Output: asserts the column stays **null**, never zero.
+     *
+     * `null` means "no figure was read"; zero means "the bill said zero tax", which is a real and
+     * different statement — a zero-rated supply. Collapsing them would leave the business reports
+     * this enables unable to tell unknown from exempt (P-03).
+     */
+    @Test
+    fun `a transaction with no tax figure stores null, never zero`() =
+        runTest {
+            val account = newAccount()
+
+            val created = repository.create(TransactionDraft(account.id, Money(-250_00L)))
+
+            assertNull(rawRow((created as Ok).value.id)?.taxMinor)
+        }
+
+    /** Input: a bill whose stated tax is exactly the whole amount. Output: asserts it is allowed. */
+    @Test
+    fun `a tax equal to the whole amount is allowed`() =
+        runTest {
+            val account = newAccount()
+
+            val created = repository.create(TransactionDraft(account.id, Money(-100_00L), tax = Money(100_00L)))
+
+            assertTrue(created is Ok)
+        }
+
+    /**
+     * Input:  a tax larger than the bill it sits inside.
+     * Output: asserts the write is **refused, naming the tax field**.
+     *
+     * A GST line is part of a receipt's total and can never exceed it, so a larger figure is a parse
+     * error. Refusing the whole draft rather than silently dropping the tax, because a row saved
+     * with its tax quietly discarded is precisely the behaviour this change exists to end.
+     */
+    @Test
+    fun `a tax larger than the bill is refused, naming the field`() =
+        runTest {
+            val account = newAccount()
+
+            val created = repository.create(TransactionDraft(account.id, Money(-100_00L), tax = Money(100_01L)))
+
+            assertEquals(Err(AppError.Validation("tax")), created)
+        }
+
+    /** Input: a negative tax. Output: asserts a refusal — a bill cannot state negative tax. */
+    @Test
+    fun `a negative tax is refused`() =
+        runTest {
+            val account = newAccount()
+
+            val created = repository.create(TransactionDraft(account.id, Money(-100_00L), tax = Money(-1L)))
+
+            assertEquals(Err(AppError.Validation("tax")), created)
+        }
+
     @Test
     fun `creating a transaction returns it with a generated id and the manual source`() =
         runTest {
@@ -655,6 +734,10 @@ class TransactionRepositoryTest {
                 bookedOnIsoDate = cursor.getString(cursor.getColumnIndexOrThrow("booked_on_iso_date")),
                 source = cursor.getString(cursor.getColumnIndexOrThrow("source")),
                 type = cursor.getString(cursor.getColumnIndexOrThrow("type")),
+                taxMinor =
+                    cursor.getColumnIndexOrThrow("tax_minor").let { index ->
+                        if (cursor.isNull(index)) null else cursor.getLong(index)
+                    },
                 transferId =
                     cursor.getColumnIndexOrThrow("transfer_id").let { index ->
                         if (cursor.isNull(index)) null else cursor.getString(index)

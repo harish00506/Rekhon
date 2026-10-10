@@ -11,6 +11,35 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > Design-for-later scope: household mode, appliances, insurance, tax v2, business mode, Account
 > Aggregator and iOS via KMP — foundations in v1, each behind a flag, each with an ADR.
 
+### [0.13.8] — Maintenance: the GST figure is stored, and `null` is not zero  (2026-10-10)
+
+Not an issue — the data-losing finding ADR-0073 §4 recorded, closed on request (**ADR-0077**).
+
+- **§33 promises GST fields "are stored even before business reports exist". They were not.** The
+  receipt engine extracted the figure (FR-OCR-003), `ReceiptReviewScreen` displayed it, and
+  `ReceiptRepository.save` dropped it on the floor — `transactions` had eighteen columns and none of
+  them was tax. The number was read off the bill, shown once, and discarded.
+- **The cost compounded daily.** Receipt images stay out of backups (ADR-0023, P-01) and the erase
+  path destroys them, so a figure not captured at scan time is unrecoverable. This is the failure a
+  forward-compatibility table exists to prevent.
+- **Schema 32 adds `transactions.tax_minor INTEGER` — nullable, no default.** The nullability *is*
+  the design: `null` means no figure was read, `0` means the bill stated zero tax (a zero-rated
+  supply — a real thing). A `DEFAULT 0` would have asserted that every row in a user's existing
+  history was zero-rated, a false fact no later code could undo. The round-trip migration test
+  asserts history comes back **null**, which is the assertion that catches that mistake.
+- **A tax larger than its bill is refused, not silently dropped.** `Validation("tax")` names the
+  field so the screen can point at it. Saving-minus-the-tax would be the original bug wearing a
+  validation badge.
+- **Why a tested path lost data: both ends were green and nothing tested the join.** The parser had
+  tests proving it extracts GST; the screen had a test proving it *displays* GST. `toDraftOrNull`
+  simply never mentioned tax. Mutation caught it again mid-fix — deleting `tax = tax` left the whole
+  suite passing *after* the column existed. Two tests now cover the seam.
+- **`BusinessModeDriftTest`'s GST assertion was inverted, not deleted** — it used to fail when the
+  gap closed; it now fails if the column is removed. The behaviour worth guarding changed from
+  "this is missing" to "this must not go missing again".
+- Nothing reads `tax_minor` yet. It is captured so business mode has a history to read when it
+  arrives, which was §33's intention. `ai/` unchanged — no threshold moved.
+
 ### [0.13.7] — Maintenance: the engine registry is reconciled, and now checked  (2026-10-10)
 
 Not an issue — the open finding ADR-0070 recorded and deferred, closed on request (**ADR-0076**).

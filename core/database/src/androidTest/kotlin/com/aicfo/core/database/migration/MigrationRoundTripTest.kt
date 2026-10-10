@@ -1961,6 +1961,51 @@ class MigrationRoundTripTest {
     }
 
     /**
+     * 31 → 32: the tax figure the OCR used to discard (ADR-0077; §33).
+     *
+     * Why:  the failure mode of a nullable column added by `ALTER TABLE` is quiet. If the migration
+     *       gave it a `DEFAULT 0`, every transaction in the user's history would silently claim the
+     *       bill stated zero tax — a false and unrecoverable assertion about rows nobody ever
+     *       recorded a figure for. So the existing row must come back with **null**, and a new row
+     *       must be able to carry a real figure.
+     * Result: history keeps its null, and a freshly written figure survives.
+     */
+    @Test
+    fun migrate31To32_leavesHistoryNullAndCarriesANewTaxFigure() {
+        helper.createDatabase(TEST_DB, 31).use { old ->
+            old.execSQL(
+                "INSERT INTO transactions (id, profile_id, account_id, amount_minor, currency_code, " +
+                    "occurred_at_utc_millis, booked_on_iso_date, source, type, created_at_utc_millis, " +
+                    "updated_at_utc_millis) VALUES ('txn:old', 'local', 'acc:1', -25000, 'INR', " +
+                    "1790000000000, '2026-10-01', 'manual', 'expense', 1790000000000, 1790000000000)",
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 32, true, Migrations.MIGRATION_31_32)
+
+        migrated.query("SELECT tax_minor, amount_minor FROM transactions WHERE id = 'txn:old'").use { cursor ->
+            assertTrue("the existing transaction must survive", cursor.moveToFirst())
+            assertTrue(
+                "history must stay NULL — a DEFAULT 0 would claim every past bill stated zero tax",
+                cursor.isNull(0),
+            )
+            assertEquals(-25_000L, cursor.getLong(1))
+        }
+
+        migrated.execSQL(
+            "INSERT INTO transactions (id, profile_id, account_id, amount_minor, currency_code, " +
+                "occurred_at_utc_millis, booked_on_iso_date, source, type, tax_minor, " +
+                "created_at_utc_millis, updated_at_utc_millis) VALUES ('txn:new', 'local', 'acc:1', " +
+                "-118000, 'INR', 1790000000000, '2026-10-02', 'ocr', 'expense', 18000, " +
+                "1790000000000, 1790000000000)",
+        )
+        migrated.query("SELECT tax_minor FROM transactions WHERE id = 'txn:new'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("₹180.00 of GST on an ₹1,180.00 bill", 18_000L, cursor.getLong(0))
+        }
+    }
+
+    /**
      * Result: true when [sql] was refused by a constraint. Input: [db]; [sql]. Output: [Boolean].
      */
     private fun refuses(

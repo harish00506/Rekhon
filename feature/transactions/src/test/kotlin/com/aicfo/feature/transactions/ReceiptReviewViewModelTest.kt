@@ -21,6 +21,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -56,6 +57,49 @@ class ReceiptReviewViewModelTest {
     }
 
     // --- what the parser proposes (FR-OCR-003) ---------------------------------------------------
+
+    /**
+     * Input:  a receipt whose GST line was read.
+     * Output: asserts the figure reaches the **draft**, not merely the screen.
+     *
+     * **This is the test whose absence let the bug live.** The screen has displayed a GST figure
+     * since issue 3.8, and `ReceiptReviewViewModelTest` checked that it displayed it — but nothing
+     * checked that `toDraftOrNull` passed it on, so when the draft had no field for it the number
+     * was simply dropped between the screen and the repository and every test stayed green
+     * (ADR-0077; §33).
+     *
+     * Found by mutation: deleting `tax = tax` from `toDraftOrNull` left the whole suite passing.
+     */
+    @Test
+    fun `a GST figure the parser read reaches the saved draft`() =
+        runTest {
+            receipts.nextScan =
+                scanOf(total = Money(1_18_000L), date = "2026-10-01", merchant = "BIG BAZAAR", tax = Money(18_000L))
+            val viewModel = viewModel()
+            viewModel.onEvent(ReceiptReviewEvent.ImagePicked(SOME_BYTES))
+
+            viewModel.onEvent(ReceiptReviewEvent.Save)
+
+            val draft = receipts.saved.single().first
+            assertEquals("the figure shown on screen must be the figure saved", Money(18_000L), draft.tax)
+        }
+
+    /**
+     * Input:  a receipt with no GST line.
+     * Output: asserts the draft's tax is **null**, not zero. "No figure was read" and "the bill said
+     *         zero" are different statements, and only one of them is true here (P-03).
+     */
+    @Test
+    fun `a receipt with no GST line saves a null tax, not a zero`() =
+        runTest {
+            receipts.nextScan = scanOf(total = Money(36_580L), date = "2026-08-04", merchant = null)
+            val viewModel = viewModel()
+            viewModel.onEvent(ReceiptReviewEvent.ImagePicked(SOME_BYTES))
+
+            viewModel.onEvent(ReceiptReviewEvent.Save)
+
+            assertNull(receipts.saved.single().first.tax)
+        }
 
     @Test
     fun `a scan pre-fills every field it managed to read`() =
@@ -299,6 +343,7 @@ class ReceiptReviewViewModelTest {
         date: String?,
         merchant: String?,
         totalConfidence: Int = CONFIDENT,
+        tax: Money? = null,
     ): ReceiptScan =
         ReceiptScan(
             fields =
@@ -306,7 +351,7 @@ class ReceiptReviewViewModelTest {
                     total = total?.let { ExtractedMoney(it, totalConfidence) },
                     date = date?.let { ExtractedText(it, CONFIDENT) },
                     merchant = merchant?.let { ExtractedText(it, CONFIDENT) },
-                    tax = null,
+                    tax = tax?.let { ExtractedMoney(it, CONFIDENT) },
                     provenance =
                         EngineProvenance(
                             engineId = "receipt-parser",
