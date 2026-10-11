@@ -81,10 +81,25 @@ crypto as first-class asset classes with their own concentration caps.
 
 ## Status
 
-Under active development. Epics 1–6 are built and verified: foundation,
-onboarding and accounts, transactions and capture, categorisation and budgets,
-dashboard and export, and wealth through investment allocation. Goals, forecasting,
-the advisor and the on-device chat assistant are not built yet.
+Under active development, at **v0.13.9**. Epics 0–13 are built and verified:
+foundations, the core platform, onboarding and security, transactions and capture,
+categorisation and budgets, dashboard and export, wealth through loans and
+investments, goals and the emergency fund, backup and restore, the AI core engines
+(including the cash-flow forecast), the advisor and chat, privacy and security
+hardening, release quality, and expansion.
+
+[`CHANGELOG.md`](CHANGELOG.md) is the authority on what shipped when, and every
+entry cites its requirement IDs. Three items are open rather than done:
+
+- **Account Aggregator** is designed, and one reserved source value shipped ahead
+  of it, but the integration itself is not built
+  ([ADR-0074](docs/adr/0074-aa-is-designed-and-the-reserved-source-value-had-to-ship-now.md)).
+- **iOS through Kotlin Multiplatform** is blocked, not scheduled. "Android-free"
+  turned out not to mean "KMP-portable", and the blocker is `Money` — the exact-paise
+  type is the part that does not port
+  ([ADR-0075](docs/adr/0075-android-free-is-not-kmp-portable-and-money-is-the-blocker.md)).
+- **Orphaned receipt blobs** — a finding opened while closing an earlier one
+  ([ADR-0078](docs/adr/0078-import-batches-exists-and-the-wipe-is-checked-not-trusted.md)).
 
 See [`docs/issues/`](docs/issues/) for the backlog, [`DECISIONS.md`](DECISIONS.md)
 for why things are the way they are, and [`FLOW.md`](FLOW.md) for how execution
