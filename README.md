@@ -2,6 +2,10 @@
 
 **A full-time CFO for your money, that runs entirely on your phone.**
 
+An offline-first, open-source **personal finance app for Android**, built for Indian
+money — no account, no server, and every figure traceable to the rule that produced
+it. **[What the app does →](https://www.harishg.com/rekhon)**
+
 Most finance apps tell you a number. Rekhon tells you the number *and the working
 behind it* — which rule fired, what it measured, and what it measured against. A
 figure you cannot check is a verdict, and this app does not issue verdicts.
