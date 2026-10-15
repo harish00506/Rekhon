@@ -6,6 +6,9 @@
   Result: a reader can check every line here against the code, and `Sec003AuditDriftTest` fails the
           build when a file starts touching cryptography without being listed.
   Changelog: 2026-10-02 — Created for issue 11.7.
+             2026-10-10 — Re-audited for ADR-0079: the on-device LLM's model-file check added a
+             MessageDigest to production code, and CfoHandRolledCrypto a third exemption. §2 gains
+             a row, §6 records the re-audit.
 -->
 
 # SEC-003 — no-hand-rolled-crypto audit
@@ -47,6 +50,7 @@ Pass 2 returned **nothing**. There is no `Cipher`, `MessageDigest`, `javax.crypt
 | `core/database/CfoDatabaseFactory.kt` | constructs `SecureRandom()` to inject | **Injection site, not a crypto operation** |
 | `data/repository/AndroidSecureEraser.kt` | `java.security.KeyStore` — `deleteEntry`, `containsAlias` | **Key *destruction*, not construction** (issue 11.4) |
 | `lint/HandRolledCryptoDetector.kt` | the type names, as strings | **The rule itself.** Touches no crypto |
+| `ml/llm/LlmModelStore.kt` | `java.security.MessageDigest` — SHA-256 over a sideloaded model file | **Integrity check, not cryptography.** No key, no secret, nothing protected: a checksum against a digest the model's publisher published. The third lint exemption — see §6 |
 
 **`SecureRandom` is used in four places and is injected in every one** — a constructor parameter
 feeding a salt or a passphrase that Tink or Argon2id then consumes. That is what P-08 asks for
@@ -98,4 +102,35 @@ named above; the inventory in §2 is checked by `Sec003AuditDriftTest`, which fa
 production file starts touching cryptography without appearing in this table.
 
 Re-audit when: a new crypto library is added, Tink gains a password-based KDF (then ADR-0039's
-deviation should close), or `CfoHandRolledCrypto` acquires a third exemption.
+deviation should close), or `CfoHandRolledCrypto` acquires a fourth exemption.
+
+---
+
+## 6 · Re-audit, 2026-10-10 — the third exemption
+
+**Trigger:** §5's own condition. `CfoHandRolledCrypto` acquired a third exemption, so the audit was
+re-read rather than amended quietly.
+
+**What changed.** [ADR-0079](../adr/0079-the-on-device-model-is-real-and-its-weights-are-apache-2-0.md)
+put a real on-device language model behind `LlmEngine`. Its weights are a 521 MB file the user
+installs, so the app has to decide whether the file it found is the published model before loading
+it into its own process. `LlmModelStore` does that by comparing the file's SHA-256 with the digest
+published alongside it, which means a `MessageDigest` in production code for the first time.
+
+**Why it is not hand-rolled cryptography.** There is no key, no secret, no ciphertext and no
+authentication claim. The digest is compared with a constant published by a third party; an attacker
+who could replace the file could not forge the comparison without finding a SHA-256 collision, and
+the check's failure mode is "refuse to load", not "accept something forged". Tink exposes no
+file-hashing API, so the alternatives were a hand-rolled *alternative* (worse), or **loading
+unverified weights** (worse still). The exemption buys a security control rather than spending one.
+
+**How it is kept narrow.** By file name, not by a content heuristic — `digest(key + message)` as a
+homemade MAC would pass any "no key material here" test, and that is the exact construction SEC-003
+exists to stop. Three lint tests pin it: the named site is clean, the same code under another name
+is flagged, and a `Cipher` at the named site is still flagged. A second site needs an ADR, a row in
+§2 and a line in the detector.
+
+**Verdict: unchanged.** No hand-rolled cryptography in production code. The new call site is an
+integrity check and is listed in §2.
+
+**Sign-off.** Re-audited by the implementer against §1's method, same day as ADR-0079.

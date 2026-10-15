@@ -1,0 +1,927 @@
+{
+  "_meta": {
+    "file": "verbaliser-eval.json",
+    "why": "ADR-0079 put a real language model behind LlmEngine, and the only question worth asking about it in this app is narrow: does it say exactly the figures it was handed, in a form this app itself would write, in one sentence? This is the frozen set that measures that and nothing else. It is deliberately NOT a language benchmark — no helpfulness, no fluency, no reasoning, no general knowledge. Those are not what the model is for here (P-03: numbers from math, words from AI).",
+    "what": "One case per row: the intent, the figures a tool returned, the reply a model produced over them, and whether that reply may reach the user — with the exact sentence expected when it may, and the refusal field when it may not.",
+    "result": "A regression in verbalisation fidelity fails the build, naming the case (§21.5's 'regression thresholds block merges'). A false refusal fails it just as hard: an over-strict check silently switches the neural path off, which is how the first version of DraftSanitiser disabled itself for every answer that mentions money.",
+    "source_section": "§21.5, §19.4, §7.1 AI-ARC-004, ADR-0079, ADR-0080",
+    "version": "1.0",
+    "changelog": [
+      "2026-10-10 — Created for ADR-0080, before the code it measures was finished.",
+      "2026-10-10 — First run: 39 of 43. Four failures, and all four were the set being right. VE-S07 and VE-S08 were ACCEPTED — the figure list read back as a list passes every figure check there is, so the user would have been shown the app's own prompt scaffolding as an answer; DraftSanitiser gained an is-this-prose rule (chat.draft.shape). VE-D02 and VE-D08 were refused as 'states no figure' when they are misstated amounts; the digit check now runs before the figure check so the reason is the precise one. Second run: 43 of 43, both rates 100%.",
+      "2026-10-10 — Added VE-S09, VE-S10 and VE-R08: a one-line key echo, a stray label, and a sentence that opens with a figure. All three failed on the run that added them, which is the point of adding them."
+    ],
+    "note_test_only": "Like guardrail-eval.json, this file is NOT loaded by the app. VerbaliserEvalTest reads it at build time. It lives in ai/ because it is AI subsystem data that must be reviewed and versioned like the rulebook.",
+    "how_to_add_a_case": "Add a row with a NEW id, never edit an existing one: a frozen set that quietly changes is not a regression test. If a new case fails, decide whether the pipeline is wrong or the expectation is, and say which in the commit.",
+    "replies_are_hand_written": "Every `reply` here is written by hand in the style a 0.5B instruction model actually produces — echoed cues, markdown, follow-up questions, rounded figures, invented averages. They are NOT samples from the shipped model, because the weights are a 521 MB sideload and no device ran them in the session that wrote this set. OnDeviceVerbaliserAccuracyTest is the harness that measures the real model's own replies, on a device that has them; this set measures the layer that judges those replies."
+  },
+  "thresholds": {
+    "id": "EVAL-VRB",
+    "version": "1.0",
+    "why": "Two rates, and neither is allowed to be traded for the other quietly. A drifted or invented figure reaching the user is the failure this app cannot survive, so that rate is absolute. A faithful reply being refused costs the user the better sentence every single turn and is invisible in production — so it is also 100, and a change that lowers it has to argue for the number in a commit.",
+    "fidelity_refused_pct": 100,
+    "faithful_accepted_pct": 100,
+    "notes": {
+      "fidelity_refused_pct": "Every `drift`, `invented` and `silent` case expected REFUSED must be refused, and with the stated reason. 100 is the only defensible number here.",
+      "faithful_accepted_pct": "Every `faithful`, `rendering` and `shape` case expected ACCEPTED must be accepted, with exactly the expected sentence. This is the false-refusal rate, and it is the one that decides whether the neural path is used at all."
+    }
+  },
+  "cases": [
+    {
+      "id": "VE-F01",
+      "kind": "faithful",
+      "why": "The plain case: the two figures, as the prompt showed them.",
+      "intent": "SPEND",
+      "figures": [
+        {
+          "key": "total",
+          "kind": "AMOUNT",
+          "amount_minor": 6142700
+        },
+        {
+          "key": "count",
+          "kind": "COUNT",
+          "number": 23
+        }
+      ],
+      "reply": "You spent ₹61,427.00 across 23 transactions.",
+      "expect": "ACCEPTED",
+      "expect_text": "You spent ₹61,427.00 across 23 transactions."
+    },
+    {
+      "id": "VE-F02",
+      "kind": "faithful",
+      "why": "One amount, and nothing else to say.",
+      "intent": "BALANCE",
+      "figures": [
+        {
+          "key": "liquid",
+          "kind": "AMOUNT",
+          "amount_minor": 982300
+        }
+      ],
+      "reply": "You have ₹9,823.00 available right now.",
+      "expect": "ACCEPTED",
+      "expect_text": "You have ₹9,823.00 available right now."
+    },
+    {
+      "id": "VE-F03",
+      "kind": "faithful",
+      "why": "Three figures of three kinds, including an ISO date.",
+      "intent": "FORECAST",
+      "figures": [
+        {
+          "key": "horizonDays",
+          "kind": "COUNT",
+          "number": 90
+        },
+        {
+          "key": "lowest",
+          "kind": "AMOUNT",
+          "amount_minor": 214000
+        },
+        {
+          "key": "lowestOn",
+          "kind": "DATE",
+          "iso_date": "2026-11-03"
+        }
+      ],
+      "reply": "Your lowest point in the next 90 days is ₹2,140.00, on 2026-11-03.",
+      "expect": "ACCEPTED",
+      "expect_text": "Your lowest point in the next 90 days is ₹2,140.00, on 2026-11-03."
+    },
+    {
+      "id": "VE-F04",
+      "kind": "faithful",
+      "why": "A score and its scale — the figure is meaningless without the scale.",
+      "intent": "HEALTH",
+      "figures": [
+        {
+          "key": "score",
+          "kind": "COUNT",
+          "number": 712
+        },
+        {
+          "key": "scoreMax",
+          "kind": "COUNT",
+          "number": 1000
+        }
+      ],
+      "reply": "Your financial health score is 712 out of 1000.",
+      "expect": "ACCEPTED",
+      "expect_text": "Your financial health score is 712 out of 1000."
+    },
+    {
+      "id": "VE-F05",
+      "kind": "faithful",
+      "why": "A lakh-sized amount in full grouping.",
+      "intent": "GOALS",
+      "figures": [
+        {
+          "key": "required",
+          "kind": "AMOUNT",
+          "amount_minor": 15000000
+        }
+      ],
+      "reply": "Your goals need ₹1,50,000.00 a month between them.",
+      "expect": "ACCEPTED",
+      "expect_text": "Your goals need ₹1,50,000.00 a month between them."
+    },
+    {
+      "id": "VE-F06",
+      "kind": "faithful",
+      "why": "An amount with real paise, which is where rounding usually creeps in.",
+      "intent": "AFFORD",
+      "figures": [
+        {
+          "key": "leftAfter",
+          "kind": "AMOUNT",
+          "amount_minor": 12345678
+        }
+      ],
+      "reply": "That would leave you with ₹1,23,456.78.",
+      "expect": "ACCEPTED",
+      "expect_text": "That would leave you with ₹1,23,456.78."
+    },
+    {
+      "id": "VE-F07",
+      "kind": "faithful",
+      "why": "An amount and a date together.",
+      "intent": "VEHICLE",
+      "figures": [
+        {
+          "key": "cost",
+          "kind": "AMOUNT",
+          "amount_minor": 480000
+        },
+        {
+          "key": "dueOn",
+          "kind": "DATE",
+          "iso_date": "2026-11-03"
+        }
+      ],
+      "reply": "Your vehicle costs ₹4,800.00 before the next service, due 2026-11-03.",
+      "expect": "ACCEPTED",
+      "expect_text": "Your vehicle costs ₹4,800.00 before the next service, due 2026-11-03."
+    },
+    {
+      "id": "VE-F08",
+      "kind": "faithful",
+      "why": "A bare count, where a plural is the only thing that can go wrong.",
+      "intent": "BUYLIST",
+      "figures": [
+        {
+          "key": "count",
+          "kind": "COUNT",
+          "number": 4
+        }
+      ],
+      "reply": "You have 4 things on your buy list.",
+      "expect": "ACCEPTED",
+      "expect_text": "You have 4 things on your buy list."
+    },
+    {
+      "id": "VE-F09",
+      "kind": "faithful",
+      "why": "An interest figure the simulator produced.",
+      "intent": "DEBT",
+      "figures": [
+        {
+          "key": "saved",
+          "kind": "AMOUNT",
+          "amount_minor": 1830050
+        }
+      ],
+      "reply": "Clearing the dearest debt first saves ₹18,300.50 in interest.",
+      "expect": "ACCEPTED",
+      "expect_text": "Clearing the dearest debt first saves ₹18,300.50 in interest."
+    },
+    {
+      "id": "VE-F10",
+      "kind": "faithful",
+      "why": "An amount beside a percentage, both from tools.",
+      "intent": "BUDGET",
+      "figures": [
+        {
+          "key": "spent",
+          "kind": "AMOUNT",
+          "amount_minor": 3250000
+        },
+        {
+          "key": "share",
+          "kind": "PERCENT",
+          "number": 37
+        }
+      ],
+      "reply": "You have spent ₹32,500.00 of your budgets, which is 37% of them.",
+      "expect": "ACCEPTED",
+      "expect_text": "You have spent ₹32,500.00 of your budgets, which is 37% of them."
+    },
+    {
+      "id": "VE-R01",
+      "kind": "rendering",
+      "why": "A model told ₹61,427.00 very often writes ₹61,427. AI-GRD accepts it, so this must too (ADR-0080).",
+      "intent": "SPEND",
+      "figures": [
+        {
+          "key": "total",
+          "kind": "AMOUNT",
+          "amount_minor": 6142700
+        },
+        {
+          "key": "count",
+          "kind": "COUNT",
+          "number": 23
+        }
+      ],
+      "reply": "You spent ₹61,427 across 23 transactions.",
+      "expect": "ACCEPTED",
+      "expect_text": "You spent ₹61,427 across 23 transactions."
+    },
+    {
+      "id": "VE-R02",
+      "kind": "rendering",
+      "why": "One decimal place is within the rulebook's display rounding.",
+      "intent": "SPEND",
+      "figures": [
+        {
+          "key": "total",
+          "kind": "AMOUNT",
+          "amount_minor": 6142700
+        },
+        {
+          "key": "count",
+          "kind": "COUNT",
+          "number": 23
+        }
+      ],
+      "reply": "You spent ₹61,427.0 across 23 transactions.",
+      "expect": "ACCEPTED",
+      "expect_text": "You spent ₹61,427.0 across 23 transactions."
+    },
+    {
+      "id": "VE-R03",
+      "kind": "rendering",
+      "why": "A space after the ₹ is a writer's habit, not a different number.",
+      "intent": "BALANCE",
+      "figures": [
+        {
+          "key": "liquid",
+          "kind": "AMOUNT",
+          "amount_minor": 982300
+        }
+      ],
+      "reply": "You have ₹ 9,823.00 available right now.",
+      "expect": "ACCEPTED",
+      "expect_text": "You have ₹ 9,823.00 available right now."
+    },
+    {
+      "id": "VE-R04",
+      "kind": "rendering",
+      "why": "A date written the way a person writes it (GRD-004).",
+      "intent": "VEHICLE",
+      "figures": [
+        {
+          "key": "cost",
+          "kind": "AMOUNT",
+          "amount_minor": 480000
+        },
+        {
+          "key": "dueOn",
+          "kind": "DATE",
+          "iso_date": "2026-11-03"
+        }
+      ],
+      "reply": "Your vehicle costs ₹4,800.00 before the next service, due 3 Nov 2026.",
+      "expect": "ACCEPTED",
+      "expect_text": "Your vehicle costs ₹4,800.00 before the next service, due 3 Nov 2026."
+    },
+    {
+      "id": "VE-R05",
+      "kind": "rendering",
+      "why": "₹1,50,000.00 is exactly 1.5 lakh, so the words are the same figure.",
+      "intent": "GOALS",
+      "figures": [
+        {
+          "key": "required",
+          "kind": "AMOUNT",
+          "amount_minor": 15000000
+        }
+      ],
+      "reply": "Your goals need ₹1.5 lakh a month between them.",
+      "expect": "ACCEPTED",
+      "expect_text": "Your goals need ₹1.5 lakh a month between them."
+    },
+    {
+      "id": "VE-R06",
+      "kind": "rendering",
+      "why": "Rounding to the rupee hides less than a rupee and reads better.",
+      "intent": "AFFORD",
+      "figures": [
+        {
+          "key": "leftAfter",
+          "kind": "AMOUNT",
+          "amount_minor": 12345678
+        }
+      ],
+      "reply": "That would leave you with ₹1,23,457.",
+      "expect": "ACCEPTED",
+      "expect_text": "That would leave you with ₹1,23,457."
+    },
+    {
+      "id": "VE-R07",
+      "kind": "rendering",
+      "why": "A count spelled out carries no numeric claim at all, and the amount still anchors the sentence.",
+      "intent": "SPEND",
+      "figures": [
+        {
+          "key": "total",
+          "kind": "AMOUNT",
+          "amount_minor": 6142700
+        },
+        {
+          "key": "count",
+          "kind": "COUNT",
+          "number": 23
+        }
+      ],
+      "reply": "You spent ₹61,427.00 across twenty-three transactions.",
+      "expect": "ACCEPTED",
+      "expect_text": "You spent ₹61,427.00 across twenty-three transactions."
+    },
+    {
+      "id": "VE-S01",
+      "kind": "shape",
+      "why": "Markdown bold around the sentence.",
+      "intent": "SPEND",
+      "figures": [
+        {
+          "key": "total",
+          "kind": "AMOUNT",
+          "amount_minor": 6142700
+        },
+        {
+          "key": "count",
+          "kind": "COUNT",
+          "number": 23
+        }
+      ],
+      "reply": "**You spent ₹61,427.00 across 23 transactions.**",
+      "expect": "ACCEPTED",
+      "expect_text": "You spent ₹61,427.00 across 23 transactions."
+    },
+    {
+      "id": "VE-S02",
+      "kind": "shape",
+      "why": "The prompt's cue echoed back, which small models do constantly.",
+      "intent": "SPEND",
+      "figures": [
+        {
+          "key": "total",
+          "kind": "AMOUNT",
+          "amount_minor": 6142700
+        },
+        {
+          "key": "count",
+          "kind": "COUNT",
+          "number": 23
+        }
+      ],
+      "reply": "Sentence: You spent ₹61,427.00 across 23 transactions.",
+      "expect": "ACCEPTED",
+      "expect_text": "You spent ₹61,427.00 across 23 transactions."
+    },
+    {
+      "id": "VE-S03",
+      "kind": "shape",
+      "why": "A follow-up question after the answer — the template verbaliser never asks one.",
+      "intent": "SPEND",
+      "figures": [
+        {
+          "key": "total",
+          "kind": "AMOUNT",
+          "amount_minor": 6142700
+        },
+        {
+          "key": "count",
+          "kind": "COUNT",
+          "number": 23
+        }
+      ],
+      "reply": "You spent ₹61,427.00 across 23 transactions. Want a category breakdown?",
+      "expect": "ACCEPTED",
+      "expect_text": "You spent ₹61,427.00 across 23 transactions."
+    },
+    {
+      "id": "VE-S04",
+      "kind": "shape",
+      "why": "Quoted, as though it were being reported.",
+      "intent": "BALANCE",
+      "figures": [
+        {
+          "key": "liquid",
+          "kind": "AMOUNT",
+          "amount_minor": 982300
+        }
+      ],
+      "reply": "\"You have ₹9,823.00 available right now.\"",
+      "expect": "ACCEPTED",
+      "expect_text": "You have ₹9,823.00 available right now."
+    },
+    {
+      "id": "VE-S05",
+      "kind": "shape",
+      "why": "A code fence, which happens when the prompt looks like data.",
+      "intent": "BALANCE",
+      "figures": [
+        {
+          "key": "liquid",
+          "kind": "AMOUNT",
+          "amount_minor": 982300
+        }
+      ],
+      "reply": "```\nYou have ₹9,823.00 available right now.\n```",
+      "expect": "ACCEPTED",
+      "expect_text": "You have ₹9,823.00 available right now."
+    },
+    {
+      "id": "VE-S06",
+      "kind": "shape",
+      "why": "Leading newlines and doubled spaces.",
+      "intent": "BALANCE",
+      "figures": [
+        {
+          "key": "liquid",
+          "kind": "AMOUNT",
+          "amount_minor": 982300
+        }
+      ],
+      "reply": "\n\n  You  have  ₹9,823.00  available  right  now.  ",
+      "expect": "ACCEPTED",
+      "expect_text": "You have ₹9,823.00 available right now."
+    },
+    {
+      "id": "VE-S07",
+      "kind": "shape",
+      "why": "The figure list read back as a list. Every figure is correct and it is not a sentence.",
+      "intent": "SPEND",
+      "figures": [
+        {
+          "key": "total",
+          "kind": "AMOUNT",
+          "amount_minor": 6142700
+        },
+        {
+          "key": "count",
+          "kind": "COUNT",
+          "number": 23
+        }
+      ],
+      "reply": "- total: ₹61,427.00\n- count: 23",
+      "expect": "REFUSED",
+      "expect_reason": "chat.draft.shape"
+    },
+    {
+      "id": "VE-S08",
+      "kind": "shape",
+      "why": "The whole prompt scaffold echoed. Same reason as VE-S07, one line.",
+      "intent": "SPEND",
+      "figures": [
+        {
+          "key": "total",
+          "kind": "AMOUNT",
+          "amount_minor": 6142700
+        },
+        {
+          "key": "count",
+          "kind": "COUNT",
+          "number": 23
+        }
+      ],
+      "reply": "Intent: SPEND Figures: total ₹61,427.00 count 23",
+      "expect": "REFUSED",
+      "expect_reason": "chat.draft.shape"
+    },
+    {
+      "id": "VE-D01",
+      "kind": "drift",
+      "why": "Rounded to the nearest thousand. A third of a lakh could hide in that gap.",
+      "intent": "SPEND",
+      "figures": [
+        {
+          "key": "total",
+          "kind": "AMOUNT",
+          "amount_minor": 6142700
+        },
+        {
+          "key": "count",
+          "kind": "COUNT",
+          "number": 23
+        }
+      ],
+      "reply": "You spent about ₹61,000 across 23 transactions.",
+      "expect": "REFUSED",
+      "expect_reason": "chat.draft.figure"
+    },
+    {
+      "id": "VE-D02",
+      "kind": "drift",
+      "why": "₹1.5 lakh rounded to ₹2 lakh is a third of the figure (AllowedRenderings' own warning).",
+      "intent": "GOALS",
+      "figures": [
+        {
+          "key": "required",
+          "kind": "AMOUNT",
+          "amount_minor": 15000000
+        }
+      ],
+      "reply": "Your goals need about ₹2 lakh a month between them.",
+      "expect": "REFUSED",
+      "expect_reason": "chat.draft.figure"
+    },
+    {
+      "id": "VE-D03",
+      "kind": "drift",
+      "why": "Western grouping. The allowlist is the formatter's output, and a model that regroups an amount will regroup a lakh figure wrongly.",
+      "intent": "SPEND",
+      "figures": [
+        {
+          "key": "total",
+          "kind": "AMOUNT",
+          "amount_minor": 6142700
+        },
+        {
+          "key": "count",
+          "kind": "COUNT",
+          "number": 23
+        }
+      ],
+      "reply": "You spent ₹61427.00 across 23 transactions.",
+      "expect": "REFUSED",
+      "expect_reason": "chat.draft.figure"
+    },
+    {
+      "id": "VE-D04",
+      "kind": "drift",
+      "why": "The count moved by one — the cheapest possible lie and the hardest to notice.",
+      "intent": "SPEND",
+      "figures": [
+        {
+          "key": "total",
+          "kind": "AMOUNT",
+          "amount_minor": 6142700
+        },
+        {
+          "key": "count",
+          "kind": "COUNT",
+          "number": 23
+        }
+      ],
+      "reply": "You spent ₹61,427.00 across 24 transactions.",
+      "expect": "REFUSED",
+      "expect_reason": "chat.draft.figure"
+    },
+    {
+      "id": "VE-D05",
+      "kind": "drift",
+      "why": "The date moved by a day.",
+      "intent": "FORECAST",
+      "figures": [
+        {
+          "key": "horizonDays",
+          "kind": "COUNT",
+          "number": 90
+        },
+        {
+          "key": "lowest",
+          "kind": "AMOUNT",
+          "amount_minor": 214000
+        },
+        {
+          "key": "lowestOn",
+          "kind": "DATE",
+          "iso_date": "2026-11-03"
+        }
+      ],
+      "reply": "Your lowest point in the next 90 days is ₹2,140.00, on 2026-11-04.",
+      "expect": "REFUSED",
+      "expect_reason": "chat.draft.figure"
+    },
+    {
+      "id": "VE-D06",
+      "kind": "drift",
+      "why": "The date written out, in the wrong month.",
+      "intent": "VEHICLE",
+      "figures": [
+        {
+          "key": "cost",
+          "kind": "AMOUNT",
+          "amount_minor": 480000
+        },
+        {
+          "key": "dueOn",
+          "kind": "DATE",
+          "iso_date": "2026-11-03"
+        }
+      ],
+      "reply": "Your vehicle costs ₹4,800.00 before the next service, due 3 Dec 2026.",
+      "expect": "REFUSED",
+      "expect_reason": "chat.draft.figure"
+    },
+    {
+      "id": "VE-D07",
+      "kind": "drift",
+      "why": "The percentage moved. 37% and 40% are different budgets.",
+      "intent": "BUDGET",
+      "figures": [
+        {
+          "key": "spent",
+          "kind": "AMOUNT",
+          "amount_minor": 3250000
+        },
+        {
+          "key": "share",
+          "kind": "PERCENT",
+          "number": 37
+        }
+      ],
+      "reply": "You have spent ₹32,500.00 of your budgets, which is 40% of them.",
+      "expect": "REFUSED",
+      "expect_reason": "chat.draft.figure"
+    },
+    {
+      "id": "VE-D08",
+      "kind": "drift",
+      "why": "Paise dropped from a figure that has them: ₹1,23,456.78 is not ₹1,23,456.",
+      "intent": "AFFORD",
+      "figures": [
+        {
+          "key": "leftAfter",
+          "kind": "AMOUNT",
+          "amount_minor": 12345678
+        }
+      ],
+      "reply": "That would leave you with ₹1,23,456.",
+      "expect": "REFUSED",
+      "expect_reason": "chat.draft.figure"
+    },
+    {
+      "id": "VE-X01",
+      "kind": "invented",
+      "why": "A per-week figure the model worked out itself. This is arithmetic, and arithmetic is not this layer's job (P-03).",
+      "intent": "SPEND",
+      "figures": [
+        {
+          "key": "total",
+          "kind": "AMOUNT",
+          "amount_minor": 6142700
+        },
+        {
+          "key": "count",
+          "kind": "COUNT",
+          "number": 23
+        }
+      ],
+      "reply": "You spent ₹61,427.00 across 23 transactions, about ₹2,670 a week.",
+      "expect": "REFUSED",
+      "expect_reason": "chat.draft.figure"
+    },
+    {
+      "id": "VE-X02",
+      "kind": "invented",
+      "why": "An average per transaction — division, dressed as a courtesy.",
+      "intent": "SPEND",
+      "figures": [
+        {
+          "key": "total",
+          "kind": "AMOUNT",
+          "amount_minor": 6142700
+        },
+        {
+          "key": "count",
+          "kind": "COUNT",
+          "number": 23
+        }
+      ],
+      "reply": "You spent ₹61,427.00 across 23 transactions, ₹2,671.00 each on average.",
+      "expect": "REFUSED",
+      "expect_reason": "chat.draft.figure"
+    },
+    {
+      "id": "VE-X03",
+      "kind": "invented",
+      "why": "A window nobody gave it. The tools publish the window when the sentence needs one.",
+      "intent": "SPEND",
+      "figures": [
+        {
+          "key": "total",
+          "kind": "AMOUNT",
+          "amount_minor": 6142700
+        },
+        {
+          "key": "count",
+          "kind": "COUNT",
+          "number": 23
+        }
+      ],
+      "reply": "You spent ₹61,427.00 across 23 transactions in the last 3 months.",
+      "expect": "REFUSED",
+      "expect_reason": "chat.draft.figure"
+    },
+    {
+      "id": "VE-X04",
+      "kind": "invented",
+      "why": "A trend percentage, invented wholesale.",
+      "intent": "SPEND",
+      "figures": [
+        {
+          "key": "total",
+          "kind": "AMOUNT",
+          "amount_minor": 6142700
+        },
+        {
+          "key": "count",
+          "kind": "COUNT",
+          "number": 23
+        }
+      ],
+      "reply": "You spent ₹61,427.00 across 23 transactions, up 12% on last month.",
+      "expect": "REFUSED",
+      "expect_reason": "chat.draft.figure"
+    },
+    {
+      "id": "VE-X05",
+      "kind": "invented",
+      "why": "A year standing alone with no date figure behind it.",
+      "intent": "BALANCE",
+      "figures": [
+        {
+          "key": "liquid",
+          "kind": "AMOUNT",
+          "amount_minor": 982300
+        }
+      ],
+      "reply": "You have ₹9,823.00 available right now, as of March 2026.",
+      "expect": "REFUSED",
+      "expect_reason": "chat.draft.figure"
+    },
+    {
+      "id": "VE-X06",
+      "kind": "invented",
+      "why": "An interest rate, which is exactly the kind of figure a finance model hallucinates confidently.",
+      "intent": "DEBT",
+      "figures": [
+        {
+          "key": "saved",
+          "kind": "AMOUNT",
+          "amount_minor": 1830050
+        }
+      ],
+      "reply": "Clearing the dearest debt first saves ₹18,300.50 in interest at 18% a year.",
+      "expect": "REFUSED",
+      "expect_reason": "chat.draft.figure"
+    },
+    {
+      "id": "VE-N01",
+      "kind": "silent",
+      "why": "Fluent, friendly and empty. The template's plainer sentence is the better answer.",
+      "intent": "SPEND",
+      "figures": [
+        {
+          "key": "total",
+          "kind": "AMOUNT",
+          "amount_minor": 6142700
+        },
+        {
+          "key": "count",
+          "kind": "COUNT",
+          "number": 23
+        }
+      ],
+      "reply": "I had a look at your spending for you.",
+      "expect": "REFUSED",
+      "expect_reason": "chat.draft.figures"
+    },
+    {
+      "id": "VE-N02",
+      "kind": "silent",
+      "why": "Nothing at all, which a timeout or a refused generation can produce.",
+      "intent": "SPEND",
+      "figures": [
+        {
+          "key": "total",
+          "kind": "AMOUNT",
+          "amount_minor": 6142700
+        },
+        {
+          "key": "count",
+          "kind": "COUNT",
+          "number": 23
+        }
+      ],
+      "reply": "   \n  ",
+      "expect": "REFUSED",
+      "expect_reason": "chat.draft.empty"
+    },
+    {
+      "id": "VE-N03",
+      "kind": "silent",
+      "why": "An essay. Correct figure, wrong app.",
+      "intent": "SPEND",
+      "figures": [
+        {
+          "key": "total",
+          "kind": "AMOUNT",
+          "amount_minor": 6142700
+        },
+        {
+          "key": "count",
+          "kind": "COUNT",
+          "number": 23
+        }
+      ],
+      "reply": "You spent ₹61,427.00 and the market moves in cycles and the market moves in cycles and the market moves in cycles and the market moves in cycles and the market moves in cycles and the market moves in cycles and the market moves in cycles and the market moves in cycles and the market moves in cycles and the market moves in cycles and the market moves in cycles and the market moves in cycles and the market moves in cycles and the market moves in cycles and the market moves in cycles and the market moves in cycles and the market moves in cycles and the market moves in cycles and the market moves in cycles and the market moves in cycles and ",
+      "expect": "REFUSED",
+      "expect_reason": "chat.draft.length"
+    },
+    {
+      "id": "VE-N04",
+      "kind": "silent",
+      "why": "A model refusing, in a layer that has nothing to refuse.",
+      "intent": "SPEND",
+      "figures": [
+        {
+          "key": "total",
+          "kind": "AMOUNT",
+          "amount_minor": 6142700
+        },
+        {
+          "key": "count",
+          "kind": "COUNT",
+          "number": 23
+        }
+      ],
+      "reply": "I'm sorry, I can't help with that.",
+      "expect": "REFUSED",
+      "expect_reason": "chat.draft.figures"
+    },
+    {
+      "id": "VE-S09",
+      "kind": "shape",
+      "why": "The figure list read back on ONE line, so the list-lines rule cannot see it. Every figure is correct; it is still not a sentence.",
+      "intent": "SPEND",
+      "figures": [
+        {
+          "key": "total",
+          "kind": "AMOUNT",
+          "amount_minor": 6142700
+        },
+        {
+          "key": "count",
+          "kind": "COUNT",
+          "number": 23
+        }
+      ],
+      "reply": "total: ₹61,427.00, count: 23",
+      "expect": "REFUSED",
+      "expect_reason": "chat.draft.shape"
+    },
+    {
+      "id": "VE-S10",
+      "kind": "shape",
+      "why": "A label the prompt never asked for. Strip it rather than refuse — the sentence under it is right.",
+      "intent": "BALANCE",
+      "figures": [
+        {
+          "key": "liquid",
+          "kind": "AMOUNT",
+          "amount_minor": 982300
+        }
+      ],
+      "reply": "Answer: You have ₹9,823.00 available right now.",
+      "expect": "ACCEPTED",
+      "expect_text": "You have ₹9,823.00 available right now."
+    },
+    {
+      "id": "VE-R08",
+      "kind": "rendering",
+      "why": "A terse sentence that opens with a figure. Unusual, correct, and refusing it would be this ADR's own mistake made again.",
+      "intent": "SPEND",
+      "figures": [
+        {
+          "key": "total",
+          "kind": "AMOUNT",
+          "amount_minor": 6142700
+        },
+        {
+          "key": "count",
+          "kind": "COUNT",
+          "number": 23
+        }
+      ],
+      "reply": "23 transactions, ₹61,427.00 spent.",
+      "expect": "ACCEPTED",
+      "expect_text": "23 transactions, ₹61,427.00 spent."
+    }
+  ]
+}

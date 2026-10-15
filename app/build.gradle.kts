@@ -14,7 +14,7 @@ android {
 
     defaultConfig {
         applicationId = "com.aicfo.personalcfo"
-        versionCode = 73
+        versionCode = 74
         versionName = rootProject.file("VERSION").readText().trim()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -44,6 +44,15 @@ android {
     bundle {
         language {
             enableSplit = false
+        }
+
+        // ADR-0079: stated rather than left to the default, because the number moved. MediaPipe's
+        // `libllm_inference_engine_jni.so` is 19–33 MB **per ABI** — measured at 109 MB across the
+        // four, which took the universal release APK from 62 MB to 171 MB. With the ABI split on,
+        // a device downloads only its own (+27 MB on arm64), and the universal APK stays a local
+        // artefact for the log-strip gate. Turning this off would make the download the 171 MB.
+        abi {
+            enableSplit = true
         }
     }
 

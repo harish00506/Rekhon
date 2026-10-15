@@ -60,6 +60,16 @@ internal class AllowedRenderings(
     }
 
     /**
+     * Every rendering of every value, regardless of kind (ADR-0080).
+     * Why:    published through [FigureRenderings] so `:ml:llm` can ask the weaker question — *is
+     *         this digit one the engines produced?* — against the same strings this class checks
+     *         claims against. Kind discipline stays in [permits]; see [FigureRenderings]'s note.
+     * Result: the union of the four sets. Input: none. Output: `Set<String>`.
+     * Changelog: 2026-10-10 — Created for ADR-0080.
+     */
+    fun all(): Set<String> = amounts + percents + dates + numbers
+
+    /**
      * Whether one claim resolves.
      * Result: `true` when the span is a permitted rendering of some evidence value of its kind.
      * Input:  [claim]. Output: [Boolean].
@@ -184,9 +194,18 @@ internal class AllowedRenderings(
      *         grouping and "₹123,456.78" is not a rendering this app produces.
      * Result: the comparable form. Input: [written]. Output: [String].
      */
-    private fun normalise(written: String): String = written.filterNot { it.isWhitespace() }.lowercase(Locale.ROOT)
+    private fun normalise(written: String): String = Companion.normalise(written)
 
-    private companion object {
+    internal companion object {
+        /**
+         * What two claims must agree on to be the same claim, as a function a caller can reach.
+         * Why:    ADR-0080 publishes the renderings, and a caller that normalised its own text
+         *         differently would compare against this set and lose on the first double space.
+         * Result: the comparable form. Input: [written]. Output: [String].
+         * Changelog: 2026-10-10 — Lifted from the instance for ADR-0080.
+         */
+        fun normalise(written: String): String = written.filterNot { it.isWhitespace() }.lowercase(Locale.ROOT)
+
         const val RUPEE = "₹"
         const val PAISE = "paise"
         const val WHOLE_RUPEES = ".00"

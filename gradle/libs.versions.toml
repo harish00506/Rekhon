@@ -60,6 +60,10 @@ work = "2.10.1"
 
 # --- ML / crypto / security ---
 mlkitTextRecognition = "16.0.1"
+# ADR-0079: the on-device LLM runtime (§19, AI-ARC-007). MediaPipe's LLM Inference API, pinned —
+# it is in maintenance-only mode, which is exactly why a pin and not `latest.release`. The weights
+# are a sideloaded Apache-2.0 file, never a bundled or downloaded one (see LlmModelStore).
+mediapipeGenai = "0.10.35"
 tink = "1.17.0"
 # Issue 8.1: Argon2id for the backup KDF (SEC-005). Tink has no password-based KDF at all, so the
 # one primitive SEC-005 names that Tink cannot supply comes from here — and ONLY that primitive
@@ -180,6 +184,9 @@ work-testing = { module = "androidx.work:work-testing", version.ref = "work" }
 
 # --- ML Kit ---
 mlkit-text-recognition = { module = "com.google.mlkit:text-recognition", version.ref = "mlkitTextRecognition" }
+
+# --- On-device LLM (ADR-0079) ---
+mediapipe-tasks-genai = { module = "com.google.mediapipe:tasks-genai", version.ref = "mediapipeGenai" }
 
 # --- Crypto / security ---
 tink-android = { module = "com.google.crypto.tink:tink-android", version.ref = "tink" }

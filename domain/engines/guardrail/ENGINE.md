@@ -32,6 +32,19 @@ interface GuardrailEngine {
     else (GRD-005).
 - `Err(Validation("guardrail.attemptsMade"))` for a negative attempt count.
 
+**One other thing is public, and it is not an engine call** (ADR-0080):
+```
+object FigureRenderings {
+    fun of(evidence: GuardrailEvidence, rules: GuardrailRules = GuardrailRules()): Set<String>
+    fun normalise(written: String): String
+}
+```
+`:ml:llm` has to judge a neural model's draft by the same standard this engine will apply to it a
+moment later, so the renderings are **published rather than copied**. The set is kind-blind, for the
+weaker question that comes first — *is this digit one the engines produced at all?* — and the kind
+discipline stays inside `verify`, where it belongs. Without this the sanitiser was stricter than the
+guardrail and vetoed replies this engine would have passed, which is invisible in production.
+
 ## Formula / algorithm
 ```
 strike out evidence.names (replaced by spaces, so offsets survive)
@@ -97,3 +110,4 @@ warning label.
 | Version | Date | Change |
 |---------|------|--------|
 | 1.0 | 2026-09-23 | Initial implementation of `ai/chat/guardrail.md`, superseding `core:model`'s minimal `NumericGuardrail` (issue 9.7, ADR-0048). |
+| 1.0 | 2026-10-10 | No behaviour change. `FigureRenderings` publishes the allowlist so `:ml:llm`'s draft sanitiser can be exactly as strict as this engine and no stricter (ADR-0080). |

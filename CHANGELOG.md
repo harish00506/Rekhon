@@ -11,6 +11,67 @@ entry cites its requirement IDs (§28). See [`docs/issues/00-issue-workflow.md`]
 > Design-for-later scope: household mode, appliances, insurance, tax v2, business mode, Account
 > Aggregator and iOS via KMP — foundations in v1, each behind a flag, each with an ADR.
 
+### [0.13.10] — Enhancement: the on-device model is real, and its weights are Apache-2.0  (2026-10-10)
+
+Not an issue — §19's default engine, which **ADR-0053** recorded as missing from this build
+(**ADR-0079**).
+
+- **There is a language model in the app now.** `OnDeviceLlmEngine` runs
+  **Qwen2.5-0.5B-Instruct int8** through MediaPipe's LLM Inference API, behind the same
+  one-method `LlmEngine` port the template verbaliser already used. Nothing above that port
+  changed: `AI-CHAT` still plans, the repository still runs the tools, **AI-GRD still checks
+  every figure**.
+- **It still cannot produce a number (P-03).** It is never given anything to compute — the figures
+  reach it already rendered, Indian grouping and all, from a pure function. Its reply then passes
+  `DraftSanitiser`, which refuses **any digit that was not supplied**: a rounded `₹61,000` is
+  refused exactly as firmly as an invented figure, because it is a different claim.
+- **The weights are Apache-2.0, and that is why this model.** A Gemma-class model of the same size
+  runs just as well and is what §19's prose names; its terms of use would be the first page a
+  privacy-first AGPL repository gets read on. Apache-2.0 weights ask nobody's permission.
+- **The app does not download them, and cannot grow the code to.** 521 MB cannot fit an APK, and a
+  core path may make no network call (P-04) — so `scripts/install_llm_model.py` fetches and verifies
+  the file on a machine that is already online and pushes it into app-private storage. **The
+  presence of a verified file is the opt-in**; there is no setting, because putting half a gigabyte
+  on a phone is a more honest signal of consent than a toggle. `LlmModelStore` refuses a wrong
+  length (a stopped download) or a wrong digest (a different or damaged file).
+- **The template verbaliser is still the default path, and is not a consolation prize.** It answers
+  on every phone without the weights, on every non-English device — those sentences are translated
+  and a 0.5B English-tuned model is not — and after three neural failures in a row. The reply names
+  the model that actually wrote it (P-02).
+- **The runtime is 109 MB of native library, so the ABI split is now stated rather than assumed.**
+  `libllm_inference_engine_jni.so` is 19–33 MB per ABI and took the universal release APK from
+  62 MB to 171 MB. Play splits an App Bundle by ABI, so the actual download grows by about 27 MB on
+  arm64 — `bundle { abi { enableSplit = true } }` is written down because the line above it turns
+  the *language* split off, and a reader could reasonably assume this project turns splits off.
+- **The model is judged by the app's own renderings, not by the prompt's literal strings**
+  (**ADR-0080**). The first version refused `₹61,427` for an amount the guardrail itself would have
+  accepted — a check **stricter than the gate it guards**, whose only symptom is the plainer
+  sentence appearing every time, exactly as though no model were installed. `AllowedRenderings` is
+  now published as `FigureRenderings` and read by both layers, so `₹61,427`, `₹1.5 lakh` for exactly
+  ₹1,50,000 and `3 Nov 2026` for `2026-11-03` all pass, while `about ₹61,000` and `₹2 lakh` for
+  ₹1.5 lakh do not.
+- **The verbaliser prompt is tuned with the app's own sentences**, as data: four worked examples
+  from the template verbaliser's own `strings.xml`, plus the rules the measured failures asked for.
+- **Accuracy is measured in one direction only, and it is two rates.**
+  `ai/eval/verbaliser-eval.json` — 46 frozen cases — asks whether the reply states exactly the
+  figures it was given, in one sentence, in a form this app writes. Not fluency, not helpfulness.
+  **Both floors are 100%**: no drifted or invented figure accepted, *and* no faithful reply refused
+  — the second being the rate that would otherwise hide the feature being switched off. Written
+  before the code and it earned it: first run 39/43, and both failures were real defects — the
+  figure list read back as a list passed every figure check there is, and a misstated amount was
+  reported as silence. Three cases added after that found three more: the same list on **one** line
+  slipped through, a stray `Answer:` label should be stripped rather than refused, and
+  `23 transactions, ₹61,427.00 spent.` was being refused for opening with a figure — the same
+  over-strictness, made a second time. Final 46/46. `aiEval` now names six frozen sets.
+- **The real model's own accuracy is a device measurement, and the set says so.** The frozen replies
+  are hand-written in the style a 0.5B model produces, not sampled from the weights.
+  `OnDeviceVerbaliserAccuracyTest` runs the real runtime on a device at a 67% floor and skips
+  without weights.
+- **SEC-003 gained a third exemption, argued rather than assumed.** Verifying the model file means a
+  `MessageDigest` in production code. The exemption is one named file, and three lint tests pin it:
+  the named site is clean, the same code under another name is flagged, and a `Cipher` at the named
+  site is still flagged. The crypto audit was re-read and now carries a §6 recording it.
+
 ### [0.13.9] — Maintenance: `import_batches` exists, and the wipe is checked  (2026-10-10)
 
 Not an issue — the open finding ADR-0074 recorded, closed on request (**ADR-0078**).

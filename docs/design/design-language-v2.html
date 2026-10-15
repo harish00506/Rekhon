@@ -1,0 +1,411 @@
+<title>Rekhon Design v2</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a spec sheet — page chrome in a display sans, six faithful phone frames in a side-scrolling rail, tokens and rationale beneath. */
+:root {
+  --canvas: #eef3f2;
+  --surface: #ffffff;
+  --surface-2: #f6faf9;
+  --ink: #0f1f1e;
+  --ink-2: #4e6160;
+  --ink-3: #7b8d8c;
+  --line: #d7e2e0;
+  --accent: #00696e;
+  --accent-ink: #ffffff;
+  --accent-wash: #d7eceb;
+  --pos: #146c2e;
+  --neg: #ba1a1a;
+  --warn: #8a5000;
+  --warn-wash: #fbeedd;
+  --r-card: 20px;
+  --r-chip: 999px;
+  --display: "Bricolage Grotesque", system-ui, sans-serif;
+  --app: "Roboto", system-ui, sans-serif;
+  --mono: "Roboto Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --canvas: #0b1211; --surface: #141d1c; --surface-2: #1a2423;
+    --ink: #e2ecea; --ink-2: #9bb0ae; --ink-3: #748987; --line: #233230;
+    --accent: #4fd8de; --accent-ink: #00363a; --accent-wash: #11302f;
+    --pos: #7ddc97; --neg: #ffb4ab; --warn: #ffb86b; --warn-wash: #2c2013;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --canvas: #0b1211; --surface: #141d1c; --surface-2: #1a2423;
+  --ink: #e2ecea; --ink-2: #9bb0ae; --ink-3: #748987; --line: #233230;
+  --accent: #4fd8de; --accent-ink: #00363a; --accent-wash: #11302f;
+  --pos: #7ddc97; --neg: #ffb4ab; --warn: #ffb86b; --warn-wash: #2c2013;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--canvas); color: var(--ink); font-family: var(--app); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 1100px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 72px; }
+h1 { font-family: var(--display); font-size: clamp(32px, 6vw, 46px); font-weight: 700; line-height: 1.05; margin: 0 0 12px; letter-spacing: -0.02em; text-wrap: balance; }
+.lede { font-size: clamp(16px, 2.6vw, 19px); color: var(--ink-2); max-width: 62ch; margin: 0 0 28px; }
+h2 { font-family: var(--display); font-size: clamp(22px, 4vw, 28px); font-weight: 700; margin: 48px 0 6px; letter-spacing: -0.01em; }
+h2 + .sub { color: var(--ink-2); margin: 0 0 20px; max-width: 70ch; }
+.eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); margin: 0 0 8px; }
+
+/* ---- the phone rail ---- */
+.rail { display: flex; gap: 20px; overflow-x: auto; padding-block: 6px 18px; scroll-snap-type: x mandatory; }
+.frame { flex: 0 0 auto; width: 320px; scroll-snap-align: start; }
+.frame > figcaption { font-size: 13px; color: var(--ink-2); margin-top: 10px; }
+.frame > figcaption b { color: var(--ink); font-weight: 500; display: block; font-size: 14px; }
+.phone {
+  width: 320px; height: 650px; border: 1px solid var(--line); border-radius: 34px;
+  background: var(--canvas); overflow: hidden; display: flex; flex-direction: column;
+  box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 12px 28px -18px rgba(0,0,0,.35);
+}
+.statusbar { display: flex; justify-content: space-between; align-items: center; padding: 10px 18px 4px; font-size: 11px; color: var(--ink-3); font-family: var(--mono); }
+.screen { flex: 1; overflow-y: auto; padding: 4px 14px 14px; display: flex; flex-direction: column; gap: 12px; }
+.screen::-webkit-scrollbar { width: 0; }
+.appbar { display: flex; align-items: baseline; justify-content: space-between; padding: 6px 4px 0; }
+.appbar h3 { font-family: var(--app); font-size: 20px; font-weight: 500; margin: 0; letter-spacing: -0.01em; }
+.appbar .eye { font-size: 12px; color: var(--ink-2); }
+
+/* ---- app components ---- */
+.card { background: var(--surface); border-radius: var(--r-card); padding: 14px; border: 1px solid var(--line); }
+.card.flat { border-color: transparent; background: var(--surface-2); }
+.answer { background: var(--accent-wash); border: 1px solid transparent; }
+.label { font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-2); margin: 0 0 2px; }
+.figure { font-size: 34px; font-weight: 500; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; margin: 0; line-height: 1.1; }
+.figure.sm { font-size: 19px; font-weight: 500; }
+.meaning { font-size: 13px; color: var(--ink-2); margin: 4px 0 0; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.row + .row { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
+.row .name { font-size: 14px; }
+.row .note { font-size: 12px; color: var(--ink-2); }
+.amt { font-variant-numeric: tabular-nums; font-size: 14.5px; font-weight: 500; white-space: nowrap; }
+.amt.pos { color: var(--pos); }
+.amt.neg { color: var(--neg); }
+.sign { font-family: var(--mono); font-size: 12px; }
+.bar { height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; display: flex; margin-top: 8px; }
+.bar > i { display: block; height: 100%; }
+.bar > i.spent { background: var(--accent); }
+.bar > i.over { background: var(--warn); }
+.pace { position: relative; }
+.pace .tick { position: absolute; top: -3px; width: 2px; height: 14px; background: var(--ink); border-radius: 2px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-size: 12.5px; padding: 6px 11px; border-radius: var(--r-chip); border: 1px solid var(--line); color: var(--ink-2); background: var(--surface); white-space: nowrap; }
+.chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.chip.ghost { background: none; }
+.tag { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.04em; padding: 3px 7px; border-radius: 4px; background: var(--accent-wash); color: var(--accent); }
+.tag.warn { background: var(--warn-wash); color: var(--warn); }
+.btn { display: block; width: 100%; text-align: center; padding: 14px; border-radius: 16px; background: var(--accent); color: var(--accent-ink); font-size: 15.5px; font-weight: 500; border: none; }
+.btn.secondary { background: none; color: var(--accent); border: 1px solid var(--accent); }
+.why { border: none; background: none; padding: 0; margin-top: 10px; color: var(--accent); font-size: 13px; font-family: var(--app); text-align: left; }
+.work { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); font-size: 12.5px; color: var(--ink-2); display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; }
+.work dt { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+.work dd { margin: 0; }
+.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.keypad button { font-family: var(--app); font-size: 20px; padding: 12px 0; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-variant-numeric: tabular-nums; }
+.nav { display: flex; justify-content: space-around; padding: 8px 4px 10px; border-top: 1px solid var(--line); background: var(--surface); }
+.nav span { font-size: 10.5px; color: var(--ink-3); display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.nav span.on { color: var(--accent); }
+.nav i { width: 18px; height: 18px; border-radius: 6px; background: currentColor; opacity: .35; display: block; }
+.nav span.on i { opacity: 1; }
+.bubble { max-width: 86%; padding: 10px 12px; border-radius: 16px; font-size: 14px; }
+.bubble.me { margin-left: auto; background: var(--accent); color: var(--accent-ink); border-bottom-right-radius: 6px; }
+.bubble.app { background: var(--surface); border: 1px solid var(--line); border-bottom-left-radius: 6px; }
+.switch { width: 40px; height: 24px; border-radius: 999px; background: var(--line); position: relative; flex: 0 0 auto; }
+.switch.on { background: var(--accent); }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--surface); }
+.switch.on::after { left: auto; right: 3px; }
+.blurred { filter: blur(6px); }
+@media (max-width: 420px) {
+  .frame, .phone { width: min(320px, calc(100vw - 72px)); }
+}
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">Design language · v2 proposal</p>
+  <h1>One answer per screen</h1>
+  <p class="lede">
+    v1 put every true thing on the dashboard at once: net worth, Safe-to-Spend, budgets, insights,
+    a forecast. All correct, all competing. v2 keeps the same engines, the same tokens and the same
+    rules, and changes what the screen leads with — one figure, one sentence saying what it means,
+    and the working one tap away. Six screens on demo data.
+  </p>
+  <p class="sub" style="margin-top:-14px">
+    The figures on this page are illustrative. The clickable prototype computes everything from one
+    seeded ledger, so its numbers are the consistent ones: <code>docs/design/v2-prototype.html</code>.
+  </p>
+
+  <div class="rail">
+
+    <!-- 1 · Today -->
+    <figure class="frame">
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>offline · all local</span></div>
+        <div class="screen">
+          <div class="appbar"><h3>Today</h3><span class="eye">Tue 13 Oct</span></div>
+          <div class="card">
+            <p class="label">Safe to spend</p>
+            <p class="figure">₹18,420.00</p>
+            <p class="meaning">That is ₹1,180 a day until 31 October, after rent, EMIs and your ₹15,000 emergency floor.</p>
+            <div class="bar pace"><i class="spent" style="width:46%"></i><i class="tick" style="left:52%"></i></div>
+            <p class="meaning" style="margin-top:6px">46% of the month spent · even pace would be 52%</p>
+          </div>
+          <div class="card flat">
+            <div class="row">
+              <div><p class="label">Net worth</p><p class="figure sm">₹12,48,300</p></div>
+              <div style="text-align:right"><p class="label">30 days</p><p class="amt pos"><span class="sign">+</span>₹41,250 up</p></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="row" style="align-items:flex-start">
+              <div><p class="label">Watch this</p><p class="name" style="font-size:15px">Dining is pacing 38% above plan</p></div>
+              <span class="tag warn">needs a look</span>
+            </div>
+            <p class="meaning">At this pace the month lands at ₹9,800 against a ₹9,000 budget.</p>
+            <button class="why" type="button">Show the work ↓</button>
+            <dl class="work">
+              <dt>spent</dt><dd>₹4,140.00 over 13 days</dd>
+              <dt>planned</dt><dd>₹9,000.00 for October</dd>
+              <dt>rule</dt><dd>RULE-BUD-PACE v1.2</dd>
+              <dt>engine</dt><dd>AI-BUD 1.4 · 13 Oct, 09:12</dd>
+            </dl>
+          </div>
+        </div>
+        <div class="nav">
+          <span class="on"><i></i>Today</span><span><i></i>Money</span><span><i></i>Plan</span><span><i></i>Ask</span><span><i></i>You</span>
+        </div>
+      </div>
+      <figcaption><b>Today</b>One figure, one sentence of meaning, then pace. Everything else is a tap away.</figcaption>
+    </figure>
+
+    <!-- 2 · Add -->
+    <figure class="frame">
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>offline · all local</span></div>
+        <div class="screen">
+          <div class="appbar"><h3>Add</h3><span class="eye">tap 2 of 3</span></div>
+          <div class="card" style="text-align:center">
+            <p class="label">Spent</p>
+            <p class="figure" style="font-size:40px">₹1,240<span style="color:var(--ink-3)">.00</span></p>
+            <p class="meaning">Cash · today</p>
+          </div>
+          <div class="chips">
+            <span class="chip on">Food</span><span class="chip">Transport</span><span class="chip">Bills</span>
+            <span class="chip">Health</span><span class="chip">Home</span><span class="chip ghost">+ more</span>
+          </div>
+          <div class="keypad">
+            <button type="button">1</button><button type="button">2</button><button type="button">3</button>
+            <button type="button">4</button><button type="button">5</button><button type="button">6</button>
+            <button type="button">7</button><button type="button">8</button><button type="button">9</button>
+            <button type="button">.</button><button type="button">0</button><button type="button">⌫</button>
+          </div>
+          <button class="btn" type="button">Save</button>
+          <p class="meaning" style="text-align:center">Scan a receipt instead · Split this</p>
+        </div>
+      </div>
+      <figcaption><b>Add</b>Amount, category, save. The keypad is the screen; nothing else asks for attention.</figcaption>
+    </figure>
+
+    <!-- 3 · Budgets -->
+    <figure class="frame">
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>offline · all local</span></div>
+        <div class="screen">
+          <div class="appbar"><h3>Budgets</h3><span class="eye">October</span></div>
+          <div class="card flat">
+            <p class="label">Planned this month</p>
+            <p class="figure sm">₹42,000.00 · ₹18,640 left</p>
+            <p class="meaning">Projection: lands at ₹43,100. Two envelopes are pacing over.</p>
+          </div>
+          <div class="card">
+            <div class="row">
+              <div><p class="name">Dining</p><p class="note">₹4,140 of ₹9,000 · lands at ₹9,800</p></div>
+              <span class="tag warn">over pace</span>
+            </div>
+            <div class="bar pace"><i class="spent" style="width:46%"></i><i class="over" style="width:6%"></i><i class="tick" style="left:42%"></i></div>
+            <div class="row" style="margin-top:14px">
+              <div><p class="name">Transport</p><p class="note">₹2,980 of ₹6,000 · lands at ₹6,100</p></div>
+              <span class="tag">on pace</span>
+            </div>
+            <div class="bar pace"><i class="spent" style="width:49%"></i><i class="tick" style="left:42%"></i></div>
+            <div class="row" style="margin-top:14px">
+              <div><p class="name">Groceries</p><p class="note">₹6,420 of ₹12,000 · lands at ₹11,200</p></div>
+              <span class="tag">on pace</span>
+            </div>
+            <div class="bar pace"><i class="spent" style="width:53%"></i><i class="tick" style="left:42%"></i></div>
+          </div>
+          <p class="meaning">Alerts at 80% and 100%, once each. Nothing pings you about a coffee.</p>
+        </div>
+      </div>
+      <figcaption><b>Budgets</b>Every row answers three questions: spent, pace, and where the month lands.</figcaption>
+    </figure>
+
+    <!-- 4 · Money -->
+    <figure class="frame">
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>offline · all local</span></div>
+        <div class="screen">
+          <div class="appbar"><h3>Money</h3><span class="eye">blur ▣</span></div>
+          <div class="card">
+            <p class="label">Net worth</p>
+            <p class="figure">₹12,48,300</p>
+            <p class="meaning">Assets ₹14,02,100 minus what you owe ₹1,53,800. Snapshot taken daily.</p>
+          </div>
+          <div class="card">
+            <p class="label">You own</p>
+            <div class="row"><div><p class="name">HDFC savings</p><p class="note">bank</p></div><span class="amt">₹2,41,500</span></div>
+            <div class="row"><div><p class="name">Index SIP</p><p class="note">XIRR 14.2% · not cost/value</p></div><span class="amt">₹8,12,400</span></div>
+            <div class="row"><div><p class="name">Sovereign gold</p><p class="note">24g · 8% of portfolio</p></div><span class="amt">₹2,10,200</span></div>
+            <div class="row"><div><p class="name">Cash</p><p class="note">wallet</p></div><span class="amt blurred">₹38,000</span></div>
+          </div>
+          <div class="card">
+            <p class="label">You owe</p>
+            <div class="row"><div><p class="name">HDFC credit card</p><p class="note">cycle ends 18 Oct · 31% used</p></div><span class="amt neg"><span class="sign">−</span>₹18,420</span></div>
+            <div class="row"><div><p class="name">Home loan</p><p class="note">EMI ₹24,100 · ₹19,800 of it interest</p></div><span class="amt neg"><span class="sign">−</span>₹1,35,380</span></div>
+          </div>
+        </div>
+      </div>
+      <figcaption><b>Money</b>Own and owe, in words. One tap blurs every amount on every screen, widget included.</figcaption>
+    </figure>
+
+    <!-- 5 · Ask -->
+    <figure class="frame">
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>offline · all local</span></div>
+        <div class="screen">
+          <div class="appbar"><h3>Ask</h3><span class="eye">on-device</span></div>
+          <div class="bubble me">Where did my money go this month?</div>
+          <div class="card answer">
+            <p class="name" style="font-size:15px">You spent ₹61,427.00 across 23 transactions.</p>
+            <div class="chips" style="margin-top:10px">
+              <span class="tag">query_spend</span><span class="tag">AI-STS 1.3</span><span class="tag">checked</span>
+            </div>
+            <button class="why" type="button">Show the work ↓</button>
+            <dl class="work">
+              <dt>total</dt><dd>₹61,427.00 — from your ledger, 1–13 Oct</dd>
+              <dt>count</dt><dd>23 transactions</dd>
+              <dt>model</dt><dd>on-device · wrote the words, not the figures</dd>
+            </dl>
+          </div>
+          <div class="bubble me">Should I buy RELIANCE?</div>
+          <div class="card">
+            <p class="name" style="font-size:15px">I can't pick stocks for you.</p>
+            <p class="meaning">I can show whether today scores better than usual for deploying into your watched index, with the full signal trace.</p>
+          </div>
+          <div class="chips"><span class="chip">Can I afford ₹45,000?</span><span class="chip">When can I buy the bike?</span></div>
+        </div>
+      </div>
+      <figcaption><b>Ask</b>Figures come from tools and are re-checked. Refusals say what it <em>can</em> do.</figcaption>
+    </figure>
+
+    <!-- 6 · You -->
+    <figure class="frame">
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span>offline · all local</span></div>
+        <div class="screen">
+          <div class="appbar"><h3>You</h3><span class="eye">privacy</span></div>
+          <div class="card flat">
+            <p class="name" style="font-size:15px">Everything works offline</p>
+            <p class="meaning">No account, no server, nothing uploaded. Two features can reach out, and both are off.</p>
+          </div>
+          <div class="card">
+            <div class="row">
+              <div><p class="name">Read bank SMS</p><p class="note">on this device only · never uploaded</p></div>
+              <span class="switch" aria-hidden="true"></span>
+            </div>
+            <div class="row">
+              <div><p class="name">Market data</p><p class="note">granted 4 Sep · revoked 2 Oct</p></div>
+              <span class="switch" aria-hidden="true"></span>
+            </div>
+            <div class="row">
+              <div><p class="name">Hide amounts</p><p class="note">masks every figure, widget included</p></div>
+              <span class="switch on" aria-hidden="true"></span>
+            </div>
+          </div>
+          <div class="card">
+            <div class="row"><div><p class="name">Export your data</p><p class="note">one JSON archive, yours to keep</p></div><span class="note">→</span></div>
+            <div class="row"><div><p class="name">Encrypted backup</p><p class="note">passphrase never stored</p></div><span class="note">→</span></div>
+          </div>
+          <button class="btn secondary" type="button">Erase everything</button>
+          <p class="meaning" style="text-align:center">Destroys the key first. Cannot reach a backup you exported yourself.</p>
+        </div>
+      </div>
+      <figcaption><b>You</b>Consent shows its record, not just its switch. The erase says what it cannot reach.</figcaption>
+    </figure>
+
+  </div>
+
+  <h2>What changed, and why</h2>
+  <p class="sub">Seven moves. None of them needs a new engine, a new dependency, or a new colour seed.</p>
+  <div class="rail" style="scroll-snap-type:none">
+    <div class="card" style="flex:1 1 300px; min-width:min(300px, 100%)">
+      <p class="label">1 · One answer</p>
+      <p class="meaning" style="color:var(--ink)">The shipped dashboard already leads with Safe-to-Spend. What it then does is stack fourteen navigation rows — budgets, accounts, goals, vehicles, settings, export, refresh — at one weight. Those become five tabs, and the screen goes back to answering one question.</p>
+    </div>
+    <div class="card" style="flex:1 1 300px; min-width:min(300px, 100%)">
+      <p class="label">2 · A meaning line under every figure</p>
+      <p class="meaning" style="color:var(--ink)">“₹18,420.00” is data. “₹1,180 a day until 31 October, after rent, EMIs and your emergency floor” is an answer. The sentence is built from the same engine result, so it cannot disagree with the number above it.</p>
+    </div>
+    <div class="card" style="flex:1 1 300px; min-width:min(300px, 100%)">
+      <p class="label">3 · The work is one tap, not one screen</p>
+      <p class="meaning" style="color:var(--ink)">P-02 said show the work; v1 put it on a separate evidence screen almost nobody reached. Now it is an inline disclosure on the card itself: inputs, the rule id and version, the engine and when it ran.</p>
+    </div>
+    <div class="card" style="flex:1 1 300px; min-width:min(300px, 100%)">
+      <p class="label">4 · Pace is drawn, not described</p>
+      <p class="meaning" style="color:var(--ink)">One bar carries three facts: spent, the even-pace marker, and the overshoot in the warning tone. The projection stays in words, because “lands at ₹9,800 of ₹9,000” is the part a person acts on.</p>
+    </div>
+    <div class="card" style="flex:1 1 300px; min-width:min(300px, 100%)">
+      <p class="label">5 · Bigger targets, fewer of them</p>
+      <p class="meaning" style="color:var(--ink)">Add is a keypad and one primary button. Categories are 44px chips, not a dropdown. Every screen has exactly one primary action; secondary actions are text, so there is never a choice between two filled buttons.</p>
+    </div>
+    <div class="card" style="flex:1 1 300px; min-width:min(300px, 100%)">
+      <p class="label">6 · Trust is visible, not claimed</p>
+      <p class="meaning" style="color:var(--ink)">The status line says “offline · all local” on every screen. Consent rows show the grant and revoke dates. The erase states what it cannot reach. These are the app's main promises, so they belong in the chrome.</p>
+    </div>
+    <div class="card" style="flex:1 1 300px; min-width:min(300px, 100%)">
+      <p class="label">7 · Calmer surfaces, same seed</p>
+      <p class="meaning" style="color:var(--ink)">The trust-teal seed and every semantic role stay exactly as they are — this is not a repaint. What changes is restraint: 20px radii, one hairline instead of shadows, two surface levels, and amounts in tabular figures at a larger size than anything around them.</p>
+    </div>
+  </div>
+
+  <h2>Tokens</h2>
+  <p class="sub">The same Material 3 roles already in <code>:core:designsystem</code>. v2 adds a wash tint per semantic role, two surface levels and one radius scale; it adds no new seed and no new font.</p>
+  <div class="card" style="overflow-x:auto">
+    <table style="width:100%; border-collapse:collapse; font-size:13.5px; min-width:520px">
+      <thead>
+        <tr style="text-align:left; color:var(--ink-2)">
+          <th style="padding:6px 8px; font-weight:500">Token</th><th style="padding:6px 8px; font-weight:500">Light</th><th style="padding:6px 8px; font-weight:500">Dark</th><th style="padding:6px 8px; font-weight:500">Use</th>
+        </tr>
+      </thead>
+      <tbody style="font-family:var(--mono); font-size:12.5px">
+        <tr><td style="padding:6px 8px">primary</td><td style="padding:6px 8px">#00696E</td><td style="padding:6px 8px">#4FD8DE</td><td style="padding:6px 8px; font-family:var(--app)">one primary action per screen</td></tr>
+        <tr><td style="padding:6px 8px">canvas</td><td style="padding:6px 8px">#EEF3F2</td><td style="padding:6px 8px">#0B1211</td><td style="padding:6px 8px; font-family:var(--app)">app background</td></tr>
+        <tr><td style="padding:6px 8px">surface</td><td style="padding:6px 8px">#FFFFFF</td><td style="padding:6px 8px">#141D1C</td><td style="padding:6px 8px; font-family:var(--app)">cards that hold a figure</td></tr>
+        <tr><td style="padding:6px 8px">surface-2</td><td style="padding:6px 8px">#F6FAF9</td><td style="padding:6px 8px">#1A2423</td><td style="padding:6px 8px; font-family:var(--app)">quieter cards, no border</td></tr>
+        <tr><td style="padding:6px 8px">positive</td><td style="padding:6px 8px">#146C2E</td><td style="padding:6px 8px">#7DDC97</td><td style="padding:6px 8px; font-family:var(--app)">credit, gain — always with “+”</td></tr>
+        <tr><td style="padding:6px 8px">negative</td><td style="padding:6px 8px">#BA1A1A</td><td style="padding:6px 8px">#FFB4AB</td><td style="padding:6px 8px; font-family:var(--app)">debit, loss — always with “−”</td></tr>
+        <tr><td style="padding:6px 8px">warning</td><td style="padding:6px 8px">#8A5000</td><td style="padding:6px 8px">#FFB86B</td><td style="padding:6px 8px; font-family:var(--app)">over pace, crunch — always with a word</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="sub" style="margin-top:14px">
+    Type: Roboto throughout (no bundled font), amounts in tabular figures with Indian grouping.
+    Figure 34sp · figure-small 19sp · title 20sp · body 15sp · meaning 13sp · label 11.5sp with
+    0.06em tracking. Spacing 4 / 8 / 12 / 14 / 20. Radii: 20px card, 16px button, 999px chip.
+    Everything holds at 200% font because no card has a fixed height.
+  </p>
+
+  <h2>Rules this design does not get to break</h2>
+  <div class="card">
+    <div class="row"><div><p class="name">Colour never signals alone</p><p class="note">Every semantic colour is paired with a sign or a word, so it survives greyscale, colour-blindness and the privacy blur.</p></div></div>
+    <div class="row"><div><p class="name">No figure without provenance within one tap</p><p class="note">If a card shows a number, its disclosure names the rule and engine that produced it.</p></div></div>
+    <div class="row"><div><p class="name">Every string is a resource</p><p class="note">Including the meaning lines — they are translated into Hindi, Kannada and Tamil like everything else.</p></div></div>
+    <div class="row"><div><p class="name">Nothing invents a number for the layout's sake</p><p class="note">An empty state says it is empty. A blocked reply shows no figures at all.</p></div></div>
+    <div class="row"><div><p class="name">Demo data in every mock and screenshot</p><p class="note">The figures on this page are seeded, not anyone's money.</p></div></div>
+  </div>
+
+  <p class="sub" style="margin-top:28px">
+    Spec: <code>docs/design/design-language-v2.html</code> (this page) ·
+    skill: <code>.claude/skills/screen-design/SKILL.md</code> ·
+    tokens to change: <code>core/designsystem/.../Color.kt</code>, <code>Type.kt</code>, <code>CfoDimens.kt</code>.
+    Deviating from a rule above needs an ADR, like any other deviation.
+  </p>
+</div>

@@ -13,19 +13,25 @@ import com.aicfo.domain.engines.chat.ToolFigure
 import com.aicfo.domain.engines.chat.VerbalisationDraft
 
 /**
- * The model the app ships with (issue 10.5; §19, AI-ARC-007, P-03, P-04).
+ * The model every phone has (issue 10.5; §19, AI-ARC-007, P-03, P-04).
  *
- * Why:  §19's default engine is an on-device compact model, and there is not one in this build —
- *       a Gemma-class model is hundreds of megabytes that cannot live in a repository, and AICore
- *       needs hardware most phones this app targets do not have. What ships instead is this: a
+ * Why:  §19's default engine is an on-device compact model, and the weights are hundreds of
+ *       megabytes that cannot live in a repository or an APK. So this ships regardless: a
  *       deterministic verbaliser that says the same things from the same tool results. It is not a
  *       stand-in for testing — it **is** the offline path, and it is the reason the assistant works
  *       in airplane mode on a ₹12,000 phone (P-04). ADR-0053 records what a real model would
  *       replace and what it would not.
+ *
+ *       Since ADR-0079 a real model does exist, for a phone whose owner has installed the weights —
+ *       and this class is still the path for every phone that has not, for every non-English device
+ *       (these sentences are translated; a 0.5B English-tuned model is not), and for every turn the
+ *       neural model fails. [SelectingLlmEngine] decides; nothing here changed.
  * What: one sentence per intent, from `strings.xml`, with every slot filled from a tool figure.
  * Result: text with no number of its own. It still goes through the guardrail, because the point
  *         of AI-ARC-004 is that *nothing* skips it — including this.
  * Changelog: 2026-09-26 — Created for issue 10.5.
+ *            2026-10-10 — ADR-0079: no code change; it is now one of two models rather than the
+ *            only one, and the doc above said "there is not one in this build".
  *
  * Input:  [context] — for the string resources only. Output: an [LlmEngine].
  */

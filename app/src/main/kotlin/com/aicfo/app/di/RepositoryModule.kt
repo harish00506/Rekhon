@@ -89,7 +89,7 @@ import com.aicfo.domain.engines.stream.StreamEngine
 import com.aicfo.domain.engines.stream.StreamEngineFactory
 import com.aicfo.domain.engines.vehicle.VehicleEngine
 import com.aicfo.domain.engines.vehicle.VehicleEngineFactory
-import com.aicfo.ml.llm.TemplateLlmEngine
+import com.aicfo.ml.llm.LlmEngineFactory
 import com.aicfo.ml.ocr.ReceiptTextRecognizer
 import dagger.Module
 import dagger.Provides
@@ -943,17 +943,22 @@ object RepositoryModule {
 
     /**
      * The model behind [LlmEngine] (issue 10.5; §19, AI-ARC-007).
-     * Why:    the template verbaliser is what the app ships with, and it is the offline path rather
-     *         than a stand-in — ADR-0053 records what a neural model would replace. Swapping it is
-     *         this binding and nothing else.
-     * Result: the model. Input: [context]. Output: [LlmEngine].
+     * Why:    the app has two models and the choice between them is not a DI concern: it depends on
+     *         whether this device has the weights installed, which only the factory can answer
+     *         (ADR-0079). This binding therefore names one factory and knows nothing about either
+     *         model — the seam ADR-0053 promised a neural model would arrive through.
+     * Result: the template verbaliser on a phone with no weights, the on-device model on a phone
+     *         with them. Either way the guardrail runs (AI-ARC-004). Input: [context].
+     *         Output: [LlmEngine].
      * Changelog: 2026-09-26 — Created for issue 10.5.
+     *            2026-10-10 — ADR-0079: LlmEngineFactory replaces the direct TemplateLlmEngine
+     *            construction, so the neural path exists without this file changing again.
      */
     @Provides
     @Singleton
     fun provideLlmEngine(
         @ApplicationContext context: Context,
-    ): LlmEngine = TemplateLlmEngine(context)
+    ): LlmEngine = LlmEngineFactory.create(context)
 
     /**
      * The complete list of what chat may read (issue 10.5; §19.2).

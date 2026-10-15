@@ -11,8 +11,6 @@ import com.aicfo.domain.engines.guardrail.GuardrailEngineFactory
 import com.aicfo.domain.engines.guardrail.GuardrailEvidence
 import com.aicfo.domain.engines.guardrail.GuardrailInput
 import com.aicfo.domain.engines.guardrail.GuardrailVerdict
-import java.time.LocalDate
-import java.time.format.DateTimeParseException
 
 /**
  * AI-CHAT 1.0 — intent in, checked answer out (issue 10.5; §19).
@@ -171,26 +169,13 @@ internal class IntentRoutingChatEngine(
 
     /**
      * Turns the tools' figures into the guardrail's allowlist.
-     * Why:    AI-GRD checks a claim against values **of its kind**, so the split has to survive the
-     *         journey: a count of 12 and ₹12 are different claims, and collapsing them would let a
-     *         model state one as the other.
+     * Why:    moved to [ChatEvidence] for ADR-0080, because `:ml:llm` has to judge a neural draft by
+     *         the same standard this engine's guardrail will apply to it a moment later. Two copies
+     *         of this mapping would mean the stricter layer silently vetoing replies the guardrail
+     *         would have passed.
      * Result: the evidence. Input: [figures]. Output: [GuardrailEvidence].
      */
-    private fun evidenceOf(figures: List<ToolFigure>): GuardrailEvidence =
-        GuardrailEvidence(
-            amounts = figures.mapNotNull { if (it.kind == FigureKind.AMOUNT) it.amount else null },
-            percents = figures.mapNotNull { if (it.kind == FigureKind.PERCENT) it.number else null },
-            counts = figures.mapNotNull { if (it.kind == FigureKind.COUNT) it.number else null },
-            dates = figures.mapNotNull { if (it.kind == FigureKind.DATE) it.isoDate?.let(::parseDate) else null },
-        )
-
-    /** Result: an ISO date, or `null` when it is not one. Input: [isoDate]. Output: `LocalDate?`. */
-    private fun parseDate(isoDate: String): LocalDate? =
-        try {
-            LocalDate.parse(isoDate)
-        } catch (_: DateTimeParseException) {
-            null
-        }
+    private fun evidenceOf(figures: List<ToolFigure>): GuardrailEvidence = ChatEvidence.of(figures)
 
     /**
      * Result: who answered (AI-ARC-003). Input: [composition]. Output: [EngineProvenance].

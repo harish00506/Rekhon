@@ -1,0 +1,1456 @@
+<title>Rekhon Prototype</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one phone, centred on desktop and full-bleed under 520px; every screen renders into #screen, the tab bar is fixed to the frame. */
+:root {
+  --canvas: #eef3f2; --surface: #ffffff; --surface-2: #f6faf9;
+  --ink: #0f1f1e; --ink-2: #4e6160; --ink-3: #7b8d8c; --line: #d7e2e0;
+  --accent: #00696e; --accent-ink: #ffffff; --accent-wash: #d7eceb;
+  --pos: #146c2e; --neg: #ba1a1a; --warn: #8a5000; --warn-wash: #fbeedd;
+  --app: "Roboto", system-ui, sans-serif; --mono: "Roboto Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --canvas: #0b1211; --surface: #141d1c; --surface-2: #1a2423;
+    --ink: #e2ecea; --ink-2: #9bb0ae; --ink-3: #748987; --line: #233230;
+    --accent: #4fd8de; --accent-ink: #00363a; --accent-wash: #11302f;
+    --pos: #7ddc97; --neg: #ffb4ab; --warn: #ffb86b; --warn-wash: #2c2013;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --canvas: #0b1211; --surface: #141d1c; --surface-2: #1a2423;
+  --ink: #e2ecea; --ink-2: #9bb0ae; --ink-3: #748987; --line: #233230;
+  --accent: #4fd8de; --accent-ink: #00363a; --accent-wash: #11302f;
+  --pos: #7ddc97; --neg: #ffb4ab; --warn: #ffb86b; --warn-wash: #2c2013;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--canvas); color: var(--ink); font-family: var(--app); font-size: 15px; line-height: 1.5; }
+.stage { min-height: 100%; display: flex; flex-direction: column; align-items: center; gap: 14px; padding-inline: 16px; padding-block: 22px 28px; }
+.stage > header { text-align: center; max-width: 44ch; }
+.stage > header h1 { font-size: 19px; font-weight: 500; margin: 0 0 4px; letter-spacing: -0.01em; }
+.stage > header p { margin: 0; font-size: 13px; color: var(--ink-2); }
+.phone {
+  width: 100%; max-width: 390px; height: min(800px, calc(100vh - 150px)); min-height: 560px;
+  background: var(--canvas); border: 1px solid var(--line); border-radius: 30px;
+  display: flex; flex-direction: column; overflow: hidden; position: relative;
+  box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 18px 40px -26px rgba(0,0,0,.4);
+}
+.statusbar { display: flex; justify-content: space-between; align-items: center; padding: 9px 18px 3px; font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); flex: 0 0 auto; }
+#screen { flex: 1 1 auto; overflow-y: auto; padding: 2px 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+#screen::-webkit-scrollbar { width: 0; }
+.tabbar { flex: 0 0 auto; display: flex; background: var(--surface); border-top: 1px solid var(--line); }
+.tabbar button { flex: 1; background: none; border: none; padding: 8px 2px 11px; color: var(--ink-3); font-family: var(--app); font-size: 10.5px; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; }
+.tabbar button[aria-current="page"] { color: var(--accent); }
+.tabbar .dot { width: 17px; height: 17px; border-radius: 6px; border: 2px solid currentColor; opacity: .55; }
+.tabbar button[aria-current="page"] .dot { opacity: 1; background: color-mix(in srgb, currentColor 22%, transparent); }
+.tabbar .fab .dot { border-radius: 50%; background: var(--accent); border-color: var(--accent); opacity: 1; }
+.tabbar button[aria-current="page"].fab .dot { background: var(--accent); }
+
+.appbar { display: flex; align-items: center; gap: 10px; padding: 6px 2px 0; }
+.appbar h2 { font-size: 21px; font-weight: 500; margin: 0; letter-spacing: -0.01em; flex: 1; }
+.appbar .ghostbtn { background: none; border: none; color: var(--ink-2); font-size: 12.5px; font-family: var(--app); cursor: pointer; padding: 4px; }
+.appbar .back { background: none; border: none; color: var(--accent); font-size: 17px; cursor: pointer; padding: 2px 6px 2px 0; line-height: 1; }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 14px; }
+.card.flat { background: var(--surface-2); border-color: transparent; }
+.card.wash { background: var(--accent-wash); border-color: transparent; }
+.label { font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-2); margin: 0 0 3px; }
+.figure { font-size: 33px; font-weight: 500; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; margin: 0; line-height: 1.12; }
+.figure.sm { font-size: 19px; }
+.meaning { font-size: 13px; color: var(--ink-2); margin: 5px 0 0; }
+.name { font-size: 14.5px; margin: 0; }
+.note { font-size: 12px; color: var(--ink-2); margin: 1px 0 0; }
+.amt { font-variant-numeric: tabular-nums; font-size: 14.5px; font-weight: 500; white-space: nowrap; }
+.amt.pos { color: var(--pos); } .amt.neg { color: var(--neg); }
+.sign { font-family: var(--mono); font-size: 12px; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; text-align: left; background: none; border: none; padding: 0; color: inherit; font-family: var(--app); }
+.row + .row { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
+button.row { cursor: pointer; }
+.bar { height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; display: flex; margin-top: 9px; position: relative; }
+.bar > i { display: block; height: 100%; }
+.bar > i.spent { background: var(--accent); } .bar > i.over { background: var(--warn); }
+.bar > i.tick { position: absolute; top: -3px; width: 2px; height: 14px; background: var(--ink); border-radius: 2px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-size: 12.5px; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); cursor: pointer; font-family: var(--app); white-space: nowrap; }
+.chip[aria-pressed="true"], .chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.tag { font-family: var(--mono); font-size: 10.5px; padding: 3px 7px; border-radius: 4px; background: var(--accent-wash); color: var(--accent); white-space: nowrap; }
+.tag.warn { background: var(--warn-wash); color: var(--warn); }
+.btn { display: block; width: 100%; padding: 14px; border-radius: 16px; background: var(--accent); color: var(--accent-ink); font-size: 15.5px; font-weight: 500; border: none; font-family: var(--app); cursor: pointer; }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+.btn.secondary { background: none; color: var(--accent); border: 1px solid var(--accent); }
+.btn.danger { background: none; color: var(--neg); border: 1px solid var(--neg); }
+details.work { margin-top: 10px; }
+details.work summary { color: var(--accent); font-size: 13px; cursor: pointer; list-style: none; }
+details.work summary::-webkit-details-marker { display: none; }
+details.work summary::after { content: " ↓"; }
+details.work[open] summary::after { content: " ↑"; }
+details.work dl { margin: 10px 0 0; padding-top: 10px; border-top: 1px dashed var(--line); display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; font-size: 12.5px; }
+details.work dt { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+details.work dd { margin: 0; color: var(--ink-2); }
+.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.keypad button { font-family: var(--app); font-size: 20px; padding: 13px 0; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-variant-numeric: tabular-nums; cursor: pointer; }
+.keypad button:active { background: var(--accent-wash); }
+.bubble { max-width: 86%; padding: 10px 12px; border-radius: 16px; font-size: 14px; }
+.bubble.me { margin-left: auto; background: var(--accent); color: var(--accent-ink); border-bottom-right-radius: 6px; }
+.asker { display: flex; gap: 8px; align-items: center; }
+.asker input { flex: 1; min-width: 0; padding: 11px 13px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-family: var(--app); font-size: 14px; }
+.switch { width: 42px; height: 25px; border-radius: 999px; background: var(--line); position: relative; border: none; flex: 0 0 auto; cursor: pointer; }
+.switch[aria-checked="true"] { background: var(--accent); }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 19px; height: 19px; border-radius: 50%; background: var(--surface); transition: left .14s ease; }
+.switch[aria-checked="true"]::after { left: 20px; }
+.blurred { filter: blur(6px); }
+.addfab {
+  position: absolute; right: 16px; bottom: 74px; width: 54px; height: 54px; border-radius: 18px;
+  background: var(--accent); color: var(--accent-ink); border: none; font-size: 27px; line-height: 1;
+  cursor: pointer; box-shadow: 0 6px 16px -8px rgba(0,0,0,.5); z-index: 2;
+}
+.addfab[hidden] { display: none; }
+.sectionhead { font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-2); margin: 8px 2px -4px; }
+.soon { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-3); border: 1px solid var(--line); border-radius: 3px; padding: 2px 5px; white-space: nowrap; }
+.toast { position: absolute; left: 50%; bottom: 74px; transform: translateX(-50%); background: var(--ink); color: var(--canvas); font-size: 13px; padding: 9px 14px; border-radius: 999px; opacity: 0; pointer-events: none; transition: opacity .18s ease; white-space: nowrap; max-width: 86%; }
+.toast.show { opacity: 1; }
+.sheet { position: absolute; inset: 0; background: color-mix(in srgb, var(--ink) 42%, transparent); display: flex; align-items: flex-end; }
+.sheet[hidden] { display: none; }
+.sheet > div { background: var(--surface); border-radius: 22px 22px 0 0; padding: 18px 16px 20px; width: 100%; display: flex; flex-direction: column; gap: 10px; }
+.empty { text-align: center; color: var(--ink-2); padding: 28px 10px; }
+.legend { font-size: 12px; color: var(--ink-3); text-align: center; max-width: 42ch; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+@media (max-width: 520px) {
+  .stage { padding-inline: 0; padding-block: 0; gap: 0; }
+  .stage > header { display: none; }
+  .phone { max-width: none; height: 100vh; min-height: 0; border: none; border-radius: 0; box-shadow: none; }
+  .legend { display: none; }
+}
+</style>
+
+<div class="stage">
+  <header>
+    <h1>Rekhon — v2 prototype</h1>
+    <p>Seeded demo data, nothing real. Tap anything: the figures recompute from the ledger as you add to it.</p>
+  </header>
+
+  <div class="phone">
+    <div class="statusbar"><span id="clock">9:41</span><span>offline · all local</span></div>
+    <main id="screen" aria-live="polite"></main>
+    <div class="toast" id="toast"></div>
+    <div class="sheet" id="sheet" hidden></div>
+    <button class="addfab" id="addfab" aria-label="Add a transaction">+</button>
+    <nav class="tabbar" id="tabs" aria-label="Main">
+      <button data-tab="today" aria-current="page"><span class="dot"></span>Today</button>
+      <button data-tab="money"><span class="dot"></span>Money</button>
+      <button data-tab="plan"><span class="dot"></span>Plan</button>
+      <button data-tab="ask"><span class="dot"></span>Ask</button>
+      <button data-tab="you"><span class="dot"></span>You</button>
+    </nav>
+  </div>
+
+  <p class="legend">A prototype of the v2 design language. No network, no storage — reload to start over.</p>
+</div>
+
+<script>
+/* ---------------------------------------------------------------------------
+   Money and time. Paise as integers, exactly like the app (MNY-001), and a
+   fixed "today" so the prototype looks identical every time it is opened.
+--------------------------------------------------------------------------- */
+const TODAY = { day: 13, days: 31, label: 'Tue 13 Oct', month: 'October', monthEnd: '31 October' };
+
+/** Indian digit grouping: 1,23,456.78 from 12345678 paise. */
+function money(paise, opts = {}) {
+  const sign = paise < 0 ? '-' : '';
+  const abs = Math.abs(Math.round(paise));
+  const rupees = String(Math.floor(abs / 100));
+  const p = String(abs % 100).padStart(2, '0');
+  let head = rupees.slice(0, -3), tail = rupees.slice(-3);
+  if (head) head = head.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',';
+  const body = (head || '') + (rupees.length > 3 ? tail : rupees);
+  return sign + '₹' + body + (opts.whole ? '' : '.' + p);
+}
+/** Rounded to the rupee — allowed for display, never for storage. */
+const moneyR = (paise) => money(Math.round(paise / 100) * 100, { whole: true });
+const pct = (part, whole) => whole === 0 ? 0 : Math.round((part / whole) * 100);
+
+/* ---------------------------------------------------------------------------
+   The seed. One household's October, 13 days in.
+--------------------------------------------------------------------------- */
+function seed() {
+  return {
+    blur: false,
+    consents: { sms: false, market: false },
+    accounts: [
+      { id: 'hdfc', name: 'HDFC savings', kind: 'Bank', paise: 24150000, side: 'own' },
+      { id: 'cash', name: 'Cash wallet', kind: 'Cash', paise: 3800000, side: 'own' },
+      { id: 'sip', name: 'Index SIP', kind: 'Investment', paise: 81240000, side: 'own', note: 'XIRR 14.2% · not cost/value' },
+      { id: 'gold', name: 'Sovereign gold', kind: 'Gold', paise: 31020000, side: 'own', note: '24g · 22% of portfolio' },
+      { id: 'card', name: 'HDFC credit card', kind: 'Credit card', paise: -1842000, side: 'owe', note: 'cycle ends 18 Oct · 31% of limit' },
+      { id: 'loan', name: 'Home loan', kind: 'Loan', paise: -13538000, side: 'owe', note: 'EMI ₹24,100 · ₹19,800 of it interest' }
+    ],
+    budgets: [
+      { id: 'dining', name: 'Dining', planned: 900000 },
+      { id: 'transport', name: 'Transport', planned: 600000 },
+      { id: 'groceries', name: 'Groceries', planned: 1200000 },
+      { id: 'shopping', name: 'Shopping', planned: 700000 },
+      { id: 'health', name: 'Health', planned: 400000 },
+      { id: 'misc', name: 'Misc', planned: 400000 }
+    ],
+    txns: [
+      { d: 13, merchant: 'Ratna Cafe', cat: 'dining', paise: 44000, acct: 'cash', nature: 'Want', src: 'manual' },
+      { d: 12, merchant: 'Namma Metro', cat: 'transport', paise: 6000, acct: 'cash', nature: 'Need', src: 'manual' },
+      { d: 12, merchant: 'More Supermarket', cat: 'groceries', paise: 184000, acct: 'card', nature: 'Need', src: 'receipt' },
+      { d: 11, merchant: 'Apollo Pharmacy', cat: 'health', paise: 62000, acct: 'card', nature: 'Need', src: 'sms' },
+      { d: 10, merchant: 'Swiggy', cat: 'dining', paise: 78000, acct: 'card', nature: 'Want', src: 'sms' },
+      { d: 10, merchant: 'Uber', cat: 'transport', paise: 32000, acct: 'card', nature: 'Need', src: 'sms' },
+      { d: 9, merchant: 'Decathlon', cat: 'shopping', paise: 320000, acct: 'card', nature: 'Want', src: 'manual' },
+      { d: 8, merchant: 'Big Basket', cat: 'groceries', paise: 258000, acct: 'hdfc', nature: 'Need', src: 'receipt' },
+      { d: 7, merchant: 'Third Wave Coffee', cat: 'dining', paise: 52000, acct: 'cash', nature: 'Want', src: 'manual' },
+      { d: 6, merchant: 'Auto', cat: 'transport', paise: 22000, acct: 'cash', nature: 'Need', src: 'manual' },
+      { d: 5, merchant: 'Reliance Fresh', cat: 'groceries', paise: 200000, acct: 'card', nature: 'Need', src: 'sms' },
+      { d: 4, merchant: 'Dominos', cat: 'dining', paise: 84000, acct: 'card', nature: 'Want', src: 'sms' },
+      { d: 3, merchant: 'Haircut', cat: 'misc', paise: 40000, acct: 'cash', nature: 'Want', src: 'manual' },
+      { d: 2, merchant: 'Electricity', cat: 'misc', paise: 104000, acct: 'hdfc', nature: 'Need', src: 'manual' },
+      { d: 2, merchant: 'Cult Fit', cat: 'health', paise: 78000, acct: 'card', nature: 'Want', src: 'sms' },
+      { d: 1, merchant: 'Rapido', cat: 'transport', paise: 238000, acct: 'card', nature: 'Need', src: 'sms' }
+    ],
+    goals: [
+      { name: 'Emergency fund', target: 30000000, saved: 14500000, note: '4.2 months of essentials' },
+      { name: 'Bike', target: 12000000, saved: 2600000, note: 'by June 2027 · ₹8,000 a month' }
+    ],
+    chat: [],
+    erased: false,
+    lock: true,
+    profile: 'Personal',
+    pillars: [
+      { name: 'Savings rate', score: 168, max: 200, note: '22% of take-home goes out as savings' },
+      { name: 'Debt burden', score: 122, max: 200, note: 'EMIs are 31% of income — above the 30% rule' },
+      { name: 'Buffer', score: 148, max: 200, note: '4.2 months of essentials put aside' },
+      { name: 'Diversification', score: 136, max: 200, note: 'Gold is 22% of the portfolio' },
+      { name: 'Discipline', score: 138, max: 200, note: '3 of 6 envelopes pacing over' }
+    ],
+    insights: [
+      { title: 'Groceries will overshoot', body: 'At this pace October lands 28% above the envelope.', rule: 'RULE-BUD-PACE v1.2', tag: 'warn' },
+      { title: 'Gold is 22% of your portfolio', body: 'Your own cap for a single asset class is 20%.', rule: 'RULE-INV-CONC v1.4', tag: 'warn' },
+      { title: 'Card statement in 5 days', body: '₹18,420 due on 18 October. Paying in full avoids 42% a year.', rule: 'RULE-CARD-DUE v1.0', tag: '' },
+      { title: 'Emergency fund reached 4 months', body: 'Two more months of essentials and you hit your target.', rule: 'RULE-EMF-RUNWAY v1.1', tag: '' }
+    ],
+    emergency: { target: 30000000, saved: 14500000, essentials: 3450000, months: 4.2, targetMonths: 6 },
+    buylist: [
+      { name: 'Phone', price: 4500000, verdict: 'Affordable next month', note: 'clears your buffer by ₹4,200 today' },
+      { name: 'Standing desk', price: 1800000, verdict: 'Affordable now', note: 'inside this month\u2019s Safe-to-Spend' },
+      { name: 'Bike', price: 12000000, verdict: 'June 2027', note: 'needs ₹8,000 a month from here' }
+    ],
+    holdings: [
+      { name: 'Nifty 50 index fund', units: '412.280', cost: 54000000, value: 62400000, xirr: '14.2%' },
+      { name: 'Nasdaq 100 FoF', units: '188.400', cost: 14000000, value: 18840000, xirr: '18.6%' }
+    ],
+    nwHistory: [112, 114, 117, 115, 119, 122, 121, 124, 126, 123, 124, 125],
+    vehicle: { name: 'Honda Activa', km: 24180, next: '3 Nov 2026', cost: 180000,
+      items: ['Engine oil · ₹520', 'Air filter · ₹340', 'Labour · ₹450', 'Brake pads (predicted) · ₹590'] },
+    appliance: { name: 'Geyser · Racold 15L', next: '12 Dec 2026', cost: 90000, running: 42000, consumable: 'Anode rod · Mar 2027', warranty: 'in warranty to Aug 2027' },
+    insurance: { term: 5000000, termNeed: 12000000, health: 500000, healthNeed: 1000000, endowment: 'One endowment policy detected — 4.1% implied return' },
+    tax: { regime: 'New', taxable: 128000000, estimate: 9360000, unused: '80C has ₹42,000 unused', left: 'capital gains and rental income not estimated' },
+    market: { index: 'Nifty 50', close: 2461500, score: 72, band: 'better than usual', hit: '58% of 120 past signals', note: 'Cached close from 11 Oct — market data is off, so this is stale.' },
+    recurring: [
+      { name: 'Rent', amount: 2400000, day: 1, confirmed: true },
+      { name: 'Home loan EMI', amount: 2410000, day: 5, confirmed: true },
+      { name: 'Index SIP', amount: 1000000, day: 7, confirmed: true },
+      { name: 'Netflix', amount: 64900, day: 19, confirmed: false }
+    ],
+    categories: [
+      { name: 'Dining', nature: 'Want', rules: 'Swiggy, Zomato, Dominos, +4 merchants' },
+      { name: 'Groceries', nature: 'Need', rules: 'Big Basket, More, Reliance Fresh' },
+      { name: 'Transport', nature: 'Need', rules: 'Uber, Rapido, Namma Metro' },
+      { name: 'Health', nature: 'Need', rules: 'Apollo, Cult Fit' }
+    ],
+    smsQueue: [
+      { bank: 'HDFC', text: 'Rs 640.00 debited to SWIGGY on 13-10-26', paise: 64000, cat: 'dining', conf: 'high' },
+      { bank: 'ICICI', text: 'Rs 2,100 spent at CROMA on 13-10-26', paise: 210000, cat: 'shopping', conf: 'medium' }
+    ],
+    receipt: { merchant: 'More Supermarket', total: 184000, date: '12 Oct 2026', gst: 9200, lines: 11, conf: 'total 0.98 · date 0.94 · merchant 0.89' },
+    simulator: { prepay: 184000, invest: 236000, verdict: 'Investing wins by ₹520 over 24 months — but only if the 12% assumption holds.' },
+    profiles: ['Personal', 'Household', 'Business']
+  };
+}
+let S = seed();
+
+/* ---------------------------------------------------------------------------
+   The "engines". Deterministic, and every figure on screen comes from here —
+   the same split the real app makes between math and words (P-03).
+--------------------------------------------------------------------------- */
+const engines = {
+  /** Spend per budget, and the whole envelope total. */
+  spend() {
+    const byCat = {};
+    S.budgets.forEach((b) => { byCat[b.id] = 0; });
+    S.txns.forEach((t) => { if (byCat[t.cat] !== undefined) byCat[t.cat] += t.paise; });
+    const spent = Object.values(byCat).reduce((a, b) => a + b, 0);
+    const planned = S.budgets.reduce((a, b) => a + b.planned, 0);
+    return { byCat, spent, planned, left: planned - spent, count: S.txns.length };
+  },
+  /** AI-STS: what is left to spend, and what that is per remaining day. */
+  safeToSpend() {
+    const { left } = engines.spend();
+    const daysLeft = TODAY.days - TODAY.day + 1;
+    return { left, daysLeft, perDay: Math.max(0, Math.round(left / daysLeft)) };
+  },
+  /** FR-ACC-005: assets minus liabilities. */
+  netWorth() {
+    const own = S.accounts.filter((a) => a.side === 'own').reduce((s, a) => s + a.paise, 0);
+    const owe = S.accounts.filter((a) => a.side === 'owe').reduce((s, a) => s + a.paise, 0);
+    return { own, owe: Math.abs(owe), total: own + owe, delta: 4125000 };
+  },
+  /** §5.5: spent, even pace, and where the month lands. */
+  pace(budget) {
+    const spent = engines.spend().byCat[budget.id] || 0;
+    const evenPace = Math.round(budget.planned * (TODAY.day / TODAY.days));
+    const lands = Math.round(spent * (TODAY.days / TODAY.day));
+    return { spent, evenPace, lands, over: lands > budget.planned };
+  },
+  /** The one insight the Today screen leads with: the worst-pacing envelope. */
+  worstPace() {
+    return S.budgets
+      .map((b) => ({ budget: b, ...engines.pace(b) }))
+      .filter((p) => p.spent > 0)
+      .sort((a, b) => (b.lands / b.budget.planned) - (a.lands / a.budget.planned))[0];
+  },
+  /** §14 AI-FHS, fixed for the prototype. */
+  health() { return { score: 712, max: 1000, band: 'Good', lever: 'Dining is the pillar costing you most' }; },
+  /** §9 AI-FCT, fixed for the prototype. */
+  forecast() { return { horizon: 90, lowest: 214000, on: '3 Nov 2026' }; }
+};
+
+/* ---------------------------------------------------------------------------
+   The rest of the app. Everything the feature modules cover, in the same v2
+   patterns: one answer, a meaning line, the work one tap away.
+--------------------------------------------------------------------------- */
+const barOf = (p, extra = '') => `<div class="bar"><i class="spent" style="width:${Math.min(Math.max(p, 0), 100)}%"></i>${extra}</div>`;
+const head = (title, right = '') => `<div class="appbar">${nav.stacks[nav.tab].length ? '<button class="back" data-act="pop">←</button>' : ''}<h2>${esc(title)}</h2>${
+  PROPOSED.has(here().screen) ? '<span class="soon">proposed</span>' : `<span class="note">${esc(right)}</span>`}</div>`;
+
+/** The cold-start gate. Fail-secure: no PIN set means locked, never open. */
+function screenLock() {
+  return `
+    <div style="flex:1; display:flex; flex-direction:column; justify-content:center; gap:16px; text-align:center">
+      <div>
+        <p class="figure" style="font-size:26px">Rekhon</p>
+        <p class="meaning">Locked. Everything stays encrypted until you unlock it.</p>
+      </div>
+      <div class="card flat"><p class="name">Unlock with fingerprint</p><p class="meaning">Class 3 biometric · the key never leaves the secure element</p></div>
+      <button class="btn" data-act="unlock">Unlock</button>
+      <button class="chip" data-act="unlock" style="align-self:center">Use PIN instead</button>
+      <p class="meaning">Five wrong attempts locks you out for 30 seconds. A failure never opens the app.</p>
+    </div>`;
+}
+
+/** FR-ONB-002: three numbers seed the envelopes and the emergency target. */
+function screenOnboarding() {
+  const sp = engines.spend();
+  return `
+    ${head('Quick setup', 'step 2 of 3')}
+    <div class="card">
+      <p class="label">What comes in</p>
+      <p class="figure sm">₹95,000.00 a month</p>
+      <p class="meaning">Take-home, after tax and deductions.</p>
+    </div>
+    <div class="card">
+      <div class="row"><span><span class="name">Rent</span><span class="note">every 1st</span></span><span class="amt">₹24,000.00</span></div>
+      <div class="row"><span><span class="name">EMIs</span><span class="note">home loan</span></span><span class="amt">₹24,100.00</span></div>
+      <div class="row"><span><span class="name">Savings</span><span class="note">SIP on the 7th</span></span><span class="amt">₹10,000.00</span></div>
+    </div>
+    <div class="card wash">
+      <p class="label">So we suggest</p>
+      <p class="figure sm">${money(sp.planned)} across ${S.budgets.length} envelopes</p>
+      <p class="meaning">And an emergency target of ${moneyR(S.emergency.target)} — six months of what you must pay. Change any of it later.</p>
+      <details class="work"><summary>Show the work</summary><dl>
+        <dt>income</dt><dd>₹95,000.00</dd>
+        <dt>committed</dt><dd>₹58,100.00 rent, EMI and SIP</dd>
+        <dt>left to plan</dt><dd>${money(sp.planned)}</dd>
+        <dt>engine</dt><dd>AI-QS 1.0 · FR-ONB-002</dd>
+      </dl></details>
+    </div>
+    <button class="btn" data-act="pop">Looks right</button>`;
+}
+
+/** §14 AI-FHS: the score, and the five pillars it is made of. */
+function screenHealth() {
+  const h = engines.health();
+  const rows = S.pillars.map((p) => `
+    <div style="margin-top:12px">
+      <div class="row"><span><span class="name">${esc(p.name)}</span><span class="note">${esc(p.note)}</span></span><span class="amt">${p.score}/${p.max}</span></div>
+      ${barOf(pct(p.score, p.max))}
+    </div>`).join('');
+  return `
+    ${head('Health score', h.band)}
+    <div class="card">
+      <p class="label">Your score</p>
+      <p class="figure">${h.score} <span style="font-size:18px; color:var(--ink-3)">/ ${h.max}</span></p>
+      <p class="meaning">${esc(h.lever)}. Five weighted pillars, each shown below with what moved it.</p>
+    </div>
+    <div class="card">${rows}</div>
+    <p class="meaning">A score with no inputs is a verdict. Every pillar here names the figure behind it.</p>`;
+}
+
+/** §7.2 AI-ORCH: the ranked, deduplicated feed. */
+function screenInsights() {
+  return `
+    ${head('Insights', `${S.insights.length} today`)}
+    ${S.insights.map((i) => `
+      <div class="card">
+        <div class="row" style="align-items:flex-start">
+          <span><span class="name" style="font-size:15px">${esc(i.title)}</span><span class="note">${esc(i.body)}</span></span>
+          ${i.tag ? '<span class="tag warn">needs a look</span>' : '<span class="tag">good news</span>'}
+        </div>
+        <details class="work"><summary>Show the work</summary><dl>
+          <dt>rule</dt><dd>${esc(i.rule)}</dd>
+          <dt>ranked</dt><dd>by how much money the action is worth, not by recency</dd>
+        </dl></details>
+      </div>`).join('')}
+    <p class="meaning">Deduplicated: two rules firing about the same envelope produce one card.</p>`;
+}
+
+/** §10.1 AI-EMF: runway first, target second. */
+function screenEmergency() {
+  const e = S.emergency;
+  return `
+    ${head('Emergency fund', `${e.months} months`)}
+    <div class="card">
+      <p class="label">You could cover</p>
+      <p class="figure">${e.months} months</p>
+      <p class="meaning">${money(e.saved)} put aside against ${money(e.essentials)} of essentials a month. Target is ${e.targetMonths} months.</p>
+      ${barOf(pct(e.months, e.targetMonths))}
+      <details class="work"><summary>Show the work</summary><dl>
+        <dt>essentials</dt><dd>${money(e.essentials)} — rent, EMI, groceries, utilities, health</dd>
+        <dt>saved</dt><dd>${money(e.saved)}</dd>
+        <dt>multiplier</dt><dd>6 months — one earner, no dependants</dd>
+        <dt>engine</dt><dd>AI-EMF 1.2</dd>
+      </dl></details>
+    </div>
+    <div class="card flat"><p class="name">To reach ${e.targetMonths} months</p><p class="meaning">${moneyR(e.target - e.saved)} more, or ${moneyR((e.target - e.saved) / 8)} a month for eight months.</p></div>`;
+}
+
+/** The Plan tab: what you decide in advance, and the screens that argue about it. */
+function screenPlan() {
+  const sp = engines.spend();
+  const e = S.emergency;
+  const over = S.budgets.filter((b) => engines.pace(b).over).length;
+  const row = (screen, name, note) => `
+    <button class="row" data-nav="${screen}"><span><span class="name">${esc(name)}</span><span class="note">${esc(note)}</span></span>${navTag(screen)}</button>`;
+  return `
+    <div class="appbar"><h2>Plan</h2><span class="note">${TODAY.month}</span></div>
+    <button class="card" data-nav="budgets" style="text-align:left">
+      <p class="label">Budgets</p>
+      <p class="figure sm ${S.blur ? 'blurred' : ''}">${money(sp.left)} left of ${money(sp.planned)}</p>
+      <p class="meaning">${over} of ${S.budgets.length} envelopes are pacing over. See which →</p>
+    </button>
+    <p class="sectionhead">Putting money aside</p>
+    <div class="card">
+      ${row('goals', 'Goals', `${S.goals.length} running · tap one for its monthly figure`)}
+      ${row('emergency', 'Emergency fund', `${e.months} months of essentials · target ${e.targetMonths}`)}
+      ${row('orderofops', 'Your next best rupee', 'the eight-stage order, and where you are in it')}
+    </div>
+    <p class="sectionhead">Deciding</p>
+    <div class="card">
+      ${row('advisor', 'Can I afford it?', 'seven gates, and what each one reads')}
+      ${row('simulators', 'What if?', 'prepay or invest · which debt first')}
+      ${row('market', 'Good day to invest?', 'scored against its own measured hit rate')}
+    </div>
+    <p class="sectionhead">How the app reads your money</p>
+    <div class="card">
+      ${row('categories', 'Categories', 'and the merchant rules behind them')}
+      ${row('recurring', 'Recurring', 'series the ledger proposes, confirmed by you')}
+      ${row('forecast', '90-day forecast', 'your lowest point, and when it falls')}
+      ${row('health', 'Health score', 'five pillars, each with its figure')}
+    </div>`;
+}
+
+/** §13 AI-PA: the verdict, and the gates behind it. */
+function screenAdvisor() {
+  const sts = engines.safeToSpend();
+  const price = 4500000;
+  const after = sts.left - price;
+  const gates = [
+    ['Safe-to-spend', after > 0 ? 'passes' : 'fails', `${money(sts.left)} available`],
+    ['Emergency buffer', after >= 0 ? 'warns' : 'fails', after >= 0 ? `this leaves ${moneyR(after)} of slack` : 'it would come out of your buffer'],
+    ['Debt burden', 'passes', 'EMIs 31% of income — no new EMI here'],
+    ['Goal impact', 'warns', 'pushes the bike goal out by three weeks'],
+    ['Need or want', 'notes', 'classified as a Want'],
+    ['Cheaper window', 'notes', 'this model has dropped 8% twice since June'],
+    ['Concentration', 'passes', 'not an investment']
+  ];
+  return `
+    ${head('Can I afford it?', 'AI-PA')}
+    <div class="card">
+      <p class="label">A ${moneyR(price)} phone</p>
+      <p class="figure sm">${after >= 0 ? 'Yes — but it clears your buffer' : 'Not this month'}</p>
+      <p class="meaning">${after >= 0
+        ? `You would be left with ${money(after)} for the ${sts.daysLeft} days left in ${TODAY.month}.`
+        : `It is ${money(-after)} more than the ${money(sts.left)} you have left for ${TODAY.month}.`} Waiting until 1 November costs you nothing.</p>
+    </div>
+    <div class="card">
+      <p class="label">The seven gates</p>
+      ${gates.map((g) => `<div class="row"><span><span class="name">${esc(g[0])}</span><span class="note">${esc(g[2])}</span></span><span class="tag ${g[1] === 'warns' ? 'warn' : ''}">${g[1]}</span></div>`).join('')}
+    </div>
+    <div class="chips"><button class="chip" data-nav="buylist">Add to buy list</button><button class="chip" data-nav="simulators">Simulate paying monthly</button></div>
+    <p class="meaning">It recommends and simulates. The decision, and the consequence, stay yours.</p>`;
+}
+
+/** AI-PA-INT: the ladder. Nothing is ever removed automatically. */
+function screenBuylist() {
+  return `
+    ${head('Buy list', `${S.buylist.length} things`)}
+    <div class="card">
+      ${S.buylist.map((b) => `<div class="row"><span><span class="name">${esc(b.name)} · ${money(b.price)}</span><span class="note">${esc(b.note)}</span></span><span class="tag">${esc(b.verdict)}</span></div>`).join('')}
+    </div>
+    <p class="meaning">The ladder re-ranks as your money changes. An item leaves only when you remove it — the app never decides you have stopped wanting something.</p>`;
+}
+
+/** One account: the cycle, the amortisation or the lots, depending on what it is. */
+function screenAccount() {
+  const a = S.accounts.find((x) => x.id === arg()) || S.accounts[0];
+  let detail = '';
+  if (a.kind === 'Credit card') {
+    detail = `
+      <div class="card">
+        <p class="label">This cycle</p>
+        <div class="row"><span class="name">Statement closes</span><span class="amt">18 Oct 2026</span></div>
+        <div class="row"><span class="name">Due</span><span class="amt">5 Nov 2026</span></div>
+        <div class="row"><span><span class="name">Utilisation</span><span class="note">31% of a ₹60,000 limit</span></span><span class="amt">31%</span></div>
+        ${barOf(31)}
+      </div>
+      <div class="card flat"><p class="name">Pay in full</p><p class="meaning">Revolving this balance costs about 42% a year. Paying the full ₹18,420 avoids all of it.</p></div>`;
+  } else if (a.kind === 'Loan') {
+    detail = `
+      <div class="card">
+        <p class="label">This month's EMI</p>
+        <p class="figure sm">₹24,100.00</p>
+        <p class="meaning">₹19,800 of it is interest and ₹4,300 is principal. That flips around month 142.</p>
+        ${barOf(18)}
+        <details class="work"><summary>Show the work</summary><dl>
+          <dt>outstanding</dt><dd>₹1,35,380.00</dd>
+          <dt>rate</dt><dd>8.65% a year, reducing balance</dd>
+          <dt>amortised</dt><dd>to the rupee, 6 payments left</dd>
+        </dl></details>
+      </div>
+      <div class="chips"><button class="chip" data-nav="simulators">Prepay or invest?</button></div>`;
+  } else if (a.kind === 'Investment') {
+    detail = `
+      <div class="card">
+        <p class="label">Money-weighted return</p>
+        <p class="figure sm">14.2% XIRR</p>
+        <p class="meaning">Cost-to-value would say 8.1% — it treats a SIP's first instalment and its last as though they arrived together.</p>
+      </div>
+      <div class="card">${S.holdings.map((h) => `<div class="row"><span><span class="name">${esc(h.name)}</span><span class="note">${esc(h.units)} units · cost ${moneyR(h.cost)} · XIRR ${esc(h.xirr)}</span></span>${amt(h.value)}</div>`).join('')}</div>
+      <div class="chips"><button class="chip" data-nav="holdings">Holdings &amp; lots</button><button class="chip" data-nav="allocation">Allocation</button></div>`;
+  } else {
+    detail = `<div class="card flat"><p class="name">${esc(a.kind)}</p><p class="meaning">${esc(a.note || 'Balance updated when you record a transaction.')}</p></div>`;
+  }
+  return `
+    ${head(a.name, a.kind)}
+    <div class="card">
+      <p class="label">${a.side === 'owe' ? 'You owe' : 'Balance'}</p>
+      <p class="figure ${S.blur ? 'blurred' : ''}">${money(a.paise)}</p>
+      <p class="meaning">${esc(a.note || 'On this device only.')}</p>
+    </div>
+    ${detail}
+    <button class="chip" data-nav="txns">Transactions on this account</button>`;
+}
+
+/** §11 AI-INV: where the money sits, and what is too concentrated. */
+function screenAllocation() {
+  const own = S.accounts.filter((a) => a.side === 'own');
+  const total = own.reduce((s, a) => s + a.paise, 0);
+  return `
+    ${head('Allocation', 'AI-INV')}
+    <div class="card">
+      <p class="label">Gold is over your cap</p>
+      <p class="figure sm">22% in one asset class</p>
+      <p class="meaning">Your rulebook caps a single class at 20%. Nothing to do today — it is a flag, not an order.</p>
+    </div>
+    <div class="card">
+      ${own.map((a) => `<div style="margin-top:10px"><div class="row"><span><span class="name">${esc(a.kind)}</span><span class="note">${esc(a.name)}</span></span><span class="amt">${pct(a.paise, total)}%</span></div>${barOf(pct(a.paise, total), a.kind === 'Gold' ? '<i class="over" style="width:2%"></i>' : '')}</div>`).join('')}
+    </div>
+    <details class="work" style="padding:0 4px"><summary>Show the work</summary><dl>
+      <dt>rule</dt><dd>RULE-INV-CONC v1.4 — 20% per class</dd>
+      <dt>base</dt><dd>${money(total)} of assets, excluding what you owe</dd>
+    </dl></details>`;
+}
+
+/** FR-ACC-005: the daily snapshot, as a year of it. */
+function screenNwHistory() {
+  const h = S.nwHistory;
+  const max = Math.max(...h);
+  return `
+    ${head('Net worth history', '12 months')}
+    <div class="card">
+      <p class="label">Up over the year</p>
+      <p class="figure sm ${S.blur ? 'blurred' : ''}">+₹1,30,000</p>
+      <p class="meaning">One snapshot a day, taken on this device. Nothing is backfilled or smoothed.</p>
+      <div style="display:flex; align-items:flex-end; gap:4px; height:90px; margin-top:14px">
+        ${h.map((v, i) => `<div title="month ${i + 1}" style="flex:1; height:${Math.round((v / max) * 100)}%; background:${i === h.length - 1 ? 'var(--accent)' : 'var(--accent-wash)'}; border-radius:3px 3px 0 0"></div>`).join('')}
+      </div>
+      <p class="meaning">Nov 2025 → Oct 2026</p>
+    </div>`;
+}
+
+/** One transaction: what it was, what it became, and where it came from. */
+function screenTxn() {
+  const t = S.txns[Number(arg()) || 0];
+  const src = { manual: 'typed by you', receipt: 'read off a receipt, on the device', sms: 'proposed from a bank SMS you confirmed' };
+  return `
+    ${head(t.merchant, `${t.d} Oct`)}
+    <div class="card">
+      <p class="label">Spent</p>
+      <p class="figure ${S.blur ? 'blurred' : ''}">${money(t.paise)}</p>
+      <p class="meaning">${esc(S.budgets.find((b) => b.id === t.cat)?.name || t.cat)} · ${esc(S.accounts.find((a) => a.id === t.acct)?.name || t.acct)}</p>
+    </div>
+    <div class="card">
+      <div class="row"><span><span class="name">What it became</span><span class="note">need, want, investment, asset or liability</span></span><span class="tag">${esc(t.nature)}</span></div>
+      <div class="row"><span><span class="name">Where it came from</span><span class="note">${esc(src[t.src])}</span></span><span class="tag">${esc(t.src)}</span></div>
+      <div class="row"><span><span class="name">Category</span><span class="note">matched by merchant rule, confidence 0.94</span></span><span class="tag">auto</span></div>
+    </div>
+    <div class="chips"><button class="chip" data-act="split">Split across categories</button><button class="chip" data-act="recat">Change category</button></div>
+    <p class="meaning">Changing the category teaches the merchant rule, so the next one lands right.</p>`;
+}
+
+/** FR-OCR-003: the review screen. OCR proposes; you confirm. */
+function screenReceipt() {
+  const r = S.receipt;
+  return `
+    ${head('Check the receipt', 'on-device')}
+    <div class="card">
+      <p class="label">Read from the photo</p>
+      <p class="figure sm">${money(r.total)}</p>
+      <p class="meaning">${esc(r.merchant)} · ${esc(r.date)} · GST ${money(r.gst)} · ${r.lines} lines</p>
+      <details class="work"><summary>Show the work</summary><dl>
+        <dt>confidence</dt><dd>${esc(r.conf)}</dd>
+        <dt>model</dt><dd>ML Kit, bundled in the app — the photo never leaves the device</dd>
+        <dt>if it is wrong</dt><dd>every field is editable; nothing is saved until you tap Save</dd>
+      </dl></details>
+    </div>
+    <div class="chips">${S.budgets.map((b) => `<button class="chip" data-cat="${b.id}" aria-pressed="${b.id === 'groceries'}">${esc(b.name)}</button>`).join('')}</div>
+    <button class="btn" data-act="receipt-save">Save this</button>
+    <p class="meaning">A failed read drops you into manual entry rather than guessing.</p>`;
+}
+
+/** §18/§23: proposed entries from bank SMS, each confirmed by hand. */
+function screenSmsReview() {
+  return `
+    ${head('From your bank SMS', `${S.smsQueue.length} waiting`)}
+    ${S.consents.sms ? '' : '<div class="card flat"><p class="name">This is off</p><p class="meaning">Turn on “Read bank SMS” in You to let these through. Nothing is read until you do.</p></div>'}
+    ${S.smsQueue.map((m, i) => `
+      <div class="card">
+        <div class="row" style="align-items:flex-start">
+          <span><span class="name">${money(m.paise)} · ${esc(S.budgets.find((b) => b.id === m.cat)?.name || m.cat)}</span><span class="note">${esc(m.bank)} · confidence ${esc(m.conf)}</span></span>
+          <span class="tag ${m.conf === 'medium' ? 'warn' : ''}">${esc(m.conf)}</span>
+        </div>
+        <p class="meaning" style="font-family:var(--mono); font-size:11.5px">${esc(m.text)}</p>
+        <div class="chips" style="margin-top:10px"><button class="chip on" data-act="sms-accept" data-i="${i}">Add it</button><button class="chip" data-act="sms-reject" data-i="${i}">Not a spend</button></div>
+      </div>`).join('') || '<div class="empty">Nothing waiting.</div>'}
+    <p class="meaning">Parsed on the device. The message text is never uploaded, and a rejected one is never read again.</p>`;
+}
+
+/** FR-SET-001: the taxonomy, and the merchant rules behind it. */
+function screenCategories() {
+  return `
+    ${head('Categories', `${S.categories.length} of ${S.budgets.length}`)}
+    <div class="card">
+      ${S.categories.map((c) => `<div class="row"><span><span class="name">${esc(c.name)}</span><span class="note">${esc(c.rules)}</span></span><span class="tag">${esc(c.nature)}</span></div>`).join('')}
+    </div>
+    <p class="meaning">Every category carries what a rupee in it becomes — a need, a want, an investment, an asset or a liability. That is what makes “where did it go” answerable beyond a pie chart.</p>
+    <button class="chip" data-nav="recurring">Recurring series</button>`;
+}
+
+/** FR-TXN-006: series the ledger proposes, each confirmed by hand. */
+function screenRecurring() {
+  return `
+    ${head('Recurring', `${S.recurring.filter((r) => r.confirmed).length} confirmed`)}
+    <div class="card">
+      ${S.recurring.map((r) => `<div class="row"><span><span class="name">${esc(r.name)}</span><span class="note">every ${r.day}${r.day === 1 ? 'st' : r.day === 5 ? 'th' : 'th'} · ${r.confirmed ? 'confirmed by you' : 'proposed from 3 past payments'}</span></span><span class="amt">${money(r.amount)}</span></div>`).join('')}
+    </div>
+    <p class="meaning">Proposed, never assumed: the forecast only counts a series you confirmed.</p>`;
+}
+
+/** §12 AI-VEH: when it is due, and what it will cost. */
+function screenVehicle() {
+  const v = S.vehicle;
+  return `
+    ${head(v.name, `${v.km.toLocaleString('en-IN')} km`)}
+    <div class="card">
+      <p class="label">Next service</p>
+      <p class="figure sm">${esc(v.next)} · about ${moneyR(v.cost)}</p>
+      <p class="meaning">Predicted from your own service history and your own running rate — 612 km a month, from the last four readings.</p>
+      <details class="work"><summary>Show the work</summary><dl>
+        ${v.items.map((i) => `<dt>part</dt><dd>${esc(i)}</dd>`).join('')}
+        <dt>method</dt><dd>Theil–Sen on your readings · a personal price index, no invented prices</dd>
+      </dl></details>
+    </div>
+    <button class="chip" data-nav="appliances">Appliances too</button>`;
+}
+
+/** §12 AI-APP: the sibling of AI-VEH, plus what it costs to run. */
+function screenAppliances() {
+  const a = S.appliance;
+  return `
+    ${head('Appliances', a.warranty)}
+    <div class="card">
+      <p class="label">${esc(a.name)}</p>
+      <p class="figure sm">${esc(a.next)} · about ${moneyR(a.cost)}</p>
+      <p class="meaning">Running cost ${money(a.running)} a month at your tariff. Next consumable: ${esc(a.consumable)}.</p>
+      <details class="work"><summary>Show the work</summary><dl>
+        <dt>power</dt><dd>2000 W · 40 minutes a day · 30 days</dd>
+        <dt>tariff</dt><dd>₹7.00 a unit, from your own bill</dd>
+        <dt>engine</dt><dd>AI-APP 1.0 — one division at the end, so only the paise are rounded</dd>
+      </dl></details>
+    </div>`;
+}
+
+/** §39.1: the cover gap, as the larger of two readings. */
+function screenInsurance() {
+  const i = S.insurance;
+  return `
+    ${head('Cover', 'AI-INS')}
+    <div class="card">
+      <p class="label">Term cover gap</p>
+      <p class="figure sm">${moneyR(i.termNeed - i.term)} short</p>
+      <p class="meaning">You hold ${moneyR(i.term)}; the larger of the two readings — income multiple and liabilities plus goals — asks for ${moneyR(i.termNeed)}.</p>
+      ${barOf(pct(i.term, i.termNeed))}
+    </div>
+    <div class="card">
+      <div class="row"><span><span class="name">Health cover</span><span class="note">${moneyR(i.health)} held · ${moneyR(i.healthNeed)} suggested for your city</span></span><span class="tag warn">thin</span></div>
+      <div class="row"><span><span class="name">Endowment detected</span><span class="note">${esc(i.endowment)}</span></span><span class="tag">look at it</span></div>
+    </div>
+    <p class="meaning">It will not tell you to surrender a policy. That is a decision with tax and health consequences it cannot see.</p>`;
+}
+
+/** §38: an estimate that says what it left out. */
+function screenTax() {
+  const t = S.tax;
+  return `
+    ${head('Tax estimate', `${t.regime} regime`)}
+    <div class="card">
+      <p class="label">Estimated for FY 2026-27</p>
+      <p class="figure sm">${money(t.estimate)}</p>
+      <p class="meaning">On ${moneyR(t.taxable)} taxable under the ${t.regime} regime. The Old regime works out ₹4,100 higher for you.</p>
+      <details class="work"><summary>Show the work</summary><dl>
+        <dt>unused</dt><dd>${esc(t.unused)}</dd>
+        <dt>not estimated</dt><dd>${esc(t.left)}</dd>
+        <dt>engine</dt><dd>AI-TAX 1.1 · slabs are versioned data rows</dd>
+      </dl></details>
+    </div>
+    <div class="card flat"><p class="name">This is an estimate, not a filing</p><p class="meaning">It is not registered advice, and it does not file anything. Numbers come from what you entered.</p></div>`;
+}
+
+/** §30 AI-MKT: a score, and the measured hit rate of scores like it. */
+function screenMarket() {
+  const m = S.market;
+  return `
+    ${head('Market signal', m.index)}
+    <div class="card">
+      <p class="label">Today scores</p>
+      <p class="figure">${m.score} <span style="font-size:18px; color:var(--ink-3)">/ 100</span></p>
+      <p class="meaning">${esc(m.band)} for deploying into your watched index. Historically, ${esc(m.hit)} at this score did better than a random day.</p>
+      <details class="work"><summary>Show the work</summary><dl>
+        <dt>close</dt><dd>${money(m.close)} on 11 Oct</dd>
+        <dt>measured</dt><dd>${esc(m.hit)}</dd>
+        <dt>staleness</dt><dd>${esc(m.note)}</dd>
+      </dl></details>
+    </div>
+    <div class="card flat"><p class="name">It never names a stock or a fund</p><p class="meaning">It scores the index you already chose to invest in. Picking instruments is out of scope, by design.</p></div>`;
+}
+
+/** §36/§40.2 AI-SIM: both simulators, and the assumption each rests on. */
+function screenSimulators() {
+  const s = S.simulator;
+  return `
+    ${head('Simulators', 'AI-SIM')}
+    <div class="card">
+      <p class="label">₹50,000 spare: prepay or invest?</p>
+      <p class="figure sm">Invest, by ₹520</p>
+      <p class="meaning">Prepaying saves ${money(s.prepay)} of interest. Investing at 12% returns ${money(s.invest)} over the same 24 months.</p>
+      <details class="work"><summary>Show the work</summary><dl>
+        <dt>assumption</dt><dd>12% a year, which is the whole answer — at 9% prepaying wins</dd>
+        <dt>arithmetic</dt><dd>the loan engine's own amortisation, not a second copy</dd>
+        <dt>verdict</dt><dd>${esc(s.verdict)}</dd>
+      </dl></details>
+    </div>
+    <div class="card">
+      <p class="label">Which debt first?</p>
+      <div class="row"><span><span class="name">1 · Credit card</span><span class="note">42% a year · ₹18,420</span></span><span class="tag warn">clear first</span></div>
+      <div class="row"><span><span class="name">2 · Home loan</span><span class="note">8.65% · tax-deductible interest</span></span><span class="tag">then this</span></div>
+    </div>
+    <p class="meaning">It mints no numbers of its own: both simulators read the same engines the accounts screen does.</p>`;
+}
+
+/** §5.10 and §8.1: your data, out and back. */
+function screenBackup() {
+  return `
+    ${head('Your data', 'export · backup')}
+    <div class="card">
+      <button class="row" data-act="export"><span><span class="name">Export a JSON archive</span><span class="note">every table, readable, yours to keep</span></span><span class="note">→</span></button>
+      <button class="row" data-act="backup"><span><span class="name">Encrypted backup</span><span class="note">Argon2id → AES-256-GCM · passphrase never stored</span></span><span class="note">→</span></button>
+      <button class="row" data-act="restore"><span><span class="name">Restore on a new phone</span><span class="note">needs the passphrase — nobody can reset it for you</span></span><span class="note">→</span></button>
+    </div>
+    <div class="card flat">
+      <p class="name">What the archive does not carry</p>
+      <p class="meaning">Your chat history, by design — and the consent record exports but never imports, so restoring cannot grant a permission you did not give on this device.</p>
+    </div>`;
+}
+
+/** Epic 13: a second book, not a second mechanism. */
+function screenProfiles() {
+  return `
+    ${head('Profiles', S.profile)}
+    <div class="card">
+      ${S.profiles.map((p) => `<button class="row" data-act="profile" data-p="${esc(p)}"><span><span class="name">${esc(p)}</span><span class="note">${p === 'Personal' ? 'your own money' : p === 'Household' ? 'shared, aggregated from each member' : 'kept apart from personal, for tax'}</span></span><span class="tag">${p === S.profile ? 'current' : 'switch'}</span></button>`).join('')}
+    </div>
+    <p class="meaning">Every table is scoped to a profile, so a business expense can never land in a personal budget. Switching re-reads everything; nothing is merged.</p>`;
+}
+
+/* ---------------------------------------------------------------------------
+   The five destinations the first pass missed, read off the app's own nav
+   graph (CfoRoute.kt — 24 routes) rather than from memory.
+--------------------------------------------------------------------------- */
+
+/** §36 AI-FOO: the eight-stage waterfall the dashboard links to as "see the full order". */
+function screenOrderOfOps() {
+  const stages = [
+    ['Starter buffer', 'satisfied', '₹25,000 held — one month of essentials'],
+    ['Capture EPF/VPF match', 'skipped', 'no EPF data recorded, so this cannot be judged'],
+    ['Kill fire debt', 'action', 'the card, ₹18,420 — no rate recorded, so treated as high-interest'],
+    ['Full emergency fund', 'blocked', 'waits until the card is clear'],
+    ['Tax-advantaged', 'blocked', '80C has ₹42,000 unused — after the debt'],
+    ['Goal investing', 'blocked', 'the bike needs ₹8,000 a month from June'],
+    ['Grey-zone debt', 'n/a', 'no debt between 8% and 12%'],
+    ['Low-rate debt', 'choice', 'the home loan at 8.65% — prepay or invest is yours to decide']
+  ];
+  return `
+    ${head('Your next best rupee', 'AI-FOO')}
+    <div class="card">
+      <p class="label">This month's surplus</p>
+      <p class="figure sm">${money(1900000)} → the card</p>
+      <p class="meaning">Stage 3 of eight. Everything below it waits, which is the point of an order: one place for the money, decided once.</p>
+      <details class="work"><summary>Show the work</summary><dl>
+        <dt>rule</dt><dd>FOO.KILL_FIRE_DEBT v1.0</dd>
+        <dt>caveat</dt><dd>no interest rate is recorded for this card, so it is treated as high-interest, as most cards are</dd>
+      </dl></details>
+    </div>
+    <div class="card">
+      ${stages.map((g, i) => `<div class="row"><span><span class="name">${i + 1} · ${esc(g[0])}</span><span class="note">${esc(g[2])}</span></span><span class="tag ${g[1] === 'action' ? 'warn' : ''}">${esc(g[1])}</span></div>`).join('')}
+    </div>
+    <p class="meaning">A stage it cannot judge says so and steps aside. It never guesses a rate to keep the ladder tidy.</p>`;
+}
+
+/** FR-ACC-001: add or edit an account. Eleven types, and the fields follow the type. */
+function screenAccountEditor() {
+  const types = ['Bank', 'Cash', 'Credit card', 'Loan', 'Investment', 'Gold', 'Crypto', 'Property', 'Vehicle', 'Owed to you', 'You owe'];
+  return `
+    ${head('New account', 'FR-ACC-001')}
+    <div class="card">
+      <p class="label">What kind</p>
+      <div class="chips" style="margin-top:8px">${types.map((t, i) => `<button class="chip" aria-pressed="${i === 2}">${esc(t)}</button>`).join('')}</div>
+    </div>
+    <div class="card">
+      <div class="row"><span><span class="name">Name</span><span class="note">HDFC credit card</span></span><span class="note">edit</span></div>
+      <div class="row"><span><span class="name">Outstanding</span><span class="note">what you owe today</span></span><span class="amt">₹18,420.00</span></div>
+      <div class="row"><span><span class="name">Credit limit</span><span class="note">used for utilisation</span></span><span class="amt">₹60,000.00</span></div>
+      <div class="row"><span><span class="name">Statement day</span><span class="note">18th · due 20 days later</span></span><span class="amt">18</span></div>
+      <div class="row"><span><span class="name">Interest rate</span><span class="note">leave it blank and the advisor assumes high-interest</span></span><span class="tag warn">not set</span></div>
+    </div>
+    <button class="btn" data-act="pop">Save account</button>
+    <p class="meaning">The fields follow the type: a loan asks for its rate and EMI, an investment for its holdings, gold for grams.</p>`;
+}
+
+/** §11: one investment's dated lots — what makes XIRR possible at all. */
+function screenHoldings() {
+  const lots = [
+    ['1 Apr 2024', '48.220 units', 1200000, '₹248.86'],
+    ['1 Oct 2024', '41.860 units', 1200000, '₹286.67'],
+    ['1 Apr 2025', '38.410 units', 1200000, '₹312.42'],
+    ['1 Apr 2026', '33.790 units', 1200000, '₹355.14']
+  ];
+  return `
+    ${head('Index SIP', 'holdings')}
+    <div class="card">
+      <p class="label">Value today</p>
+      <p class="figure ${S.blur ? 'blurred' : ''}">${money(62400000)}</p>
+      <p class="meaning">Against ${moneyR(54000000)} invested across ${lots.length} dated lots. XIRR 14.2%; cost-to-value would say 8.1%.</p>
+    </div>
+    <div class="card">
+      <p class="label">Lots</p>
+      ${lots.map((l) => `<div class="row"><span><span class="name">${esc(l[0])}</span><span class="note">${esc(l[1])} at ${esc(l[3])}</span></span>${amt(l[2])}</div>`).join('')}
+    </div>
+    <p class="meaning">The dates are the point. A return that ignores when each rupee arrived is not this fund's return.</p>`;
+}
+
+/** §15 AI-GOAL: one goal, its required monthly, and whether it is reachable. */
+function screenGoalDetail() {
+  const g = S.goals[Number(arg()) || 0];
+  const left = g.target - g.saved;
+  return `
+    ${head(g.name, `${pct(g.saved, g.target)}%`)}
+    <div class="card">
+      <p class="label">To reach it</p>
+      <p class="figure sm">${moneyR(left / 8)} a month</p>
+      <p class="meaning">${money(g.saved)} of ${money(g.target)} saved · ${esc(g.note)}. At that rate it arrives in eight months.</p>
+      ${barOf(pct(g.saved, g.target))}
+      <details class="work"><summary>Show the work</summary><dl>
+        <dt>shortfall</dt><dd>${money(left)}</dd>
+        <dt>horizon</dt><dd>8 months, from the date you set</dd>
+        <dt>feasible?</dt><dd>yes — it fits inside this month's surplus with ₹11,000 to spare</dd>
+        <dt>engine</dt><dd>AI-GOAL 1.3</dd>
+      </dl></details>
+    </div>
+    <div class="card flat"><p class="name">If you miss a month</p><p class="meaning">The required figure goes up, and the app says by how much. It never quietly moves your date.</p></div>`;
+}
+
+/** §16: the erase screen itself — a word, then the PIN, then the key. */
+function screenErase() {
+  return `
+    ${head('Erase everything', 'irreversible')}
+    <div class="card">
+      <p class="label">What goes</p>
+      <p class="meaning" style="color:var(--ink)">Every account, transaction, budget, goal and conversation on this device, and the keys that make them readable. The database key is destroyed first, so what is left on disk cannot be read by this app or any other.</p>
+    </div>
+    <div class="card">
+      <div class="row"><span><span class="name">This cannot be undone</span><span class="note">there is no recovery, and no support line that can reverse it</span></span><span class="tag warn">final</span></div>
+      <div class="row"><span><span class="name">It cannot reach your backups</span><span class="note">an archive you exported yourself stays where you put it</span></span><span class="tag">out of reach</span></div>
+    </div>
+    <div class="card">
+      <p class="label">Type ERASE to confirm</p>
+      <div class="row" style="margin-top:8px"><span class="name" style="font-family:var(--mono)">ERASE</span><span class="note">then your PIN</span></div>
+    </div>
+    <button class="btn danger" data-act="erase">Erase everything</button>
+    <button class="chip" data-act="pop" style="align-self:center">Keep my data</button>`;
+}
+
+/** The prototype's own index: what the app has today, and what v2 proposes on top. */
+function screenIndex() {
+  const BUILT = ['today', 'txns', 'add', 'receipt', 'smsreview', 'money', 'accounteditor', 'holdings',
+    'allocation', 'you', 'consents', 'erase', 'categories', 'budgets', 'goals', 'goaldetail',
+    'emergency', 'orderofops', 'advisor', 'simulators', 'vehicle', 'ask', 'market', 'onboarding'];
+  const LABEL = { today: 'Dashboard', txns: 'Transactions', add: 'Add transaction', receipt: 'Receipt review',
+    smsreview: 'SMS drafts', money: 'Accounts', accounteditor: 'Account editor', holdings: 'Holdings',
+    allocation: 'Allocation', you: 'Settings', consents: 'Consents', erase: 'Erase', categories: 'Categories',
+    budgets: 'Budgets', goals: 'Goals', goaldetail: 'Goal detail', emergency: 'Emergency fund',
+    orderofops: 'Next best rupee', advisor: 'Purchase advisor', simulators: 'Simulators', vehicle: 'Vehicles',
+    ask: 'Chat', market: 'Opportunity', onboarding: 'Onboarding', lock: 'App lock', insights: 'Insight feed',
+    health: 'Health score', nwhistory: 'Net worth history', txn: 'Transaction detail', buylist: 'Buy list',
+    recurring: 'Recurring', forecast: 'Forecast', backup: 'Export & backup', appliances: 'Appliances',
+    insurance: 'Cover', tax: 'Tax estimate', profiles: 'Profiles', plan: 'Plan' };
+  const chips = (ids) => `<div class="chips">${ids.map((id) => `<button class="chip" data-nav="${id}">${esc(LABEL[id] || id)}</button>`).join('')}</div>`;
+  return `
+    ${head('All screens', `${BUILT.length + PROPOSED.size}`)}
+    <div class="card">
+      <p class="label">In the app today · ${BUILT.length}</p>
+      <p class="meaning" style="margin-bottom:10px">Every destination in the nav graph, checked against CfoRoute.kt.</p>
+      ${chips(BUILT)}
+    </div>
+    <div class="card">
+      <p class="label">Proposed by v2 · ${PROPOSED.size}</p>
+      <p class="meaning" style="margin-bottom:10px">Each has an engine behind it and no screen yet. The app lock is an activity gate rather than a route; appliances, cover and tax are Epic 13 engines with no UI; the rest are v2's own.</p>
+      ${chips([...PROPOSED])}
+    </div>
+    <p class="meaning">A prototype affordance. In the app you reach these from a row, a card or a notification — never from a list like this.</p>`;
+}
+
+/* ---------------------------------------------------------------------------
+   Rendering. Every screen is a function returning HTML; one render switch.
+--------------------------------------------------------------------------- */
+const el = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+/** Amounts respect the privacy blur everywhere, including the widget in the real app. */
+const amt = (paise, extra = '') => `<span class="amt ${extra} ${S.blur ? 'blurred' : ''}">${money(paise)}</span>`;
+
+/**
+ * Navigation. One stack per tab, so depth survives a tab switch the way Android's back stack does —
+ * and so `account → holdings → back` returns to the account rather than dumping you on the tab.
+ * Everything navigational is `data-nav`; `data-act` is for state changes only. One mechanism is
+ * what lets a script prove there are no unreachable screens.
+ */
+const TABS = ['today', 'money', 'plan', 'ask', 'you'];
+let nav = { tab: 'today', stacks: { today: [], money: [], plan: [], ask: [], you: [] } };
+const here = () => nav.stacks[nav.tab].at(-1) || { screen: nav.tab, arg: null };
+const arg = () => here().arg;
+
+/** Screens with an engine behind them and no route in the app yet (checked against CfoRoute.kt). */
+const PROPOSED = new Set(['lock', 'insights', 'health', 'nwhistory', 'txn', 'buylist', 'recurring',
+  'forecast', 'backup', 'appliances', 'insurance', 'tax', 'profiles']);
+
+/** The trailing mark on a row: an arrow, or a tag when the destination is only a proposal. */
+const navTag = (screen) => (PROPOSED.has(screen) ? '<span class="soon">proposed</span>' : '<span class="note">→</span>');
+
+let draft = { digits: '', cat: 'dining', acct: 'cash', from: null, back: 'today' };
+
+function screenToday() {
+  const sts = engines.safeToSpend();
+  const sp = engines.spend();
+  const nw = engines.netWorth();
+  const worst = engines.worstPace();
+  const spentPct = pct(sp.spent, sp.planned);
+  const pacePct = Math.round((TODAY.day / TODAY.days) * 100);
+  return `
+    <div class="appbar"><h2>Today</h2><span class="note">${TODAY.label}</span></div>
+    <button class="card" data-nav="budgets" style="text-align:left">
+      <p class="label">Safe to spend</p>
+      <p class="figure ${S.blur ? 'blurred' : ''}">${money(sts.left)}</p>
+      <p class="meaning">That is ${moneyR(sts.perDay)} a day for the ${sts.daysLeft} days left in ${TODAY.month}, after your planned commitments.</p>
+      <div class="bar"><i class="spent" style="width:${Math.min(spentPct, 100)}%"></i><i class="tick" style="left:${pacePct}%"></i></div>
+      <p class="meaning">${spentPct}% of your envelopes spent · even pace would be ${pacePct}% — see your budgets →</p>
+    </button>
+    <button class="card flat row" data-nav="money">
+      <span><span class="label" style="display:block">Net worth</span><span class="figure sm ${S.blur ? 'blurred' : ''}">${money(nw.total)}</span></span>
+      <span style="text-align:right"><span class="label" style="display:block">30 days</span><span class="amt pos ${S.blur ? 'blurred' : ''}"><span class="sign">+</span>${moneyR(nw.delta)} up</span></span>
+    </button>
+    <div class="card">
+      <p class="label">Your next best rupee</p>
+      <p class="name" style="font-size:15px">Pay off the card — ${money(1900000)} this month</p>
+      <p class="meaning">Stage 3 of eight. No interest rate is recorded for that card, so it is treated as high-interest, as most cards are.</p>
+      <button class="row" data-nav="orderofops" style="margin-top:12px; border-top:1px solid var(--line); padding-top:10px"><span class="name">See the full order</span><span class="note">→</span></button>
+    </div>
+    ${worst ? `
+    <button class="card" data-nav="txns" data-arg="${worst.budget.id}" style="text-align:left">
+      <div class="row" style="align-items:flex-start">
+        <span><span class="label" style="display:block">Watch this</span><span class="name" style="font-size:15px">${esc(worst.budget.name)} is pacing ${pct(worst.lands - worst.budget.planned, worst.budget.planned)}% above plan</span></span>
+        <span class="tag ${worst.over ? 'warn' : ''}">${worst.over ? 'needs a look' : 'on pace'}</span>
+      </div>
+      <p class="meaning">At this pace ${TODAY.month} lands at ${moneyR(worst.lands)} against a ${moneyR(worst.budget.planned)} budget. See what you spent it on →</p>
+    </button>` : ''}
+    <button class="card flat row" data-nav="insights">
+      <span><span class="name">${S.insights.length} more insights</span><span class="note">ranked by what the action is worth, not by recency</span></span>
+      ${navTag('insights')}
+    </button>`;
+}
+
+function screenMoney() {
+  const nw = engines.netWorth();
+  const group = (side) => S.accounts.filter((a) => a.side === side).map((a) => `
+    <button class="row" data-nav="account" data-arg="${a.id}">
+      <span><span class="name">${esc(a.name)}</span><span class="note">${esc(a.note || a.kind)}</span></span>
+      ${amt(a.paise, a.side === 'owe' ? 'neg' : '')}
+    </button>`).join('');
+  const row = (screen, name, note) => `
+    <button class="row" data-nav="${screen}"><span><span class="name">${esc(name)}</span><span class="note">${esc(note)}</span></span>${navTag(screen)}</button>`;
+  return `
+    <div class="appbar"><h2>Money</h2><button class="ghostbtn" data-act="blur">${S.blur ? 'Show amounts' : 'Hide amounts'}</button></div>
+    <button class="card" data-nav="nwhistory" style="text-align:left">
+      <p class="label">Net worth</p>
+      <p class="figure ${S.blur ? 'blurred' : ''}">${money(nw.total)}</p>
+      <p class="meaning">You own ${moneyR(nw.own)} and owe ${moneyR(nw.owe)}. Snapshotted daily on this device — see the year →</p>
+    </button>
+    <div class="card"><p class="label">You own</p>${group('own')}</div>
+    <div class="card"><p class="label">You owe</p>${group('owe')}</div>
+    <p class="sectionhead">Cover and tax</p>
+    <div class="card">
+      ${row('insurance', 'Cover', 'term and health, against what you would need')}
+      ${row('tax', 'Tax estimate', 'this year, under both regimes')}
+    </div>
+    <p class="sectionhead">Things you own</p>
+    <div class="card">
+      ${row('vehicle', S.vehicle.name, `next service ${S.vehicle.next}`)}
+      ${row('appliances', 'Appliances', 'service, consumables, and what they cost to run')}
+    </div>
+    <div class="card">
+      ${row('accounteditor', 'Add an account', 'bank, card, loan, investment, gold, property…')}
+      ${row('txns', `All ${S.txns.length} transactions`, 'every entry, with where it came from')}
+    </div>`;
+}
+
+function screenAdd() {
+  const paise = Number(draft.digits || 0);
+  const cat = S.budgets.find((b) => b.id === draft.cat);
+  const acct = S.accounts.find((a) => a.id === draft.acct);
+  const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '0', '⌫'];
+  return `
+    <div class="appbar"><button class="back" data-act="pop">←</button><h2>Add</h2><span class="note">${draft.from === 'receipt' ? 'from a receipt' : '3 taps'}</span></div>
+    <div class="card flat" style="padding:10px 12px">
+      <p class="label" style="margin-bottom:7px">Or let the phone read it</p>
+      <div class="chips"><button class="chip" data-nav="receipt">Scan a receipt</button><button class="chip" data-nav="smsreview">From bank SMS${S.smsQueue.length ? ' · ' + S.smsQueue.length : ''}</button></div>
+    </div>
+    <div class="card" style="text-align:center">
+      <p class="label">Spent</p>
+      <p class="figure" style="font-size:38px">${money(paise)}</p>
+      <p class="meaning">${esc(cat ? cat.name : 'Pick a category')} · ${esc(acct ? acct.name : '')}${draft.from === 'receipt' ? ' · More Supermarket' : ''}</p>
+    </div>
+    <div class="chips">${S.budgets.map((b) => `<button class="chip" data-cat="${b.id}" aria-pressed="${b.id === draft.cat}">${esc(b.name)}</button>`).join('')}</div>
+    <div class="chips">${S.accounts.filter((a) => a.kind !== 'Investment' && a.kind !== 'Gold' && a.kind !== 'Loan').map((a) => `<button class="chip" data-acct="${a.id}" aria-pressed="${a.id === draft.acct}">${esc(a.name)}</button>`).join('')}</div>
+    <div class="keypad">${keys.map((k) => `<button data-key="${k}">${k}</button>`).join('')}</div>
+    <button class="btn" data-act="save" ${paise === 0 ? 'disabled' : ''}>Save</button>
+    <button class="chip" data-act="split" style="align-self:center">Split across categories</button>`;
+}
+
+function screenAsk() {
+  const turns = S.chat.map((t) => t.me
+    ? `<div class="bubble me">${esc(t.text)}</div>`
+    : `<div class="card ${t.refused ? '' : 'wash'}">
+         <p class="name" style="font-size:15px">${esc(t.text)}</p>
+         ${t.chips ? `<div class="chips" style="margin-top:10px">${t.chips.map((c) => `<span class="tag">${esc(c)}</span>`).join('')}</div>` : ''}
+         ${t.work ? `<details class="work"><summary>Show the work</summary><dl>${t.work.map((w) => `<dt>${esc(w[0])}</dt><dd>${esc(w[1])}</dd>`).join('')}</dl></details>` : ''}
+       </div>`).join('');
+  return `
+    <div class="appbar"><h2>Ask</h2><span class="note">on-device</span></div>
+    ${S.chat.length === 0 ? `<div class="card flat"><p class="name">Ask about your own money.</p><p class="meaning">Every figure comes from an engine and is checked before you see it. The model only writes the words.</p></div>` : turns}
+    <div class="chips">
+      <button class="chip" data-ask="Where did my money go this month?">Where did it go?</button>
+      <button class="chip" data-ask="What is my balance?">My balance</button>
+      <button class="chip" data-ask="Can I afford ₹45,000 for a phone?">Can I afford ₹45,000?</button>
+      <button class="chip" data-ask="What is my health score?">Health score</button>
+      <button class="chip" data-ask="Should I buy RELIANCE?">Should I buy RELIANCE?</button>
+    </div>
+    <form class="asker" data-act="ask-form">
+      <input id="ask-input" placeholder="Ask anything about your money" autocomplete="off">
+      <button class="chip on" type="submit">Ask</button>
+    </form>`;
+}
+
+function screenYou() {
+  const toggle = (name, note, key, on) => `
+    <div class="row">
+      <span><span class="name">${esc(name)}</span><span class="note">${esc(note)}</span></span>
+      <button class="switch" role="switch" aria-checked="${on}" aria-label="${esc(name)}" data-toggle="${key}"></button>
+    </div>`;
+  const row = (screen, name, note) => `
+    <button class="row" data-nav="${screen}"><span><span class="name">${esc(name)}</span><span class="note">${esc(note)}</span></span>${navTag(screen)}</button>`;
+  return `
+    <div class="appbar"><h2>You</h2><span class="note">${esc(S.profile)}</span></div>
+    <div class="card flat">
+      <p class="name" style="font-size:15px">Everything works offline</p>
+      <p class="meaning">No account, no server, nothing uploaded. Two features can reach out, and both are off.</p>
+    </div>
+    <p class="sectionhead">Privacy</p>
+    <div class="card">
+      ${toggle('Read bank SMS', 'on this device only · never uploaded', 'sms', S.consents.sms)}
+      ${toggle('Market data', S.consents.market ? 'granted just now' : 'granted 4 Sep · revoked 2 Oct', 'market', S.consents.market)}
+      ${toggle('Hide amounts', 'masks every figure, widget included', 'blur', S.blur)}
+      ${row('consents', 'Consent record', 'what you allowed, and when you took it back')}
+      <button class="row" data-act="lock"><span><span class="name">Lock the app</span><span class="note">biometric, with a PIN fallback</span></span><span class="note">→</span></button>
+    </div>
+    <p class="sectionhead">Your data</p>
+    <div class="card">
+      ${row('backup', 'Export and backup', 'a JSON archive, or an encrypted one')}
+      ${row('profiles', 'Profiles', `${esc(S.profile)} · personal, household, business`)}
+      ${row('erase', 'Erase everything', 'destroys the key first')}
+    </div>
+    <p class="sectionhead">Setup</p>
+    <div class="card">
+      ${row('onboarding', 'Your monthly money', 'income, commitments, suggested envelopes')}
+      ${row('index', 'All screens in this prototype', 'what the app has, and what v2 proposes')}
+    </div>
+    <button class="chip" data-act="reset" style="align-self:center">Reset demo data</button>`;
+}
+
+/* ---- pushed screens, reached from a row or a chip ---- */
+function screenBudgets() {
+  const sp = engines.spend();
+  const pacePct = Math.round((TODAY.day / TODAY.days) * 100);
+  const rows = S.budgets.map((b) => {
+    const p = engines.pace(b);
+    const spentPct = Math.min(pct(p.spent, b.planned), 100);
+    const overPct = p.lands > b.planned ? Math.min(pct(p.lands - b.planned, b.planned), 100 - spentPct) : 0;
+    return `
+      <div style="margin-top:14px">
+        <button class="row" data-nav="txns" data-arg="${b.id}">
+          <span><span class="name">${esc(b.name)}</span><span class="note">${money(p.spent)} of ${money(b.planned)} · lands at ${moneyR(p.lands)}</span></span>
+          <span class="tag ${p.over ? 'warn' : ''}">${p.over ? 'over pace' : 'on pace'}</span>
+        </button>
+        <div class="bar"><i class="spent" style="width:${spentPct}%"></i><i class="over" style="width:${overPct}%"></i><i class="tick" style="left:${pacePct}%"></i></div>
+      </div>`;
+  }).join('');
+  return `
+    <div class="appbar"><button class="back" data-act="pop">←</button><h2>Budgets</h2><span class="note">${TODAY.month}</span></div>
+    <div class="card flat">
+      <p class="label">Planned this month</p>
+      <p class="figure sm ${S.blur ? 'blurred' : ''}">${money(sp.planned)} · ${money(sp.left)} left</p>
+      <p class="meaning">Alerts at 80% and 100%, once each. Nothing pings you about a coffee.</p>
+    </div>
+    <div class="card">${rows}</div>`;
+}
+
+function screenTxns() {
+  const src = { manual: 'typed', receipt: 'from a receipt', sms: 'from a bank SMS' };
+  // An argument filters the list to one envelope, which is how a budget row gets somewhere to go
+  // without inventing a screen the app does not have.
+  const envelope = S.budgets.find((b) => b.id === arg());
+  const shown = envelope ? S.txns.filter((t) => t.cat === envelope.id) : S.txns;
+  const rows = shown.map((t) => `
+    <button class="row" data-nav="txn" data-arg="${S.txns.indexOf(t)}">
+      <span><span class="name">${esc(t.merchant)}</span><span class="note">${esc(S.budgets.find((b) => b.id === t.cat)?.name || t.cat)} · ${t.nature} · ${src[t.src]}</span></span>
+      <span style="text-align:right">${amt(-t.paise, 'neg')}<span class="note">${t.d} Oct</span></span>
+    </button>`).join('');
+  const spentHere = shown.reduce((sum, t) => sum + t.paise, 0);
+  return `
+    ${head(envelope ? envelope.name : 'Transactions', `${shown.length}`)}
+    ${envelope ? `<div class="card flat">
+      <p class="label">This envelope</p>
+      <p class="figure sm ${S.blur ? 'blurred' : ''}">${money(spentHere)} of ${money(envelope.planned)}</p>
+      <p class="meaning">At this pace ${TODAY.month} lands at ${moneyR(engines.pace(envelope).lands)}.</p>
+    </div>` : ''}
+    ${shown.length ? `<div class="card">${rows}</div>` : `<div class="empty">Nothing recorded${envelope ? ' in ' + esc(envelope.name) : ''} yet.</div>`}`;
+}
+
+function screenGoals() {
+  const rows = S.goals.map((g, i) => `
+    <div style="margin-top:14px">
+      <button class="row" data-nav="goaldetail" data-arg="${i}">
+        <span><span class="name">${esc(g.name)}</span><span class="note">${money(g.saved)} of ${money(g.target)} · ${esc(g.note)}</span></span>
+        <span class="tag">${pct(g.saved, g.target)}%</span>
+      </button>
+      <div class="bar"><i class="spent" style="width:${pct(g.saved, g.target)}%"></i></div>
+    </div>`).join('');
+  return `
+    ${head('Goals', `${S.goals.length}`)}
+    <div class="card">${rows}</div>
+    <p class="meaning">The engine turns a target and a date into a required monthly figure. It never moves money for you.</p>`;
+}
+
+function screenForecast() {
+  const f = engines.forecast();
+  return `
+    <div class="appbar"><button class="back" data-act="pop">←</button><h2>Forecast</h2><span class="note">${f.horizon} days</span></div>
+    <div class="card">
+      <p class="label">Your lowest point</p>
+      <p class="figure ${S.blur ? 'blurred' : ''}">${money(f.lowest)}</p>
+      <p class="meaning">On ${f.on}, after rent and both EMIs clear. Above your ₹15,000 floor, so no crunch day in the window.</p>
+      <details class="work"><summary>Show the work</summary><dl>
+        <dt>window</dt><dd>${f.horizon} days from ${TODAY.label}</dd>
+        <dt>built from</dt><dd>recurring series + ${S.txns.length} recorded transactions</dd>
+        <dt>engine</dt><dd>AI-FCT 1.6 · P50 path</dd>
+      </dl></details>
+    </div>
+    <div class="card flat"><p class="name">What it does not do</p><p class="meaning">It will not predict a windfall or a one-off you have never recorded. A forecast that invents income is worse than none.</p></div>`;
+}
+
+function screenConsents() {
+  return `
+    <div class="appbar"><button class="back" data-act="pop">←</button><h2>Consent record</h2></div>
+    <div class="card">
+      <div class="row"><span><span class="name">Read bank SMS</span><span class="note">${S.consents.sms ? 'granted just now' : 'never granted'}</span></span><span class="tag">${S.consents.sms ? 'on' : 'off'}</span></div>
+      <div class="row"><span><span class="name">Market data</span><span class="note">${S.consents.market ? 'granted just now' : 'granted 4 Sep 2026 · revoked 2 Oct 2026'}</span></span><span class="tag">${S.consents.market ? 'on' : 'off'}</span></div>
+      <div class="row"><span><span class="name">Cloud assistant</span><span class="note">never granted · no transport exists in this build</span></span><span class="tag">off</span></div>
+    </div>
+    <p class="meaning">A switch tells you the state. The record tells you the history — which is the part you need when you are deciding whether to trust an app.</p>`;
+}
+
+/* ---------------------------------------------------------------------------
+   Ask: the real split. A deterministic router picks an intent, engines supply
+   the figures, and a template writes the sentence (P-03). Nothing here invents
+   a number — which is why the figures always match the other screens.
+--------------------------------------------------------------------------- */
+function answer(question) {
+  const q = question.toLowerCase();
+  const refuse = ['reliance', 'stock', 'share', 'buy ', 'tax', 'file ', 'legal', 'tip'];
+  if (refuse.some((w) => q.includes(w)) && !q.includes('afford')) {
+    return { me: false, refused: true, text: "I can't pick investments or file taxes for you.",
+      chips: ['out of scope · CHT-002'],
+      work: [['why', 'That needs advice I am not registered to give'], ['instead', 'I can show whether today scores better than usual for your watched index']] };
+  }
+  const sp = engines.spend(), sts = engines.safeToSpend(), nw = engines.netWorth(), h = engines.health();
+  if (q.includes('balance') || q.includes('have')) {
+    return { me: false, text: `You have ${money(sts.left)} available to spend this month.`,
+      chips: ['get_balance', 'AI-STS 1.3', 'checked'],
+      work: [['left', `${money(sts.left)} of ${money(sp.planned)} planned`], ['model', 'template · wrote the words, not the figures']] };
+  }
+  if (q.includes('afford')) {
+    const price = 4500000;
+    const after = sts.left - price;
+    // The sentence follows the figure. A negative remainder stated flatly reads like an
+    // approval, which is exactly the kind of fluent wrongness the guardrail exists to stop.
+    return { me: false,
+      text: after >= 0
+        ? `That would leave you with ${money(after)} for the rest of ${TODAY.month}.`
+        : `Not this month — it is ${money(-after)} more than the ${money(sts.left)} you have left.`,
+      chips: ['can_i_afford', 'AI-PA 1.2', 'checked'],
+      work: [['price', money(price)], ['safe to spend', money(sts.left)],
+        ['verdict', after >= 0 ? 'affordable, but it clears your buffer' : 'not affordable this month'],
+        ['rule', 'RULE-PA-BUFFER v1.1']] };
+  }
+  if (q.includes('health') || q.includes('score')) {
+    return { me: false, text: `Your financial health score is ${h.score} out of ${h.max}.`,
+      chips: ['get_health_score', 'AI-FHS 1.1', 'checked'],
+      work: [['band', h.band], ['biggest lever', h.lever], ['pillars', 'savings, debt, buffer, diversification, discipline']] };
+  }
+  if (q.includes('worth') || q.includes('net')) {
+    return { me: false, text: `Your net worth is ${money(nw.total)} — ${moneyR(nw.own)} owned against ${moneyR(nw.owe)} owed.`,
+      chips: ['get_net_worth', 'AI-NW 1.0', 'checked'], work: [['snapshot', `${TODAY.label}, taken on this device`]] };
+  }
+  return { me: false, text: `You spent ${money(sp.spent)} across ${sp.count} transactions this month.`,
+    chips: ['query_spend', 'AI-STS 1.3', 'checked'],
+    work: [['total', `${money(sp.spent)} — from your ledger, 1–${TODAY.day} Oct`], ['count', `${sp.count} transactions`], ['model', 'template · wrote the words, not the figures']] };
+}
+
+/* ---------------------------------------------------------------------------
+   Shell: render, navigate, and the handful of interactions.
+--------------------------------------------------------------------------- */
+const SCREENS = {
+  today: screenToday, money: screenMoney, plan: screenPlan, add: screenAdd, ask: screenAsk, you: screenYou,
+  budgets: screenBudgets, txns: screenTxns, goals: screenGoals, forecast: screenForecast, consents: screenConsents,
+  lock: screenLock, onboarding: screenOnboarding, health: screenHealth, insights: screenInsights,
+  emergency: screenEmergency, advisor: screenAdvisor, buylist: screenBuylist, account: screenAccount,
+  allocation: screenAllocation, nwhistory: screenNwHistory, txn: screenTxn, receipt: screenReceipt,
+  smsreview: screenSmsReview, categories: screenCategories, recurring: screenRecurring, vehicle: screenVehicle,
+  appliances: screenAppliances, insurance: screenInsurance, tax: screenTax, market: screenMarket,
+  simulators: screenSimulators, backup: screenBackup, profiles: screenProfiles, index: screenIndex,
+  orderofops: screenOrderOfOps, accounteditor: screenAccountEditor, holdings: screenHoldings,
+  goaldetail: screenGoalDetail, erase: screenErase
+};
+
+function render() {
+  const locked = S.lock && !S.erased;
+  const name = locked ? 'lock' : here().screen;
+  el('screen').innerHTML = S.erased ? screenErased() : (SCREENS[name] || screenToday)();
+  // Tab bar and FAB go with the lock: a locked app shows nothing it could navigate to.
+  el('tabs').hidden = locked;
+  el('addfab').hidden = locked || S.erased || name === 'add';
+  document.querySelectorAll('#tabs button').forEach((b) => {
+    if (b.dataset.tab === nav.tab) b.setAttribute('aria-current', 'page');
+    else b.removeAttribute('aria-current');
+  });
+  el('screen').scrollTop = 0;
+}
+
+/** Pushes a screen onto the current tab's stack. Input: [screen]; [value] — its argument. */
+function go(screen, value = null) {
+  if (TABS.includes(screen) && !nav.stacks[nav.tab].length) { switchTab(screen); return; }
+  nav.stacks[nav.tab].push({ screen, arg: value });
+  render();
+}
+
+/** Back, one level. Result: the tab's root once the stack empties. */
+function back() { nav.stacks[nav.tab].pop(); render(); }
+
+/** Switches tab, keeping every other tab's depth. Input: [tab]. */
+function switchTab(tab) { nav.tab = tab; render(); }
+
+/** Clears a tab's stack and shows it — after a save, an unlock or a reset. Input: [tab]. */
+function reset(tab) { nav.stacks[tab] = []; nav.tab = tab; render(); }
+
+/** Opens Add over whichever tab you were on, and remembers where to return. */
+function openAdd() {
+  draft = { digits: '', cat: draft.cat, acct: draft.acct, from: null, back: nav.tab };
+  go('add');
+}
+
+function screenErased() {
+  return `
+    <div class="appbar"><h2>Erased</h2></div>
+    <div class="empty">
+      <p class="name">Everything is gone.</p>
+      <p class="meaning">The key was destroyed first, so what is left on disk cannot be read — by this app or anything else.</p>
+    </div>
+    <button class="btn secondary" data-act="reset">Restore demo data</button>`;
+}
+
+function toast(text) {
+  const t = el('toast');
+  t.textContent = text; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 1700);
+}
+
+function sheet(html) {
+  const s = el('sheet');
+  s.innerHTML = `<div>${html}</div>`;
+  s.hidden = false;
+}
+
+function save() {
+  const paise = Number(draft.digits || 0);
+  if (!paise) return;
+  S.txns.unshift({ d: TODAY.day, merchant: draft.from === 'receipt' ? 'More Supermarket' : 'Added by you',
+    cat: draft.cat, paise, acct: draft.acct, nature: 'Want', src: draft.from || 'manual' });
+  draft = { digits: '', cat: draft.cat, acct: draft.acct, from: null };
+  reset(draft.back || 'today');
+  toast(`Saved ${money(paise)} · every figure recomputed`);
+}
+
+el('tabs').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-tab]');
+  if (b) switchTab(b.dataset.tab);
+});
+
+el('addfab').addEventListener('click', openAdd);
+
+el('screen').addEventListener('click', (e) => {
+  const t = e.target.closest('[data-act], [data-nav], [data-key], [data-cat], [data-acct], [data-ask], [data-toggle]');
+  if (!t) return;
+  const d = t.dataset;
+  if (d.nav) { go(d.nav, d.arg || null); return; }
+  if (d.key) {
+    if (d.key === '⌫') draft.digits = draft.digits.slice(0, -1);
+    else if (draft.digits.length < 9) draft.digits = String(Number(draft.digits + d.key));
+    render(); return;
+  }
+  if (d.cat) { draft.cat = d.cat; render(); return; }
+  if (d.acct) { draft.acct = d.acct; render(); return; }
+  if (d.ask) { ask(d.ask); return; }
+  if (d.toggle) {
+    if (d.toggle === 'blur') S.blur = !S.blur;
+    else S.consents[d.toggle] = !S.consents[d.toggle];
+    render();
+    toast(d.toggle === 'blur' ? (S.blur ? 'Amounts hidden everywhere' : 'Amounts shown')
+      : `${d.toggle === 'sms' ? 'Bank SMS' : 'Market data'} ${S.consents[d.toggle] ? 'allowed — revocable any time' : 'revoked, and the record keeps both dates'}`);
+    return;
+  }
+  switch (d.act) {
+    case 'pop': back(); break;
+    case 'unlock': S.lock = false; render(); toast('Unlocked · the database key came from the Keystore'); break;
+    case 'lock': S.lock = true; reset('today'); break;
+    case 'receipt-save':
+      S.txns.unshift({ d: 12, merchant: S.receipt.merchant, cat: 'groceries', paise: S.receipt.total, acct: 'card', nature: 'Need', src: 'receipt' });
+      reset(draft.back || 'today');
+      toast(`Saved ${money(S.receipt.total)} from the receipt`);
+      break;
+    case 'sms-accept': {
+      const m = S.smsQueue.splice(Number(d.i), 1)[0];
+      if (m) S.txns.unshift({ d: TODAY.day, merchant: m.bank + ' alert', cat: m.cat, paise: m.paise, acct: 'card', nature: 'Want', src: 'sms' });
+      render(); toast(`Added ${money(m ? m.paise : 0)} — you confirmed it, not the parser`);
+      break;
+    }
+    case 'sms-reject':
+      S.smsQueue.splice(Number(d.i), 1); render(); toast('Rejected · that message is never read again');
+      break;
+    case 'recat': toast('Changing it teaches the merchant rule (not in this prototype)'); break;
+    case 'restore': toast('Needs the passphrase · nobody can reset it for you'); break;
+    case 'profile': S.profile = d.p; render(); toast(`Switched to ${d.p} · nothing is merged`); break;
+    case 'blur': S.blur = !S.blur; render(); toast(S.blur ? 'Amounts hidden everywhere' : 'Amounts shown'); break;
+    case 'save': save(); break;
+    case 'split': toast('Split across any number of categories (not in this prototype)'); break;
+    case 'export': toast('One JSON archive, written to storage you choose'); break;
+    case 'backup': toast('Argon2id → AES-256-GCM · the passphrase is never stored'); break;
+    case 'erase':
+      sheet(`<p class="name">Erase everything?</p>
+        <p class="meaning">This destroys the database key, then the files. It cannot reach an archive you exported yourself. In the app you would type a word and your PIN.</p>
+        <button class="btn danger" data-sheet="erase">Erase</button>
+        <button class="btn secondary" data-sheet="cancel">Keep my data</button>`);
+      break;
+    case 'reset': S = seed(); S.lock = false; reset('today'); toast('Demo data restored'); break;
+    default: break;
+  }
+});
+
+el('screen').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const input = el('ask-input');
+  if (input && input.value.trim()) ask(input.value.trim());
+});
+
+function ask(question) {
+  S.chat.push({ me: true, text: question });
+  S.chat.push(answer(question));
+  reset('ask');
+  const s = el('screen');
+  s.scrollTop = s.scrollHeight;
+}
+
+el('sheet').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-sheet]');
+  if (!b && e.target.id !== 'sheet') return;
+  el('sheet').hidden = true;
+  if (b && b.dataset.sheet === 'erase') {
+    S = seed(); S.erased = true; S.lock = false; reset('today');
+    toast('Key destroyed · nine workers cancelled');
+  }
+});
+
+render();
+</script>

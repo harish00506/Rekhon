@@ -266,11 +266,14 @@ tasks.register<Exec>("scriptTests") {
  *       way CI ran them was inside `unitTests` — four thousand anonymous tests, so a regression read
  *       as "a test failed" rather than "categorisation accuracy dropped below 92%". Issue 10.6 made
  *       exactly this argument for `guardrailEval`; this extends it to the other four sets.
- * What: the five modules holding a frozen set — categorisation, receipts, SMS, forecast ledgers and
- *       the chat guardrail.
+ * What: the six modules holding a frozen set — categorisation, receipts, SMS, forecast ledgers, the
+ *       chat guardrail, and the verbaliser's fidelity set.
  * Result: one named CI step whose failure says which dataset regressed, and one command a developer
  *       can run without the rest of the suite.
  * Changelog: 2026-10-02 — Created for issue 12.2.
+ *            2026-10-10 — ADR-0080: added `:ml:llm`'s verbalisation-fidelity set. It measures the
+ *            one thing the on-device model is asked to do, in both directions: no drifted or
+ *            invented figure accepted, and no faithful reply refused.
  *
  * **`unitTests` is still what blocks a merge** — these tasks are inside it. This exists so the
  * pipeline names what it is checking, and so the accuracy lines the runners print are findable in a
@@ -285,6 +288,9 @@ tasks.register("aiEval") {
         ":domain:engines:sms:test",
         ":domain:engines:forecast:test",
         ":domain:engines:chat:test",
+        // ADR-0080's verbalisation-fidelity set. An Android library, so the task is the variant one
+        // — the distinction issue 2.6 exists to remember.
+        ":ml:llm:testDebugUnitTest",
     )
 }
 

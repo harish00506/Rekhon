@@ -27,6 +27,8 @@ import org.jetbrains.uast.UCallExpression
  *       `GCMParameterSpec`, `PBEKeySpec` and `SecretKeyFactory` in production sources.
  * Result: `Cipher.getInstance("AES/GCM/NoPadding")` fails lint; `aead.encrypt(...)` does not.
  * Changelog: 2026-10-02 — Created for issue 11.7 (SEC-003).
+ *            2026-10-10 — ADR-0079: a third exemption, `MessageDigest` at one named
+ *            file-integrity site. Recorded in `docs/security/sec-003-crypto-audit.md` §6.
  *
  * **Resolved types, not identifier names.** The first version of this matched the receiver's simple
  * name, the way [PiiLoggingDetector] does — and lint's own `IMPORT_ALIAS` test mode rejected it,
@@ -35,7 +37,7 @@ import org.jetbrains.uast.UCallExpression
  * class and compares fully-qualified names. The cost is that the JDK has to be on lint's analysis
  * classpath, which it is for every module here.
  *
- * **Two exemptions, both narrow, both argued.**
+ * **Three exemptions, all narrow, all argued.**
  *
  * 1. `KeyGenerator` **only when the file also mentions `KeyGenParameterSpec`.** ADR-0057 settled
  *    that asking the platform's own Keystore for a key is not hand-rolled cryptography — nothing
@@ -48,6 +50,18 @@ import org.jetbrains.uast.UCallExpression
  * 2. **Test sources.** A test may implement a primitive as an *independent oracle* —
  *    `BackupCipherTest` checks Tink's output against a separately computed one — and that is the
  *    kind of verification SEC-003 wants to be possible, not the kind it forbids.
+ * 3. `MessageDigest` **at one named file-integrity site** (ADR-0079). `LlmModelStore` checks that a
+ *    sideloaded 521 MB model file is the published one by comparing its SHA-256 to a digest
+ *    published by the people who built it. There is no key, no secret and nothing being protected:
+ *    it is a checksum against a third party's number, and Tink has no API for it — so banning it
+ *    outright would mean the check could not be written, and the alternative is loading unverified
+ *    weights, which is strictly worse for security than the rule it would satisfy.
+ *
+ *    **By file name, deliberately**, rather than by a heuristic over the file's contents. A
+ *    condition like "no key material in this file" is exactly what someone computing
+ *    `digest(key + message)` as a homemade MAC would satisfy, and that is the thing SEC-003 most
+ *    needs to stop. A named site means a second one has to be argued, added here, and added to the
+ *    audit inventory — and a rename fails the build rather than silently widening the hole.
  */
 class HandRolledCryptoDetector :
     Detector(),
@@ -79,6 +93,7 @@ class HandRolledCryptoDetector :
         val owner = method.containingClass?.qualifiedName ?: return
         if (owner !in BANNED_FACTORIES) return
         if (owner == KEY_GENERATOR && isKeystoreBacked(context)) return
+        if (owner == MESSAGE_DIGEST && isFileIntegritySite(context)) return
         report(context, node, owner)
     }
 
@@ -141,6 +156,17 @@ class HandRolledCryptoDetector :
         context.uastFile?.sourcePsi?.text?.contains(KEYSTORE_SPEC) == true
 
     /**
+     * Whether this file is the one audited file-integrity site (ADR-0079).
+     * Why:    see exemption 3 in the class note. A checksum over a public file against a published
+     *         digest protects nothing and keys nothing; refusing it would leave unverified weights
+     *         being loaded instead, which is the worse security outcome.
+     * Result: `true` for a file named in [INTEGRITY_DIGEST_FILES].
+     * Input:  [context] — the file being analysed. Output: [Boolean].
+     * Changelog: 2026-10-10 — Created for ADR-0079.
+     */
+    private fun isFileIntegritySite(context: JavaContext): Boolean = context.file.name in INTEGRITY_DIGEST_FILES
+
+    /**
      * Whether the file under analysis is a test source.
      * Why:    see the class note — a test may implement a primitive as an independent oracle.
      * Result: `true` for a path under a test source set.
@@ -155,6 +181,18 @@ class HandRolledCryptoDetector :
     companion object {
         /** The platform Keystore's key generator — banned only without a `KeyGenParameterSpec`. */
         private const val KEY_GENERATOR = "javax.crypto.KeyGenerator"
+
+        /** Hashing — banned everywhere except the one audited integrity site (ADR-0079). */
+        private const val MESSAGE_DIGEST = "java.security.MessageDigest"
+
+        /**
+         * The files allowed to hash a file for integrity, by name.
+         *
+         * One entry, and adding a second is a decision: it needs an argument in an ADR, a row in
+         * `docs/security/sec-003-crypto-audit.md` §2, and a line here. A rename breaks the build,
+         * which is the failure direction this list wants.
+         */
+        private val INTEGRITY_DIGEST_FILES = setOf("LlmModelStore.kt")
 
         /**
          * Primitives reached through a `getInstance` factory, fully qualified.

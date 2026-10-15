@@ -1,6 +1,8 @@
 # ADR-0053 — The assistant plans with data, reads through tools, and the model only ever gets words to write
 
-- **Status:** accepted
+- **Status:** accepted · **extended by [ADR-0079](0079-the-on-device-model-is-real-and-its-weights-are-apache-2-0.md)**
+  (2026-10-10), which supplies the neural model decision 5 said this build did not have. Decision 5
+  stands as written for every phone without the weights installed, which is still the default.
 - **Date:** 2026-09-27
 - **Deciders:** Harish G (solo)
 - **SRS refs:** §19 (§19.1 pipeline, §19.2 tool registry, §19.3 behaviour rules CHT-001..005, §19.4

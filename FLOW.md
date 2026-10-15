@@ -102,8 +102,10 @@ commit that made it stale.
 > app is one of these shapes with different nouns, so a per-file call graph would add pages
 > and no understanding, and would be stale within a week. **Ceiling:** issue 5.5 built `:widget`,
 > which earned §4.5 by being the first surface that renders outside the app's process and must work
-> while it is locked. `:sync:backup` (still a placeholder — issue 8.1's backup is a screen, not a worker) and `:ml:llm` still do not exist; a fifth section waits for
-> one of them to be a genuinely different shape rather than another worker.
+> while it is locked. `:sync:backup` is still a placeholder (issue 8.1's backup is a screen, not a
+> worker). `:ml:llm` now holds a real model (ADR-0079), but it is the same shape as `:ml:ocr` — a
+> native library behind a port, called from a repository — so it earns a branch in §2.17 rather than
+> a section of its own; a fifth section waits for a genuinely different shape.
 
 ---
 
@@ -671,8 +673,20 @@ DashboardScreen → "Ask your CFO" → ChatScreen
      │     get_forecast → AI-FCT (the window too, because the sentence says it)
      │     get_goals → AI-GOAL · get_health_score → AI-FHS (the scale too, same reason)
      │     review_buylist → AI-PA-INT · get_vehicle_status → AI-VEH
-     ├─ LlmEngine.verbalise(intent + results)    :ml:llm — the template verbaliser, offline (P-04)
+     ├─ LlmEngine.verbalise(intent + results)              :ml:llm — ADR-0079 picks the model
      │     ⇡ §19.4's context pack: no ledger, no merchant list, not even the question
+     │   SelectingLlmEngine                     verified weights + English + < 3 failures?
+     │     ├─ yes → OnDeviceLlmEngine           id = on-device:qwen2.5-0.5b-instruct-q8
+     │     │          VerbalisationPrompt.of()  intent + ALREADY-FORMATTED figures (pure, P-03)
+     │     │          MediaPipeLlmRuntime       local file, no network, 12s cap (P-01, P-04)
+     │     │          DraftSanitiser            is it prose? one sentence? only its own figures?
+     │     │            ⇡ FigureRenderings.of(ChatEvidence.of(figures))  — the GUARDRAIL's own
+     │     │              allowlist (ADR-0080), so this check is never stricter than the gate
+     │     │              that follows it: ₹61,427 and ₹1.5 lakh pass, "about ₹61,000" does not
+     │     │            Err → the template answers this turn instead
+     │     └─ no  → TemplateLlmEngine           strings.xml, translated, offline (P-04) — id = template
+     │              ⇡ LlmModelStore.status(): Absent | Rejected(length/digest) | Ready
+     │                the weights are installed by scripts/install_llm_model.py, never fetched
      └─ ChatEngine.compose()
            GuardrailEngine.verify(draft, allowlist built from the tool figures)   (AI-ARC-004)
              Pass → the words, their figures and citations

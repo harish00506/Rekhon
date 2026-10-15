@@ -15,7 +15,7 @@ Third-party components
 ================================================================================
 
 Most of this app's dependencies are licensed under the Apache License 2.0 and
-require only the attribution this file provides. Three need specific attention,
+require only the attribution this file provides. Five need specific attention,
 and are called out because getting them wrong has consequences beyond tidiness.
 
 --------------------------------------------------------------------------------
@@ -48,6 +48,35 @@ The coupling is one class — MlKitReceiptTextRecognizer, behind the
 ReceiptTextRecognizer interface — and no domain model names an ML Kit type. A
 fully free build substituting an open-source recogniser is a contained change and
 needs no part of the exception.
+
+--------------------------------------------------------------------------------
+MediaPipe Tasks GenAI — com.google.mediapipe:tasks-genai
+--------------------------------------------------------------------------------
+Apache License 2.0, and genuinely open source (google-ai-edge/mediapipe) — unlike
+ML Kit above, so it needs no part of the linking exception. It runs the on-device
+language model's weights (ADR-0079) and makes no network call: the weights are a
+local file.
+
+The API is in maintenance-only mode upstream, which is why the version is pinned
+and why it sits behind one interface (LlmRuntime). Its successor, LiteRT-LM, is
+also Apache 2.0.
+
+--------------------------------------------------------------------------------
+Qwen2.5-0.5B-Instruct — model weights, not a bundled dependency
+--------------------------------------------------------------------------------
+Apache License 2.0. Published by Alibaba Cloud; converted for on-device inference
+and published by Google's LiteRT community at
+https://huggingface.co/litert-community/Qwen2.5-0.5B-Instruct.
+
+**These weights are not in this repository and not in the APK.** The app ships no
+model: a user who wants the neural assistant installs the 521 MB file themselves
+(scripts/install_llm_model.py), and the app verifies its SHA-256 before loading
+it. Nothing about the distribution of this repository or a build of it carries the
+weights, so the obligation to attribute falls on whoever redistributes them.
+
+Apache-2.0 weights were chosen over a Gemma-class model of the same size
+deliberately (ADR-0079 §3): Gemma's terms of use would attach a redistribution
+policy to a project whose own licence is the thing readers check first.
 
 --------------------------------------------------------------------------------
 Google Tink — com.google.crypto.tink:tink-android

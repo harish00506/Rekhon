@@ -130,6 +130,7 @@ internal fun Project.configureCoverage() {
  *            exposed to the very skip 7.2 fixed.
  *            2026-10-02 — Issue 11.7: added `docs/security/`, so the crypto audit's drift test is
  *            scheduled rather than held up to date on an edit to the document it checks.
+ *            2026-10-10 — ADR-0079: added `scripts/`, for the LLM model manifest's drift test.
  */
 internal fun Project.configureCheckedDataAsTestInput() {
     val directories = CHECKED_DATA_PATHS.map { rootProject.layout.projectDirectory.dir(it) }
@@ -183,7 +184,10 @@ internal fun Project.configureOwnSourceAsTestInput() {
  * the two together. `docs/compliance/` holds the DPDP matrix, whose claims
  * `DpdpComplianceDriftTest` checks against the code (issue 11.5).
  */
-private val CHECKED_DATA_PATHS = listOf("ai", "docs/compliance", "docs/security")
+// `scripts` joined the list for ADR-0079: ModelManifestDriftTest reads
+// scripts/install_llm_model.py to hold the installer's manifest to the app's, and an undeclared
+// read is how this repository has now four times had a drift gate that Gradle held up to date.
+private val CHECKED_DATA_PATHS = listOf("ai", "docs/compliance", "docs/security", "scripts")
 
 /** Engine/domain floor from CLAUDE.md §4. */
 private const val MIN_MODULE_COVERAGE = 85

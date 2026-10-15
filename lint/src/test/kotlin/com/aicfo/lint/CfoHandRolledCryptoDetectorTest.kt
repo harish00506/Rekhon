@@ -277,6 +277,97 @@ class CfoHandRolledCryptoDetectorTest {
             .expectClean()
     }
 
+    /**
+     * Input:  `MessageDigest` in the one file the rule exempts (ADR-0079).
+     * Output: asserts **no** finding. `LlmModelStore` compares a sideloaded model file's SHA-256
+     *         with the digest its publisher published. No key, no secret, nothing protected — and
+     *         refusing it would mean loading unverified weights instead, which is worse for
+     *         security than the rule it would satisfy.
+     */
+    @Test
+    fun `allows a file-integrity digest at the one audited site`() {
+        lint()
+            .files(
+                messageDigestStub,
+                kotlin(
+                    "src/main/kotlin/LlmModelStore.kt",
+                    """
+                    package com.aicfo.ml.llm
+
+                    import java.security.MessageDigest
+
+                    class LlmModelStore {
+                        fun digest(input: ByteArray): ByteArray =
+                            MessageDigest.getInstance("SHA-256").digest(input)
+                    }
+                    """,
+                ).indented(),
+            ).issues(HandRolledCryptoDetector.ISSUE)
+            .allowMissingSdk()
+            .run()
+            .expectClean()
+    }
+
+    /**
+     * Input:  a `Cipher` in the exempted file.
+     * Output: asserts the finding is still raised. The exemption is for one *primitive* at that
+     *         site, not an amnesty for the file — a file name must never become a way to encrypt by
+     *         hand.
+     */
+    @Test
+    fun `the integrity exemption does not extend to the other primitives`() {
+        lint()
+            .files(
+                cipherStub,
+                kotlin(
+                    "src/main/kotlin/LlmModelStore.kt",
+                    """
+                    package com.aicfo.ml.llm
+
+                    import javax.crypto.Cipher
+
+                    class LlmModelStore {
+                        fun cipher(): Cipher = Cipher.getInstance("AES/GCM/NoPadding")
+                    }
+                    """,
+                ).indented(),
+            ).issues(HandRolledCryptoDetector.ISSUE)
+            .allowMissingSdk()
+            .run()
+            .expectErrorCount(1)
+            .expectContains("SEC-003")
+    }
+
+    /**
+     * Input:  `MessageDigest` in a file with the same contents and a different name.
+     * Output: asserts the finding is raised. The exemption is one named site, so copying the code
+     *         elsewhere — the realistic way this hole would widen — fails the build.
+     */
+    @Test
+    fun `the integrity exemption is one file, not a pattern`() {
+        lint()
+            .files(
+                messageDigestStub,
+                kotlin(
+                    "src/main/kotlin/OtherModelStore.kt",
+                    """
+                    package com.aicfo.ml.llm
+
+                    import java.security.MessageDigest
+
+                    class OtherModelStore {
+                        fun digest(input: ByteArray): ByteArray =
+                            MessageDigest.getInstance("SHA-256").digest(input)
+                    }
+                    """,
+                ).indented(),
+            ).issues(HandRolledCryptoDetector.ISSUE)
+            .allowMissingSdk()
+            .run()
+            .expectErrorCount(1)
+            .expectContains("SEC-003")
+    }
+
     // --- The registry itself ------------------------------------------------------------------
 
     /**
