@@ -166,6 +166,47 @@ It is written as **agent-followed, not build-enforced**, in the same words §10 
 records. Nothing in Gradle or CI fails if somebody skips it, and the rule says so rather than
 implying a gate that does not exist — which is the mistake this whole session was about.
 
+### 1.10 · CI could not have passed at all, and the reason was the JDK
+
+Found while verifying the work above, fixed on request afterwards.
+
+`.github/workflows/ci.yml` pinned `java-version: "17"` in both jobs. Robolectric refuses to build a
+sandbox for an Android SDK newer than the JDK running it, and `compileSdk`/`targetSdk` here are
+**36**, which needs **Java 21**. So every Robolectric class in `:app` and the `:feature:*` Compose
+suites failed at `classMethod` with
+
+```
+UnsupportedOperationException: Failed to create a Robolectric sandbox:
+Android SDK 36 requires Java 21 (have Java 17)
+```
+
+`./gradlew unitTests` — the command §8's Definition of Done names — **could not pass on the runner**.
+Nothing connected `compileSdk` to the runner's JDK, so the bump to 36 broke CI silently. This was
+found by running the suite locally on 17 (it fails) and on 21 (it passes), not by reading the file.
+
+Both pins are now 21. **This changes nothing about what ships**: the bytecode level is pinned
+separately in `KotlinConfig.kt` and stays 17, and no Gradle toolchain is declared on purpose — the
+convention plugin compiles on the installed JDK rather than downloading one, so the build JDK is
+the environment's to choose.
+
+The alternative was a `robolectric.properties` pinning `sdk=35`. Rejected on the merits: it would
+test against an SDK the app does not target, which is a gate measuring something other than what
+ships — the defect this whole session is about, in a new costume.
+
+Also corrected: `gradle/libs.versions.toml`'s `javaToolchain = "17"` is **read by nothing**. It now
+says so, and says it documents the bytecode level rather than a toolchain it is not.
+
+Verified on JDK 21 — `verifyReleaseMetadata`, `:convention:test`, `ktlintCheck detekt lintDebug`,
+`unitTests koverVerify`, `aiEval`, `guardrailEval`, `verifyPaparazziDebug`, `assembleDebug` and
+`verifyReleaseLogStripping` all green, and `:app:testDebugUnitTest --rerun-tasks` gives 21 classes
+/ 144 tests / 0 failures where six classes had failed outright on 17.
+
+**Still red, and not this:** `scanDependencies` blocks on GHSA-735f-pc8j-v9w8 for
+`protobuf-javalite@4.26.1`. That version never ships — `:ml:llm` alone resolves MediaPipe's 4.26.1,
+while `:app`, the module that is actually packaged, upgrades it to 4.31.1. `writeDependencyCoordinates`
+unions every module's `releaseRuntimeClasspath`, so it reports a coordinate no APK contains. That is
+a gap in the scan, not a vulnerability, and it is left open rather than allowlisted.
+
 ---
 
 ## 2 · Flow changed this session

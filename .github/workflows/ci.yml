@@ -48,11 +48,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
+        # 21, not 17, and the reason is Robolectric: it refuses to build a sandbox for an Android
+        # SDK newer than the JDK it is running on, and `compileSdk`/`targetSdk` here are 36, which
+        # it requires Java 21 for. On 17 every Robolectric class in `:app` and the `:feature:*`
+        # Compose suites fails at `classMethod` with
+        #   `UnsupportedOperationException: Android SDK 36 requires Java 21 (have Java 17)`
+        # — so `./gradlew unitTests` could not pass on this runner at all.
+        #
+        # **This does not change what ships.** The bytecode level is pinned separately and stays 17
+        # (`sourceCompatibility`/`targetCompatibility`/`jvmTarget` in `KotlinConfig.kt`); this is
+        # only the JDK Gradle itself runs on, which the convention plugin deliberately leaves to
+        # the environment ("no separate toolchain download").
+        #
+        # The alternative — a `robolectric.properties` pinning `sdk=35` — was rejected: it would
+        # test against an SDK the app does not target, which is a gate measuring something other
+        # than what ships.
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
 
       - name: Validate AI data files (ai/**)
         # The app LOADS these; a broken rulebook/knowledge file is a release blocker.
@@ -171,11 +186,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
+        # 21, not 17, and the reason is Robolectric: it refuses to build a sandbox for an Android
+        # SDK newer than the JDK it is running on, and `compileSdk`/`targetSdk` here are 36, which
+        # it requires Java 21 for. On 17 every Robolectric class in `:app` and the `:feature:*`
+        # Compose suites fails at `classMethod` with
+        #   `UnsupportedOperationException: Android SDK 36 requires Java 21 (have Java 17)`
+        # — so `./gradlew unitTests` could not pass on this runner at all.
+        #
+        # **This does not change what ships.** The bytecode level is pinned separately and stays 17
+        # (`sourceCompatibility`/`targetCompatibility`/`jvmTarget` in `KotlinConfig.kt`); this is
+        # only the JDK Gradle itself runs on, which the convention plugin deliberately leaves to
+        # the environment ("no separate toolchain download").
+        #
+        # The alternative — a `robolectric.properties` pinning `sdk=35` — was rejected: it would
+        # test against an SDK the app does not target, which is a gate measuring something other
+        # than what ships.
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
 
       - name: Enable KVM
         # Hardware acceleration for the emulator; without it the x86_64 image is too slow to boot.

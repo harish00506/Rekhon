@@ -16,6 +16,13 @@
 agp = "8.11.1"
 kotlin = "2.1.20"
 ksp = "2.1.20-2.0.1"
+# The **bytecode** level, not the JDK the build runs on, and **nothing reads this entry** — the
+# real pins are `sourceCompatibility`/`targetCompatibility`/`jvmTarget` in KotlinConfig.kt, which
+# this value only documents. No Gradle toolchain is declared on purpose: the convention plugin
+# compiles on the installed JDK rather than downloading one, so the build JDK is the environment's
+# choice. CI runs **21** because Robolectric needs it for `compileSdk` 36 (see ci.yml); the emitted
+# bytecode is still 17 either way. Kept rather than deleted so the intended target stays stated,
+# but do not read it as a toolchain — it enforces nothing.
 javaToolchain = "17"
 
 # --- SDK levels ---
