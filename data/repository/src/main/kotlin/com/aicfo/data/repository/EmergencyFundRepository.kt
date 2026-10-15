@@ -33,7 +33,7 @@ import kotlinx.coroutines.flow.map
  * database would outlive the spending that produced it, and would go stale simply because a month
  * closed — the one input the user never edits.
  */
-interface EmergencyFundRepository {
+fun interface EmergencyFundRepository {
     /**
      * Watches the active profile's emergency-fund assessment.
      * Why:    every term of it moves on its own schedule — a transaction changes the essentials, a

@@ -30,7 +30,7 @@ import java.time.LocalDate
  *
  * **Pure and LLM-free** (ARC-002, P-08, GRD-001): string and number matching, no clock, no I/O.
  */
-interface GuardrailEngine {
+fun interface GuardrailEngine {
     /** Checks one candidate text. See the interface's doc. */
     fun verify(input: GuardrailInput): Result<GuardrailVerdict, AppError>
 }

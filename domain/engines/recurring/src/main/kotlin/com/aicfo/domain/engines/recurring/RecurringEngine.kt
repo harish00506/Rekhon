@@ -22,7 +22,7 @@ import com.aicfo.core.model.Money
  *
  * Pure Kotlin (ARC-002), so the whole detector is provable on the JVM.
  */
-interface RecurringEngine {
+fun interface RecurringEngine {
     /**
      * Finds every series in one profile's transactions.
      * Why:    a `Result` rather than a throw, matching every other engine. The realistic failure is

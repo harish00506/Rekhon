@@ -44,7 +44,7 @@ import javax.inject.Inject
  *         profile; [clock] — the injected clock, never the wall clock (TIM-001).
  * Output: a coordinator the ViewModel calls once per save.
  */
-interface MoneyPlanWriter {
+fun interface MoneyPlanWriter {
     /**
      * Stores the seeds and the envelopes derived from them.
      * Result: `Ok(Unit)` when both writes land; `Err(Validation("monthlyIncome"))` when the amounts

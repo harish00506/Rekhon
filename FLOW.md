@@ -907,6 +907,39 @@ any module's :lintDebug
 password-based KDF — argued in ADR-0039, re-read by this audit, and checked against OpenSSL's
 implementation rather than trusted.
 
+### 2.32 · What the whole repository looks like at once (ADR-0081)
+
+**Not a runtime path — a build one**, and the only analysis in this project with a cross-module view.
+It is here for the reason §2.25 is: it decides what somebody reads as the state of the code, and no
+runtime diagram would show it.
+
+```
+SONAR_TOKEN=… SONAR_HOST_URL=… ./gradlew sonar
+└─ :sonar                                        root only; `isSkipProject` when SONAR_TOKEN is unset
+   ├─ :<module>:sonarResolver                     ×74 — resolves each module's compile classpath
+   ├─ sonar.sources / sonar.tests  per module
+   │  ├─ pure-Kotlin (:core:model, :core:common, :domain:*, :lint)
+   │  │     ⇣ read from the module's own SourceSets           155 main + 171 test files
+   │  └─ AGP modules (:app, :data:*, :feature:*, :core:*, :ml:*, :widget, :sync:*)
+   │        ⇣ DECLARED EXPLICITLY in build.gradle.kts         src/main/kotlin, res, AndroidManifest
+   │        ⚠ the scanner's own default is src/main/java — absent here, so the default
+   │          indexed ZERO lines for 26 modules and the dashboard was green over all of them
+   ├─ imports lint-results-debug.xml               ⇒ external_android-lint:* issues
+   │     ⇣ so `./gradlew lintDebug` must have run, or these are stale
+   ├─ sonar.exclusions                             build/, generated/, Hilt_*, snapshots/, spike/
+   └─ sonar.issue.ignore.multicriteria             9 rules off per file — table in ADR-0081
+      ⇣ POST /api/ce/submit → background task on the server → dashboard
+```
+
+**It reports; it does not gate.** `ktlintCheck`, `detekt`, `lintDebug` and `:lint`'s own tests stay
+the things that fail a build, because they are the ones that run with no server, no container and no
+network (P-04 applied to the tooling, not just the app).
+
+**The standing warning, and it is the same one as everywhere else in this file.** A clean Sonar
+dashboard is not evidence until you have checked *what it read*. Compare `ncloc` and `files` against
+the repository before believing a number: the honest figures are **578 files / 51,241 lines**. If an
+analysis reports roughly 293 files or 17,677 lines, the Android modules have dropped out again.
+
 ### 2.25 · How a release is hardened, and how that is checked (issue 11.6)
 
 **Not a runtime path — a build one.** It is here because §10 asks for call paths and this one decides

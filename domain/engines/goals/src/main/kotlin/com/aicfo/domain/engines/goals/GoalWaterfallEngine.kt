@@ -41,7 +41,7 @@ import java.time.LocalDate
  *
  * Pure Kotlin (ARC-002); the caller supplies the day, so no wall clock is read here (TIM-001).
  */
-interface GoalWaterfallEngine {
+fun interface GoalWaterfallEngine {
     /**
      * Allocates the month's surplus across [GoalWaterfallInput.goals].
      *

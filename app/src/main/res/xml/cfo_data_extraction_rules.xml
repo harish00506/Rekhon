@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  What Android 12+ may take off this device — nothing (P-01, §23).
+
+  Why:  `android:allowBackup="false"` is the pre-Android-12 switch and it still applies, but from
+        API 31 the platform reads this file instead for cloud backup and for device-to-device
+        transfer, and `allowBackup` is deprecated (Android Lint: DataExtractionRules). Without this
+        file the two Android-12+ paths are governed by a deprecated attribute, which is exactly the
+        kind of silent default this project writes down rather than inherits.
+  What: every domain excluded from both `cloud-backup` and `device-transfer`.
+  Result: the encrypted store, the Keystore-wrapped passphrase, the DataStore consent ledger and
+        the receipt blobs are never copied off the device by the platform. §23's own end-to-end
+        encrypted archive, which the user starts and holds the passphrase for, stays the only way
+        this data moves — which is the whole of P-01.
+  Changelog: 2026-10-15 — Created, to replace a deprecated attribute with the current mechanism.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>

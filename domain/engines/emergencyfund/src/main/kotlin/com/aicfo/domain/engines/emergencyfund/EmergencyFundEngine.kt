@@ -38,7 +38,7 @@ import java.time.LocalDate
  *
  * Pure Kotlin (ARC-002); the caller supplies the day, so no wall clock is read here (TIM-001).
  */
-interface EmergencyFundEngine {
+fun interface EmergencyFundEngine {
     /**
      * Assesses the emergency fund described by [input].
      *

@@ -11,7 +11,7 @@
   Result: one place to translate, and one place to argue about tone.
   Changelog: 2026-09-02 — Created for issue 7.2.
 -->
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <string name="emf_title">Emergency fund</string>
     <string name="emf_error">Something went wrong reading your emergency fund.</string>
     <string name="emf_dismiss_error">Dismiss</string>
@@ -23,7 +23,10 @@
     <string name="emf_target">Target %1$s</string>
     <string name="emf_saved_of_target">%1$s of %2$s set aside</string>
     <string name="emf_shortfall">%1$s still to find</string>
-    <string name="emf_top_up">%1$s a month closes it over %2$d months</string>
+    <plurals name="emf_top_up">
+        <item quantity="one">%1$s a month closes it over %2$d month</item>
+        <item quantity="other">%1$s a month closes it over %2$d months</item>
+    </plurals>
     <string name="emf_fully_funded">Nothing more to put aside</string>
 
     <!-- EmergencyStatus. The domain decides what is true; these decide how to say it. -->
@@ -47,9 +50,18 @@
     <string name="emf_basis_observed">the middle month of what you actually spent on needs</string>
     <string name="emf_basis_declared">the monthly needs you entered during setup</string>
     <string name="emf_basis_none">not known yet</string>
-    <string name="emf_evidence_multiplier">Held for %1$d months: 6 to start with, %2$s</string>
+    <plurals name="emf_evidence_multiplier">
+        <item quantity="one">Held for %1$d month: 6 to start with, %2$s</item>
+        <item quantity="other">Held for %1$d months: 6 to start with, %2$s</item>
+    </plurals>
     <string name="emf_multiplier_steady">and nothing added — your income has been steady</string>
-    <string name="emf_multiplier_bumped">plus %1$d for how much your income moves month to month</string>
+    <!--
+      Not a plural: the count has no noun after it ("plus 2 for how much…"), so `one` and `other`
+      would be the same sentence in English and in all three translations. Android Lint's
+      PluralsCandidate heuristic fires on the "%d followed by a word" shape alone and cannot see
+      that the word is "for". The four genuine counts in this module ARE plurals.
+    -->
+    <string name="emf_multiplier_bumped" tools:ignore="PluralsCandidate">plus %1$d for how much your income moves month to month</string>
     <string name="emf_multiplier_unmeasured">and nothing added — there is not enough income history to tell yet</string>
     <string name="emf_multiplier_clamped">then capped, because the rule holds this between 3 and 12 months</string>
     <string name="emf_evidence_categories">Counted as essential: %1$s</string>

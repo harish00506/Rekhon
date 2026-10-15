@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The launcher icon's foreground layer (Android Lint: MissingApplicationIcon).
+
+  Why:  the app shipped with no `android:icon` at all, so every launcher drew the system's default
+        grey Android. Lint reported it and it is worth more than a lint line: the icon is the first
+        thing a user sees and the only thing they have to find the app again.
+  What: a rupee mark with a rising line through it — the two things this app is (money, and where
+        it is going). Drawn on the 108dp adaptive canvas with the glyph inside the 66dp safe zone,
+        so no launcher mask can clip it.
+  Result: a legible mark at every density and under every mask shape.
+  Changelog: 2026-10-15 — Created. **A placeholder for real branding**, not a design decision:
+             it is deliberately plain so that replacing it costs nothing.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- The rising line: four points, low-left to high-right. -->
+    <path
+        android:strokeColor="#7FD6A8"
+        android:strokeWidth="4.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M38,70 L48,60 L56,65 L70,47" />
+    <!-- The arrow head on that line. -->
+    <path
+        android:fillColor="#7FD6A8"
+        android:pathData="M70,47 L70,57 L62,47 Z" />
+    <!-- The rupee mark: two bars, the stem, and the diagonal. -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M40,34 L68,34 M40,44 L68,44 M44,34 C58,34 58,54 44,54 L40,54 M48,54 L62,74" />
+</vector>

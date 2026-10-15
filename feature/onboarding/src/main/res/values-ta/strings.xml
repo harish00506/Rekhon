@@ -53,7 +53,10 @@
     <string name="onboarding_quick_setup_summary_wants">விருப்பங்கள்</string>
     <string name="onboarding_quick_setup_summary_savings">சேமிப்பு</string>
     <string name="onboarding_quick_setup_summary_emergency">அவசரகால நிதி இலக்கு</string>
-    <string name="onboarding_quick_setup_summary_emergency_help">உங்கள் தேவைகள் பட்ஜெட்டின் %1$d மாதங்கள்.</string>
+    <plurals name="onboarding_quick_setup_summary_emergency_help">
+        <item quantity="one">உங்கள் தேவைகள் பட்ஜெட்டின் %1$d மாதம்.</item>
+        <item quantity="other">உங்கள் தேவைகள் பட்ஜெட்டின் %1$d மாதங்கள்.</item>
+    </plurals>
     <string name="onboarding_quick_setup_summary_obligations">வாடகையும் EMI-யும் உங்கள் வருமானத்தில் %1$s எடுத்துக்கொள்கின்றன.</string>
     <string name="onboarding_quick_setup_summary_obligations_within">அது வழிகாட்டுதலுக்குள் உள்ளது.</string>
     <string name="onboarding_quick_setup_summary_obligations_above">அது வழக்கமான 40% வழிகாட்டுதலுக்கு மேல் உள்ளது.</string>

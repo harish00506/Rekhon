@@ -28,7 +28,7 @@ import java.time.LocalDate
  * date and the figures the engines below already published, so the same request always gives the
  * same verdict — which is what lets a card from March still be read in December.
  */
-interface PurchaseAdvisorEngine {
+fun interface PurchaseAdvisorEngine {
     /** Judges one purchase. See the interface's doc. */
     fun advise(input: PurchaseInput): Result<PurchaseVerdictCard, AppError>
 }

@@ -121,15 +121,34 @@ class FileWrappedPassphraseStore(
         runCatchingToResult {
             if (!pendingFile.exists()) throw IOException("nothing staged to promote")
             if (!pendingFile.renameTo(file)) {
-                file.delete()
+                val clearedLiveFile = file.delete()
                 if (!pendingFile.renameTo(file)) {
-                    throw IOException("could not promote the staged passphrase")
+                    // See `replace` below: the delete's result is reported rather than discarded,
+                    // because it is what separates a full disk from a locked file (kotlin:S899).
+                    throw IOException(
+                        "could not promote the staged passphrase (cleared live file: $clearedLiveFile)",
+                    )
                 }
             }
         }
 
-    /** Input: none. Output: `Ok(Unit)`, whether or not anything was staged. */
-    override fun clearPending(): Result<Unit, AppError> = runCatchingToResult { pendingFile.delete() }
+    /**
+     * Input: none. Output: `Ok(Unit)` when nothing is staged any more — including when nothing ever
+     * was; `Err(Storage)` when a staged file is there and the filesystem refuses to remove it.
+     *
+     * Why the return value of `delete()` is now read (kotlin:S899): it was discarded, which made
+     * the two outcomes indistinguishable. "Nothing was staged" and "a staged passphrase is still on
+     * disk" are not the same state — the second one leaves a candidate that `promotePending` would
+     * later promote over a working key, which is the lock-out this class exists to prevent. The
+     * `exists()` guard keeps the documented contract: `delete()` also returns false for a file that
+     * was never there, and that case is still success.
+     */
+    override fun clearPending(): Result<Unit, AppError> =
+        runCatchingToResult {
+            if (pendingFile.exists() && !pendingFile.delete()) {
+                throw IOException("could not clear the staged passphrase")
+            }
+        }
 
     /**
      * Writes bytes to [destination] through a staging file.
@@ -148,12 +167,18 @@ class FileWrappedPassphraseStore(
             staging.writeBytes(bytes)
             if (!staging.renameTo(destination)) {
                 // Windows and some filesystems refuse a rename onto an existing file.
-                destination.delete()
+                val clearedDestination = destination.delete()
                 if (!staging.renameTo(destination)) {
                     // IOException, not check(): a failed move is an I/O condition, so it must
                     // become Err(Storage). runCatchingToResult rethrows IllegalStateException by
                     // design, which would crash the app over a full disk.
-                    throw IOException("could not move the wrapped passphrase into place")
+                    // The delete's result is reported rather than discarded: when the retry fails
+                    // it is almost always because the destination survived, and that separates a
+                    // full disk from a locked file (kotlin:S899).
+                    throw IOException(
+                        "could not move the wrapped passphrase into place " +
+                            "(cleared destination: $clearedDestination)",
+                    )
                 }
             }
         }

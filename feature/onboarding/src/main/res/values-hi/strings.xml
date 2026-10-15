@@ -53,7 +53,10 @@
     <string name="onboarding_quick_setup_summary_wants">शौक</string>
     <string name="onboarding_quick_setup_summary_savings">बचत</string>
     <string name="onboarding_quick_setup_summary_emergency">आपातकालीन कोष का लक्ष्य</string>
-    <string name="onboarding_quick_setup_summary_emergency_help">आपके ज़रूरतों के बजट के %1$d महीने।</string>
+    <plurals name="onboarding_quick_setup_summary_emergency_help">
+        <item quantity="one">आपके ज़रूरतों के बजट का %1$d महीना।</item>
+        <item quantity="other">आपके ज़रूरतों के बजट के %1$d महीने।</item>
+    </plurals>
     <string name="onboarding_quick_setup_summary_obligations">किराया और EMI आपकी आमदनी का %1$s ले लेते हैं।</string>
     <string name="onboarding_quick_setup_summary_obligations_within">यह तय सीमा के भीतर है।</string>
     <string name="onboarding_quick_setup_summary_obligations_above">यह आम तौर पर मानी जाने वाली 40% की सीमा से ऊपर है।</string>

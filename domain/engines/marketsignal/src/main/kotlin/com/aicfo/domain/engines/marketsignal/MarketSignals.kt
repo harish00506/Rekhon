@@ -24,7 +24,7 @@ import com.aicfo.core.model.Money
  * Pure (ARC-002): no network, no clock, no I/O. `todayIsoDate` is an input, and the history is the
  * caller's — which is what makes the whole thing work offline (P-04).
  */
-interface MarketSignalEngine {
+fun interface MarketSignalEngine {
     /**
      * Scores one instrument for one day.
      * Why:    one call, because every part of the answer depends on the same scoring: the band

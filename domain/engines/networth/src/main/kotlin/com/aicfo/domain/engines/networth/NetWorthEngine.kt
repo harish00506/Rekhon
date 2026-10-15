@@ -26,7 +26,7 @@ import com.aicfo.core.model.Money
  *
  * **It advises nothing and writes nothing (P-07).** The caller decides what to do with the figure.
  */
-interface NetWorthEngine {
+fun interface NetWorthEngine {
     /**
      * Computes net worth for one set of balances.
      * Why:    a `Result` rather than a throw, matching every other engine — though the only way to

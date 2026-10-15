@@ -87,7 +87,10 @@
     <string name="notification_channel_debt_discipline_description">Tells you once per statement
         when a card is using a large share of its limit.</string>
 
-    <string name="card_due_title">%1$s payment due in %2$d days</string>
+    <plurals name="card_due_title">
+        <item quantity="one">%1$s payment due in %2$d day</item>
+        <item quantity="other">%1$s payment due in %2$d days</item>
+    </plurals>
     <string name="card_due_title_today">%1$s payment due today</string>
     <string name="card_due_body">%1$s is due. The minimum is %2$s.</string>
     <string name="card_due_body_no_minimum">%1$s is due on this statement.</string>

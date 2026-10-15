@@ -22,7 +22,7 @@ import com.aicfo.core.model.Money
  * Input:  [HealthInput]. Output: `Result<HealthScore, AppError>`; `Err` only for an impossible input
  *         (a negative amount, more budgets kept than budgets set).
  */
-interface HealthScoreEngine {
+fun interface HealthScoreEngine {
     /** Scores the input. See the interface's doc. */
     fun score(input: HealthInput): Result<HealthScore, AppError>
 }

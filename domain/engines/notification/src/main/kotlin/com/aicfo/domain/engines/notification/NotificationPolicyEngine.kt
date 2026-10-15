@@ -22,7 +22,7 @@ import java.time.LocalDateTime
  * Input:  [NotificationInput]. Output: `Result<NotificationPlan, AppError>`; `Err` only for an
  *         impossible input (a history entry in the future, a candidate with no key).
  */
-interface NotificationPolicyEngine {
+fun interface NotificationPolicyEngine {
     /** Decides each candidate. See the interface's doc. */
     fun decide(input: NotificationInput): Result<NotificationPlan, AppError>
 }

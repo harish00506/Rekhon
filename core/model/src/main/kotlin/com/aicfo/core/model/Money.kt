@@ -121,6 +121,9 @@ value class Money(val minor: Long) : Comparable<Money> {
      *         [Money.ZERO].
      * Input:  [weights] — non-empty, all non-negative, not all zero.
      * Output: a read-only list of [Money], same size and order as [weights].
+     * Changelog: 2026-10-15 — The working buffer became a `LongArray` (kotlin:S6524). Arithmetic
+     *            unchanged; `MoneyAllocateTest` and the largest-remainder property tests are the
+     *            proof of that.
      */
     fun allocate(weights: List<Int>): List<Money> {
         require(weights.isNotEmpty()) { "Weights must not be empty" }
@@ -129,13 +132,16 @@ value class Money(val minor: Long) : Comparable<Money> {
         require(totalWeight > 0L) { "Weights must not all be zero" }
 
         // Truncated share + the paise it lost, per weight. Both are exact Long arithmetic.
+        // A `LongArray` rather than a `MutableList<Long>`: the remainder pass below assigns into it
+        // by index, and an array says "fixed size, mutable slots" where a mutable list says
+        // "the size may change too" — which is never true here (kotlin:S6524).
         val scaled = weights.map { Math.multiplyExact(minor, it.toLong()) }
-        val shares = scaled.map { it / totalWeight }.toMutableList()
+        val shares = LongArray(scaled.size) { index -> scaled[index] / totalWeight }
         val lost = scaled.mapIndexed { index, value -> index to Math.abs(value % totalWeight) }
 
         // Hand the undistributed paise to the biggest losers first; ties keep list order.
         val biggestLossFirst = compareByDescending<Pair<Int, Long>> { it.second }.thenBy { it.first }
-        var remainder = minor - shares.fold(0L) { acc, share -> acc + share }
+        var remainder = minor - shares.sum()
         val step = if (remainder < 0L) -1L else 1L
         for ((index, _) in lost.sortedWith(biggestLossFirst)) {
             if (remainder == 0L) break

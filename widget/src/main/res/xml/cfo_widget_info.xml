@@ -9,11 +9,20 @@
         the app lock, and needs no network (P-04). Zero here means "never ask me on a timer".
 
         `configure` is deliberately absent: there is nothing to configure. One profile, two figures.
+        `targetCellWidth`/`targetCellHeight` carry `tools:ignore="UnusedAttribute"`. They are read
+        only on API 31+ and the minimum here is 26, which is what Lint reports — but they are
+        *additive*, not conditional: the platform's own guidance is to declare the dp size and the
+        cell size together, and the older launcher simply ignores the pair rather than failing.
+        Dropping them would cost correct sizing on every modern launcher; splitting them into an
+        `xml-v31/` copy would make two files say the same thing.
+
         `initialLayout` is Glance's own placeholder — the frame the launcher shows for the moment
         between the widget being dropped and the first compose. Hand-writing one would be a second
         layout to keep in step with the real content for no visible gain.
 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:ignore="UnusedAttribute"
     android:description="@string/widget_description"
     android:initialLayout="@layout/glance_default_loading_layout"
     android:minWidth="180dp"

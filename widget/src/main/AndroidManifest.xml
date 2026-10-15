@@ -7,10 +7,17 @@
         depends on :widget. Splitting them would let someone remove the module and leave a receiver
         pointing at a class that no longer exists.
   Note: this file adds no permission. The widget reads its own preference store and nothing else.
+
+  Manifest-level stance, stated here as well as in :app (xml:S5332, xml:S6358): a library manifest
+  that leaves `allowBackup` and `usesCleartextTraffic` unset inherits whatever the consuming app
+  says, and this module's contribution should carry its own answer rather than depend on one. Both
+  match :app, so the merge is a no-op — the point is that the file is readable on its own.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <application>
+    <application
+        android:allowBackup="false"
+        android:usesCleartextTraffic="false">
         <receiver
             android:name="com.aicfo.widget.CfoWidgetReceiver"
             android:exported="true"

@@ -22,7 +22,7 @@ import com.aicfo.core.model.RecognizedText
  * One public interface with an `internal` implementation behind [ReceiptTextRecognizerFactory],
  * the ARC-003 seam every engine in this codebase already uses.
  */
-interface ReceiptTextRecognizer {
+fun interface ReceiptTextRecognizer {
     /**
      * Recognises the text in one image.
      * Why:    a `Result` rather than a throw, matching every other boundary in the app (§21.6).

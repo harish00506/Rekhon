@@ -28,7 +28,7 @@ import java.time.LocalDate
  * must not change.** Pure: no clock (the caller passes `today` and `nowUtcMillis`), randomness only
  * from the input's seed, no I/O (P-08).
  */
-interface ForecastEngine {
+fun interface ForecastEngine {
     /**
      * Forecasts the horizon after [ForecastInput.today].
      * Why:    one call per profile per day, so the bands, the crunch days and the components are

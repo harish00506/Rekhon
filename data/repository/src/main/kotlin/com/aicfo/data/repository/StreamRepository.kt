@@ -32,7 +32,7 @@ import java.time.LocalDate
  * Result: the stream profile the dashboard shows and the forecast (9.2) and health score (9.4) read.
  * Changelog: 2026-09-19 — Created for issue 9.1.
  */
-interface StreamRepository {
+fun interface StreamRepository {
     /**
      * Observes the active profile's stream classification.
      *

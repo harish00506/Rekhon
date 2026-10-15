@@ -37,7 +37,7 @@ import com.aicfo.core.model.EngineProvenance
  *
  * Pure Kotlin (ARC-002), so the precedence chain and the accuracy gate are provable on the JVM.
  */
-interface ClassificationEngine {
+fun interface ClassificationEngine {
     /**
      * Decides what category a merchant suggests.
      *

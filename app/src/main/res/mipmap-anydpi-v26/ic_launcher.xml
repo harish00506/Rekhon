@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The launcher icon (Android Lint: MissingApplicationIcon).
+
+  Why:  `mipmap-anydpi-v26` alone is enough here because `minSdk` is 26 — every device this app
+        installs on draws adaptive icons, so a density-bucketed PNG fallback would be dead weight
+        that nothing ever loads.
+  Result: `@mipmap/ic_launcher`, referenced from the manifest's `android:icon` and `android:roundIcon`.
+  Changelog: 2026-10-15 — Created.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>

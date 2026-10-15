@@ -35,7 +35,10 @@
     <string name="notification_channel_critical_money_description">ಬಾಕಿ ಬರಲಿರುವ ಪಾವತಿಗಳು. ಮೌನ ಸಮಯದಲ್ಲೂ ಬರಬಹುದಾದ ಏಕೈಕ ಅಧಿಸೂಚನೆಗಳು.</string>
     <string name="notification_channel_debt_discipline">ಕಾರ್ಡ್ ಮತ್ತು ಸಾಲ</string>
     <string name="notification_channel_debt_discipline_description">ಒಂದು ಕಾರ್ಡ್ ತನ್ನ ಮಿತಿಯ ದೊಡ್ಡ ಭಾಗವನ್ನು ಬಳಸುತ್ತಿದ್ದರೆ ಪ್ರತಿ ಸ್ಟೇಟ್‌ಮೆಂಟ್‌ಗೆ ಒಮ್ಮೆ ತಿಳಿಸುತ್ತದೆ.</string>
-    <string name="card_due_title">%1$s ಪಾವತಿ %2$d ದಿನಗಳಲ್ಲಿ ಬಾಕಿ</string>
+    <plurals name="card_due_title">
+        <item quantity="one">%1$s ಪಾವತಿ %2$d ದಿನದಲ್ಲಿ ಬಾಕಿ</item>
+        <item quantity="other">%1$s ಪಾವತಿ %2$d ದಿನಗಳಲ್ಲಿ ಬಾಕಿ</item>
+    </plurals>
     <string name="card_due_title_today">%1$s ಪಾವತಿ ಇಂದು ಬಾಕಿ</string>
     <string name="card_due_body">%1$s ಪಾವತಿಸಬೇಕು. ಕನಿಷ್ಠ %2$s.</string>
     <string name="card_due_body_no_minimum">ಈ ಸ್ಟೇಟ್‌ಮೆಂಟ್‌ನಲ್ಲಿ %1$s ಪಾವತಿಸಬೇಕು.</string>

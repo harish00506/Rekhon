@@ -14,9 +14,17 @@
         photograph of the user's life.
   Result: the camera can be handed one scratch file; see res/xml/cfo_file_paths.xml for the scope.
   Changelog: 2026-08-06 — Created for issue 3.8.
+             2026-10-15 — Declared the backup and cleartext stance explicitly.
+
+  Manifest-level stance, stated here as well as in :app (xml:S5332, xml:S6358): a library manifest
+  that leaves `allowBackup` and `usesCleartextTraffic` unset inherits whatever the consuming app
+  says, and this module's contribution should carry its own answer rather than depend on one. Both
+  match :app, so the merge is a no-op — the point is that the file is readable on its own.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application>
+    <application
+        android:allowBackup="false"
+        android:usesCleartextTraffic="false">
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

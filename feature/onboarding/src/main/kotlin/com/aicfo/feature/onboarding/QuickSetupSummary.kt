@@ -3,6 +3,7 @@ package com.aicfo.feature.onboarding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.aicfo.core.designsystem.component.CfoAmountText
 import com.aicfo.core.designsystem.component.CfoCard
@@ -60,8 +61,9 @@ internal fun QuickSetupSummary(plan: QuickSetupPlan) {
             CfoListRow(
                 title = stringResource(R.string.onboarding_quick_setup_summary_emergency),
                 supporting =
-                    stringResource(
-                        R.string.onboarding_quick_setup_summary_emergency_help,
+                    pluralStringResource(
+                        R.plurals.onboarding_quick_setup_summary_emergency_help,
+                        plan.emergencyRunwayMonths,
                         plan.emergencyRunwayMonths,
                     ),
                 trailing = { CfoAmountText(amount = target, showSign = false) },

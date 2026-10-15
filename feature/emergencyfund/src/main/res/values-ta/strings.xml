@@ -14,7 +14,10 @@
     <string name="emf_target">இலக்கு %1$s</string>
     <string name="emf_saved_of_target">%2$s இல் %1$s ஒதுக்கப்பட்டுள்ளது</string>
     <string name="emf_shortfall">இன்னும் %1$s சேர்க்க வேண்டும்</string>
-    <string name="emf_top_up">மாதம் %1$s போட்டால் %2$d மாதங்களில் நிறைவடையும்</string>
+    <plurals name="emf_top_up">
+        <item quantity="one">மாதம் %1$s போட்டால் %2$d மாதத்தில் நிறைவடையும்</item>
+        <item quantity="other">மாதம் %1$s போட்டால் %2$d மாதங்களில் நிறைவடையும்</item>
+    </plurals>
     <string name="emf_fully_funded">இனி ஒதுக்க வேண்டியதில்லை</string>
     <string name="emf_status_surplus">தேவைக்கு மேல்</string>
     <string name="emf_status_funded">முழுமையாக நிரம்பியது</string>
@@ -32,7 +35,10 @@
     <string name="emf_basis_observed">தேவைகளுக்கு நீங்கள் உண்மையில் செலவழித்த மாதங்களின் நடுத்தர மாதம்</string>
     <string name="emf_basis_declared">அமைப்பின்போது நீங்கள் சொன்ன மாதத் தேவைகள்</string>
     <string name="emf_basis_none">இன்னும் தெரியவில்லை</string>
-    <string name="emf_evidence_multiplier">%1$d மாதங்களுக்கு வைக்கப்பட்டது: 6 இல் தொடங்கி, %2$s</string>
+    <plurals name="emf_evidence_multiplier">
+        <item quantity="one">%1$d மாதத்திற்கு வைக்கப்பட்டது: 6 இல் தொடங்கி, %2$s</item>
+        <item quantity="other">%1$d மாதங்களுக்கு வைக்கப்பட்டது: 6 இல் தொடங்கி, %2$s</item>
+    </plurals>
     <string name="emf_multiplier_steady">மேலும் எதுவும் சேர்க்கப்படவில்லை — உங்கள் வருமானம் நிலையாக உள்ளது</string>
     <string name="emf_multiplier_bumped">மேலும் %1$d சேர்க்கப்பட்டது, ஏனெனில் உங்கள் வருமானம் மாதந்தோறும் ஏறியிறங்குகிறது</string>
     <string name="emf_multiplier_unmeasured">மேலும் எதுவும் சேர்க்கப்படவில்லை — சொல்லும் அளவுக்கு வருமான வரலாறு இன்னும் இல்லை</string>

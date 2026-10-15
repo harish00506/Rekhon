@@ -50,7 +50,7 @@ import java.time.YearMonth
  * Result: the forecast the dashboard shows.
  * Changelog: 2026-09-19 — Created for issue 9.2.
  */
-interface ForecastRepository {
+fun interface ForecastRepository {
     /**
      * Observes the active profile's 90-day forecast.
      * Why:    recomputed whenever a row it reads changes, so a new expense, a confirmed rule or a
@@ -172,8 +172,13 @@ internal class RoomForecastRepository(
         history: List<MonthlyCategorySpendRow>,
     ): SeasonalityInput {
         val end = today.minusDays(1)
-        val start = ctx.firstDate?.let { maxOf(LocalDate.parse(it), today.minusDays(rules.lookbackDays.toLong())) }
-        val hasLookback = start != null && start <= end
+        // One nullable value rather than a date plus a Boolean that only the author knows is tied
+        // to it: `lookbackFrom` is non-null exactly when there is a usable window, so the `!!` that
+        // used to stand in for the compiler's missing smart-cast is gone (kotlin:S6619).
+        val lookbackFrom =
+            ctx.firstDate
+                ?.let { maxOf(LocalDate.parse(it), today.minusDays(rules.lookbackDays.toLong())) }
+                ?.takeIf { it <= end }
         return SeasonalityInput(
             history =
                 history.map {
@@ -185,14 +190,14 @@ internal class RoomForecastRepository(
                     )
                 },
             lookback =
-                if (!hasLookback) {
+                if (lookbackFrom == null) {
                     emptyList()
                 } else {
                     everyday.groupBy { it.categoryId }.map { (id, spent) ->
                         CategorySpend(id, id?.let(ctx.categoryNames::get), Money(-spent.sumOf { it.amountMinor }))
                     }
                 },
-            lookbackStart = if (hasLookback) start!! else end,
+            lookbackStart = lookbackFrom ?: end,
             lookbackEnd = end,
             months = (1L..rules.horizonDays).map { YearMonth.from(today.plusDays(it)) }.distinct(),
             nowUtcMillis = clock.nowUtcMillis(),

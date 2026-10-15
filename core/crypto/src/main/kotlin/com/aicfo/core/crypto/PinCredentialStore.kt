@@ -85,12 +85,17 @@ internal class FilePinCredentialStore(
             staging.writeBytes(credential)
             if (!staging.renameTo(file)) {
                 // Windows and some filesystems refuse a rename onto an existing file.
-                file.delete()
+                val clearedOldFile = file.delete()
                 if (!staging.renameTo(file)) {
                     // IOException, not check(): a failed move is an I/O condition, so it must become
                     // Err(Storage). runCatchingToResult rethrows IllegalStateException by design,
                     // which would crash the app over a full disk.
-                    throw IOException("could not move the PIN credential into place")
+                    // `clearedOldFile` is reported rather than discarded: when the retry fails it is
+                    // almost always because the old file is still there, and that distinguishes a
+                    // full disk from a locked file (kotlin:S899).
+                    throw IOException(
+                        "could not move the PIN credential into place (cleared old file: $clearedOldFile)",
+                    )
                 }
             }
         }

@@ -78,6 +78,10 @@ glance = "1.1.1"
 ktlintPlugin = "12.1.2"
 detekt = "1.23.8"
 kover = "0.9.1"
+# Static analysis for the SonarQube Community Build server (ADR-0081). The scanner plugin
+# only *reports*; the quality profile lives on the server, so this version pins the
+# bridge, not the rules.
+sonarqube = "7.5.0.8588"
 paparazzi = "2.0.0-alpha02"
 # Android Lint ships on its own track: lint version = AGP version + 23. Must track `agp` above
 # or the custom detectors in :lint compile against a different API than the one running them.
@@ -230,6 +234,7 @@ hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlintPlugin" }
 detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
 kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }
+sonarqube = { id = "org.sonarqube", version.ref = "sonarqube" }
 paparazzi = { id = "app.cash.paparazzi", version.ref = "paparazzi" }
 protobuf = { id = "com.google.protobuf", version.ref = "protobufPlugin" }
 

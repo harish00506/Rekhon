@@ -233,7 +233,10 @@
     <string name="dashboard_archive_working">Working…</string>
     <string name="dashboard_archive_exported">Exported. Your data is in the file you chose.</string>
     <!-- A count the user can check against the file they picked, rather than a bare "done" (P-02). -->
-    <string name="dashboard_archive_imported">Imported %1$d rows.</string>
+    <plurals name="dashboard_archive_imported">
+        <item quantity="one">Imported %1$d row.</item>
+        <item quantity="other">Imported %1$d rows.</item>
+    </plurals>
     <string name="dashboard_archive_dismiss">OK</string>
     <string name="dashboard_archive_unreadable">That file isn\'t an AI Personal CFO backup.</string>
     <string name="dashboard_archive_wrong_version">That backup was made by a different version of the

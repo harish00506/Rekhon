@@ -22,7 +22,7 @@ import com.aicfo.core.model.RuleCitation
  * **It advises, it does not act (P-07).** Nothing here writes anything or moves any money; the
  * caller decides whether to persist the plan, and the user decides whether to keep it.
  */
-interface QuickSetupEngine {
+fun interface QuickSetupEngine {
     /**
      * Computes the plan for one set of seeds.
      * Why:    a `Result` rather than a throw, because a negative amount reaching here is a UI or

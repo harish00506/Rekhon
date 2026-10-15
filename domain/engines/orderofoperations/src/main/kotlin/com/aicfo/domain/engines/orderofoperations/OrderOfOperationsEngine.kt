@@ -35,7 +35,7 @@ import java.time.LocalDate
  *
  * Pure Kotlin (ARC-002); the caller supplies the day and the instant, so no clock is read (TIM-001).
  */
-interface OrderOfOperationsEngine {
+fun interface OrderOfOperationsEngine {
     /**
      * Ranks the month's surplus across §36's eight stages.
      * Why:    a `Result` like every engine here, though a well-formed input cannot fail — `Err` is

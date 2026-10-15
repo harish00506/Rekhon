@@ -38,7 +38,7 @@ import com.aicfo.core.model.Money
  *
  * Pure Kotlin (ARC-002), so the whole subtraction is provable on the JVM.
  */
-interface SafeToSpendEngine {
+fun interface SafeToSpendEngine {
     /**
      * Applies `RULE-STS` to one month.
      *

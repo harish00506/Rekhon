@@ -23,7 +23,7 @@ import com.aicfo.core.model.Money
  *
  * **Pure** (ARC-002, P-08): arithmetic on the caller's figures, no clock and no I/O.
  */
-interface PurchaseInterviewEngine {
+fun interface PurchaseInterviewEngine {
     /** Assesses one wish and its answers so far. See the interface's doc. */
     fun assess(input: InterviewInput): Result<InterviewAssessment, AppError>
 }

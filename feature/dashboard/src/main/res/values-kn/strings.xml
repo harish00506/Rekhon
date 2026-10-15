@@ -165,7 +165,10 @@
     <string name="dashboard_import_cancel_action">ರದ್ದುಗೊಳಿಸಿ</string>
     <string name="dashboard_archive_working">ನಡೆಯುತ್ತಿದೆ…</string>
     <string name="dashboard_archive_exported">ರಫ್ತಾಗಿದೆ. ನಿಮ್ಮ ಮಾಹಿತಿ ನೀವು ಆರಿಸಿದ ಕಡತದಲ್ಲಿದೆ.</string>
-    <string name="dashboard_archive_imported">%1$d ಸಾಲುಗಳನ್ನು ಆಮದು ಮಾಡಲಾಗಿದೆ.</string>
+    <plurals name="dashboard_archive_imported">
+        <item quantity="one">%1$d ಸಾಲನ್ನು ಆಮದು ಮಾಡಲಾಗಿದೆ.</item>
+        <item quantity="other">%1$d ಸಾಲುಗಳನ್ನು ಆಮದು ಮಾಡಲಾಗಿದೆ.</item>
+    </plurals>
     <string name="dashboard_archive_dismiss">ಸರಿ</string>
     <string name="dashboard_archive_unreadable">ಆ ಕಡತ AI Personal CFO ನ ಬ್ಯಾಕಪ್ ಅಲ್ಲ.</string>
     <string name="dashboard_archive_wrong_version">ಆ ಬ್ಯಾಕಪ್ ಅನ್ನು ಆ್ಯಪ್‌ನ ಬೇರೆ ಆವೃತ್ತಿ ಮಾಡಿದೆ. ಈ ಸಾಧನದಲ್ಲಿ ಏನೂ ಬದಲಾಗಿಲ್ಲ.</string>

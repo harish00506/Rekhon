@@ -23,7 +23,7 @@ import kotlinx.coroutines.flow.flowOn
  * Result: a [MonthlySurplus] — the figure and its provenance, never one without the other (P-02).
  * Changelog: 2026-09-18 — Extracted unchanged from `RoomGoalWaterfallRepository.surplusFrom`.
  */
-interface SurplusRepository {
+fun interface SurplusRepository {
     /**
      * Observes the month's surplus.
      * Result: emits the figure and its basis, and re-emits whenever the ledger or the envelopes

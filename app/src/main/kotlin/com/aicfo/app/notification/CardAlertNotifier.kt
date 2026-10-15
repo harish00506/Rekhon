@@ -34,7 +34,7 @@ import javax.inject.Singleton
  * Result: the worker depends on the decision to post, not on Android's notification stack.
  * Changelog: 2026-08-17 — Created for issue 6.1.
  */
-interface CardAlertNotifier {
+fun interface CardAlertNotifier {
     /**
      * Posts one card alert, if the text checks out and the user allowed notifications.
      * Result: `true` when a notification was posted, `false` when it was suppressed — permission
@@ -195,7 +195,12 @@ internal class AndroidCardAlertNotifier
                     if (alert.alert.daysUntilDue == 0) {
                         context.getString(R.string.card_due_title_today, name)
                     } else {
-                        context.getString(R.string.card_due_title, name, alert.alert.daysUntilDue)
+                        context.resources.getQuantityString(
+                            R.plurals.card_due_title,
+                            alert.alert.daysUntilDue,
+                            name,
+                            alert.alert.daysUntilDue,
+                        )
                     }
                 val body =
                     alert.alert.minimumDue

@@ -140,8 +140,12 @@ internal class TheilSenVehicleEngine : VehicleEngine {
                     VehicleMath.daysToCover(due - latest.km, slope)?.let { latest.date.plusDays(it) }
                 }
             }
-        val onDistance = byDistance != null && byDistance.isBefore(byTime)
-        val due = if (onDistance) requireNotNull(byDistance) else byTime
+        // The distance-based date, kept only when it is the earlier of the two. Holding the choice
+        // as one nullable value rather than a date plus a Boolean removes the `requireNotNull` that
+        // used to stand in for the compiler's missing smart-cast (kotlin:S6619).
+        val dueOnDistance = byDistance?.takeIf { it.isBefore(byTime) }
+        val onDistance = dueOnDistance != null
+        val due = dueOnDistance ?: byTime
         return NextService(
             dueIsoDate = due.toString(),
             dueOdometerKm = dueOdometer,

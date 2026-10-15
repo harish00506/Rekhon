@@ -27,7 +27,7 @@ import com.aicfo.core.model.RecognizedText
  *
  * Pure Kotlin (ARC-002), so the whole parser is provable on the JVM.
  */
-interface ReceiptEngine {
+fun interface ReceiptEngine {
     /**
      * Extracts every field it can from one receipt.
      * Why:    a `Result`, matching every other engine, though the realistic failures are all

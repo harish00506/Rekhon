@@ -11,6 +11,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -148,8 +149,9 @@ private fun TopUpLine(plan: EmergencyFundPlan) {
         if (plan.isFunded) {
             stringResource(R.string.emf_fully_funded)
         } else {
-            stringResource(
-                R.string.emf_top_up,
+            pluralStringResource(
+                R.plurals.emf_top_up,
+                plan.multiplierMonths,
                 MoneyFormatter.format(plan.topUpMonthly),
                 plan.multiplierMonths,
             )
@@ -190,8 +192,9 @@ private fun EvidenceSection(
             )
             Text(
                 text =
-                    stringResource(
-                        R.string.emf_evidence_multiplier,
+                    pluralStringResource(
+                        R.plurals.emf_evidence_multiplier,
+                        plan.multiplierMonths,
                         plan.multiplierMonths,
                         plan.multiplierReason(),
                     ),

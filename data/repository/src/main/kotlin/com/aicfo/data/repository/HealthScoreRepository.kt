@@ -40,7 +40,7 @@ import kotlinx.coroutines.flow.flowOn
  * Result: a ViewModel sees a [HealthScore] and nothing else.
  * Changelog: 2026-09-19 — Created for issue 9.4.
  */
-interface HealthScoreRepository {
+fun interface HealthScoreRepository {
     /**
      * Observes the active profile's score.
      * Result: re-emits whenever any source changes; `Err` only for an input the engine refuses, which

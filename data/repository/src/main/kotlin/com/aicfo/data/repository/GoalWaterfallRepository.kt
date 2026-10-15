@@ -37,7 +37,7 @@ import kotlinx.coroutines.flow.flowOn
  * *is* stored is the order, because that is the user's own decision rather than a derived figure,
  * and it lives on the `goal` row (`sort_order`, schema 21) rather than here.
  */
-interface GoalWaterfallRepository {
+fun interface GoalWaterfallRepository {
     /**
      * Watches the active profile's contribution plan.
      * Why:    every term of it moves on its own schedule — a transaction changes the surplus, a

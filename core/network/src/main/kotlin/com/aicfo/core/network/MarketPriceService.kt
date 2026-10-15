@@ -17,7 +17,7 @@ import retrofit2.http.Query
  * profile id, no amount, no device identifier. There is nothing in this signature that could carry
  * one, which is the point.
  */
-internal interface MarketPriceService {
+internal fun interface MarketPriceService {
     /**
      * Batch quotes.
      * Result: the proxy's response. Input: [ids] — comma-separated price keys.

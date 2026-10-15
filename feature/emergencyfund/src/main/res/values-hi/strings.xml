@@ -14,7 +14,10 @@
     <string name="emf_target">लक्ष्य %1$s</string>
     <string name="emf_saved_of_target">%2$s में से %1$s अलग रखा गया</string>
     <string name="emf_shortfall">%1$s अभी और जुटाने हैं</string>
-    <string name="emf_top_up">हर महीने %1$s से यह %2$d महीनों में पूरा हो जाएगा</string>
+    <plurals name="emf_top_up">
+        <item quantity="one">हर महीने %1$s से यह %2$d महीने में पूरा हो जाएगा</item>
+        <item quantity="other">हर महीने %1$s से यह %2$d महीनों में पूरा हो जाएगा</item>
+    </plurals>
     <string name="emf_fully_funded">अब और अलग रखने की ज़रूरत नहीं</string>
     <string name="emf_status_surplus">ज़रूरत से ज़्यादा</string>
     <string name="emf_status_funded">पूरा भरा हुआ</string>
@@ -32,7 +35,10 @@
     <string name="emf_basis_observed">ज़रूरतों पर आपके असली खर्च का बीच वाला महीना</string>
     <string name="emf_basis_declared">सेटअप में आपकी बताई मासिक ज़रूरतें</string>
     <string name="emf_basis_none">अभी पता नहीं</string>
-    <string name="emf_evidence_multiplier">%1$d महीनों के लिए रखा गया: शुरुआत 6 से, %2$s</string>
+    <plurals name="emf_evidence_multiplier">
+        <item quantity="one">%1$d महीने के लिए रखा गया: शुरुआत 6 से, %2$s</item>
+        <item quantity="other">%1$d महीनों के लिए रखा गया: शुरुआत 6 से, %2$s</item>
+    </plurals>
     <string name="emf_multiplier_steady">और कुछ नहीं जोड़ा गया — आपकी आमदनी स्थिर रही है</string>
     <string name="emf_multiplier_bumped">साथ में %1$d और, क्योंकि आपकी आमदनी महीने-दर-महीने ऊपर-नीचे होती है</string>
     <string name="emf_multiplier_unmeasured">और कुछ नहीं जोड़ा गया — अभी आमदनी का इतना इतिहास नहीं कि बताया जा सके</string>

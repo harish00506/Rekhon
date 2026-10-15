@@ -32,7 +32,7 @@ import com.aicfo.core.model.SmsMessage
  *
  * Pure Kotlin (ARC-002), so the whole gate is provable on the JVM.
  */
-interface SmsEngine {
+fun interface SmsEngine {
     /**
      * Reads one message.
      * Why:    `Result` matching every other engine, though the realistic outcome for most messages

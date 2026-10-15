@@ -48,7 +48,7 @@ import kotlinx.coroutines.flow.flowOn
  * class only sums the rows it decided belong in each term, and folding a set of rows is the same
  * work `BudgetRepository` does before calling its own engine.
  */
-interface SafeToSpendRepository {
+fun interface SafeToSpendRepository {
     /**
      * Observes what is still safe to spend this month, for whichever profile is active.
      *
@@ -320,7 +320,7 @@ private fun List<RecurringRuleEntity>.billsDue(
  */
 private fun List<RecurringRuleEntity>.deduplicatedAgainst(scheduled: List<Transaction>): Money {
     val alreadyCounted =
-        scheduled.mapTo(mutableSetOf()) { row -> row.merchant.orEmpty().normalised() to row.bookedOn }
+        scheduled.map { row -> row.merchant.orEmpty().normalised() to row.bookedOn }.toSet()
     return filterNot { rule -> (rule.name.orEmpty().normalised() to rule.nextDueIsoDate) in alreadyCounted }
         .fold(Money.ZERO) { running, rule -> running + Money(rule.amountMinor).magnitude() }
 }

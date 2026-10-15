@@ -24,7 +24,7 @@ import java.time.YearMonth
  * Input:  [SeasonalityInput]. Output: `Result<SeasonalityResult, AppError>`; `Err` only for
  *         negative spend or a lookback that ends before it starts.
  */
-interface SeasonalityEngine {
+fun interface SeasonalityEngine {
     /** Computes the indices and the monthly factors. See the interface's doc. */
     fun index(input: SeasonalityInput): Result<SeasonalityResult, AppError>
 }

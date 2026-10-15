@@ -35,7 +35,10 @@
     <string name="notification_channel_critical_money_description">वे भुगतान जिनकी तारीख पास है। सिर्फ़ यही सूचनाएँ शांत घंटों में भी आ सकती हैं।</string>
     <string name="notification_channel_debt_discipline">कार्ड और कर्ज़</string>
     <string name="notification_channel_debt_discipline_description">जब कोई कार्ड अपनी सीमा का बड़ा हिस्सा इस्तेमाल कर रहा हो, तो हर स्टेटमेंट में एक बार बताता है।</string>
-    <string name="card_due_title">%1$s का भुगतान %2$d दिनों में देना है</string>
+    <plurals name="card_due_title">
+        <item quantity="one">%1$s का भुगतान %2$d दिन में देना है</item>
+        <item quantity="other">%1$s का भुगतान %2$d दिनों में देना है</item>
+    </plurals>
     <string name="card_due_title_today">%1$s का भुगतान आज देना है</string>
     <string name="card_due_body">%1$s देना है। न्यूनतम %2$s है।</string>
     <string name="card_due_body_no_minimum">इस स्टेटमेंट पर %1$s देना है।</string>

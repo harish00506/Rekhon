@@ -176,7 +176,7 @@ internal class RoomInsightRepository(
                 is Err -> return raised
                 is Ok -> Unit
             }
-            val insights = (raised as Ok).value.insights
+            val insights = raised.value.insights
             val dao = database.insightDao()
             insights.forEach { insight ->
                 val existing = dao.find(profileId, insight.fingerprint)

@@ -1247,7 +1247,6 @@ internal class RoomTransactionRepository(
                 val account =
                     database.accountDao().findWithBalance(validated.accountId, today)?.account
                         ?: return@runCatchingToResult null
-                val now = stamps.nowUtcMillis
                 val entity = rowFor(validated, account, stamps)
                 database.transactionDao().upsert(entity)
                 // No balance write: `account.current_balance_minor` is a cache nothing reads, and the

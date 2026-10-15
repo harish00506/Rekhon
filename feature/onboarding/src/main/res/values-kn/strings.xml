@@ -53,7 +53,10 @@
     <string name="onboarding_quick_setup_summary_wants">ಬಯಕೆಗಳು</string>
     <string name="onboarding_quick_setup_summary_savings">ಉಳಿತಾಯ</string>
     <string name="onboarding_quick_setup_summary_emergency">ತುರ್ತು ನಿಧಿಯ ಗುರಿ</string>
-    <string name="onboarding_quick_setup_summary_emergency_help">ನಿಮ್ಮ ಅಗತ್ಯಗಳ ಬಜೆಟ್‌ನ %1$d ತಿಂಗಳು.</string>
+    <plurals name="onboarding_quick_setup_summary_emergency_help">
+        <item quantity="one">ನಿಮ್ಮ ಅಗತ್ಯಗಳ ಬಜೆಟ್‌ನ %1$d ತಿಂಗಳು.</item>
+        <item quantity="other">ನಿಮ್ಮ ಅಗತ್ಯಗಳ ಬಜೆಟ್‌ನ %1$d ತಿಂಗಳುಗಳು.</item>
+    </plurals>
     <string name="onboarding_quick_setup_summary_obligations">ಬಾಡಿಗೆ ಮತ್ತು EMI ನಿಮ್ಮ ಆದಾಯದ %1$s ತೆಗೆದುಕೊಳ್ಳುತ್ತವೆ.</string>
     <string name="onboarding_quick_setup_summary_obligations_within">ಅದು ಮಾರ್ಗಸೂಚಿಯೊಳಗಿದೆ.</string>
     <string name="onboarding_quick_setup_summary_obligations_above">ಅದು ಸಾಮಾನ್ಯ ಮಾರ್ಗಸೂಚಿಯಾದ 40% ಕ್ಕಿಂತ ಹೆಚ್ಚು.</string>

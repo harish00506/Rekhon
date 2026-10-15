@@ -248,7 +248,7 @@ internal class PipelineChatRepository(
  * Result: a [ToolResult] with the figures a reply may contain, or a failed one.
  * Changelog: 2026-09-26 — Created for issue 10.5.
  */
-interface ChatToolExecutor {
+fun interface ChatToolExecutor {
     /**
      * Runs one registered tool.
      * Result: its figures and citations; `failed = true` when it has nothing to say, which the

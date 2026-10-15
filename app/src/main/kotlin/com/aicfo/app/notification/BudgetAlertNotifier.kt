@@ -35,7 +35,7 @@ import javax.inject.Singleton
  * Result: the worker depends on the decision to post, not on Android's notification stack.
  * Changelog: 2026-08-13 — Created for issue 4.5.
  */
-interface BudgetAlertNotifier {
+fun interface BudgetAlertNotifier {
     /**
      * Posts one alert, if the text checks out and the user allowed notifications.
      * Result: `true` when a notification was posted, `false` when it was suppressed — either because

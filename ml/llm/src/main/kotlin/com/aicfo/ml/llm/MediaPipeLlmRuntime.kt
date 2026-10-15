@@ -34,7 +34,20 @@ import java.util.concurrent.TimeUnit
  *
  * Input:  [context] — for MediaPipe's own initialisation; [modelPath] — a path [LlmModelStore] has
  *         already verified. Output: an [LlmRuntime].
+ *
+ * **`@Suppress("DEPRECATION")` is deliberate and load-bearing (kotlin:S1874).** Every entry point
+ * this class touches — `LlmInference`, `LlmInferenceOptions`, `LlmInferenceSession` and
+ * `LlmInferenceSessionOptions` — is marked deprecated in `tasks-genai`, and there is **no
+ * replacement at the pinned version**: ADR-0079 chose this artifact knowing it is in maintenance
+ * mode, which is precisely why it is pinned rather than tracked. Deprecated-but-present is the only
+ * API the library offers, so the choice is between this suppression and no on-device model at all.
+ * The suppression sits on the class rather than on six call sites because the whole class is the
+ * wrapper around that one surface — which is also what makes it cheap to replace when MediaPipe
+ * publishes a successor: one file, one annotation to delete.
+ *
+ * Changelog: 2026-10-15 — Suppression added with this reasoning; no behaviour change.
  */
+@Suppress("DEPRECATION")
 internal class MediaPipeLlmRuntime(
     private val context: Context,
     private val modelPath: String,

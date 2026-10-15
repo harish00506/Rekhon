@@ -28,7 +28,7 @@ import com.aicfo.core.model.Money
  * Pure (P-08): `todayIsoDate` and `nowUtcMillis` are inputs, so the same household assesses
  * identically for ever. No clock, no I/O, no Android (ARC-002).
  */
-interface ProtectionEngine {
+fun interface ProtectionEngine {
     /**
      * Assesses one household's protection.
      * Why:    one call, because the three answers share inputs and a reader compares them — a term

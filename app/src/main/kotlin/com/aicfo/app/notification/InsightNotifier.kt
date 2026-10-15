@@ -82,7 +82,7 @@ object InsightNotifications {
  * Result: the worker depends on the decision to post, not on Android's notification stack.
  * Changelog: 2026-09-20 — Created for issue 9.6.
  */
-interface InsightNotifier {
+fun interface InsightNotifier {
     /**
      * Posts one insight, if the text checks out and the user allowed notifications.
      * Result: `true` when posted; `false` when there is no permission, the channel is off, the

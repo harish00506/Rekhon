@@ -81,7 +81,10 @@
     <string name="onboarding_quick_setup_summary_wants">Wants</string>
     <string name="onboarding_quick_setup_summary_savings">Savings</string>
     <string name="onboarding_quick_setup_summary_emergency">Emergency fund target</string>
-    <string name="onboarding_quick_setup_summary_emergency_help">%1$d months of your needs budget.</string>
+    <plurals name="onboarding_quick_setup_summary_emergency_help">
+        <item quantity="one">%1$d month of your needs budget.</item>
+        <item quantity="other">%1$d months of your needs budget.</item>
+    </plurals>
     <string name="onboarding_quick_setup_summary_obligations">Rent and EMIs take %1$s of your income.</string>
     <string name="onboarding_quick_setup_summary_obligations_within">That is within the guideline.</string>
     <string name="onboarding_quick_setup_summary_obligations_above">That is above the usual guideline of 40%.</string>

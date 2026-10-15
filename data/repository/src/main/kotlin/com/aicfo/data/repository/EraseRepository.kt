@@ -24,7 +24,7 @@ import kotlinx.coroutines.withContext
  * (SEC-003 keeps it in the TEE), so there is nothing to undo this with. The screen that calls it
  * says so before asking.
  */
-interface EraseRepository {
+fun interface EraseRepository {
     /**
      * Destroys the keys, deletes the files, and records the event.
      * Why:    one call, because the order is the safety property and a caller who could do half of

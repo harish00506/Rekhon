@@ -20,7 +20,7 @@ import java.util.UUID
  * Result: id creation is reproducible in tests and unique in production.
  * Changelog: 2026-07-28 — Created for issue 2.5 (FR-ACC-001).
  */
-interface IdGenerator {
+fun interface IdGenerator {
     /**
      * Mints a new id.
      * Why:    the prefix is not decoration — an id that says what it names makes a database dump

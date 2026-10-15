@@ -26,7 +26,7 @@ import com.aicfo.core.model.Money
  *
  * Pure (P-08): `todayIsoDate` and `nowUtcMillis` are inputs. No clock, no I/O, no Android (ARC-002).
  */
-interface TaxEngine {
+fun interface TaxEngine {
     /**
      * Estimates a year's tax under both regimes.
      * Result: `Ok(TaxEstimate)`; `Err(AppError.Validation)` naming the field for an input no estimate

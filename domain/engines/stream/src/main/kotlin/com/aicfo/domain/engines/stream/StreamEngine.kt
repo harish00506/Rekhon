@@ -23,7 +23,7 @@ import java.time.LocalDate
  * One public interface; the implementation is internal (ARC-003). Pure: no clock (the caller
  * passes `nowUtcMillis`), no randomness, no I/O (P-08).
  */
-interface StreamEngine {
+fun interface StreamEngine {
     /**
      * Classifies every stream in [input].
      * Why:    one call per profile per window, so the totals and the per-stream verdicts cannot

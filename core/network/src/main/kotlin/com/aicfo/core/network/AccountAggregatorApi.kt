@@ -25,6 +25,13 @@ import com.aicfo.core.model.Money
  * **Nothing in this file talks to a bank.** AA traffic goes through the app's own backend proxy,
  * never directly to an AA or an FIP, for the same reason market data does (EXT-001): a third-party
  * endpoint the app calls itself is one the user cannot audit and the project cannot pin.
+ *
+ * **Deliberately not a `fun interface`** (`kotlin:S6517` is excluded for this file in
+ * `build.gradle.kts`). This is a named contract for a backend that is specified and unbuilt, and
+ * its one implementation is [UnconfiguredAccountAggregatorApi] — an object whose whole purpose is
+ * to carry the documented refusal. Declaring the interface functional produced the opposite
+ * finding, `kotlin:S6516`, which asked for that object to become an anonymous lambda: it would have
+ * erased both the name `AccountAggregatorFactory.create()` returns and the doc comment §5 requires.
  */
 interface AccountAggregatorApi {
     /**

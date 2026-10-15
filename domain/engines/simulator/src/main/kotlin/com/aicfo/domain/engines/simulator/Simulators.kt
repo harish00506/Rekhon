@@ -16,7 +16,7 @@ import com.aicfo.core.model.Money
  * Result: comparisons, not instructions.
  * Changelog: 2026-09-26 — Created for issue 10.3.
  */
-interface PrepayVsInvestSimulator {
+fun interface PrepayVsInvestSimulator {
     /**
      * Compares prepaying a loan with investing the same lump sum (RULE-PREPAY-VS-INVEST, FLT-004).
      * Result: `Ok(PrepayComparison)`; `Err` for a loan that cannot amortise or a negative figure.
@@ -31,7 +31,7 @@ interface PrepayVsInvestSimulator {
  *       cheaper one and the one people stick to are not always the same.
  * Changelog: 2026-09-26 — Created for issue 10.3.
  */
-interface DebtPayoffSimulator {
+fun interface DebtPayoffSimulator {
     /**
      * Simulates avalanche and snowball over the same debts and the same spare money.
      * Result: `Ok(PayoffComparison)`; `Err` when a minimum cannot cover its own interest, which

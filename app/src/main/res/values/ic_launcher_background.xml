@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The adaptive icon's background colour.
+
+  Why:  an adaptive icon's background must be a full-bleed drawable or colour, and a colour is the
+        one that cannot be clipped wrongly by any launcher mask. Kept out of the theme palette on
+        purpose: the launcher draws this long before the app's theme exists, so it is not a theme
+        token and must not move when one changes.
+  Result: one value to change when real branding arrives.
+  Changelog: 2026-10-15 — Created with the icon.
+-->
+<resources>
+    <color name="ic_launcher_background">#0B3D2E</color>
+</resources>

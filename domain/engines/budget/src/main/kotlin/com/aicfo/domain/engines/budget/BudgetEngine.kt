@@ -136,7 +136,7 @@ data class BudgetSuggestionInput(
     val rules: BudgetRules = BudgetRules(),
 ) {
     init {
-        require(categoryId.isNotBlank()) { "categoryId must not be blank" }
+        require(categoryId.isNotBlank()) { BLANK_CATEGORY_ID }
         require(targetMonth in 1..MONTHS_IN_YEAR) { "targetMonth must be 1..12, was $targetMonth" }
         require(monthsObserved >= 0) { "monthsObserved cannot be negative, was $monthsObserved" }
     }
@@ -207,9 +207,9 @@ data class BudgetStatusInput(
     val rules: BudgetRules = BudgetRules(),
 ) {
     init {
-        require(categoryId.isNotBlank()) { "categoryId must not be blank" }
+        require(categoryId.isNotBlank()) { BLANK_CATEGORY_ID }
         require(plannedAmount >= Money.ZERO) { "a planned budget cannot be negative" }
-        require(spent >= Money.ZERO) { "spend is a magnitude and cannot be negative" }
+        require(spent >= Money.ZERO) { NEGATIVE_SPEND }
         require(daysInPeriod in MIN_DAYS_IN_MONTH..MAX_DAYS_IN_MONTH) {
             "daysInPeriod must be a real month length 28..31, was $daysInPeriod"
         }
@@ -290,9 +290,9 @@ data class BudgetAlertInput(
     val rules: BudgetRules = BudgetRules(),
 ) {
     init {
-        require(categoryId.isNotBlank()) { "categoryId must not be blank" }
+        require(categoryId.isNotBlank()) { BLANK_CATEGORY_ID }
         require(budgeted >= Money.ZERO) { "a budget cannot be negative" }
-        require(spent >= Money.ZERO) { "spend is a magnitude and cannot be negative" }
+        require(spent >= Money.ZERO) { NEGATIVE_SPEND }
     }
 }
 
@@ -385,9 +385,9 @@ data class ReviewedCategoryInput(
     val monthlySpends: List<MonthlySpend> = emptyList(),
 ) {
     init {
-        require(categoryId.isNotBlank()) { "categoryId must not be blank" }
+        require(categoryId.isNotBlank()) { BLANK_CATEGORY_ID }
         require(budgeted >= Money.ZERO) { "a budget cannot be negative" }
-        require(actual >= Money.ZERO) { "spend is a magnitude and cannot be negative" }
+        require(actual >= Money.ZERO) { NEGATIVE_SPEND }
     }
 }
 
@@ -556,3 +556,27 @@ internal const val MIN_DAYS_IN_MONTH = 28
 
 /** The longest month. */
 internal const val MAX_DAYS_IN_MONTH = 31
+
+/**
+ * The `require` message for a blank category id.
+ *
+ * Why:  the same sentence was written at four call sites (kotlin:S1192). Four copies of a contract
+ *       message is four places for them to drift, and a precondition message that differs between
+ *       entry points reads like four different rules rather than one.
+ * What: the one wording every public entry point on this engine uses for that precondition.
+ * Result: one sentence to change, and tests can assert against the constant rather than a copy.
+ * Changelog: 2026-10-15 — Extracted from the four call sites.
+ */
+internal const val BLANK_CATEGORY_ID = "categoryId must not be blank"
+
+/**
+ * The `require` message for a negative spend figure.
+ *
+ * Why:  three copies, same reasoning as [BLANK_CATEGORY_ID]. Spend reaches this engine as a
+ *       magnitude — the sign lives on the ledger row, not on the total — so a negative value is a
+ *       caller bug and every entry point should say so identically.
+ * What: the one wording for the "spend is a magnitude" precondition.
+ * Result: one sentence to change.
+ * Changelog: 2026-10-15 — Extracted from the three call sites.
+ */
+internal const val NEGATIVE_SPEND = "spend is a magnitude and cannot be negative"

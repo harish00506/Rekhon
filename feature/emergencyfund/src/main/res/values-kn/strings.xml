@@ -14,7 +14,10 @@
     <string name="emf_target">ಗುರಿ %1$s</string>
     <string name="emf_saved_of_target">%2$s ರಲ್ಲಿ %1$s ಪಕ್ಕಕ್ಕಿಡಲಾಗಿದೆ</string>
     <string name="emf_shortfall">ಇನ್ನೂ %1$s ಹೊಂದಿಸಬೇಕು</string>
-    <string name="emf_top_up">ತಿಂಗಳಿಗೆ %1$s ಇಟ್ಟರೆ %2$d ತಿಂಗಳಲ್ಲಿ ಪೂರ್ಣವಾಗುತ್ತದೆ</string>
+    <plurals name="emf_top_up">
+        <item quantity="one">ತಿಂಗಳಿಗೆ %1$s ಇಟ್ಟರೆ %2$d ತಿಂಗಳಲ್ಲಿ ಪೂರ್ಣವಾಗುತ್ತದೆ</item>
+        <item quantity="other">ತಿಂಗಳಿಗೆ %1$s ಇಟ್ಟರೆ %2$d ತಿಂಗಳುಗಳಲ್ಲಿ ಪೂರ್ಣವಾಗುತ್ತದೆ</item>
+    </plurals>
     <string name="emf_fully_funded">ಇನ್ನು ಪಕ್ಕಕ್ಕಿಡುವ ಅಗತ್ಯವಿಲ್ಲ</string>
     <string name="emf_status_surplus">ಬೇಕಾದದ್ದಕ್ಕಿಂತ ಹೆಚ್ಚು</string>
     <string name="emf_status_funded">ಪೂರ್ಣವಾಗಿ ತುಂಬಿದೆ</string>
@@ -32,7 +35,10 @@
     <string name="emf_basis_observed">ಅಗತ್ಯಗಳಿಗೆ ನೀವು ನಿಜವಾಗಿ ಖರ್ಚು ಮಾಡಿದ ತಿಂಗಳುಗಳ ಮಧ್ಯದ ತಿಂಗಳು</string>
     <string name="emf_basis_declared">ಸೆಟಪ್‌ನಲ್ಲಿ ನೀವು ನಮೂದಿಸಿದ ಮಾಸಿಕ ಅಗತ್ಯಗಳು</string>
     <string name="emf_basis_none">ಇನ್ನೂ ಗೊತ್ತಿಲ್ಲ</string>
-    <string name="emf_evidence_multiplier">%1$d ತಿಂಗಳಿಗೆ ಇಡಲಾಗಿದೆ: ಆರಂಭ 6 ರಿಂದ, %2$s</string>
+    <plurals name="emf_evidence_multiplier">
+        <item quantity="one">%1$d ತಿಂಗಳಿಗೆ ಇಡಲಾಗಿದೆ: ಆರಂಭ 6 ರಿಂದ, %2$s</item>
+        <item quantity="other">%1$d ತಿಂಗಳುಗಳಿಗೆ ಇಡಲಾಗಿದೆ: ಆರಂಭ 6 ರಿಂದ, %2$s</item>
+    </plurals>
     <string name="emf_multiplier_steady">ಮತ್ತು ಏನನ್ನೂ ಸೇರಿಸಿಲ್ಲ — ನಿಮ್ಮ ಆದಾಯ ಸ್ಥಿರವಾಗಿದೆ</string>
     <string name="emf_multiplier_bumped">ಜೊತೆಗೆ %1$d ಹೆಚ್ಚು, ಏಕೆಂದರೆ ನಿಮ್ಮ ಆದಾಯ ತಿಂಗಳಿಂದ ತಿಂಗಳಿಗೆ ಏರಿಳಿಯುತ್ತದೆ</string>
     <string name="emf_multiplier_unmeasured">ಮತ್ತು ಏನನ್ನೂ ಸೇರಿಸಿಲ್ಲ — ಹೇಳಲು ಬೇಕಾದಷ್ಟು ಆದಾಯದ ಇತಿಹಾಸ ಇನ್ನೂ ಇಲ್ಲ</string>

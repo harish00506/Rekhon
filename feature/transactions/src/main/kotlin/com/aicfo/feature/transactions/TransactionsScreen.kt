@@ -98,9 +98,13 @@ fun TransactionsScreen(
 fun TransactionsContent(
     uiState: TransactionsUiState,
     items: LazyPagingItems<TransactionListItem>,
+    // `modifier` first among the optional parameters, as Compose's API guidelines require and
+    // Android Lint's ModifierParameter enforces: a caller that passes one positional optional
+    // argument should be passing the modifier. Both call sites here use named arguments, so the
+    // reorder is source-compatible.
+    modifier: Modifier = Modifier,
     onEvent: (TransactionsEvent) -> Unit = {},
     onManageCategories: () -> Unit = {},
-    modifier: Modifier = Modifier,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     UndoSnackbar(uiState = uiState, hostState = snackbarHostState, onEvent = onEvent)

@@ -33,7 +33,7 @@ import com.aicfo.core.model.Money
  * Pure (P-08): `todayIsoDate` and `nowUtcMillis` are inputs, so the same appliance predicts the
  * same way for ever. No clock, no I/O, no Android (ARC-002).
  */
-interface ApplianceEngine {
+fun interface ApplianceEngine {
     /**
      * Predicts one appliance's maintenance, warranty and running cost.
      * Why:    one call, because the outputs share inputs — the alert needs the due date, and the

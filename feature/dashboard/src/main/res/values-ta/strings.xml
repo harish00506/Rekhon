@@ -165,7 +165,10 @@
     <string name="dashboard_import_cancel_action">ரத்து செய்</string>
     <string name="dashboard_archive_working">நடக்கிறது…</string>
     <string name="dashboard_archive_exported">ஏற்றுமதியானது. உங்கள் தரவு நீங்கள் தேர்ந்தெடுத்த கோப்பில் உள்ளது.</string>
-    <string name="dashboard_archive_imported">%1$d வரிகள் இறக்குமதியாகின.</string>
+    <plurals name="dashboard_archive_imported">
+        <item quantity="one">%1$d வரி இறக்குமதியானது.</item>
+        <item quantity="other">%1$d வரிகள் இறக்குமதியாகின.</item>
+    </plurals>
     <string name="dashboard_archive_dismiss">சரி</string>
     <string name="dashboard_archive_unreadable">அந்தக் கோப்பு AI Personal CFO காப்புப்பிரதி அல்ல.</string>
     <string name="dashboard_archive_wrong_version">அந்தக் காப்புப்பிரதி ஆப்பின் வேறு பதிப்பால் உருவாக்கப்பட்டது. இந்தச் சாதனத்தில் எதுவும் மாறவில்லை.</string>

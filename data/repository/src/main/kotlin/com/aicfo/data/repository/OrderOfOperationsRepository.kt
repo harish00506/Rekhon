@@ -40,7 +40,7 @@ import kotlinx.coroutines.flow.flowOn
  * Result: an [OrderOfOperations] the dashboard card and the ranking screen both read.
  * Changelog: 2026-09-17 — Created for issue 7.5.
  */
-interface OrderOfOperationsRepository {
+fun interface OrderOfOperationsRepository {
     /**
      * Observes the ranking.
      * Why:    a flow, because §36 says the ranking is "recomputed monthly and on any surplus change",

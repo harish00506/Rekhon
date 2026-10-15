@@ -24,7 +24,7 @@ import com.aicfo.core.model.Money
  * Pure (P-08): `today` and `nowUtcMillis` are inputs, so the same vehicle predicts the same way for
  * ever. No clock, no I/O, no Android (ARC-002).
  */
-interface VehicleEngine {
+fun interface VehicleEngine {
     /**
      * Predicts one vehicle's next service, its cost, and what is worth saying about it.
      * Why:    the whole engine in one call, because every output depends on the same slope: the

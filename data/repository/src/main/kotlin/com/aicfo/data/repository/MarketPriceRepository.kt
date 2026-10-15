@@ -40,7 +40,7 @@ import kotlinx.coroutines.withContext
  * price this app has and the screen already says how old it is (P-04). The only `Err` this returns
  * is a storage failure, which is the caller's problem rather than the network's.
  */
-interface MarketPriceRepository {
+fun interface MarketPriceRepository {
     /**
      * Fetches and stores prices for the instruments that are due for one.
      * Why:    the gates run in this order because each is cheaper than the next and each makes the

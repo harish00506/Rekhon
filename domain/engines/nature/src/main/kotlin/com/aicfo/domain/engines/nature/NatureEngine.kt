@@ -37,7 +37,7 @@ import com.aicfo.core.model.TransactionType
  *
  * Pure Kotlin (ARC-002), so the whole decision order is provable on the JVM.
  */
-interface NatureEngine {
+fun interface NatureEngine {
     /**
      * Applies §8.3.1's decision order to one transaction.
      *

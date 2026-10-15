@@ -36,7 +36,7 @@ import java.time.LocalDateTime
  * Result: the plan; the caller posts [NotificationPlan.deliverable] and nothing else.
  * Changelog: 2026-09-20 — Created for issue 9.6.
  */
-interface NotificationRepository {
+fun interface NotificationRepository {
     /**
      * Decides a batch and records the decisions.
      * Why:    **a delivered decision is recorded as sent before the caller posts it.** The same

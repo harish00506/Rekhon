@@ -25,6 +25,12 @@ import com.aicfo.core.model.PriceKey
  * **Never called from a ViewModel or a worker** (ARC-005) — a repository owns it, checks the
  * consent before touching it, and maps its failures. And **nothing on a core path may await it**:
  * every caller treats a failure as "keep the cached price", never as an error to show (P-04).
+ *
+ * **Deliberately not a `fun interface`** (`kotlin:S6517` is excluded for this file in
+ * `build.gradle.kts`). This contract has three named implementations — the Retrofit client, the
+ * offline stand-in, and the test fake — and no call site passes a lambda. Declaring it functional
+ * bought nothing and immediately produced the opposite finding, `kotlin:S6516`, which asked for the
+ * documented stand-in object to become an anonymous lambda that §5 cannot document.
  */
 interface MarketDataApi {
     /**

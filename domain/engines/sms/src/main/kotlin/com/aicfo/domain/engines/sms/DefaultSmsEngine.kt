@@ -360,6 +360,29 @@ private val MARKED_AMOUNT =
 private val ACCOUNT_TAIL = Regex("""(?:x{2,}|ending\s+)([0-9]{2,6})(?![0-9])""")
 
 /**
+ * Where a payee name ends — the words that are never part of one (issue 3.9).
+ *
+ * Why:  these seventeen words were an inline alternation inside [COUNTERPARTY], which made the
+ *       pattern's measured complexity 33 against a limit of 20 (kotlin:S5843) and, more to the
+ *       point, buried the one part of the rule a reader actually needs to check. They are **data**,
+ *       not logic — the vocabulary Indian bank and UPI templates print straight after the payee —
+ *       so they belong in a named list that can be read, reviewed and extended on its own, the same
+ *       way every other financial constant in this project lives outside the code that uses it
+ *       (CLAUDE.md §6).
+ * What: the stop words, lower-case; [COUNTERPARTY] splices them into its trailing lookahead.
+ *       `a/c` earns its place: `Sent Rs.200 from Kotak A/c XX1234 to merchant@okaxis` is only read
+ *       as `Kotak` because `a/c` ends the name, and the frozen set covers exactly that line.
+ * Result: one list to change when a bank invents a new template; the pattern itself stays short
+ *         enough to read in one go.
+ * Changelog: 2026-10-15 — Extracted from the pattern.
+ */
+private val PAYEE_STOP_WORDS =
+    listOf(
+        "on", "ref", "upi", "txn", "imps", "neft", "avl", "avbl", "bal",
+        "a/c", "not", "info", "dated", "from", "via", "using", "towards",
+    )
+
+/**
  * The payee, in the shapes an alert prints it (issue 3.9).
  * Why:  four prepositions cover almost every Indian bank and UPI template, and the trailing
  *       alternation is where the name *ends* — at a reference number, a date, a balance label or a
@@ -369,7 +392,9 @@ private val ACCOUNT_TAIL = Regex("""(?:x{2,}|ending\s+)([0-9]{2,6})(?![0-9])""")
  */
 private val COUNTERPARTY =
     Regex(
-        """\b(?:to|at|vpa|from)\s+([A-Za-z][A-Za-z0-9@&.'* -]{2,40}?)""" +
-            """(?=\s+(?:on|ref|upi|txn|imps|neft|avl|avbl|bal|a/c|not|info|dated|from|via|using|towards)\b|[.;]|$)""",
+        // `a-z` only, with IGNORE_CASE doing the rest: `A-Za-z` under that flag is the same set
+        // written twice (kotlin:S5869).
+        """\b(?:to|at|vpa|from)\s+([a-z][a-z0-9@&.'* -]{2,40}?)""" +
+            """(?=\s+(?:${PAYEE_STOP_WORDS.joinToString("|")})\b|[.;]|$)""",
         RegexOption.IGNORE_CASE,
     )

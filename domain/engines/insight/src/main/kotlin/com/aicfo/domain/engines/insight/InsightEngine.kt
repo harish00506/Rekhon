@@ -30,7 +30,7 @@ import java.time.LocalDate
  * Input:  [InsightInput]. Output: `Result<InsightFeed, AppError>`; `Err` only for an impossible
  *         input (a negative count, a snooze window below zero).
  */
-interface InsightEngine {
+fun interface InsightEngine {
     /** Assembles the feed. See the interface's doc. */
     fun insights(input: InsightInput): Result<InsightFeed, AppError>
 }

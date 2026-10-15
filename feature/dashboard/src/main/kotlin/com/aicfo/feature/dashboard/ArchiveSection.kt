@@ -11,6 +11,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.aicfo.core.designsystem.component.CfoSecondaryButton
 import com.aicfo.core.designsystem.theme.CfoTheme
@@ -129,7 +130,7 @@ private fun ArchiveMessage(
             is ArchiveUiState.Working -> stringResource(R.string.dashboard_archive_working)
             ArchiveUiState.Exported -> stringResource(R.string.dashboard_archive_exported)
             is ArchiveUiState.Imported ->
-                stringResource(R.string.dashboard_archive_imported, state.rows)
+                pluralStringResource(R.plurals.dashboard_archive_imported, state.rows, state.rows)
             is ArchiveUiState.Failed -> stringResource(state.code.toArchiveMessage())
             // ReadyToWrite and PendingImport are both mid-flight with their own UI — a message here
             // would sit under a dialog the user has not answered yet.

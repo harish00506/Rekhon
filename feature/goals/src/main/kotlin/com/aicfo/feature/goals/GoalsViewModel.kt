@@ -162,7 +162,7 @@ class GoalsViewModel
         ) {
             val ids = _uiState.value.goals.map { it.goalId }
             if (from !in ids.indices || to !in ids.indices || from == to) return
-            val reordered = ids.toMutableList().apply { add(to, removeAt(from)) }
+            val reordered = ids.toMutableList().apply { add(to, removeAt(from)) }.toList()
             viewModelScope.launch {
                 if (repository.reorder(reordered) is Err) {
                     _uiState.update { it.copy(errorCode = STORAGE_ERROR) }

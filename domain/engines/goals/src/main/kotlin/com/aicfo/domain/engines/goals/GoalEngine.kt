@@ -37,7 +37,7 @@ import java.time.LocalDate
  *
  * Pure Kotlin (ARC-002); the caller supplies the day, so no wall clock is read here (TIM-001).
  */
-interface GoalEngine {
+fun interface GoalEngine {
     /**
      * Projects every goal in [input].
      *

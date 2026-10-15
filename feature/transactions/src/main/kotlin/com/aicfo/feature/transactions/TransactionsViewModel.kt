@@ -606,8 +606,8 @@ internal fun PagingData<FilteredTransaction>.toListItems(
         TransactionListItem.Row(row = row.toRow(), isSelected = row.transaction.id in selection)
     }.insertSeparators { before, after ->
         // Nothing after: the end of the list, where a trailing header would head nothing.
-        val day = (after as? TransactionListItem.Row)?.row?.transaction?.bookedOn ?: return@insertSeparators null
-        val previousDay = (before as? TransactionListItem.Row)?.row?.transaction?.bookedOn
+        val day = after?.row?.transaction?.bookedOn ?: return@insertSeparators null
+        val previousDay = before?.row?.transaction?.bookedOn
         if (day == previousDay) {
             null
         } else {
