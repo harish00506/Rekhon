@@ -145,6 +145,27 @@ plural sentence pasted into both categories passes every check in that file and 
 `CountedSentenceTest` pins the five. Mutation-checked: changing the dashboard singular to
 "Imported %1$d rows." fails it by name.
 
+### 1.9 · And then it became a rule — because the first use of it already leaked
+
+Asked for after the commits above: *"before commit run sonarcube, if you found anything fix them.
+add this rule also."*
+
+The request landed on a real hole. Between the last analysis and the commit, `CountedSentenceTest`
+was **rewritten twice** to satisfy detekt's `NestedBlockDepth` and `ReturnCount`. Both rewrites went
+in after the dashboard said zero, so the file that this session added to catch a resource bug was
+itself never analysed. Re-running against the committed tree came back clean — 0 issues, 582 files,
+51,394 ncloc, and `CountedSentenceTest.kt` confirmed present in the index as `UTS` rather than
+merely absent from the issue list — but that was luck, not process.
+
+CLAUDE.md **§8.1** now says: run `./gradlew sonarAnalysis` before every commit, fix what it finds,
+re-run until clean. Two cautions carried into the rule, both earned here: use `sonarAnalysis` and
+never bare `sonar`, and **check the denominator before believing a zero** (§1.2). `/pre-merge`
+gained step 6a. ADR-0081 gained §5.
+
+It is written as **agent-followed, not build-enforced**, in the same words §10 uses for session
+records. Nothing in Gradle or CI fails if somebody skips it, and the rule says so rather than
+implying a gate that does not exist — which is the mistake this whole session was about.
+
 ---
 
 ## 2 · Flow changed this session

@@ -102,9 +102,29 @@ file exists Gradle enforces it for every configuration it resolves, so metadata 
 task's graph breaks every task whose graph differs. That needs its own ADR and a full-graph
 generation pass. It is left as an open item rather than silenced so the gap stays visible.
 
+### 5 · It gates the commit, not the build
+
+Added 2026-10-15, after the first use of this setup shipped a file the analysis had never seen: a
+test rewritten twice to satisfy detekt, *after* the last run. CLAUDE.md §8.1 now says plainly —
+**run `./gradlew sonarAnalysis` before every commit and bring it to zero.**
+
+Two things that rule is careful about, because both have bitten this repo already:
+
+1. **`sonarAnalysis`, never bare `sonar`.** The bare task publishes from whatever is on disk, so a
+   stale lint report re-reports findings already fixed and coverage reads 0%.
+2. **Check the denominator before believing the zero.** Confirm the file actually got indexed, not
+   just that the count is 0 — §2 is what happens when you don't.
+
+**This is agent-followed, not build-enforced**, in the same sense as §10's session records, and
+this ADR says so rather than implying a gate that does not exist. Nothing in Gradle or CI fails
+because somebody committed without running it — `sonar.skipProject` is deliberately true with no
+token, because the local gate must work offline (P-04). If you want it enforced, the honest place
+is a pre-commit hook or a CI job with a server, and that is a separate decision.
+
 ## Consequences
 
 - The dashboard covers the whole repository, so a clean result means something.
+- `sonarAnalysis` is a **pre-commit** gate by convention (§5), not a build gate.
 - `./gradlew build` on a machine with no server is unchanged.
 - A tenth exclusion should be hard to add: the table above is the bar.
 - **Open:** Gradle dependency verification (§4).

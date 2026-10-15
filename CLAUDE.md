@@ -135,6 +135,8 @@ engine. Every row is versioned and cited by ID in evidence (AI-ARC-006). See `ai
   is committed on `dev` or a feature branch — **never commit directly to `main`/`stage`.**
 - **Conventional commits** (`feat:`, `fix:`, `refactor:`…); **each commit references its
   requirement ID(s).** Feature-flag incomplete work — keep feature branches short-lived.
+- **Run SonarQube before every commit and fix what it finds** — `./gradlew sonarAnalysis`, clean
+  before you commit (§8.1).
 - `main` and `stage` are always releasable/deployable. Do not commit or push unless asked; if
   asked while on `main` or `stage`, branch to `dev`/a feature branch first.
 - **Promote by PR:** `feature → dev` (per issue) → `dev → stage` (live testing) → `stage → main`
@@ -152,8 +154,39 @@ engine. Every row is versioned and cited by ID in evidence (AI-ARC-006). See `ai
 - [ ] Works offline; verified with an airplane-mode test case.
 - [ ] Accessibility scan passes; strings externalised; dark mode verified.
 - [ ] No new lint/detekt warnings; CI green; reviewed (or solo self-review checklist).
+- [ ] **SonarQube is clean — run it *before every commit*, and fix what it finds** (§8.1).
 - [ ] **Session file written** in `docs/sessions/`, and any new decision indexed in `DECISIONS.md` /
       any changed call path reflected in `FLOW.md` (§10).
+
+### 8.1 Run SonarQube before every commit (ADR-0081)
+
+**Binding.** Before `git commit`, run the analysis and bring it to **zero open issues**:
+
+```bash
+SONAR_TOKEN=… SONAR_HOST_URL=… ./gradlew sonarAnalysis
+```
+
+- **`sonarAnalysis`, never bare `sonar`.** The bare task publishes from whatever is on disk:
+  a stale `lint-results-debug.xml` re-reports findings you already fixed, and coverage reads 0%.
+  `sonarAnalysis` re-runs every module's `lintDebug` and `koverXmlReport` first.
+- **Fix what it finds.** A finding is either a real defect (fix the code) or a rule that is wrong
+  for this file (switch it off in `build.gradle.kts`'s `sonar.issue.ignore.multicriteria` **with
+  the argument written beside the path** — never as a "won't fix" click in the server's database,
+  which no reviewer reads and a volume wipe erases). The bar for a new exclusion is the table in
+  [ADR-0081](docs/adr/0081-static-analysis-gets-a-server-and-the-first-run-was-vacuous.md) §3.
+- **Re-run until it is clean**, then commit. Code changed after the last analysis is code the
+  analysis never saw — including a test you rewrote to satisfy detekt.
+- **Check the denominator before believing a clean result.** The honest size of this repo is
+  **≈582 files / ≈51,400 ncloc**. An analysis reporting ~293 files or ~17,700 ncloc has silently
+  dropped every Android module and means nothing — this has already happened once (ADR-0081 §2,
+  `FLOW.md` §2.32).
+- **It is a pre-commit gate, not a build gate.** `sonar.skipProject` is true when `SONAR_TOKEN` is
+  unset, so ktlint, detekt, `lintDebug` and `:lint` remain the gates that work offline (P-04).
+  Local setup — container, port, credentials — is in ADR-0081.
+- **Agent-followed, not build-enforced** — the same honesty §10 applies to session records.
+  Nothing in Gradle or CI fails because somebody skipped it. This section says so rather than
+  implying a gate that does not exist; if you want it enforced, add a pre-commit hook or a CI job
+  with a server, and record that decision.
 
 ## 9. Where things live
 

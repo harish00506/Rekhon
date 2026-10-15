@@ -26,6 +26,15 @@ file:line), then give a one-line **MERGE / DO NOT MERGE** verdict.
    dark mode verified, accessibility scan clean.
 6. **Lint clean** — no new lint/detekt warnings.
    `!./gradlew lintDebug detekt ktlintCheck`
+6a. **SonarQube clean** (CLAUDE.md §8.1, ADR-0081) — **zero open issues**, run against *this*
+    working tree, not a stale analysis.
+    `!SONAR_TOKEN=… SONAR_HOST_URL=… ./gradlew sonarAnalysis`
+    Then read the count back: `!python3 - <<'PY'` … or the project page. Two checks, not one:
+    - **open issues == 0.** Anything left is either a real defect to fix or an exclusion to add to
+      `build.gradle.kts` with its argument beside the path — never a "won't fix" click.
+    - **the denominator is sane** — ≈582 files / ≈51,400 ncloc. ~293 files or ~17,700 ncloc means
+      the Android modules dropped out and the clean result is vacuous (ADR-0081 §2).
+    ❌ if the analysis predates the newest commit in the diff.
 7. **Money & time** — run the `money-time-audit` skill on the diff; must be clean.
 8. **Docs** — changed engine has an up-to-date `ENGINE.md`; any SRS deviation has an ADR.
 9. **AI data integrity** — if `ai/**` changed, JSON/YAML parse and IDs/versions were bumped
