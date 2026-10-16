@@ -207,6 +207,45 @@ while `:app`, the module that is actually packaged, upgrades it to 4.31.1. `writ
 unions every module's `releaseRuntimeClasspath`, so it reports a coordinate no APK contains. That is
 a gap in the scan, not a vulnerability, and it is left open rather than allowlisted.
 
+### 1.11 · The OSV scan had been asking about versions nobody ships (2026-10-16)
+
+§1.10 left CI red on `scanDependencies`, blocking on GHSA-735f-pc8j-v9w8 for
+`protobuf-javalite@4.26.1`. Chasing it found something larger than one advisory.
+
+`writeDependencyCoordinates` unioned **every** module's `releaseRuntimeClasspath`. Its comment gave
+the reason: *"a library pulled in only by `:core:crypto` ships in the APK exactly the same way."*
+That is true of the **library** and false of its **version**. Gradle resolves each module's
+classpath independently, so `:ml:llm` alone resolves MediaPipe's `protobuf-javalite:4.26.1`, while
+`:app` — the one resolution that becomes the APK — resolves the whole graph together and upgrades
+it to `4.31.1`. Union the two and you report a coordinate that is on nobody's device.
+
+**It was not one artifact. 59 of 209 were being reported at two or more versions** —
+`androidx.core:core` at 1.9.0, `room-runtime` at 2.2.5, `okio` at 3.4.0, `kotlin-stdlib-jdk8` at
+1.8.0, `work-runtime` at 2.7.1. The gate has been querying OSV about stale versions since issue
+11.6 and nothing said so, because none of them carried a HIGH advisory. MediaPipe supplied the
+first one that did, and it blocked the build over a jar no release contains.
+
+The fix reads `:app`'s release runtime classpath and nothing else, because that single resolution
+*is* the APK. **Narrowing loses nothing that ships**: the distinct-artifact set is unchanged at
+209 → 209, and only 79 duplicate versions drop out. What is no longer scanned is build-only tooling
+with no `releaseRuntimeClasspath` at all — `:lint`, `:spike:kmp` (ADR-0075) — which SEC-007 is not
+about.
+
+A new `require` makes the union impossible to reintroduce quietly: if one artifact appears at two
+versions the task fails and names them. **Mutation-checked** — putting the old code back fails the
+build and lists all 59.
+
+Rejected: forcing `protobuf-javalite` with a `resolutionStrategy` (treats the symptom and leaves
+the scan lying about the other 58), and allowlisting the finding (accepting a vulnerability that
+is not present). The advisory is gone because the scan stopped being wrong, not because anything
+was waved through.
+
+Left as-is and worth knowing: `:ml:llm` compiled on its own still resolves protobuf 4.26.1. It does
+not ship and `MediaPipeLlmRuntime` is deliberately not unit tested, so nothing exercises it — not
+worth a resolution rule for a problem nobody has. `scanDependencies` now reports two informational
+findings on `guava@27.0.1-android` (LOW and MODERATE, below the HIGH floor), which were there
+before and still do not block.
+
 ---
 
 ## 2 · Flow changed this session

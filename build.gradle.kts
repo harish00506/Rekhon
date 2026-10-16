@@ -177,8 +177,27 @@ tasks.register<Exec>("verifyReleaseLogStripping") {
  * Result: `build/reports/dependencies/release-runtime.txt`, the scan's only input.
  * Changelog: 2026-10-02 — Created for issue 11.6.
  *
- * Every module's release runtime classpath, not just `:app`'s — a library pulled in only by, say,
- * `:core:crypto` ships in the APK exactly the same way.
+ * **`:app`'s release runtime classpath, and only that**, because that single resolution *is* the
+ * APK. The original version unioned every module's `releaseRuntimeClasspath`, on the reasoning that
+ * "a library pulled in only by `:core:crypto` ships in the APK exactly the same way" — which is
+ * true of the *library* and false of its *version*. Gradle resolves each module's classpath
+ * independently, so a module that asks for an old transitive dependency resolves it alone, while
+ * the APK resolves the whole graph together and upgrades it. Unioning the two reports a coordinate
+ * that is on nobody's device.
+ *
+ * It was not a corner case: **59 of 209 artifacts were being reported at more than one version** —
+ * `androidx.core:core` at 1.9.0, `room-runtime` at 2.2.5, `okio` at 3.4.0, `kotlin-stdlib-jdk8` at
+ * 1.8.0 — none of which ship. The gate had been querying OSV about stale versions since issue 11.6
+ * and nobody noticed, because none of them carried a HIGH advisory. One eventually did:
+ * `protobuf-javalite@4.26.1`, which `:ml:llm` resolves alone from MediaPipe and which `:app`
+ * upgrades to 4.31.1, blocked the build over a jar no release contains (GHSA-735f-pc8j-v9w8).
+ *
+ * A scan that blocks on something that does not ship is not "conservative" — it is the fastest way
+ * to teach people to allowlist findings, which is how a real one gets waved through later.
+ *
+ * Nothing that ships is lost by narrowing: every module in the §21.2 graph is reachable from
+ * `:app`, so its libraries are in this resolution. What drops out is build-only tooling —
+ * `:lint`'s Android Lint API, `:spike:kmp` (ADR-0075, never shipped) — which SEC-007 is not about.
  */
 tasks.register("writeDependencyCoordinates") {
     group = "verification"
@@ -186,20 +205,19 @@ tasks.register("writeDependencyCoordinates") {
     val output = layout.buildDirectory.file("reports/dependencies/release-runtime.txt")
     outputs.file(output)
     val coordinates = provider {
-        subprojects
-            .flatMap { module ->
-                module.configurations
-                    .filter { it.isCanBeResolved && // The configuration whose resolution is what actually ships in a release APK.
-                    it.name == "releaseRuntimeClasspath" }
-                    .flatMap { configuration ->
-                        runCatching {
-                            configuration.incoming.resolutionResult.allComponents.mapNotNull { component ->
-                                (component.id as? org.gradle.api.artifacts.component.ModuleComponentIdentifier)
-                                    ?.let { "${it.group}:${it.module}:${it.version}" }
-                            }
-                        }.getOrDefault(emptyList())
-                    }
-            }.distinct()
+        // The one configuration whose resolution is the release APK. `runCatching` is deliberate:
+        // a resolution failure must not be mistaken for "no vulnerable dependencies" — the
+        // `require` below turns an empty result into a failed build rather than a silent pass.
+        val appClasspath =
+            project(":app").configurations
+                .firstOrNull { it.isCanBeResolved && it.name == "releaseRuntimeClasspath" }
+        runCatching {
+            appClasspath?.incoming?.resolutionResult?.allComponents.orEmpty().mapNotNull { component ->
+                (component.id as? org.gradle.api.artifacts.component.ModuleComponentIdentifier)
+                    ?.let { "${it.group}:${it.module}:${it.version}" }
+            }
+        }.getOrDefault(emptyList())
+            .distinct()
             .sorted()
     }
     doLast {
@@ -209,6 +227,14 @@ tasks.register("writeDependencyCoordinates") {
         // An empty list means the resolution silently failed, which would make the scan pass by
         // having nothing to scan — the vacuous-gate shape this project keeps finding.
         require(lines.isNotEmpty()) { "resolved no dependency coordinates; the scan would check nothing" }
+        // One artifact at two versions means the union bug is back: this list must describe one
+        // APK, and an APK contains one version of each library.
+        val ambiguous =
+            lines.groupBy { it.substringBeforeLast(':') }.filterValues { it.size > 1 }
+        require(ambiguous.isEmpty()) {
+            "the same artifact appeared at more than one version, so this is not what ships: " +
+                ambiguous.keys.sorted().joinToString(", ")
+        }
         file.writeText(lines.joinToString("\n", postfix = "\n"))
         logger.lifecycle("Wrote ${lines.size} dependency coordinates to $file")
     }
